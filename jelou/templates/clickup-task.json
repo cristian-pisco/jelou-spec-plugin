@@ -1,0 +1,19 @@
+{
+  "macroTask": {
+    "id": null,
+    "url": null,
+    "name": "",
+    "status": "",
+    "listId": ""
+  },
+  "subtasks": [],
+  "sync": {
+    "lastSynced": null,
+    "state": "pending"
+  },
+  "sprint": "",
+  "pr": {
+    "url": null,
+    "status": null
+  }
+}
