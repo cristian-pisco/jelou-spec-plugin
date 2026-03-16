@@ -9,7 +9,7 @@
     {
       "name": "jlu",
       "version": "0.1.0",
-      "source": ".",
+      "source": "./",
       "description": "Spec-driven development with TDD, multi-service coordination, and specialized agents"
     }
   ]
