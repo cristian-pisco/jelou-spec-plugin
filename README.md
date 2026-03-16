@@ -22,34 +22,45 @@ Follows the conventions established by [OpenSpec](https://github.com/Fission-AI/
 
 ## Quick Start
 
-```bash
+Inside a Claude Code session, run:
+
+```
 # 1. Register the marketplace (one-time)
-claude plugins add-marketplace cristian-pisco/jelou-spec-plugin
+/plugin marketplace add cristian-pisco/jelou-spec-plugin
 
 # 2. Install the plugin
-claude plugins install jlu@jelou-spec-plugin
-
-# 3. Navigate to your project's parent directory (where your service repos live)
-cd /path/to/your/services
-
-# 4. Start Claude and use the commands
-claude
-> /jlu:new-task
-# The plugin will detect there's no .spec-workspace and offer to create one
-
-# 5. (Optional) Map your codebase first
-> /jlu:map-codebase
-
-# 6. (Optional) Set up ClickUp integration
-> /jlu:setup-clickup
+/plugin install jlu@jelou-spec-plugin
 ```
 
-### Manual Installation
+Then navigate to your project's parent directory and start using commands:
 
-If you prefer to install manually:
+```
+# Create a new task (will offer to set up .spec-workspace if missing)
+/jlu:new-task
+
+# (Optional) Map your codebase first
+/jlu:map-codebase
+
+# (Optional) Set up ClickUp integration
+/jlu:setup-clickup
+```
+
+### Updating the Plugin
+
+To pull the latest version inside a Claude Code session:
+
+```
+/plugin update jlu@jelou-spec-plugin
+```
+
+### Local Development / Manual Installation
 
 ```bash
-git clone <repo-url> jelou-spec-plugin
+# Option A: Load directly from a local directory
+claude --plugin-dir /path/to/jelou-spec-plugin
+
+# Option B: Fallback installer (copies skills/agents to ~/.claude/)
+git clone https://github.com/cristian-pisco/jelou-spec-plugin.git
 cd jelou-spec-plugin
 ./bin/install.sh
 ```
