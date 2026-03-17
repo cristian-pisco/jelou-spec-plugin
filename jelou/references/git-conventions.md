@@ -110,5 +110,5 @@ For multi-service tasks, PRs are coordinated across repos:
 | Worktree creation | Orchestrator (via `/jlu:new-task`) | git-agent |
 | Staging + committing | Orchestrator (after phase completion) | git-agent |
 | Pushing | Orchestrator (at appropriate checkpoints) | git-agent |
-| PR creation | Orchestrator (at `ready_to_publish`) | git-agent |
+| PR creation | Orchestrator (via `/jlu:create-pr`) | Orchestrator + `gh` CLI |
 | Branch protection | Hardcoded rule | git-agent enforces |
