@@ -12,7 +12,6 @@ The system must support:
 
 - Existing repos
 - Single-service and multi-service tasks
-- Greenfield bootstrap via a separate skill
 - Operational integration with ClickUp, Slack, Git, and PRs
 - Skill selection per project and per user
 
@@ -312,10 +311,6 @@ Captures which skills were selected for a task.
 - `/jlu:close-task`
 - `/jlu:setup-clickup` *(new — Decision #41)*
 
-### 6.2 Greenfield Skill
-
-- `/jlu:new-project`
-
 ---
 
 ## 7. Task Flow
@@ -521,63 +516,6 @@ After writing, present the complete rewritten SPEC.md to the user and ask for re
 
 ---
 
-## 8. Greenfield Bootstrap (/jlu:new-project)
-
-- Runs manually from the parent directory
-- Interviews the user
-- Shows bootstrap plan for confirmation
-- Creates project
-- Creates `.spec-workspace.json`
-- Initializes `.spec-workspace`
-- Generates base specs
-- Executes initial full mapping
-
-### 8.1 Bootstrap Interview Scope
-
-**Decision #45: Tiered interview** — Quick mode covers core only (stack, DB, Docker). Extended mode covers the full interview (auth, API style, CI/CD, linting, formatting, Git hooks, env management). User chooses depth at bootstrap time.
-
-### 8.2 Scaffold Approach
-
-**Decision #34: Template + agent customization** — Start from a curated template. Then a code agent customizes it based on extended interview answers (auth, API style, etc.).
-
-### 8.3 Fixed Archetypes
-
-- `backend`
-- `frontend`
-- `fullstack`
-
-### 8.4 Layout Rules
-
-- Backend or frontend (pure): natural stack structure, no artificial `backend/` or `frontend/` folders
-- Fullstack: explicit layout allowed, e.g., `<project>/backend` and `<project>/frontend`
-
-### 8.5 Layout Policy
-
-- Explicitly ask whether to use the framework's native layout or the plugin's layout when applicable
-- Laravel and NestJS can keep native layout
-- Go and Rust use the plugin's opinionated layout in v1
-
-### 8.6 Stacks v1
-
-- Backend: Laravel, NestJS, Go, Rust
-- Frontend: TanStack, React, Next.js, Vue.js, Angular
-- Fullstack: combinations supported by the plugin's curated matrix, chosen by the user
-
-### 8.7 Docker (mandatory for all new projects)
-
-- `Dockerfile.dev`
-- `Dockerfile.prod`
-- `docker-compose.yml`
-
-### 8.8 Infrastructure (mandatory interview for backend / backend of fullstack)
-
-- DB type
-- Concrete engine
-- Cache
-- Queue/messaging if applicable
-
----
-
 ## 9. Multi-Service Model
 
 A task can affect one or more services.
@@ -729,7 +667,6 @@ Internal contract (subagent -> orchestrator):
 - **Opus** — orchestrator, spec-interviewer, proposal-agent
 - **Sonnet** — research agents, code agents, tasks-agent, qa-agent
 - **Haiku** — project-management-agent, Slack agent, git agent (when the action is already decided)
-- `/jlu:new-project`: interview/plan uses Opus, bootstrap/scaffold uses Sonnet
 
 ### 12.2 Rules
 
@@ -891,7 +828,6 @@ JSONL
 
 - git
 - publish
-- bootstrap
 - approvals
 - overrides
 
@@ -1113,9 +1049,6 @@ No additional confirmation required if the PR is already merged.
 - Map codebase of a service and verify the 6 artifacts.
 - Create single-service and multi-service tasks under `.spec-workspace/specs/<date>/<task>/`.
 - Validate detection and confirmation of affected services.
-- Execute `/jlu:new-project` for backend, frontend, and fullstack.
-- Verify Docker dev/prod and compose in bootstrap.
-- Verify infrastructure interview for backend/fullstack.
 - Validate skill selection and `SKILLS_RESOLUTION.json`.
 - Validate JSON summaries between subagents and orchestrator consolidation.
 - Validate full lifecycle through `closed`.
@@ -1191,7 +1124,6 @@ All 46 design decisions from the interview, indexed for traceability:
 | 31 | Skill architecture | Hierarchical (core + lightweight command triggers) |
 | 32 | State management | File-based (all state in filesystem) |
 | 33 | Prompt size | Tiered prompts (compact orchestrator rules -> command-specific -> reference docs on demand) |
-| 34 | Scaffold approach | Template + agent customization |
 | 35 | Session recovery | User chooses (resume, re-validate, or start over) |
 | 36 | Live progress | Progress file (TASKS.md updates) + milestone summaries to terminal |
 | 37 | SPEC.md format | Minimal seed + interview expands to structured |
@@ -1202,7 +1134,6 @@ All 46 design decisions from the interview, indexed for traceability:
 | 42 | Slack delivery | MCP Slack server |
 | 43 | Principles style | Layered (global philosophical + per-service concrete via CONVENTIONS.md) |
 | 44 | Map conflicts | Cross-validation pass (validation agent flags contradictions after all 6 agents finish) |
-| 45 | Bootstrap scope | Tiered interview (quick = core only, extended = full setup) |
 | 46 | Delivery | Overwrite JELOU_SPEC_PROPOSAL.md |
 
 ---
@@ -1322,11 +1253,7 @@ So TASKS.md is the working control layer of the task.
 
 ---
 
-### Round 5 — Bootstrap, Git & Cross-Cutting
-
-**Q17 (Bootstrap scope):** For /jlu:new-project, the spec lists fixed archetypes (backend, frontend, fullstack) and specific stacks. But real projects often need things the archetype doesn't cover out of the box — auth strategy, API style (REST vs GraphQL), monorepo tooling, CI/CD provider. Should the bootstrap interview cover these, or are they deferred to the first task?
-
-**A17:** Tiered interview — Quick mode: core only. Extended mode: full interview covering all concerns. User chooses depth at bootstrap time.
+### Round 5 — Git & Cross-Cutting
 
 **Q18 (Branch strategy):** The git agent is described as handling stage/commit/push with safety rails (no push to main, block on unexpected changes). But who creates the worktree branches? What's the branch naming convention? And does each phase get its own branch, or is there one branch per task?
 
@@ -1492,10 +1419,6 @@ Default should be autonomous.
 **Q45 (Prompt size):** The hierarchical skill architecture means one core skill defines the system, with lightweight command triggers. But Claude Code skills have a context window limit. The core skill prompt with all orchestration logic, agent contracts, file conventions, templates, and lifecycle rules could be massive. How should this be handled?
 
 **A45:** Tiered prompts — Three tiers: (1) ultra-compact orchestrator rules, (2) command-specific details loaded per command, (3) reference docs read on demand from workspace.
-
-**Q46 (Scaffold approach):** For the /jlu:new-project greenfield bootstrap, the tiered interview (quick vs extended) needs to scaffold a full project. Should the scaffold be generated from curated templates (maintained by the plugin) or generated dynamically by a code agent based on the interview answers?
-
-**A46:** Template + agent customization — Start from a curated template. Then a code agent customizes it based on extended interview answers (auth, API style, etc.).
 
 **Q47 (Session recovery):** The spec doesn't mention how the plugin handles session continuity. If the user starts /jlu:execute-task, execution progresses through 2 of 5 phases, then the Claude Code session ends (timeout, crash, user closes terminal). When they restart and run /jlu:execute-task again, should it resume from phase 3?
 

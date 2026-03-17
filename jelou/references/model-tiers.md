@@ -30,13 +30,6 @@
 | **slack-agent** | Generates daily summaries from templates. Content structure is predefined; agent fills in the data. |
 | **git-agent** | Stages, commits, pushes to predetermined branches. Actions are already decided; agent just executes git operations. |
 
-### Special Case: /jlu:new-project
-
-| Phase | Model |
-|-------|-------|
-| Interview and planning | Opus |
-| Bootstrap and scaffold generation | Sonnet |
-
 ## Escalation Rules
 
 Lightweight agents (Haiku tier) must escalate to the orchestrator when they detect:

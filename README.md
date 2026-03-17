@@ -11,7 +11,6 @@ Follows the conventions established by [OpenSpec](https://github.com/Fission-AI/
 - **Agent specialization**: The orchestrator never writes code. It delegates to purpose-built agents (spec-interviewer, proposal, test-writer, implementer, QA) and consolidates their output.
 - **Strict TDD**: Red → Green → Refactor enforced per phase. Separate test-writer and implementer agents ensure discipline.
 - **Integrations**: ClickUp task management, Slack dailies (via MCP), Git worktree management, and PR coordination.
-- **Greenfield bootstrap**: Scaffold new projects from curated templates with stack-appropriate structure, Docker, and infrastructure configuration.
 
 ## Prerequisites
 
@@ -77,11 +76,11 @@ cd jelou-spec-plugin
 | `/jlu:sync-clickup` | Create/update ClickUp macro task and subtasks from user stories |
 | `/jlu:publish-uh` | Push user stories to ClickUp as subtasks |
 | `/jlu:report-task` | Executive summary with progress, blockers, and stale worktree detection |
+| `/jlu:load-context` | Load task context into a fresh session for Q&A |
 | `/jlu:post-slack [date] #channel` | Generate and post daily summary to Slack |
 | `/jlu:close-task` | Close task after PR merge — updates ClickUp, artifacts, observability |
 | `/jlu:refresh-skills` | Refresh the skill registry |
 | `/jlu:setup-clickup` | Interactive ClickUp credential and field mapping setup |
-| `/jlu:new-project` | Greenfield bootstrap — scaffold a new project from templates |
 
 ## Workspace Structure
 
@@ -142,14 +141,8 @@ Per-service concrete rules in each service's `CONVENTIONS.md`.
 
 ## Documentation
 
-Detailed guides are available in the `docs/` directory:
-
-- **Command Reference** — Detailed usage for each command
-- **Workflow Guide** — End-to-end task lifecycle walkthrough
-- **Multi-Service Guide** — Working with tasks that span multiple repos
-- **Configuration Guide** — All configuration options explained
-- **Bootstrap Guide** — Creating new projects with `/jlu:new-project`
-- **Troubleshooting** — Common issues and solutions
+- **[Full Specification](./JELOU_SPEC_PROPOSAL.md)** — Complete design decisions, artifact schemas, and interview transcript
+- **[Architecture Diagrams](./docs/architecture.excalidraw)** — Editable diagrams (open with [excalidraw.com](https://excalidraw.com))
 
 ## How It Works (Simplified)
 
@@ -160,6 +153,100 @@ Detailed guides are available in the `docs/` directory:
 5. **Deliver** → Sync to ClickUp, post to Slack, coordinate PRs
 
 All state is file-based. No external database required.
+
+## Task Lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> draft : /jlu:new-task
+    draft --> refining : /jlu:refine-spec
+    refining --> planned : spec approved
+    planned --> implementing : /jlu:execute-task
+    implementing --> validating : all phases done
+    validating --> ready_to_publish : QA passed
+    ready_to_publish --> done : closure approved
+    done --> closed : /jlu:close-task
+
+    implementing --> refining : /jlu:extend-phase (major)
+    implementing --> planned : /jlu:extend-phase (minor)
+    validating --> planned : /jlu:extend-phase
+
+    state implementing {
+        [*] --> proposal_generation
+        proposal_generation --> phase_execution
+        state phase_execution {
+            [*] --> red_tests
+            red_tests --> green_impl
+            green_impl --> refactor
+            refactor --> per_phase_qa
+            per_phase_qa --> commit
+            commit --> [*]
+        }
+        phase_execution --> final_validation
+    }
+
+    note right of implementing
+        Session recovery: resume / re-validate / start over
+    end note
+```
+
+## Agent Architecture
+
+```mermaid
+flowchart TB
+    subgraph commands["User Commands"]
+        new["/jlu:new-task"]
+        map["/jlu:map-codebase"]
+        refine["/jlu:refine-spec"]
+        exec["/jlu:execute-task"]
+        close["/jlu:close-task"]
+    end
+
+    subgraph opus["Orchestrator Tier — Opus"]
+        spec_int["spec-interviewer"]
+        proposal["proposal-agent"]
+    end
+
+    subgraph sonnet["Research & Implementation Tier — Sonnet"]
+        direction TB
+        subgraph researchers["6 Parallel Researchers"]
+            arch["architecture"]
+            stack["stack"]
+            conv["conventions"]
+            integ["integrations"]
+            struct["structure"]
+            concerns["concerns"]
+        end
+        cross["cross-validator"]
+        tw["test-writer · Red"]
+        impl["implementer · Green"]
+        qa["qa-agent"]
+        tasks_ag["tasks-agent"]
+    end
+
+    subgraph haiku["Operations Tier — Haiku"]
+        pm["pm-agent · ClickUp"]
+        slack["slack-agent"]
+        git["git-agent"]
+    end
+
+    subgraph artifacts["Artifacts"]
+        spec_file["SPEC.md"]
+        prop_file["PROPOSAL.md"]
+        phase_files["Phase files"]
+        codebase["6 codebase files"]
+        tasks_file["TASKS.md"]
+    end
+
+    map --> researchers
+    researchers --> cross --> codebase
+    refine --> spec_int --> spec_file
+    exec --> proposal --> prop_file & phase_files
+    exec --> tw --> impl --> qa
+    qa --> tasks_ag --> tasks_file
+    qa --> git
+    close --> pm & git
+```
 
 ## Full Specification
 
