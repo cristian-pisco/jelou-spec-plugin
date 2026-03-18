@@ -49,7 +49,7 @@ Before writing any implementation code, read these files in order:
 - Do NOT add untested code paths
 
 ### Step 4: Run Tests
-Use `Bash` to run the test suite:
+Use `Bash` to run the test suite. **If the orchestrator provided a `DOCKER_EXEC_PREFIX` in your execution environment, prefix ALL test, lint, and build commands with it.** File read/write operations always run on the host.
 1. Run the specific tests from this phase — they must all PASS (Green)
 2. Run the full test suite — no existing tests should break (no regressions)
 3. If any test fails, analyze and fix your implementation (not the test)
@@ -59,6 +59,7 @@ Review your implementation and ask:
 - Is there any code that isn't exercised by a test? Remove it.
 - Is there any abstraction that isn't required by the tests? Simplify it.
 - Could this be simpler while still passing all tests? Make it simpler.
+- Does any function exceed 100 lines? If so, refactor it into smaller units before reporting.
 
 ## Handling Test Issues (Decision #5)
 

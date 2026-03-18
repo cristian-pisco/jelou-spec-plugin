@@ -233,11 +233,22 @@ Proceed with this phase? (yes / skip / abort)
 2. Update TASKS.md with phase start timestamp.
 3. Output milestone to terminal: "Starting Phase <NN>: <Phase Name> for <service-id>"
 
-### 7c. Resolve Service Source Path
+### 7c. Resolve Service Source Path and Docker Context
 
 1. Look up the service's worktree path: `<service-repo>/.worktrees/<TASK_SLUG>`
 2. If the worktree exists, use it as the working directory for code agents.
 3. If not, fall back to the service's main repo path from `services.yaml`.
+4. **Docker context resolution** — Read the service's `docker` config from `services.yaml`:
+   a. If the service has a `docker` block:
+      1. Check container status: `cd <worktree> && docker compose ps --format '{{.State}}'`
+      2. If not running, restart: `cd <worktree> && docker compose up -d`
+      3. Compute `DOCKER_EXEC_PREFIX` = `cd <worktree> && docker compose exec <docker.service>`
+      4. Set `IS_DOCKER_SERVICE` = `true`
+   b. If no `docker` block:
+      1. Set `DOCKER_EXEC_PREFIX` = empty
+      2. Set `IS_DOCKER_SERVICE` = `false`
+
+**Store**: `SERVICE_SOURCE_PATH`, `DOCKER_EXEC_PREFIX`, `IS_DOCKER_SERVICE`
 
 ### 7d. TDD Red — Spawn Test Writer
 
@@ -248,6 +259,15 @@ Spawn `jlu-test-writer` agent:
   - `<WORKSPACE_PATH>/services/<service-id>/codebase/CONVENTIONS.md`
   - Service source path (worktree or repo)
   - SPEC.md relevant sections
+- **Docker context** (only if `IS_DOCKER_SERVICE` is true): Include in the agent prompt:
+  ```
+  ## Execution Environment
+  This service runs in Docker. When running tests or any framework command via Bash, prefix with:
+    <DOCKER_EXEC_PREFIX> <command>
+  File reads/writes (Read, Write, Glob, Grep) operate on the host filesystem (the worktree).
+  Only test execution, lint, build, and dependency commands go through Docker.
+  ```
+  Omit this block entirely for non-Docker services.
 - **Task**: Write failing tests that cover the phase requirements.
 - **Output**: Test file paths and a summary of what was tested.
 
@@ -267,8 +287,15 @@ Spawn `jlu-implementer` agent:
   - `<TASK_DIR>/services/<service-id>/CONTEXT.md`
   - `<WORKSPACE_PATH>/services/<service-id>/codebase/CONVENTIONS.md`
   - Service source path
+- **Docker context** (only if `IS_DOCKER_SERVICE` is true): Include the same `## Execution Environment` block as in Step 7d. Omit for non-Docker services.
 - **Task**: Implement the minimum code to make all tests pass.
 - **Output**: Implementation file paths and a summary.
+
+**Post-Green lint/format** (Docker-enabled services only):
+After the implementer finishes and tests are green, run lint and format inside the container:
+1. Detect the lint command from `package.json` scripts or `CONVENTIONS.md`.
+2. Run: `<DOCKER_EXEC_PREFIX> npx eslint --fix . && <DOCKER_EXEC_PREFIX> npx prettier --write .`
+3. Re-run tests to confirm Green is maintained after formatting changes.
 
 **Green verification**:
 1. Run the test suite.
@@ -297,11 +324,13 @@ After Green:
    - Duplicated code that can be extracted
    - Naming improvements
    - Overly complex logic that can be simplified
+   - Functions exceeding 100 lines must be refactored into smaller units
 2. If changes are made, re-run tests to confirm Green is maintained.
 
 ### 7h. Per-Phase QA (Decision #13)
 
 Spawn `jlu-qa-agent` for a lightweight per-phase check:
+- **Docker context** (only if `IS_DOCKER_SERVICE` is true): Include the same `## Execution Environment` block as in Step 7d. Omit for non-Docker services.
 - All phase tests pass
 - No regression in existing tests
 - Conventions from CONVENTIONS.md are followed

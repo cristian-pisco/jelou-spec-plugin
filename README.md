@@ -79,7 +79,6 @@ cd jelou-spec-plugin
 | `/jlu:post-slack [date] #channel` | Generate and post daily summary to Slack |
 | `/jlu:close-task` | Close task after PR merge — updates ClickUp, artifacts, observability |
 | `/jlu:refresh-skills` | Refresh the skill registry |
-| `/jlu:setup-clickup` | *(deprecated)* ClickUp setup — MCP handles auth automatically |
 
 ## Workspace Structure
 
@@ -121,8 +120,6 @@ Each service repo only stores a minimal `.spec-workspace.json` pointer:
 ### ClickUp
 
 ClickUp integration uses the ClickUp MCP server (no API key needed). On first run of `/jlu:sync-clickup`, you'll be prompted to select a target list. Field mappings are auto-discovered and persisted in `CLICKUP_TASK.json` per task.
-
-> `/jlu:setup-clickup` is deprecated — the MCP server handles authentication automatically.
 
 ### Slack
 

@@ -34,13 +34,24 @@ Each service repo participating in a task gets a dedicated worktree:
 | Event | Action |
 |-------|--------|
 | `/jlu:new-task` | Creates worktrees in all confirmed affected repos |
+| `/jlu:new-task` (Docker) | Also starts isolated Docker instances per worktree |
 | During execution | All code changes happen in the worktree, not the main working tree |
 | `/jlu:report-task` | Shows stale worktrees (tasks in `done` or `closed` state) with cleanup prompt |
 | `/jlu:close-task` | Worktree can be cleaned up (not automatic) |
+| `/jlu:close-task` (Docker) | Tears down Docker before removing worktrees |
 
 ### Stale Detection (Decision #17)
 
 No automatic worktree cleanup. `/jlu:report-task` identifies stale worktrees — those associated with tasks in `done` or `closed` state — and prompts the user to clean them up. Worktrees persist until explicitly removed.
+
+### Docker Integration
+
+Each worktree for a Docker-enabled service gets its own Docker instance with an isolated host port (allocated starting from port 3100). This ensures multiple tasks can run concurrently without port conflicts.
+
+- Port assignment is written to the worktree's `.env` file.
+- Teardown uses `docker compose down -v --rmi all --remove-orphans` to fully clean up containers, volumes, and images.
+- Docker teardown must happen **before** worktree removal, since the compose file lives inside the worktree.
+- See `docker-conventions.md` for the full execution policy and command classification.
 
 ## Commit Conventions
 

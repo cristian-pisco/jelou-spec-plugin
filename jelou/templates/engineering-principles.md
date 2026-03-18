@@ -11,6 +11,8 @@
 
 ## Project Principles
 
+- Functions must not exceed 100 lines. If a function grows beyond this limit, refactor it into smaller, well-named units before proceeding.
+
 <!-- Examples:
 - All financial calculations must use Decimal, never floating point.
 - Data access must be audit-logged (SOC2).

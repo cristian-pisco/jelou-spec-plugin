@@ -22,6 +22,7 @@ Run after each phase's Green step (tests passing). This is a quick sanity check.
 
 #### 1. Tests Pass
 - Run the full test suite using `Bash`
+- **If the orchestrator provided a `DOCKER_EXEC_PREFIX`, use it for all test commands.** Never run test runners directly on the host for Docker-enabled services.
 - Verify ALL tests pass (not just the new ones)
 - Check for flaky tests (run twice if suspect)
 
@@ -49,6 +50,11 @@ Run after each phase's Green step (tests passing). This is a quick sanity check.
 - Check for missing error handling on new code paths
 - Check for console.log/print statements that should be proper logging
 - Check for commented-out code
+
+#### 6. Function Length
+- Check all new or modified functions/methods
+- No function should exceed 100 lines
+- If found, report as FAIL with recommendation to refactor
 
 ### Per-Phase Output:
 

@@ -49,7 +49,7 @@ ClickUp config lives at `~/.spec-plugin/clickup.json`:
 }
 ```
 
-If this config does not exist or is missing required fields, **block and escalate** — tell the orchestrator that `/jlu:setup-clickup` must be run first.
+If this config does not exist or is missing required fields, **block and escalate** — tell the orchestrator that the ClickUp MCP server must be configured first.
 
 ## Sync Process
 

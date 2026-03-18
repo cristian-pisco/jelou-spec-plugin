@@ -57,6 +57,26 @@
         ```
    - If no: warn that some features may not work correctly without registration.
 
+### 2b. Docker Detection
+
+After service registration (or if already registered):
+
+1. Search the service repo for `docker-compose.yml`, `docker-compose.yaml`, or `compose.yml`.
+2. If a Compose file is found and the service does NOT already have a `docker` block in `services.yaml`:
+   - Ask: "Docker Compose file detected at `<path>`. Register Docker config for this service?"
+   - If yes:
+     a. Parse the Compose file's `services:` keys and suggest the service name.
+     b. Ask for the port env var name (default: `APP_PORT`).
+     c. Write the `docker` block into the service's entry in `services.yaml`:
+        ```yaml
+        docker:
+          service: <compose-service-name>
+          compose_file: <relative-path>
+          port_env: <port-env-var>
+        ```
+   - If no: skip, proceed as non-Docker service.
+3. If no Compose file is found: skip silently.
+
 ---
 
 ## Step 3 — Prompt for Task Details
@@ -199,7 +219,16 @@ The background agent should, for each service in `CONFIRMED_SERVICES`:
    git worktree add .worktrees/<TASK_SLUG> -b spec/<TASK_SLUG>
    ```
 4. If the branch `spec/<TASK_SLUG>` already exists: use the existing branch.
-5. Record the worktree path for the final report.
+5. **If the service has a `docker` config in `services.yaml`**:
+   a. Run `docker ps --format '{{.Ports}}'` to find occupied host ports.
+   b. Parse port numbers, select next free port starting from 3100 (increment by 1, skip occupied ports).
+   c. Copy `.env` from the service repo root to the worktree: `cp <repo>/.env <worktree>/.env`
+   d. Update the worktree's `.env`: replace `^<PORT_ENV>=.*` with `<PORT_ENV>=<free-port>`.
+   e. Start Docker: `cd <worktree> && docker compose up -d`
+   f. Verify container is running: `docker compose ps` (poll up to 30s).
+   g. Record container ID + port for the final report.
+6. **If no `docker` config**: skip Docker steps (current behavior).
+7. Record the worktree path for the final report.
 
 **Error handling** (for the background agent): If `git worktree add` fails (dirty working tree, branch conflicts), report the error but do NOT block the workflow. Continue with whatever worktrees succeed.
 
@@ -372,6 +401,11 @@ Present the final summary:
 ### Worktrees Created
 - <service-id-1>: <repo-path>/.worktrees/<TASK_SLUG> (branch: spec/<TASK_SLUG>)
 - <service-id-2>: <repo-path>/.worktrees/<TASK_SLUG> (branch: spec/<TASK_SLUG>)
+- ...
+
+### Docker Instances
+- <service-id-1>: running on port <port> (container: <id>)
+- <service-id-2>: no Docker
 - ...
 
 ### Warnings

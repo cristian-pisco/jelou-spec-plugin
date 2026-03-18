@@ -118,13 +118,23 @@ For each affected service:
    ```
 3. Ensure the `specs/observability/` directory exists before writing.
 
-### 3d. Clean Up Worktrees
+### 3d. Clean Up Docker and Worktrees
 
 1. For each affected service:
    a. Look up the service repo path from `services.yaml`.
    b. Check if `<service-repo>/.worktrees/<TASK_SLUG>` exists.
    c. If it exists, collect it for cleanup.
-2. If any worktrees are found:
+2. **Docker teardown** (must happen BEFORE worktree removal — the compose file lives in the worktree):
+   - For each worktree collected for cleanup:
+     a. Look up the service's `docker` config from `services.yaml`.
+     b. **If Docker-enabled and worktree exists**:
+        1. Check containers: `cd <worktree> && docker compose ps`
+        2. If running: `cd <worktree> && docker compose down -v --rmi all --remove-orphans`
+        3. Wait for completion.
+        4. Record Docker cleanup status for the closure report.
+     c. **If no `docker` config**: skip Docker teardown for this service.
+3. **Worktree removal** (after Docker teardown):
+   If any worktrees are found:
    ```
    Worktrees found for this task:
    - <service-id-1>: <service-repo-1>/.worktrees/<TASK_SLUG>
@@ -139,7 +149,7 @@ For each affected service:
      If removal fails (e.g., uncommitted changes), report the error and skip that worktree.
    - If "select individually": present each one and ask.
    - If "no": leave worktrees in place, note them in the report.
-3. Optionally delete the task branch if it has been fully merged:
+4. Optionally delete the task branch if it has been fully merged:
    ```bash
    git branch -d spec/<TASK_SLUG>
    ```
@@ -169,6 +179,11 @@ Present the final summary:
 
 ### Observability
 - Events registered in: <list of service repos>
+
+### Docker Cleanup
+- <service-id-1>: containers stopped, volumes removed, images removed
+- <service-id-2>: no Docker
+- ...
 
 ### Worktree Cleanup
 - <service-id-1>: removed / skipped / not found

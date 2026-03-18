@@ -52,7 +52,7 @@ Follow the service's conventions exactly:
 - Import from the correct paths (respect path aliases)
 
 ### Step 4: Verify Tests Fail
-Run the test suite using `Bash` to confirm:
+Run the test suite using `Bash` to confirm. **If the orchestrator provided a `DOCKER_EXEC_PREFIX` in your execution environment, prefix ALL test commands with it.** File reads/writes always run on the host.
 - Tests are discovered by the test runner
 - Tests FAIL (Red) because the implementation does not exist
 - Tests fail for the RIGHT reason (missing function/module, not syntax errors)
