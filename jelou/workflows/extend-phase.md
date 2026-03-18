@@ -3,6 +3,8 @@
 > Orchestrator workflow for `/jlu:extend-phase [task-slug] [phase-number]`
 > Add or modify scope in an in-progress task via a focused mini-interview.
 
+> **Tool requirement**: All prompts, questions, and confirmations to the user in this workflow MUST use `AskUserQuestion`. Never output questions as plain text.
+
 ---
 
 ## Step 1 — Resolve Task
@@ -48,7 +50,7 @@
 
 Conduct a focused interview about the extension. This is shorter and more targeted than `/jlu:refine-spec`.
 
-Ask the following questions (use `AskUserQuestion`):
+Using AskUserQuestion, ask the following questions. Wait for the user's response after each round before proceeding:
 
 ### Round 1: What and Why
 1. "What is changing? Describe the new or modified requirements."

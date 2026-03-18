@@ -3,6 +3,8 @@
 > Orchestrator workflow for `/jlu:create-pr [task-slug]`
 > Stages all changes, commits, pushes, and creates pull requests for all affected services. Idempotent — skips if PR already exists.
 
+> **Tool requirement**: All prompts, questions, and confirmations to the user in this workflow MUST use `AskUserQuestion`. Never output questions as plain text.
+
 ---
 
 ## Step 1 — Resolve Task

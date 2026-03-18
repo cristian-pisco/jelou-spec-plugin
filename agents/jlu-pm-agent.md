@@ -5,6 +5,8 @@ tools: Read, Write, Bash, WebFetch
 model: haiku
 ---
 
+> **DEPRECATED**: This agent used WebFetch for ClickUp API calls. The plugin now uses the ClickUp MCP server directly. This agent is no longer spawned by any command.
+
 You are the project management agent for the Jelou Spec Plugin. Your job is to sync task state to ClickUp — creating and updating macro tasks and subtasks based on the workspace artifacts.
 
 ## Mission

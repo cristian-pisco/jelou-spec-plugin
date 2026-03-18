@@ -1,7 +1,9 @@
 # Workflow: new-task
 
 > Orchestrator workflow for `/jlu:new-task [task description]`
-> Creates a new task with spec seed, worktrees, and affected service detection.
+> Creates a new task, runs the spec interview inline, and creates worktrees in the background.
+
+> **Tool requirement**: All prompts, questions, and confirmations to the user in this workflow MUST use `AskUserQuestion`. Never output questions as plain text.
 
 ---
 
@@ -62,7 +64,7 @@
 1. **Task description**:
    - If provided as the command argument, use it as the seed.
    - If not provided, ask the user:
-     > "Describe the task you want to create (this will be the SPEC.md seed):"
+     > "Describe the task you want to create:"
 2. **Sprint date**:
    - Ask the user:
      > "Sprint date for this task? (dd-mm-yyyy format, press Enter for current week's Monday)"
@@ -100,28 +102,14 @@
 
 ---
 
-## Step 6 — Write Initial Artifacts
-
-### SPEC.md
-
-Write the minimal seed to `<TASK_DIR>/SPEC.md`:
-
-```markdown
-# <TASK_SLUG>
-
-<TASK_DESCRIPTION>
-```
-
-If a spec.md template exists at `<plugin-root>/jelou/templates/spec.md`, use it as the base and inject the task description. Otherwise, use the minimal format above.
-
-### TASKS.md
+## Step 6 — Write Initial TASKS.md
 
 Write the initial tracker to `<TASK_DIR>/TASKS.md`:
 
 ```markdown
 # Task: <TASK_SLUG>
 
-## Status: draft
+## Status: refining
 
 ## Lifecycle
 - Created: <current-datetime-ISO>
@@ -150,13 +138,13 @@ If a tasks.md template exists at `<plugin-root>/jelou/templates/tasks.md`, use i
 
 1. Read `<WORKSPACE_PATH>/registry/services.yaml` for all registered services.
 2. Read `<WORKSPACE_PATH>/services/<SERVICE_ID>/codebase/INTEGRATIONS.md` (if it exists) to understand the primary service's integration points.
-3. Analyze the spec seed (`TASK_DESCRIPTION`) for references to other services:
+3. Analyze the task description (`TASK_DESCRIPTION`) for references to other services:
    - Look for service names or IDs mentioned in the text.
    - Cross-reference with known integrations from INTEGRATIONS.md.
    - Cross-reference with services registered in `services.yaml`.
 4. Build a proposed list of affected services (always including the primary `SERVICE_ID`).
 5. Check for references to services NOT in the registry (Decision #39):
-   - If found, warn: "The spec references `<name>` which is not registered in `services.yaml`. Would you like to register it?"
+   - If found, warn: "The task references `<name>` which is not registered in `services.yaml`. Would you like to register it?"
 
 **Store**: `PROPOSED_SERVICES` = list of affected service IDs
 
@@ -191,65 +179,189 @@ Update `TASKS.md` with the confirmed affected services list.
 
 ---
 
-## Step 9 — Create Worktrees
+## Step 9 — Launch Background Worktree Creation
 
-For each service in `CONFIRMED_SERVICES`:
+Notify the user before launching:
+```
+Launching worktree creation in background for <N> services...
+```
 
+Spawn a **background Agent** (`run_in_background: true`) using the `jlu-git-agent` with:
+- The confirmed services list (`CONFIRMED_SERVICES`)
+- The task slug (`TASK_SLUG`)
+- The repo path for each service from `services.yaml`
+
+The background agent should, for each service in `CONFIRMED_SERVICES`:
 1. Look up the service's repo path from `services.yaml`.
 2. Navigate to that repo path.
 3. Create a worktree:
    ```bash
    git worktree add .worktrees/<TASK_SLUG> -b spec/<TASK_SLUG>
    ```
-4. If the branch `spec/<TASK_SLUG>` already exists:
-   - Ask the user: "Branch `spec/<TASK_SLUG>` already exists in `<service-id>`. Use existing branch or create a new one?"
-5. Record the worktree path for the report.
+4. If the branch `spec/<TASK_SLUG>` already exists: use the existing branch.
+5. Record the worktree path for the final report.
 
-**Error handling**: If `git worktree add` fails:
-- Report the error (e.g., dirty working tree, branch conflicts).
-- Offer to skip this service's worktree and continue.
-- Do NOT block the entire workflow on a single worktree failure.
+**Error handling** (for the background agent): If `git worktree add` fails (dirty working tree, branch conflicts), report the error but do NOT block the workflow. Continue with whatever worktrees succeed.
+
+**Store**: `WORKTREE_AGENT_TASK` = reference to the background agent task (to check later in Step 15)
 
 ---
 
-## Step 10 — Check Skill Staleness
+## Step 10 — Load Codebase Files
 
-1. Read `.claude/skill-registry.json` from the current repo (if it exists).
-2. Compare its modification time with the skill files in the plugin directory.
-3. If the registry is older than any skill file (stale):
-   - Warn: "Skill registry appears stale. Some skills may have been updated since last refresh."
-   - Offer: "Run `/jlu:refresh-skills` to update?"
-4. If the registry does not exist, note this but do not block.
+For each service in `CONFIRMED_SERVICES`, attempt to read:
 
----
+- `<WORKSPACE_PATH>/services/<service-id>/codebase/ARCHITECTURE.md`
+- `<WORKSPACE_PATH>/services/<service-id>/codebase/STACK.md`
+- `<WORKSPACE_PATH>/services/<service-id>/codebase/CONVENTIONS.md`
+- `<WORKSPACE_PATH>/services/<service-id>/codebase/INTEGRATIONS.md`
+- `<WORKSPACE_PATH>/services/<service-id>/codebase/STRUCTURE.md`
+- `<WORKSPACE_PATH>/services/<service-id>/codebase/CONCERNS.md`
 
-## Step 11 — Check Codebase Map Existence
+Track which files exist and which are missing.
 
-For each service in `CONFIRMED_SERVICES`:
-
-1. Check if `<WORKSPACE_PATH>/services/<service-id>/codebase/` exists and contains the 6 codebase files.
-2. If missing for any service:
-   - Warn: "Codebase map is missing for `<service-id>`. The refine-spec and execute-task workflows work best with codebase context."
-   - Offer: "Run `/jlu:map-codebase` for `<service-id>` now?"
-   - If user declines, continue without it.
+**Store**: `CODEBASE_CONTEXT` = map of service-id -> map of filename -> content
 
 ---
 
-## Step 12 — Report
+## Step 11 — Read Engineering Principles
+
+1. Read `<WORKSPACE_PATH>/principles/ENGINEERING_PRINCIPLES.md`.
+2. If the file does not exist, note it but do not block. The interview can proceed without it.
+
+**Store**: `PRINCIPLES_CONTENT` = contents (or empty string if missing)
+
+---
+
+## Step 12 — Warn on Missing Context
+
+1. If any codebase files are missing for any affected service:
+   - Present a warning for each:
+     ```
+     Missing codebase files for <service-id>:
+       - ARCHITECTURE.md
+       - STACK.md
+       - (etc.)
+     ```
+   - Offer: "Run `/jlu:map-codebase <service-id>` to generate them? Or continue without codebase context?"
+   - If user chooses to map: pause this workflow, instruct user to run `/jlu:map-codebase`, then re-run `/jlu:new-task`.
+   - If user chooses to continue: proceed with whatever context is available.
+
+2. Check `.claude/skill-registry.json` (if it exists):
+   - Compare its modification time with the skill files in the plugin directory.
+   - If stale: warn "Skill registry appears stale. Run `/jlu:refresh-skills` to update?"
+
+---
+
+## Step 13 — Build Composite Context
+
+Assemble the full context string that will be injected into the spec-interviewer agent's prompt. Order matters for clarity:
+
+```
+=== Task Description ===
+<TASK_DESCRIPTION>
+
+=== Engineering Principles ===
+<PRINCIPLES_CONTENT>
+
+=== Service: <service-id-1> ===
+
+--- ARCHITECTURE.md ---
+<content>
+
+--- STACK.md ---
+<content>
+
+--- CONVENTIONS.md ---
+<content>
+
+--- INTEGRATIONS.md ---
+<content>
+
+--- STRUCTURE.md ---
+<content>
+
+--- CONCERNS.md ---
+<content>
+
+=== Service: <service-id-2> ===
+(repeat for each affected service)
+```
+
+**Store**: `COMPOSITE_CONTEXT` = the full assembled context string
+
+---
+
+## Step 14 — Spawn Spec-Interviewer Agent
+
+Notify the user before spawning:
+```
+Spawning spec-interviewer agent (Opus) to analyze the codebase and interview you about requirements...
+```
+
+Spawn a single `jlu-spec-interviewer` agent with model: **opus**.
+
+**Agent prompt construction**:
+
+1. Read the agent definition from `<plugin-root>/agents/jlu-spec-interviewer.md`.
+2. Prepend `COMPOSITE_CONTEXT` before the agent instructions.
+3. Append task metadata:
+   ```
+   Task slug: <TASK_SLUG>
+   Task directory: <TASK_DIR>
+   SPEC.md path: <TASK_DIR>/SPEC.md
+   Affected services: <comma-separated list>
+   ```
+
+**What the agent does** (defined in its agent file, summarized here for reference):
+
+1. **Gap analysis** (silent) — Analyzes the task description against codebase knowledge. Identifies ambiguities, conflicts, implicit assumptions, edge cases, integration points, NFRs, and known concerns.
+2. **Structured interview** — Asks the user 2-4 themed questions per round. Themes: architecture, behavior, edge cases, security, performance, integrations, UX, constraints. Questions are informed by codebase context (non-obvious, specific). Continues until the agent has enough to fill all 5 sections.
+3. **Write SPEC.md** — Writes `<TASK_DIR>/SPEC.md` with structured sections: Problem Statement, Requirements (FR/NFR), Constraints, Out of Scope, Success Criteria. Requirements are numbered (FR-1, NFR-1, SC-1) for traceability.
+4. **Present for approval** — Shows the complete spec to the user. User must explicitly approve.
+
+**Important**: The orchestrator does NOT perform the interview or write the spec. It delegates entirely to the spec-interviewer agent. The orchestrator's job is to load context and spawn the agent.
+
+---
+
+## Step 15 — Post-Agent Confirmation
+
+After the spec-interviewer agent completes:
+
+1. Verify that `<TASK_DIR>/SPEC.md` exists and has all 5 structured sections.
+   - If not created or incomplete: warn "The spec-interviewer did not appear to complete SPEC.md. Review the agent output."
+
+2. Check the agent's output for approval status:
+   - If the user **approved** the spec:
+     a. Update `<TASK_DIR>/TASKS.md`:
+        - Change `Status: refining` to `Status: planned`
+        - Add transition timestamp: `- Planned: <current-datetime-ISO>`
+     b. Check `WORKTREE_AGENT_TASK` result:
+        - If the background worktree agent completed successfully: log the created worktrees.
+        - If it failed or is still running: report the worktree errors and note the user can create worktrees manually.
+   - If the user **did not approve** or the agent ended without approval:
+     a. Leave TASKS.md status as `refining`.
+     b. Report: "SPEC.md was created but not yet approved. You can:"
+        - "Review and edit `<TASK_DIR>/SPEC.md` manually, then re-run `/jlu:new-task <TASK_SLUG>`"
+        - "Or re-run `/jlu:refine-task <TASK_SLUG>` to apply targeted changes"
+
+---
+
+## Step 16 — Final Report
 
 Present the final summary:
 
 ```
-## New Task Created
+## Task Created
 
 ### Task
 - Slug: <TASK_SLUG>
 - Path: <TASK_DIR>
 - Sprint: <SPRINT_DATE>
-- Status: draft
+- Status: planned
 
 ### Artifacts
-- SPEC.md: <TASK_DIR>/SPEC.md
+- SPEC.md: <TASK_DIR>/SPEC.md (<N> sections)
 - TASKS.md: <TASK_DIR>/TASKS.md
 
 ### Affected Services
@@ -266,9 +378,10 @@ Present the final summary:
 - <any codebase map warnings>
 - <any skill staleness warnings>
 - <any unregistered service warnings>
+- <any worktree creation failures>
 
 ### Next Step
-Run `/jlu:refine-spec` to expand the spec seed into a full specification.
+Run `/jlu:execute-task` to begin implementation.
 ```
 
 ---
@@ -280,8 +393,9 @@ Run `/jlu:refine-spec` to expand the spec seed into a full specification.
 | Cannot resolve workspace | Offer to create, stop if user declines |
 | Service not registered | Offer to register, warn if declined |
 | Task slug already exists | Auto-append numeric suffix |
-| Git worktree creation fails | Report error, skip that worktree, continue |
+| Git worktree creation fails | Background agent reports error, skip that worktree, continue |
 | INTEGRATIONS.md missing | Proceed without integration-based detection, rely on user input |
+| Codebase files missing | Warn, offer `/jlu:map-codebase`, allow continue without |
 | User cancels at any confirmation step | Save any artifacts created so far, report partial state |
 
 ---
@@ -290,7 +404,7 @@ Run `/jlu:refine-spec` to expand the spec seed into a full specification.
 
 | Artifact | Path |
 |----------|------|
-| Task spec seed | `.spec-workspace/specs/<dd-mm-yyyy>/<task-slug>/SPEC.md` |
+| Task spec | `.spec-workspace/specs/<dd-mm-yyyy>/<task-slug>/SPEC.md` |
 | Task tracker | `.spec-workspace/specs/<dd-mm-yyyy>/<task-slug>/TASKS.md` |
 | Per-service dir | `.spec-workspace/specs/<dd-mm-yyyy>/<task-slug>/services/<service-id>/` |
 | Phase dir | `.spec-workspace/specs/<dd-mm-yyyy>/<task-slug>/services/<service-id>/phases/` |

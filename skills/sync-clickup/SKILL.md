@@ -5,48 +5,222 @@ argument-hint: "[task-slug]"
 allowed-tools:
   - Read
   - Write
-  - Bash
-  - Agent
+  - Glob
   - AskUserQuestion
-  - WebFetch
+  - mcp__clickup__clickup_create_task
+  - mcp__clickup__clickup_update_task
+  - mcp__clickup__clickup_get_task
+  - mcp__clickup__clickup_search
+  - mcp__clickup__clickup_get_list
+  - mcp__clickup__clickup_get_workspace_hierarchy
+  - mcp__clickup__clickup_create_task_comment
 model: sonnet
 ---
 
-You are the orchestrator for the `/jlu:sync-clickup` command.
+You are the orchestrator for the `/jlu:sync-clickup` command. You use the ClickUp MCP server directly — no API key, no WebFetch, no pm-agent.
 
 ## Step 1 — Resolve Workspace and Task
 
 1. Read `.spec-workspace.json` in the current repo to find the workspace path and service ID.
 2. Resolve the task from arguments or find the most recent task in `.spec-workspace/specs/`.
-3. Read the task's `CLICKUP_TASK.json` (if it exists) and `uh/` directory for user stories.
+3. Read the task artifacts:
+   - `SPEC.md` — task title, problem statement, requirements
+   - `PROPOSAL.md` — strategy, phases, risks
+   - `TASKS.md` — current status, sprint date, affected services, phase progress
+   - `uh/` directory — user story files for subtasks
+4. Read `CLICKUP_TASK.json` (if it exists) for previous sync state.
 
-## Step 2 — Load ClickUp Configuration
+## Step 2 — Resolve Target List
 
-1. Read `~/.spec-plugin/clickup.json` for credentials, workspace, space, list IDs, and field mappings.
-2. If the config file is missing, inform the user to run `/jlu:setup-clickup` first and stop.
+1. If `CLICKUP_TASK.json` has a `list_id` → use it.
+2. Else:
+   a. Use `clickup_get_workspace_hierarchy` to fetch available workspaces, spaces, folders, and lists.
+   b. Present the list hierarchy to the user via AskUserQuestion and let them pick the target list.
+   c. Persist the chosen `list_id` in `CLICKUP_TASK.json` for future runs.
 
-## Step 3 — Build Sync Payload
+## Step 3 — Discover Custom Fields
 
-1. Read SPEC.md, PROPOSAL.md, and TASKS.md to construct the macro task description.
-2. Read each user story from `uh/` to construct subtask descriptions.
-3. Infer fields: story points, priority, risk, type, sprint (per Decision #26).
-4. Apply fixed defaults: Assignee, Equipo, Responsable.
+1. Use `clickup_get_list` with the target list ID to get list details including custom field definitions.
+2. Auto-map fields by name (case-insensitive match):
 
-## Step 4 — Sync with ClickUp
+| Plugin Field | ClickUp Field Name |
+|-------------|-------------------|
+| Team | Equipo |
+| Responsible | Responsable |
+| Requester | Solicitante |
+| Story Points | Story points |
+| Size | Talla |
+| Risk | Riesgo |
+| Project Type | Tipo proyecto |
+| Frontline | Front |
+| Needs Design | Necesita Diseno |
+| Sprint | Sprint |
 
-1. Spawn the `jlu-pm-agent` to handle ClickUp API interactions:
-   - If `CLICKUP_TASK.json` has an existing macro task ID: **update** the macro task.
-   - If no macro task exists: **create** the macro task in the configured list.
-   - For each user story: **upsert** subtasks by story slug (update existing, create new, never delete — Decision #27).
-   - Sync lifecycle state to ClickUp status (Decision #21.12).
-2. The agent uses WebFetch for all ClickUp API calls.
+3. Persist discovered field IDs in `CLICKUP_TASK.json` under `field_mappings` for future runs.
+4. If a required field is not found, warn and continue — do not block the entire sync.
 
-## Step 5 — Persist Results
+## Step 4 — Infer Fields
 
-1. Update `CLICKUP_TASK.json` with:
-   - Macro task ID and URL
-   - Subtask IDs and URLs mapped by story slug
-   - Sync timestamps
-   - Sprint information
-   - Associated PR (if available from TASKS.md)
-2. Report the sync summary to the user: created/updated counts, any errors or blocked fields.
+Infer these fields inline (no pm-agent):
+
+### time_estimate (REQUIRED)
+
+- Per phase: ~2h (120min) for simple (1 service, few requirements), ~4h (240min) for medium, ~8h (480min) for complex
+- Total task = sum of phase estimates
+- Subtask estimate = proportional to requirements covered
+- Always express as **milliseconds** for the ClickUp MCP API (e.g., 5400000 for 1h 30m)
+- Display to user as natural language (e.g., "1h 30m")
+
+### Other Fields
+
+| Field | Inference Logic |
+|-------|----------------|
+| **Story Points / Talla** | From number of phases, services, requirements, codebase complexity |
+| **Priority / Riesgo** | From urgency, impact, cross-service dependencies |
+| **Tipo proyecto** | From task intent: new feature, enhancement, bugfix, refactor |
+| **Front** | "Reliability" for Issues, else "Enhancement" or "AI" |
+| **Necesita Diseno** | "Si" for frontend tasks, "No" for backend |
+| **Equipo, Responsable, Solicitante** | From config defaults — ask user on first run via AskUserQuestion, persist in CLICKUP_TASK.json |
+| **Sprint** | From TASKS.md sprint date |
+
+## Step 5 — Create or Update Macro Task
+
+### Create (no existing macro task in CLICKUP_TASK.json)
+
+1. Use `clickup_create_task` with:
+   - `name`: Task title from SPEC.md
+   - `description`: Problem statement + strategy summary
+   - `assignees`: From config defaults
+   - `priority`: Inferred priority (1=urgent, 2=high, 3=normal, 4=low)
+   - `custom_fields`: ALL mapped fields from Step 3-4
+2. **Immediately after create**: Use `clickup_update_task` to set `time_estimate` (not available on create).
+
+### Update (existing macro task)
+
+1. Use `clickup_update_task` with changed fields + `time_estimate` + status mapping.
+
+### Status Mapping
+
+| Internal State | ClickUp Status |
+|---------------|---------------|
+| draft | — (not synced) |
+| refining | — (not synced) |
+| planned | IN PROGRESS |
+| implementing | IN PROGRESS |
+| validating | IN PROGRESS |
+| ready_to_publish | PENDING TO PRODUCTION |
+| done | PENDING TO PRODUCTION |
+| closed | CLOSED |
+
+## Step 6 — Attach PR Links as Task Comment
+
+1. Read PR URLs from TASKS.md "External Links" section or CLICKUP_TASK.json `pr` field.
+2. If PRs exist: Use `clickup_create_task_comment` on the macro task with formatted PR links.
+3. Format:
+   ```
+   Pull Requests:
+   - <service-id>: <pr-url>
+   - <service-id-2>: <pr-url-2>
+   ```
+
+## Step 7 — Create or Update Subtasks from User Stories
+
+For each user story file in `uh/`:
+
+1. Match existing subtasks by slug via CLICKUP_TASK.json.
+2. **Create new**: Use `clickup_create_task` with `parent` = macro task ID.
+3. **Subtasks inherit ALL parent custom fields**: Riesgo, Equipo, Tipo proyecto, Solicitante, Front, Talla, Responsable, Sprint, Story Points, Necesita Diseno.
+4. **Update existing**: Use `clickup_update_task`.
+5. Set `time_estimate` on each subtask (proportional to phase scope) — use `clickup_update_task` after create.
+6. **Never delete subtasks** (Decision #27).
+
+## Step 8 — Persist to CLICKUP_TASK.json
+
+Write the updated sync state:
+
+```json
+{
+  "list_id": "<list-id>",
+  "field_mappings": {
+    "Equipo": "<field-id>",
+    "Responsable": "<field-id>",
+    "Solicitante": "<field-id>",
+    "Story points": "<field-id>",
+    "Talla": "<field-id>",
+    "Riesgo": "<field-id>",
+    "Tipo proyecto": "<field-id>",
+    "Front": "<field-id>",
+    "Necesita Diseno": "<field-id>",
+    "Sprint": "<field-id>"
+  },
+  "defaults": {
+    "equipo": "<value>",
+    "responsable": "<value>",
+    "solicitante": "<value>"
+  },
+  "macroTask": {
+    "id": "<clickup-task-id>",
+    "url": "<clickup-url>",
+    "status": "<current-status>",
+    "time_estimate_ms": "<milliseconds>",
+    "lastSynced": "<ISO-8601>"
+  },
+  "subtasks": {
+    "<story-slug>": {
+      "id": "<clickup-task-id>",
+      "url": "<clickup-url>",
+      "time_estimate_ms": "<milliseconds>",
+      "lastSynced": "<ISO-8601>"
+    }
+  },
+  "sprint": "<sprint-name>",
+  "pr": {
+    "<service-id>": "<pr-url>"
+  },
+  "syncHistory": [
+    {
+      "timestamp": "<ISO-8601>",
+      "action": "created|updated",
+      "details": "<brief>"
+    }
+  ]
+}
+```
+
+## Step 9 — Report Summary
+
+Present the sync results to the user:
+
+```
+## ClickUp Sync — <task-slug>
+
+### Macro Task
+- Action: created / updated
+- URL: <clickup-url>
+- Time Estimate: <human-readable>
+- Status: <clickup-status>
+
+### Subtasks
+- Created: <N>
+- Updated: <N>
+- Unchanged: <N>
+
+### PR Comments
+- <Attached / No PRs found>
+
+### Custom Fields Set
+- <list of fields that were successfully mapped and set>
+
+### Warnings
+- <any unmapped fields or errors>
+```
+
+## Rules
+
+- Sync is **idempotent** — running it multiple times produces the same result.
+- Never delete ClickUp tasks or subtasks. Only create and update.
+- `time_estimate` is **REQUIRED** on every task and subtask. Never skip it.
+- All user interaction MUST use `AskUserQuestion`. Never output questions as plain text.
+- If a ClickUp MCP tool returns an error, report it clearly. Do not retry silently.
+- If there's a duplicate custom field name, ask for resolution once via AskUserQuestion and persist the choice.
+- Sprint is **mandatory** — if not set in TASKS.md, ask the user via AskUserQuestion.

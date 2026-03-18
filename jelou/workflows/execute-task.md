@@ -3,6 +3,8 @@
 > Orchestrator workflow for `/jlu:execute-task [task-slug]`
 > Runs TDD implementation with proposal generation, phase-by-phase execution, and QA validation.
 
+> **Tool requirement**: All prompts, questions, and confirmations to the user in this workflow MUST use `AskUserQuestion`. Never output questions as plain text.
+
 ---
 
 ## Step 1 — Resolve Task
@@ -383,7 +385,6 @@ If all validation passes:
 
    ### Next Steps
    - Run `/jlu:sync-clickup` to sync with ClickUp
-   - Run `/jlu:publish-uh` to publish user stories
    - Create PRs for each service and request review
    - After PR merge, run `/jlu:close-task` to close
    ```

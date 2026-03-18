@@ -80,20 +80,29 @@ Analyze the codebase for each concern category BEFORE interviewing the user.
 
 ### Phase 2: User Interview
 
-After completing code analysis, present your findings and interview the user to capture concerns not visible in the code.
+After completing code analysis, interview the user to capture concerns not visible in the code.
 
-Use `AskUserQuestion` for this phase. Structure your interview as follows:
+**NEVER output questions as plain text. Every question MUST go through AskUserQuestion.**
 
-1. **Present a brief summary** of the top findings from Phase 1 (the most impactful ones).
-2. **Ask targeted questions** about:
-   - Planned deprecations or major refactors not yet started
-   - Known scaling limits or capacity concerns
-   - Tribal knowledge about fragile or risky areas
-   - Known issues that have workarounds in place
-   - Areas where the team has discussed improvements but not acted
-   - External dependencies that are expected to change
-3. **Keep it focused**: 3-5 questions maximum. This is not a full spec interview — just concerns gathering.
-4. **Respect the user**: If they say "that's all" or "nothing else", stop interviewing.
+Wait for the user's response after each AskUserQuestion before proceeding.
+
+#### Round 1: Findings & Known Issues
+
+Using AskUserQuestion, present a brief summary of the top findings from Phase 1 (the most impactful ones), then ask:
+- Are there known bugs or issues with workarounds in place that the code analysis might have missed?
+- Are there planned deprecations or major refactors not yet started?
+
+#### Round 2: Tribal Knowledge
+
+Using AskUserQuestion, ask:
+- Are there fragile or risky areas the team knows about but aren't obvious from the code?
+- Are there known scaling limits, capacity concerns, or external dependencies expected to change?
+- Any areas where the team has discussed improvements but not acted?
+
+**Rules**:
+- 3-5 questions maximum across both rounds. This is not a full spec interview — just concerns gathering.
+- If the user says "that's all" or "nothing else", stop interviewing immediately.
+- Do NOT ask a question and then proceed without waiting for the answer.
 
 ## Output Format
 

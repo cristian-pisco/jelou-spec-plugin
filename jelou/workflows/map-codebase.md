@@ -3,6 +3,8 @@
 > Orchestrator workflow for `/jlu:map-codebase [service-id]`
 > Maps a service's codebase using 6 parallel research agents + cross-validation.
 
+> **Tool requirement**: All prompts, questions, and confirmations to the user in this workflow MUST use `AskUserQuestion`. Never output questions as plain text.
+
 ---
 
 ## Step 1 — Resolve Service ID

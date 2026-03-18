@@ -1,6 +1,6 @@
 ---
 name: New Task
-description: Create a new task with spec seed, worktrees, and affected service detection
+description: Create a new task with inline spec interview and background worktree creation
 argument-hint: "[task description]"
 allowed-tools:
   - Read
@@ -27,13 +27,13 @@ Read the workflow file at `<plugin-root>/jelou/workflows/new-task.md` and execut
 
 The workflow creates a new task by:
 - Starting from the current repo as the primary service
-- Creating or using an existing SPEC.md seed (even one sentence is enough)
-- Offering to run `/jlu:map-codebase` if the codebase map is missing
-- Creating the task folder in `.spec-workspace/specs/<dd-mm-yyyy>/<task-slug>/`
-- Creating a local worktree at `/.worktrees/<task-slug>`
 - Proposing affected services using `services.yaml` + INTEGRATIONS.md
 - Requesting user confirmation of affected services
-- Creating worktrees in confirmed repos
+- Launching worktree creation in the background for all confirmed services
+- Loading all 6 codebase files per affected service + ENGINEERING_PRINCIPLES.md
+- Runs full spec interview inline via the spec-interviewer agent (Opus)
+- Writing SPEC.md with 5 structured sections upon interview approval
+- Transitioning task status from `refining` to `planned` after approval
 - Checking for skill staleness and warning if detected (Decision #23)
 - Warning on unregistered service references (Decision #39)
 

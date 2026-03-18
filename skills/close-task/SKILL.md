@@ -9,6 +9,9 @@ allowed-tools:
   - Glob
   - Agent
   - AskUserQuestion
+  - mcp__clickup__clickup_update_task
+  - mcp__clickup__clickup_get_task
+  - mcp__clickup__clickup_create_task_comment
 model: sonnet
 ---
 

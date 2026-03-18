@@ -3,6 +3,8 @@
 > Orchestrator workflow for `/jlu:close-task [task-slug]`
 > Performs post-production closure: ClickUp update, artifact finalization, worktree cleanup.
 
+> **Tool requirement**: All prompts, questions, and confirmations to the user in this workflow MUST use `AskUserQuestion`. Never output questions as plain text.
+
 ---
 
 ## Step 1 — Resolve Task
@@ -65,24 +67,23 @@
 
 If all preconditions pass (or user overrides), proceed with closure.
 
-### 3a. Update ClickUp (if configured)
+### 3a. Update ClickUp (if synced)
 
 1. Check if `<TASK_DIR>/CLICKUP_TASK.json` exists.
 2. If it exists:
-   a. Read the file to get the ClickUp task ID and current state.
-   b. Check if ClickUp integration is configured (look for `~/.spec-plugin/clickup.json`).
-   c. If configured:
-      - Update the ClickUp macro task status from current state to `CLOSED`.
-      - Update any subtask statuses to `CLOSED`.
-      - Record the closure in `CLICKUP_TASK.json`:
-        ```json
-        {
-          "closedAt": "<ISO-timestamp>",
-          "closedBy": "jlu:close-task",
-          "previousStatus": "<previous-status>"
-        }
-        ```
-   d. If ClickUp is NOT configured: skip with note "ClickUp not configured, skipping sync."
+   a. Read the file to get the ClickUp macro task ID, subtask IDs, and current state.
+   b. Use `clickup_update_task` to set the macro task status to `closed`.
+   c. For each subtask in CLICKUP_TASK.json: use `clickup_update_task` to set status to `closed`.
+   d. Use `clickup_create_task_comment` on the macro task with closure details (PR URL, merge timestamp).
+   e. Record the closure in `CLICKUP_TASK.json`:
+      ```json
+      {
+        "closedAt": "<ISO-timestamp>",
+        "closedBy": "jlu:close-task",
+        "previousStatus": "<previous-status>"
+      }
+      ```
+   f. If any ClickUp MCP call fails: report the error but continue with remaining closure steps.
 3. If `CLICKUP_TASK.json` does not exist: skip with note "No ClickUp task associated."
 
 ### 3b. Update TASKS.md

@@ -1,7 +1,9 @@
-# Workflow: refine-spec
+# Workflow: refine-task
 
-> Orchestrator workflow for `/jlu:refine-spec [task-slug]`
-> Structured interview to expand a minimal spec seed into a full, implementation-ready specification.
+> Orchestrator workflow for `/jlu:refine-task [change description]`
+> Apply a last-minute targeted change to an already-approved spec via structured agent interview.
+
+> **Tool requirement**: All prompts, questions, and confirmations to the user in this workflow MUST use `AskUserQuestion`. Never output questions as plain text.
 
 ---
 
@@ -11,12 +13,12 @@
    a. Read `.spec-workspace.json` from the current directory to get the `workspace` path.
    b. Locate the task by searching `<WORKSPACE_PATH>/specs/` for a folder matching the slug.
    c. Search across all date folders — the slug should be unique.
-2. If no `task-slug` provided:
+2. If no `task-slug` provided (and no change description, or the argument looks like a change description rather than a slug):
    a. Read `.spec-workspace.json` to get the workspace path.
    b. Find the most recent task:
       - List date folders in `<WORKSPACE_PATH>/specs/` sorted descending.
       - Within the most recent date folder, pick the most recently modified task folder.
-   c. Confirm with the user: "Found task `<task-slug>` from `<date>`. Use this one?"
+   c. Confirm with the user: "Found task `<task-slug>` from `<date>`. Apply changes to this one?"
 
 **Error gate**: If no task can be resolved, stop: "No task found. Run `/jlu:new-task` first to create one."
 
@@ -24,13 +26,18 @@
 
 ---
 
-## Step 2 — Read SPEC.md Seed
+## Step 2 — Get Change Request
 
 1. Read `<TASK_DIR>/SPEC.md`.
-2. If the file does not exist or is empty:
-   - Stop: "SPEC.md is missing or empty at `<TASK_DIR>/SPEC.md`. Run `/jlu:new-task` to create it."
+   - If the file does not exist or is empty:
+     - Stop: "SPEC.md is missing or empty at `<TASK_DIR>/SPEC.md`. Run `/jlu:new-task` to create it."
 
-**Store**: `SPEC_CONTENT` = full contents of SPEC.md
+2. Determine `CHANGE_REQUEST`:
+   - If the command argument looks like a change description (not a task slug), use it as `CHANGE_REQUEST`.
+   - If no change description was provided, ask the user:
+     > "What change do you want to apply to this spec?"
+
+**Store**: `SPEC_CONTENT` = full contents of SPEC.md, `CHANGE_REQUEST` = the change to apply
 
 ---
 
@@ -84,17 +91,20 @@ Track which files exist and which are missing.
        - (etc.)
      ```
    - Offer: "Run `/jlu:map-codebase <service-id>` to generate them? Or continue without codebase context?"
-   - If user chooses to map: pause this workflow, instruct user to run `/jlu:map-codebase`, then re-run `/jlu:refine-spec`.
+   - If user chooses to map: pause this workflow, instruct user to run `/jlu:map-codebase`, then re-run `/jlu:refine-task`.
    - If user chooses to continue: proceed with whatever context is available.
 
 ---
 
 ## Step 7 — Build Composite Context
 
-Assemble the full context string that will be injected into the spec-interviewer agent's prompt. Order matters for clarity:
+Assemble the full context string that will be injected into the spec-interviewer agent's prompt. The change request is prepended so the agent knows its primary objective:
 
 ```
-=== SPEC.md (Seed) ===
+=== CHANGE REQUEST ===
+<CHANGE_REQUEST>
+
+=== SPEC.md (Current Approved Specification) ===
 <SPEC_CONTENT>
 
 === Engineering Principles ===
@@ -130,6 +140,11 @@ Assemble the full context string that will be injected into the spec-interviewer
 
 ## Step 8 — Spawn Spec-Interviewer Agent
 
+Notify the user before spawning:
+```
+Spawning spec-interviewer agent (Opus) to analyze the change and interview you about implications...
+```
+
 Spawn a single `jlu-spec-interviewer` agent with model: **opus**.
 
 **Agent prompt construction**:
@@ -142,16 +157,18 @@ Spawn a single `jlu-spec-interviewer` agent with model: **opus**.
    Task directory: <TASK_DIR>
    SPEC.md path: <TASK_DIR>/SPEC.md
    Affected services: <comma-separated list>
+   Mode: refine (apply targeted change to existing spec)
+   Change request: <CHANGE_REQUEST>
    ```
 
-**What the agent does** (defined in its agent file, summarized here for reference):
+**What the agent does** (the orchestrator does NOT analyze the change itself — full delegation):
 
-1. **Gap analysis** (silent) — Analyzes SPEC.md seed against codebase knowledge. Identifies ambiguities, conflicts, implicit assumptions, edge cases, integration points, NFRs, and known concerns.
-2. **Structured interview** — Asks the user 2-4 themed questions per round. Themes: architecture, behavior, edge cases, security, performance, integrations, UX, constraints. Questions are informed by codebase context (non-obvious, specific). Continues until the agent has enough to fill all 5 sections.
-3. **Write SPEC.md** — Rewrites `<TASK_DIR>/SPEC.md` with structured sections: Problem Statement, Requirements (FR/NFR), Constraints, Out of Scope, Success Criteria. Requirements are numbered (FR-1, NFR-1, SC-1) for traceability.
-4. **Present for approval** — Shows the complete spec to the user. User must explicitly approve.
+1. **Change analysis** (silent) — Analyzes the change request against the existing spec and codebase. Identifies implications, conflicts, gaps the change introduces, and sections of the spec that are affected.
+2. **Structured interview** — Asks the user focused questions to clarify the change's scope and constraints. Questions are specific to the change (not a full re-interview of the original spec).
+3. **Update SPEC.md** — Updates only the affected sections of the spec, preserving everything else. Maintains numbered requirements for traceability.
+4. **Present for approval** — Shows the updated spec (or diff of changes) to the user. User must explicitly approve.
 
-**Important**: The orchestrator does NOT perform the interview or write the spec. It delegates entirely to the spec-interviewer agent. The orchestrator's job is to load context and spawn the agent.
+**Important**: The orchestrator does NOT perform the change analysis or update the spec. It delegates entirely to the spec-interviewer agent.
 
 ---
 
@@ -159,20 +176,19 @@ Spawn a single `jlu-spec-interviewer` agent with model: **opus**.
 
 After the spec-interviewer agent completes:
 
-1. Verify that `<TASK_DIR>/SPEC.md` has been updated (file size should be larger than the seed).
+1. Verify that `<TASK_DIR>/SPEC.md` has been updated.
    - If not updated: warn "The spec-interviewer did not appear to update SPEC.md. Review the agent output."
 
-2. Check the agent's output for approval status:
-   - If the user **approved** the spec:
-     a. Update `<TASK_DIR>/TASKS.md`:
-        - Change `Status: draft` to `Status: planned`
-        - Add transition timestamp: `- Planned: <current-datetime-ISO>`
-     b. Report: "SPEC.md approved. Task transitioned to `planned`. Next step: run `/jlu:execute-task` to begin implementation."
-   - If the user **did not approve** or the agent ended without approval:
-     a. Leave TASKS.md status as `draft` (or `refining` if it was already in that state).
-     b. Report: "SPEC.md was updated but not yet approved. You can:"
-        - "Review and edit `<TASK_DIR>/SPEC.md` manually, then re-run `/jlu:refine-spec`"
-        - "Continue from where you left off by re-running `/jlu:refine-spec <TASK_SLUG>`"
+2. Update `<TASK_DIR>/TASKS.md` based on the task's current status:
+   - If task status is `planned` or `implementing`: **keep current status** (a spec refinement does not reset execution state).
+   - Add a note to the Lifecycle section:
+     ```
+     - Spec refined: <current-datetime-ISO> — <CHANGE_REQUEST summary (first 100 chars)>
+     ```
+
+3. Report the outcome:
+   - If approved: "Spec updated. Task status remains `<STATUS>`. Change recorded in TASKS.md lifecycle."
+   - If not approved: "SPEC.md was updated but not yet approved. Re-run `/jlu:refine-task <TASK_SLUG>` to continue."
 
 ---
 
@@ -185,7 +201,7 @@ After the spec-interviewer agent completes:
 | All codebase files missing | Warn, offer `/jlu:map-codebase`, allow continue without |
 | Engineering principles missing | Note and continue |
 | Spec-interviewer agent fails | Report failure, suggest re-running the command |
-| User cancels interview midway | Agent writes spec with what it has, orchestrator preserves partial work |
+| User cancels interview midway | Agent updates spec with what it has, orchestrator preserves partial work |
 
 ---
 
@@ -193,8 +209,8 @@ After the spec-interviewer agent completes:
 
 | Artifact | Path |
 |----------|------|
-| SPEC.md (input seed, output refined) | `.spec-workspace/specs/<date>/<task-slug>/SPEC.md` |
-| TASKS.md (status update) | `.spec-workspace/specs/<date>/<task-slug>/TASKS.md` |
+| SPEC.md (updated in place) | `.spec-workspace/specs/<date>/<task-slug>/SPEC.md` |
+| TASKS.md (lifecycle note added) | `.spec-workspace/specs/<date>/<task-slug>/TASKS.md` |
 | Codebase files (read-only) | `.spec-workspace/services/<service-id>/codebase/*.md` |
 | Engineering principles (read-only) | `.spec-workspace/principles/ENGINEERING_PRINCIPLES.md` |
 

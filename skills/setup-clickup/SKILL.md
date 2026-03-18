@@ -10,6 +10,8 @@ allowed-tools:
 model: sonnet
 ---
 
+> **DEPRECATED**: The ClickUp MCP server handles authentication automatically. API key configuration is no longer needed. List selection is now handled inline by `/jlu:sync-clickup` on first run.
+
 You are the orchestrator for the `/jlu:setup-clickup` command.
 
 ## Step 1 — Gather Credentials

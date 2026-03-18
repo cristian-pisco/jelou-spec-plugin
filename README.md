@@ -16,7 +16,7 @@ Follows the conventions established by [OpenSpec](https://github.com/Fission-AI/
 
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and configured
 - Git
-- (Optional) ClickUp API key for task management integration
+- (Optional) ClickUp MCP server for task management integration
 - (Optional) Slack MCP server for daily posts
 
 ## Quick Start
@@ -40,8 +40,7 @@ Then navigate to your project's parent directory and start using commands:
 # (Optional) Map your codebase first
 /jlu:map-codebase
 
-# (Optional) Set up ClickUp integration
-/jlu:setup-clickup
+# (Optional) ClickUp integration works automatically via MCP on first /jlu:sync-clickup
 ```
 
 ### Updating the Plugin
@@ -73,15 +72,14 @@ cd jelou-spec-plugin
 | `/jlu:refine-spec` | Structured interview to expand a minimal spec into a full specification |
 | `/jlu:execute-task` | Run TDD implementation (autonomous or step-by-step mode) |
 | `/jlu:extend-phase` | Add scope to an in-progress task via focused mini-interview |
-| `/jlu:sync-clickup` | Create/update ClickUp macro task and subtasks from user stories |
-| `/jlu:publish-uh` | Push user stories to ClickUp as subtasks |
+| `/jlu:sync-clickup` | Create/update ClickUp macro task and subtasks via MCP |
 | `/jlu:report-task` | Executive summary with progress, blockers, and stale worktree detection |
 | `/jlu:load-context` | Load task context into a fresh session for Q&A |
 | `/jlu:create-pr [task-slug]` | Stage, commit, push, and create pull requests for all affected services |
 | `/jlu:post-slack [date] #channel` | Generate and post daily summary to Slack |
 | `/jlu:close-task` | Close task after PR merge — updates ClickUp, artifacts, observability |
 | `/jlu:refresh-skills` | Refresh the skill registry |
-| `/jlu:setup-clickup` | Interactive ClickUp credential and field mapping setup |
+| `/jlu:setup-clickup` | *(deprecated)* ClickUp setup — MCP handles auth automatically |
 
 ## Workspace Structure
 
@@ -122,12 +120,9 @@ Each service repo only stores a minimal `.spec-workspace.json` pointer:
 
 ### ClickUp
 
-Run `/jlu:setup-clickup` to interactively configure:
-- API credentials
-- Workspace, space, and list IDs
-- Custom field mappings
+ClickUp integration uses the ClickUp MCP server (no API key needed). On first run of `/jlu:sync-clickup`, you'll be prompted to select a target list. Field mappings are auto-discovered and persisted in `CLICKUP_TASK.json` per task.
 
-Config is stored at `~/.spec-plugin/clickup.json`.
+> `/jlu:setup-clickup` is deprecated — the MCP server handles authentication automatically.
 
 ### Slack
 
@@ -226,7 +221,7 @@ flowchart TB
     end
 
     subgraph haiku["Operations Tier — Haiku"]
-        pm["pm-agent · ClickUp"]
+        pm["pm-agent · ClickUp (deprecated)"]
         slack["slack-agent"]
         git["git-agent"]
     end
@@ -246,7 +241,7 @@ flowchart TB
     exec --> tw --> impl --> qa
     qa --> tasks_ag --> tasks_file
     qa --> git
-    close --> pm & git
+    close --> git
 ```
 
 ## Full Specification
