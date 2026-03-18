@@ -73,13 +73,48 @@ Glob for all task artifacts and organize them by category. Use the task director
 
 List each file with its full path so the assistant (you) can read any of them on demand later.
 
-## Step 6 — Present Context Block
+## Step 6 — Derive Status Summary
+
+Before presenting context, compute a compact status summary from the TASKS.md you loaded in Step 3.
+
+1. **Extract lifecycle state** from the `Status` field in the Metadata section.
+2. **Check for active blockers** in the Blockers section (any row where status is not `resolved`).
+3. **If state is `implementing`**:
+   - Count phases: `done` / total from the Phase Progress table.
+   - Read the Recovery Info section: extract "Next phase" and "Last completed phase".
+4. **If state is `ready_to_publish`**:
+   - Check External Links: does a PR URL already exist? (exists = awaiting review, missing = need to run `/jlu:create-pr`)
+5. **Map state → human label and recommended command**:
+
+   | State | Human Label | Next Step Message |
+   |-------|-------------|-------------------|
+   | `draft` | Spec seed created — not yet refined | Run `/jlu:refine-spec` to expand the spec seed into a full specification. |
+   | `refining` | Spec refinement in progress | Continue `/jlu:refine-spec` — spec interview is not yet complete. |
+   | `planned` | Spec finalized — ready to implement | Run `/jlu:execute-task` to begin TDD implementation. |
+   | `implementing` | TDD execution in progress | Run `/jlu:execute-task` to resume — next phase is `<recovery-info.next-phase>` (phase <N>/<total>). |
+   | `validating` | All phases complete — QA running | Run `/jlu:execute-task` to complete QA, then `/jlu:create-pr` when all services pass. |
+   | `ready_to_publish` | Implementation done — PR needed | Run `/jlu:create-pr` to open pull requests. *(If PR already exists: awaiting review — merge, then `/jlu:close-task`.)* |
+   | `done` | PRs open — awaiting merge | PR is open. Await review and merge, then run `/jlu:close-task`. |
+   | `closed` | Task finalized | No action needed. |
+
+6. **If active blockers exist**, override the next step with: `Resolve blocker: <description>`
+
+## Step 7 — Present Context Block
 
 Present the loaded context in this structured format:
 
 ```
 ## Task: <task-title> (from SPEC.md)
-**State**: <lifecycle-state from TASKS.md> | **Branch**: <branch-name> | **Date**: <task-date>
+**Branch**: <branch-name> | **Date**: <task-date>
+
+---
+
+### Current Status
+
+**Stage**: <human-readable label (from Step 6 mapping)>
+**Progress**: <phases done>/<total> phases complete  ← only if state is `implementing` or later
+**Next step**: `<command>` — <one-sentence reason from Step 6 mapping>
+**Active blockers**: <"None" or bulleted list of blocker descriptions>
 
 ---
 

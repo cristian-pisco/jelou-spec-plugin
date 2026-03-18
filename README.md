@@ -77,6 +77,7 @@ cd jelou-spec-plugin
 | `/jlu:publish-uh` | Push user stories to ClickUp as subtasks |
 | `/jlu:report-task` | Executive summary with progress, blockers, and stale worktree detection |
 | `/jlu:load-context` | Load task context into a fresh session for Q&A |
+| `/jlu:create-pr [task-slug]` | Stage, commit, push, and create pull requests for all affected services |
 | `/jlu:post-slack [date] #channel` | Generate and post daily summary to Slack |
 | `/jlu:close-task` | Close task after PR merge — updates ClickUp, artifacts, observability |
 | `/jlu:refresh-skills` | Refresh the skill registry |
@@ -150,7 +151,7 @@ Per-service concrete rules in each service's `CONVENTIONS.md`.
 2. **Proposal** → Two-pass generation (global strategy + per-service details)
 3. **Execute** → Dependency-driven, TDD-enforced implementation with specialized agents
 4. **Validate** → Continuous QA per phase + final cross-service validation
-5. **Deliver** → Sync to ClickUp, post to Slack, coordinate PRs
+5. **Deliver** → Create PRs (`/jlu:create-pr`), sync to ClickUp, post to Slack
 
 All state is file-based. No external database required.
 
