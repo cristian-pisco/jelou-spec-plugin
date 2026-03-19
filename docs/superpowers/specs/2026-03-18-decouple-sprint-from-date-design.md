@@ -18,21 +18,41 @@ Separate Sprint (a positive integer) from the creation date (auto-generated). Th
 - Add a new prompt:
   > "Sprint number for this task? (positive integer, e.g. 14)"
 - Validation: must be a positive integer (> 0). No default. If invalid, ask again.
-- Auto-generate the creation date as today's date in `dd-mm-yyyy` format (no user prompt).
+- Auto-generate the creation date as today's date in `dd-mm-yyyy` format using the system's local timezone (no user prompt).
 - Store: `TASK_DESCRIPTION`, `SPRINT_NUMBER`, `CREATION_DATE`
 
-**Step 4 — Generate Task Slug:**
+**Step 4 — Generate Task Slug (line 106):**
 
-- Change directory path from `specs/<SPRINT_DATE>/` to `specs/<CREATION_DATE>/`.
-- The date is now auto-generated, not user-provided.
+- Change `specs/<SPRINT_DATE>/` to `specs/<CREATION_DATE>/`.
 
-**Step 6 — Write Initial TASKS.md:**
+**Step 5 — Create Task Directory (lines 117, 121):**
+
+- Change `specs/<SPRINT_DATE>/<TASK_SLUG>/` to `specs/<CREATION_DATE>/<TASK_SLUG>/` in both the directory creation and the `TASK_DIR` store.
+
+**Step 6 — Write Initial TASKS.md (line 136):**
 
 - Change `Sprint: <SPRINT_DATE>` to `Sprint: <SPRINT_NUMBER>`.
 
-**Step 16 — Final Report:**
+**Step 16 — Final Report (line 389):**
 
 - Change `Sprint: <SPRINT_DATE>` to `Sprint: <SPRINT_NUMBER>`.
+
+**Artifact Paths table (lines 437-447):** No change needed — uses generic `<dd-mm-yyyy>` placeholder that remains valid.
+
+**Full enumeration of `SPRINT_DATE` references in `new-task.md`:**
+
+| Line | Current | Proposed |
+|------|---------|----------|
+| 88 | `**Sprint date**:` | `**Sprint number**:` |
+| 90 | `"Sprint date for this task? ..."` | `"Sprint number for this task? ..."` |
+| 91 | Default: Monday calculation | Remove — no default, require input |
+| 92 | Validate dd-mm-yyyy format | Validate positive integer |
+| 94 | `TASK_DESCRIPTION, SPRINT_DATE` | `TASK_DESCRIPTION, SPRINT_NUMBER, CREATION_DATE` |
+| 106 | `specs/<SPRINT_DATE>/` | `specs/<CREATION_DATE>/` |
+| 117 | `specs/<SPRINT_DATE>/<TASK_SLUG>/` | `specs/<CREATION_DATE>/<TASK_SLUG>/` |
+| 121 | `specs/<SPRINT_DATE>/<TASK_SLUG>` | `specs/<CREATION_DATE>/<TASK_SLUG>` |
+| 136 | `Sprint: <SPRINT_DATE>` | `Sprint: <SPRINT_NUMBER>` |
+| 389 | `Sprint: <SPRINT_DATE>` | `Sprint: <SPRINT_NUMBER>` |
 
 ### 2. Template Changes
 
@@ -46,9 +66,10 @@ Separate Sprint (a positive integer) from the creation date (auto-generated). Th
 
 ### 3. Downstream Documentation
 
-**`skills/sync-clickup/SKILL.md` (line 84):**
+**`skills/sync-clickup/SKILL.md`:**
 
-- Change `| **Sprint** | From TASKS.md sprint date |` to `| **Sprint** | From TASKS.md sprint number |`
+- Line 29: Change `sprint date` to `sprint number` in the artifact description list.
+- Line 84: Change `| **Sprint** | From TASKS.md sprint date |` to `| **Sprint** | From TASKS.md sprint number |`
 
 **`agents/jlu-pm-agent.md`:**
 
@@ -64,7 +85,7 @@ Separate Sprint (a positive integer) from the creation date (auto-generated). Th
 |------|--------|
 | `jelou/workflows/new-task.md` | Replace Sprint date prompt with Sprint number prompt; auto-generate creation date; update variable names and references |
 | `jelou/templates/tasks.md` | Rename placeholder from `{{sprint-identifier}}` to `{{sprint-number}}` |
-| `skills/sync-clickup/SKILL.md` | Update inference table text from "sprint date" to "sprint number" |
+| `skills/sync-clickup/SKILL.md` | Update "sprint date" to "sprint number" on lines 29 and 84 |
 
 ## Validation
 
@@ -73,3 +94,4 @@ Separate Sprint (a positive integer) from the creation date (auto-generated). Th
 - Verify the task directory uses the auto-generated date.
 - Verify TASKS.md Sprint field contains the entered number.
 - Verify ClickUp sync picks up the sprint number correctly.
+- Enter a non-integer (e.g., "14-03-2026") for Sprint number and verify the agent re-prompts.
