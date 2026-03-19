@@ -37,7 +37,7 @@ You are the orchestrator for the `/jlu:post-slack` command.
 
 ## Step 4 — Generate Draft
 
-1. Spawn the `jlu-slack-agent` to generate the message content:
+1. Generate the message content directly:
    - Apply the channel template if available, or generate a structured summary.
    - Include per-task activity summaries.
    - Include a meetings section placeholder for manual input.
