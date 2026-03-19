@@ -26,7 +26,7 @@ You are the orchestrator for the `/jlu:sync-clickup` command. You use the ClickU
 3. Read the task artifacts:
    - `SPEC.md` — task title, problem statement, requirements
    - `PROPOSAL.md` — strategy, phases, risks
-   - `TASKS.md` — current status, sprint date, affected services, phase progress
+   - `TASKS.md` — current status, sprint number, affected services, phase progress
    - `uh/` directory — user story files for subtasks
 4. Read `CLICKUP_TASK.json` (if it exists) for previous sync state.
 
@@ -81,7 +81,7 @@ Infer these fields inline (no pm-agent):
 | **Front** | "Reliability" for Issues, else "Enhancement" or "AI" |
 | **Necesita Diseno** | "Si" for frontend tasks, "No" for backend |
 | **Equipo, Responsable, Solicitante** | From config defaults — ask user on first run via AskUserQuestion, persist in CLICKUP_TASK.json |
-| **Sprint** | From TASKS.md sprint date |
+| **Sprint** | From TASKS.md sprint number |
 
 ## Step 5 — Create or Update Macro Task
 
