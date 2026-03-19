@@ -1,7 +1,7 @@
 {
   "name": "jlu",
   "description": "Spec-driven development with TDD, multi-service coordination, and specialized agents",
-  "version": "0.2.19",
+  "version": "0.2.20",
   "author": { "name": "Jelou" },
   "repository": "https://github.com/cristian-pisco/jelou-spec-plugin",
   "license": "MIT",

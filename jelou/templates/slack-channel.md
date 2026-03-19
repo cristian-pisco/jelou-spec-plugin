@@ -50,4 +50,3 @@ Goals section
 
 {{short_term_goals}}
 ```
-```
