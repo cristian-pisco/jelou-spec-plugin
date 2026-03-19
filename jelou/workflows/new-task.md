@@ -85,13 +85,16 @@ After service registration (or if already registered):
    - If provided as the command argument, use it as the seed.
    - If not provided, ask the user:
      > "Describe the task you want to create:"
-2. **Sprint date**:
+2. **Sprint number**:
    - Ask the user:
-     > "Sprint date for this task? (dd-mm-yyyy format, press Enter for current week's Monday)"
-   - Default: Calculate the Monday of the current week in `dd-mm-yyyy` format.
-   - Validate the format. If invalid, ask again.
+     > "Sprint number for this task? (positive integer, e.g. 14)"
+   - No default. The user must provide a value.
+   - Validate: must be a positive integer (> 0). If invalid, ask again.
+3. **Creation date**:
+   - Auto-generate today's date in `dd-mm-yyyy` format using the system's local timezone.
+   - Do NOT prompt the user.
 
-**Store**: `TASK_DESCRIPTION`, `SPRINT_DATE`
+**Store**: `TASK_DESCRIPTION`, `SPRINT_NUMBER`, `CREATION_DATE`
 
 ---
 
@@ -103,7 +106,7 @@ After service registration (or if already registered):
    - Remove consecutive hyphens.
    - Truncate to a maximum of 50 characters.
    - Remove trailing hyphens.
-2. Verify the slug does not already exist at `<WORKSPACE_PATH>/specs/<SPRINT_DATE>/<task-slug>/`.
+2. Verify the slug does not already exist at `<WORKSPACE_PATH>/specs/<CREATION_DATE>/<task-slug>/`.
    - If it already exists, append a numeric suffix (e.g., `-2`, `-3`).
 
 **Store**: `TASK_SLUG`
@@ -114,11 +117,11 @@ After service registration (or if already registered):
 
 1. Create the task directory tree:
    ```
-   <WORKSPACE_PATH>/specs/<SPRINT_DATE>/<TASK_SLUG>/
+   <WORKSPACE_PATH>/specs/<CREATION_DATE>/<TASK_SLUG>/
      services/
    ```
 
-**Store**: `TASK_DIR` = `<WORKSPACE_PATH>/specs/<SPRINT_DATE>/<TASK_SLUG>`
+**Store**: `TASK_DIR` = `<WORKSPACE_PATH>/specs/<CREATION_DATE>/<TASK_SLUG>`
 
 ---
 
@@ -133,7 +136,7 @@ Write the initial tracker to `<TASK_DIR>/TASKS.md`:
 
 ## Lifecycle
 - Created: <current-datetime-ISO>
-- Sprint: <SPRINT_DATE>
+- Sprint: <SPRINT_NUMBER>
 
 ## Services
 - Primary: <SERVICE_ID>
@@ -386,7 +389,7 @@ Present the final summary:
 ### Task
 - Slug: <TASK_SLUG>
 - Path: <TASK_DIR>
-- Sprint: <SPRINT_DATE>
+- Sprint: <SPRINT_NUMBER>
 - Status: planned
 
 ### Artifacts
