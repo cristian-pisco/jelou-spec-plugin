@@ -7,7 +7,7 @@
 | **Slug** | {{task-slug}} |
 | **Created** | {{dd-mm-yyyy}} |
 | **Status** | draft |
-| **Sprint** | {{sprint-identifier}} |
+| **Sprint** | {{sprint-number}} |
 | **Execution Mode** | autonomous / step-by-step |
 
 ## Affected Services
