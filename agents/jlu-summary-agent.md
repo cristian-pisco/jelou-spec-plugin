@@ -107,7 +107,7 @@ Follow these steps in order to gather all metrics before producing output.
 
 - For each phase number NN, run:
   ```
-  git log --all --grep="Phase NN of" --name-only --pretty=format:""
+  git log --all --grep="Phase NN of spec/<TASK_SLUG>" --name-only --pretty=format:""
   ```
 - Filter out empty lines from the output.
 - Extract filenames only (strip directory paths — show only the basename).
