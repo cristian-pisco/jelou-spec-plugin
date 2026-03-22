@@ -235,14 +235,16 @@ Proceed with this phase? (yes / skip / abort)
 
 ### 7c. Resolve Service Source Path and Docker Context
 
-1. Look up the service's worktree path: `<service-repo>/.worktrees/<TASK_SLUG>`
-2. If the worktree exists, use it as the working directory for code agents.
-3. If not, fall back to the service's main repo path from `services.yaml`.
-4. **Docker context resolution** — Read the service's `docker` config from `services.yaml`:
+1. Apply the worktree resolution algorithm from `references/worktree-resolution.md` for the current service:
+   - Look up the service entry in `services.yaml`.
+   - Check if `<service-repo>/.worktrees/<TASK_SLUG>` exists.
+   - If yes: use the worktree as `SERVICE_SOURCE_PATH`.
+   - If no: fall back to the service's main repo path from `services.yaml`.
+2. **Docker context resolution** — Read the service's `docker` config from `services.yaml`:
    a. If the service has a `docker` block:
-      1. Check container status: `cd <worktree> && docker compose ps --format '{{.State}}'`
-      2. If not running, restart: `cd <worktree> && docker compose up -d`
-      3. Compute `DOCKER_EXEC_PREFIX` = `cd <worktree> && docker compose exec <docker.service>`
+      1. Check container status: `cd <SERVICE_SOURCE_PATH> && docker compose ps --format '{{.State}}'`
+      2. If not running, restart: `cd <SERVICE_SOURCE_PATH> && docker compose up -d`
+      3. Compute `DOCKER_EXEC_PREFIX` = `cd <SERVICE_SOURCE_PATH> && docker compose exec <docker.service>`
       4. Set `IS_DOCKER_SERVICE` = `true`
    b. If no `docker` block:
       1. Set `DOCKER_EXEC_PREFIX` = empty
