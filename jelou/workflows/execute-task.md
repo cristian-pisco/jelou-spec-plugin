@@ -400,23 +400,10 @@ If all validation passes:
    - Status: `validating` → `ready_to_publish`
    - Add completion timestamp
    - Record final test counts
-2. Present summary:
-   ```
-   ## Execution Complete
-
-   Task: <TASK_SLUG>
-   Status: ready_to_publish
-
-   ### Summary
-   - Phases completed: <N>/<N>
-   - Tests passing: <count>
-   - Services implemented: <list>
-
-   ### Next Steps
-   - Run `/jlu:sync-clickup` to sync with ClickUp
-   - Create PRs for each service and request review
-   - After PR merge, run `/jlu:close-task` to close
-   ```
+2. Dispatch `jlu-summary-agent`:
+   - Pass `TASK_DIR` (the resolved task directory path)
+   - Pass `CONTEXT_HINT` = `post-execution`
+   - Print the agent's output verbatim — do not add to or reformat it.
 
 ---
 
