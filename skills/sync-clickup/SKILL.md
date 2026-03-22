@@ -95,10 +95,10 @@ Infer these fields inline (no pm-agent):
 
 ### time_estimate (REQUIRED)
 
-- Per phase: ~2h (120min) for simple (1 service, few requirements), ~4h (240min) for medium, ~8h (480min) for complex
+- Per phase: ~2h for simple (1 service, few requirements), ~4h for medium, ~8h for complex
 - Total task = sum of phase estimates
 - Subtask estimate = proportional to requirements covered
-- Always express as **minutes** (string) for the ClickUp MCP API (e.g., `"90"` for 1h 30m)
+- The ClickUp API expects `time_estimate` in **milliseconds** (integer). Convert hours → ms: `hours × 3,600,000` (e.g., 2h = `7200000`, 4h = `14400000`, 8h = `28800000`)
 - Display to user as natural language (e.g., "1h 30m")
 
 ### Other Fields
@@ -192,14 +192,14 @@ Write the updated sync state:
     "id": "<clickup-task-id>",
     "url": "<clickup-url>",
     "status": "<current-status>",
-    "time_estimate_min": "<minutes>",
+    "time_estimate_ms": "<milliseconds>",
     "lastSynced": "<ISO-8601>"
   },
   "subtasks": {
     "<story-slug>": {
       "id": "<clickup-task-id>",
       "url": "<clickup-url>",
-      "time_estimate_min": "<minutes>",
+      "time_estimate_ms": "<milliseconds>",
       "lastSynced": "<ISO-8601>"
     }
   },
