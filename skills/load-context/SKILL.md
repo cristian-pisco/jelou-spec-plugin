@@ -99,13 +99,36 @@ Before presenting context, compute a compact status summary from the TASKS.md yo
 
 6. **If active blockers exist**, override the next step with: `Resolve blocker: <description>`
 
-## Step 7 — Present Context Block
+## Step 7 — Resolve Worktree Map
+
+Resolve the correct source paths for all affected services so the assistant uses worktree paths (not main repo paths) when the user requests changes.
+
+1. Read `<WORKSPACE_PATH>/registry/services.yaml`.
+2. Extract the list of affected services from the TASKS.md loaded in Step 3 (the "Services" field in the Metadata section). If TASKS.md does not list affected services, extract them from SPEC.md or PROPOSAL.md instead.
+3. For each affected service, apply the worktree resolution algorithm from `references/worktree-resolution.md`:
+   a. Resolve the absolute repo path from `services.yaml`.
+   b. Check if `<service-repo>/.worktrees/<TASK_SLUG>/` exists (using the task slug from Step 1).
+   c. If it exists: record the worktree path as the service's source path.
+   d. If not: record the main repo path and log a warning.
+4. Store the Worktree Map for use in Step 8.
+
+## Step 8 — Present Context Block
 
 Present the loaded context in this structured format:
 
 ```
 ## Task: <task-title> (from SPEC.md)
 **Branch**: <branch-name> | **Date**: <task-date>
+
+---
+
+### Active Worktrees
+
+| Service | Source Path | Type |
+|---------|------------|------|
+| `<service-id>` | `<resolved-path>` | worktree or main repo |
+
+> **IMPORTANT**: When reading or modifying files for any affected service, you MUST use the Source Path from the Worktree Map above — never the main repository path. This ensures changes land in the correct task-isolated directory.
 
 ---
 
@@ -149,7 +172,7 @@ Present the loaded context in this structured format:
 
 ---
 
-## Step 8 — Task Summary
+## Step 9 — Task Summary
 
 Dispatch `jlu-summary-agent`:
 - Pass `TASK_DIR` (the resolved task directory path from Step 2)
@@ -157,4 +180,4 @@ Dispatch `jlu-summary-agent`:
 - Print the agent's output before the closing message.
 
 After the summary, tell the user:
-> Context loaded. You can ask me anything about this task. I can read any artifact from the inventory above for more detail.
+> Context loaded. You can ask me anything about this task. When making changes, I'll use the worktree paths shown above. I can read any artifact from the inventory for more detail.
