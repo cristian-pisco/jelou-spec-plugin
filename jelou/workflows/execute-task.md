@@ -356,7 +356,29 @@ Spawn `jlu-git-agent`:
 - **Restrictions**: Only commit to `spec/<TASK_SLUG>` branch. Never to main/master/alpha.
 - If unexpected or unrelated changes are detected in the worktree: block and escalate to user.
 
-### 7k. Complete Phase
+### 7k. Build Validation
+
+Spawn `jlu-build-validator` agent:
+- **Input**:
+  - Service source path (worktree or repo)
+  - `<WORKSPACE_PATH>/services/<service-id>/codebase/CONVENTIONS.md`
+  - Phase context (phase number, service-id)
+- **Docker context** (only if `IS_DOCKER_SERVICE` is true): Include the same `## Execution Environment` block as in Step 7d. Omit for non-Docker services.
+- **Task**: Run the project build, fix any failures, verify tests still pass.
+
+**If the agent reports PASS** (with or without fixes):
+- If fixes were applied: re-spawn `jlu-git-agent` to commit the build fixes (message: `fix(<service>): resolve build errors from phase <NN>`).
+- If no fixes needed: continue to 7l.
+
+**If the agent reports SKIP** (no build command detected):
+- Continue to 7l. No action needed.
+
+**If the agent reports FAIL** (5 rounds exhausted):
+- Report the failure to the user with the agent's last error output.
+- In autonomous mode: pause execution and ask the user how to proceed.
+- In step-by-step mode: present the failure and ask how to proceed.
+
+### 7l. Complete Phase
 
 1. Update phase file status to `done`.
 2. Output milestone to terminal: "Phase <NN> complete. Tests: <pass-count>/<total-count> passing."
@@ -445,6 +467,7 @@ If validation fails or phases have unresolved issues:
 | Implementer agent fails | Kill, spawn fresh with failure context (Decision #1) |
 | Tests never go green after 2 retries | Escalate to user |
 | Git commit fails | Report error, do not block phase execution |
+| Build validation fails after 5 rounds | Report failure, pause for user intervention |
 | Worktree missing | Fall back to main repo, warn user |
 
 ---
