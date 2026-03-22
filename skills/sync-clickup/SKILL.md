@@ -19,6 +19,36 @@ model: sonnet
 
 You are the orchestrator for the `/jlu:sync-clickup` command. You use the ClickUp MCP server directly — no API key, no WebFetch, no pm-agent.
 
+## Step 0 — Verify ClickUp MCP
+
+Call `clickup_get_workspace_hierarchy` with no arguments as a connectivity probe.
+
+- If it **succeeds** → proceed to Step 1. Do not display any message on success.
+- If it **fails for any reason** (tool not found, auth error, network error, any exception) → stop immediately, display the message below, do not retry automatically, and do not proceed under any circumstances.
+
+```
+⚠️ ClickUp MCP unavailable or returned an error.
+
+/jlu:sync-clickup requires the official ClickUp MCP server to be running and authenticated.
+
+If MCP is not yet configured:
+1. Add the ClickUp MCP server to your Claude Code settings or .mcp.json:
+   {
+     "mcpServers": {
+       "clickup": {
+         "command": "npx",
+         "args": ["-y", "@clickup/mcp"],
+         "env": { "CLICKUP_CLIENT_ID": "<your-client-id>", "CLICKUP_CLIENT_SECRET": "<your-client-secret>" }
+       }
+     }
+   }
+   Full setup docs: https://clickup.com/integrations/mcp
+2. Restart Claude Code or reload your MCP configuration so the server starts.
+3. Re-run /jlu:sync-clickup.
+
+If MCP is already configured, this may be a transient ClickUp API error. Try re-running the command.
+```
+
 ## Step 1 — Resolve Workspace and Task
 
 1. Read `.spec-workspace.json` in the current repo to find the workspace path and service ID.
@@ -224,3 +254,5 @@ Present the sync results to the user:
 - If a ClickUp MCP tool returns an error, report it clearly. Do not retry silently.
 - If there's a duplicate custom field name, ask for resolution once via AskUserQuestion and persist the choice.
 - Sprint is **mandatory** — if not set in TASKS.md, ask the user via AskUserQuestion.
+- **NEVER use WebFetch, Bash, or any HTTP tool to call the ClickUp API. `WebFetch` is not in `allowed-tools` and must never be invoked via any other path. MCP tools only.**
+- **If Step 0 fails, do NOT attempt any fallback.** Stop immediately and display the error message defined in Step 0.
