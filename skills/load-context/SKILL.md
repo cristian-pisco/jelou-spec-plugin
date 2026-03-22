@@ -109,15 +109,6 @@ Present the loaded context in this structured format:
 
 ---
 
-### Current Status
-
-**Stage**: <human-readable label (from Step 6 mapping)>
-**Progress**: <phases done>/<total> phases complete  ← only if state is `implementing` or later
-**Next step**: `<command>` — <one-sentence reason from Step 6 mapping>
-**Active blockers**: <"None" or bulleted list of blocker descriptions>
-
----
-
 ### Loaded Artifacts
 
 #### SPEC.md
@@ -156,5 +147,14 @@ Present the loaded context in this structured format:
 - <list of codebase files with paths, mark ✅ if exists, ❌ if not>
 ```
 
-After presenting the context, tell the user:
+---
+
+## Step 8 — Task Summary
+
+Dispatch `jlu-summary-agent`:
+- Pass `TASK_DIR` (the resolved task directory path from Step 2)
+- Pass `CONTEXT_HINT` = `context-load`
+- Print the agent's output before the closing message.
+
+After the summary, tell the user:
 > Context loaded. You can ask me anything about this task. I can read any artifact from the inventory above for more detail.
