@@ -20,7 +20,7 @@ A new dedicated agent `jlu-build-validator` that runs the project build after ea
 
 ## Workflow Integration
 
-Inserted as **Step 7l** in the execute-task workflow, after git commit (7j) and before complete phase (7k).
+Inserted as **Step 7k** in the execute-task workflow, after git commit (7j). The current 7k (Complete Phase) is renumbered to 7l.
 
 ### Updated phase flow
 
@@ -32,11 +32,11 @@ Inserted as **Step 7l** in the execute-task workflow, after git commit (7j) and 
 7h. Per-Phase QA
 7i. Update TASKS.md
 7j. Git Commit
-7l. Build Validation  ← NEW
-7k. Complete Phase
+7k. Build Validation  ← NEW
+7l. Complete Phase    ← RENUMBERED from 7k
 ```
 
-### Step 7l definition
+### Step 7k definition
 
 Spawn `jlu-build-validator` agent:
 - **Input**:
@@ -50,7 +50,7 @@ If the agent made fixes:
 - Re-spawn `jlu-git-agent` to commit the build fixes (message: `fix(<service>): resolve build errors from phase <NN>`)
 
 If the agent reports PASS with no fixes needed:
-- Continue to 7k (no extra commit).
+- Continue to 7l (no extra commit).
 
 ## Build Command Detection
 
@@ -74,14 +74,22 @@ Priority order:
    - Go to 1
 ```
 
-No retry limit — the agent loops until both build and tests pass.
+The agent loops until both build and tests pass, up to a maximum of **5 rounds**. If after 5 rounds the build or tests still fail, report FAIL and escalate to the orchestrator (which presents the failure to the user).
+
+## Test Command Detection
+
+Priority order (mirrors build command detection):
+1. Check `CONVENTIONS.md` for an explicit test command
+2. Check `package.json` `scripts.test` → `npm test`
+3. Check for `Makefile` with a `test` target → `make test`
+4. Fall back to the command used by the test-writer/implementer agents earlier in the phase (visible in the phase file's execution section)
 
 ## Output Format
 
 ```
 ## Build Validation Report — Phase <NN>
 
-### Status: PASS | SKIP
+### Status: PASS | SKIP | FAIL
 
 ### Build
 - **Command**: `<exact command>`
@@ -104,12 +112,13 @@ No retry limit — the agent loops until both build and tests pass.
 ### Verdict
 PASS — build and tests verified.
 SKIP — no build command detected for this service.
+FAIL — build/tests still failing after 5 rounds. Last error: <error summary>
 ```
 
 ## Agent Rules
 
 - Never modify test files — only fix production code
 - Match existing codebase conventions when writing fixes
-- If a fix requires architectural changes (not just missing imports/types), escalate to the orchestrator instead of attempting
+- If a fix requires architectural changes (not just missing imports/types), escalate to the orchestrator instead of attempting. Example: adding a missing import = fix; restructuring a module's dependency graph = escalate
 - Read the build error output carefully — fix the root cause, not symptoms
 - Follow the same Docker context pattern as test-writer and implementer agents
