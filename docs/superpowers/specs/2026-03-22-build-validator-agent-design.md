@@ -61,6 +61,8 @@ Priority order:
 4. Check for `Makefile` with a `build` target → `make build`
 5. If none found → report SKIP (no build step configured)
 
+All detected commands must be executed via `DOCKER_EXEC_PREFIX` when the service is Docker-enabled. For example: `<DOCKER_EXEC_PREFIX> npm run build`. File read/write operations always run on the host filesystem.
+
 ## Fix Loop
 
 ```

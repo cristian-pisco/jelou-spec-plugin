@@ -1,6 +1,6 @@
 {
   "name": "jelou-spec-plugin",
-  "version": "0.2.30",
+  "version": "0.2.31",
   "description": "Spec-driven development plugin for Claude Code with TDD, multi-service coordination, and specialized agents",
   "author": "Jelou",
   "license": "MIT",
