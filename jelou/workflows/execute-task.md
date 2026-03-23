@@ -425,12 +425,36 @@ If validation fails or phases have unresolved issues:
 | Task not in `planned` or `implementing` state | Stop with status message |
 | SPEC.md missing | Stop — cannot execute without spec |
 | Codebase files missing | Warn, proceed (agents will have less context) |
-| Test writer agent fails | Kill, spawn fresh with failure context (Decision #1) |
-| Implementer agent fails | Kill, spawn fresh with failure context (Decision #1) |
-| Tests never go green after 2 retries | Escalate to user |
+| Test writer agent fails | Kill, spawn fresh with failure context — up to 5 attempts (Decision #1) |
+| Implementer agent fails | Kill, spawn fresh with failure context — up to 5 attempts (Decision #1) |
+| Tests never go green after 5 retries | Pause and notify user (see Escalation Format) |
+| QA auto-fix fails after 5 retries | Pause and notify user (see Escalation Format) |
 | Git commit fails | Report error, do not block phase execution |
-| Build validation fails after 5 rounds | Report failure, pause for user intervention |
+| Build validation fails after 5 rounds | Pause and notify user (see Escalation Format) |
 | Worktree missing | Fall back to main repo, warn user |
+| Destructive SQL in Bash command | Block execution, report BLOCKED (SQL Safety Gate) |
+
+---
+
+## Escalation Format
+
+When any retry limit (5 attempts) is exhausted, this is the **only** point where execution pauses for user input. Use `AskUserQuestion` with this format:
+
+```
+## Execution Paused — Manual Intervention Needed
+
+Phase <NN>: <Phase Name> (<service-id>)
+Failure type: <test-writer | implementer | build | qa>
+Attempts: 5/5
+
+Last error:
+<last error output>
+
+Completed phases: <list>
+Remaining phases: <list>
+
+Awaiting your input to proceed.
+```
 
 ---
 
