@@ -175,27 +175,12 @@ Skip proposal generation. Read the existing PROPOSAL.md and phase files to resum
 
 ---
 
-## Step 5 — Choose Execution Mode (Decision #29)
-
-Ask the user:
-```
-Execution mode:
-1. Autonomous (default) — Phases run automatically. You'll be interrupted only on failures or blocks.
-2. Step-by-step — Pause before each phase for your approval.
-
-Choose (1/2, default: 1):
-```
-
-**Store**: `EXECUTION_MODE` = `autonomous` or `step_by_step`
-
----
-
 ## Step 6 — Transition to Implementing
 
 1. Update `<TASK_DIR>/TASKS.md`:
    - Status: `implementing`
    - Add timestamp: `- Implementing: <current-datetime-ISO>`
-   - Record execution mode chosen.
+
 
 ---
 
