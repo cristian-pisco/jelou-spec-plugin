@@ -181,7 +181,6 @@ Skip proposal generation. Read the existing PROPOSAL.md and phase files to resum
    - Status: `implementing`
    - Add timestamp: `- Implementing: <current-datetime-ISO>`
 
-
 ---
 
 ## Step 7 — Execute Phases
@@ -362,7 +361,7 @@ Spawn `jlu-qa-agent` for comprehensive final validation:
 - **Cross-service contract verification** (if multi-service): Do the services communicate correctly? Are contracts honored?
 - **Convention compliance**: Final check against CONVENTIONS.md
 
-Present the validation results:
+Log the validation results to terminal:
 ```
 ## Final Validation Results
 
@@ -455,6 +454,11 @@ Remaining phases: <list>
 
 Awaiting your input to proceed.
 ```
+
+**After user responds**, handle accordingly:
+- **Resume phase**: Re-run the failed phase's TDD cycle with user-provided guidance.
+- **Skip phase**: Mark phase as `skipped`, continue to next phase.
+- **Abort execution**: Stop execution, update TASKS.md with current state.
 
 ---
 
