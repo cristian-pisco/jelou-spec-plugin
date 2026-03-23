@@ -3,7 +3,15 @@
 > Orchestrator workflow for `/jlu:execute-task [task-slug]`
 > Runs TDD implementation with proposal generation, phase-by-phase execution, and QA validation.
 
-> **Tool requirement**: All prompts, questions, and confirmations to the user in this workflow MUST use `AskUserQuestion`. Never output questions as plain text.
+> **Autonomy mode**: This workflow runs fully autonomous. The ONLY case where execution pauses for user input is after 5 failed retry attempts on a phase or build step. All other decisions are auto-resolved.
+
+> **SQL Safety Gate — inject into every agent prompt that has Bash access (test-writer, implementer, qa-agent, build-validator):**
+> ```
+> ## SQL Safety Gate
+> NEVER execute Bash commands containing destructive SQL keywords: DROP TABLE, DROP DATABASE, DROP INDEX, DROP COLUMN, DELETE FROM, or TRUNCATE. This applies to direct SQL commands, database CLI tools (psql, mysql, mongosh, redis-cli), and any command that pipes SQL to a database.
+> If a phase requires running destructive SQL, SKIP the execution and report:
+> "BLOCKED: Phase requires destructive SQL execution. Manual intervention needed."
+> ```
 
 ---
 
