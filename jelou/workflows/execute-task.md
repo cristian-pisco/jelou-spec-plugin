@@ -484,8 +484,8 @@ Awaiting your input to proceed.
 | #13 | QA: lightweight per-phase + full final validation |
 | #19 | Phase files: immutable requirements + mutable execution |
 | #21 | Two-pass proposal: global strategy + per-service detail |
-| #29 | Configurable autonomous/step-by-step execution mode |
-| #35 | Session recovery: resume, re-validate, or start over |
+| #29 | **Superseded**: always autonomous, execution mode selection removed |
+| #35 | **Simplified**: session recovery always auto-resumes from first incomplete phase |
 | #36 | Real-time progress in TASKS.md + milestone terminal output |
 | #38 | Hybrid user story format |
 | #40 | Task branch `spec/<task-slug>` across all repos |

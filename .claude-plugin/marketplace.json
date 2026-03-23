@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "jlu",
-      "version": "0.2.51",
+      "version": "0.2.52",
       "source": "./",
       "description": "Spec-driven development with TDD, multi-service coordination, and specialized agents"
     }
