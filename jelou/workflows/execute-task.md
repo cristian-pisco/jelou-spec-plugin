@@ -155,24 +155,19 @@ Spawn a sub-agent to derive user stories from SPEC.md + PROPOSAL.md:
   - Phase <NN>: <phase-name>
   ```
 
-### 4g. Present for Approval
+### 4g. Auto-Approve Proposal
 
-Present PROPOSAL.md to the user:
+Log the proposal summary to terminal (do not ask for approval):
 ```
-## Proposal Generated
-
-<executive summary of the proposal>
+## Proposal Generated — Auto-Approved
 
 Phases: <N> phases across <N> services
 Dependency order: <service-a> → <service-b> → ...
 
 Full proposal: <TASK_DIR>/PROPOSAL.md
-
-Approve this proposal to begin execution? (yes / request changes)
 ```
 
-- If approved: continue to Step 5.
-- If changes requested: iterate. Ask what to change, update PROPOSAL.md, re-present.
+Continue to Step 6 (Transition to Implementing).
 
 ### 4h. If PROPOSAL.md Already Exists
 
