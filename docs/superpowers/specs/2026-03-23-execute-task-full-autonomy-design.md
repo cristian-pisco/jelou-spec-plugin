@@ -147,7 +147,9 @@ If a phase was interrupted mid-execution (status is `in_progress`, not `done` or
 
 ### Files Modified
 
-- `jelou/workflows/execute-task.md` — all changes are here
+- `jelou/workflows/execute-task.md` — all changes are here, including:
+  - The Error Handling table (after Step 10): update "2 retries" entries to "5 retries" to match the unified retry policy
+  - Step 6: remove "Record execution mode chosen" line (execution mode no longer exists)
 
 ### Files NOT Modified
 
