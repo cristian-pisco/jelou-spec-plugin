@@ -399,26 +399,22 @@ If all validation passes:
 
 If validation fails or phases have unresolved issues:
 
-1. Present failures clearly:
+1. Log failures to terminal:
    ```
-   ## Execution Incomplete
+   ## Execution Incomplete — Auto-Retrying Failed Phases
 
    ### Failed Phases
    - Phase <NN>: <reason>
 
    ### Failing Tests
    - <test-name>: <failure reason>
-
-   ### Unresolved Issues
-   - <issue>
    ```
 
-2. Offer options:
-   - "Retry failed phases"
-   - "Pause for manual intervention"
-   - "Mark as blocked (will need `/jlu:extend-phase` to continue)"
+2. Auto-retry each failed phase (re-run the full TDD cycle from Step 7d). Track attempts per phase.
 
-3. Update TASKS.md with the failure state and details.
+3. If a phase fails after 5 total attempts: pause and notify user (see Escalation Format below).
+
+4. Update TASKS.md with the failure state and details.
 
 ---
 
