@@ -188,21 +188,6 @@ Skip proposal generation. Read the existing PROPOSAL.md and phase files to resum
 
 Read the phases from PROPOSAL.md in dependency order. For each phase:
 
-### 7a. Pre-Phase Gate (Step-by-Step Mode Only)
-
-If `EXECUTION_MODE` is `step_by_step`:
-```
-## Phase <NN>: <Phase Name>
-Service: <service-id>
-Requirements:
-- <requirement-1>
-- <requirement-2>
-
-Proceed with this phase? (yes / skip / abort)
-```
-- If "skip": mark phase as `skipped`, continue to next.
-- If "abort": stop execution, report current state.
-
 ### 7b. Update Phase Status
 
 1. Update the phase file status to `in_progress`.
@@ -253,8 +238,10 @@ Spawn `jlu-test-writer` agent:
 1. Run the test suite for the affected files.
 2. Confirm the new tests FAIL (Red state).
 3. If any new tests PASS unexpectedly:
-   - Flag to user: "Test `<test-name>` passes without implementation. This may indicate the requirement is already implemented or the test is incorrect."
-   - Ask: "Continue anyway, or investigate?"
+   - Log to terminal: "Test `<test-name>` passes without implementation — auto-investigating."
+   - Spawn a fresh `jlu-test-writer` to evaluate whether the test is correct or the requirement is already implemented.
+   - If already implemented: mark requirement as covered, skip to next.
+   - If test is incorrect: rewrite and re-verify Red state.
 
 ### 7e. TDD Green — Spawn Implementer
 
@@ -279,8 +266,10 @@ After the implementer finishes and tests are green, run lint and format inside t
 1. Run the test suite.
 2. Confirm all tests PASS (Green state).
 3. If tests still fail after implementation:
-   - Report failures.
-   - Offer: "Retry implementation, or spawn a fresh implementer with failure context?" (Decision #1)
+   - Log failures to terminal.
+   - Spawn a fresh `jlu-implementer` with accumulated failure context (Decision #1).
+   - Retry up to 5 times total.
+   - If still failing after 5 attempts: pause and notify user (see Escalation Format below).
 
 ### 7f. Test Dispute Resolution (Decision #5)
 
@@ -315,9 +304,10 @@ Spawn `jlu-qa-agent` for a lightweight per-phase check:
 - No obvious security or performance issues
 
 If QA finds issues:
-- Report them clearly.
-- In autonomous mode: attempt to fix automatically (spawn implementer with QA findings).
-- In step-by-step mode: present to user and ask how to proceed.
+- Log issues to terminal.
+- Attempt to fix automatically: spawn `jlu-implementer` with QA findings.
+- Retry up to 5 times total.
+- If still failing after 5 attempts: pause and notify user (see Escalation Format below).
 
 ### 7i. Update TASKS.md
 
@@ -352,9 +342,7 @@ Spawn `jlu-build-validator` agent:
 - Continue to 7l. No action needed.
 
 **If the agent reports FAIL** (5 rounds exhausted):
-- Report the failure to the user with the agent's last error output.
-- In autonomous mode: pause execution and ask the user how to proceed.
-- In step-by-step mode: present the failure and ask how to proceed.
+- Pause and notify user (see Escalation Format below).
 
 ### 7l. Complete Phase
 
