@@ -22,7 +22,7 @@
    b. Search `<WORKSPACE_PATH>/specs/` across all date folders for the matching slug.
 2. If no `task-slug` provided:
    a. Find the most recent task (latest date folder, latest task within it).
-   b. Confirm with user: "Found task `<task-slug>`. Execute this one?"
+   b. Auto-select it. Log to terminal: "Auto-selected task `<task-slug>`."
 
 **Error gate**: If no task found, stop: "No task found. Run `/jlu:new-task` first."
 
