@@ -47,34 +47,22 @@
 
 ---
 
-## Step 3 — Session Recovery Check (Decision #35)
+## Step 3 — Session Recovery (Decision #35)
 
 If TASKS.md shows a mid-execution state (status is `implementing` and some phases are marked `done` while others are `pending` or `in_progress`):
 
-1. Present the current state:
+1. Log the current state to terminal:
    ```
-   Task `<TASK_SLUG>` appears to have been interrupted mid-execution.
-
-   Current state:
-   - Phase 01: done
-   - Phase 02: done
-   - Phase 03: in_progress (incomplete)
-   - Phase 04: pending
-   - Phase 05: pending
+   Task `<TASK_SLUG>` — resuming interrupted execution.
+   Completed: Phase 01, Phase 02
+   Resuming from: Phase 03
    ```
 
-2. Offer three options:
-   ```
-   How would you like to proceed?
-   1. Resume — Continue from Phase 03 (next incomplete phase)
-   2. Re-validate — Run QA on completed phases first, then resume
-   3. Start over — Reset all phase statuses (existing code/artifacts preserved)
-   ```
+2. If any phase has status `in_progress` (interrupted mid-execution):
+   - Reset that phase's status to `pending`.
+   - Log to terminal: "Phase <NN> was interrupted. Restarting from scratch."
 
-3. Handle each option:
-   - **Resume**: Set `RESUME_FROM` = first incomplete phase number. Skip to Step 7, starting from that phase.
-   - **Re-validate**: Spawn `jlu-qa-agent` to validate completed phases. If issues found, report them and ask user how to proceed. Then resume from the next incomplete phase.
-   - **Start over**: Reset all phase file statuses to `pending`. Reset TASKS.md phase progress. Continue from Step 4 (but PROPOSAL.md and phase files still exist, so Step 4 will detect them and skip regeneration unless the user wants to regenerate).
+3. Set `RESUME_FROM` = first phase that is not `done`. Skip to Step 7, starting from that phase.
 
 ---
 
