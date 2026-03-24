@@ -255,6 +255,7 @@ For each Docker-enabled service with a successfully created worktree:
 
 1. Read the base compose file to extract all `container_name` values and their port mappings.
 2. Generate `<worktree>/docker-compose.override.yml` with:
+   - Top-level `name: <service-id>-<TASK_SLUG>` (sets Docker Compose project name)
    - For the primary container (`docker.service` from `services.yaml`):
      - `container_name: <service-id>-<TASK_SLUG>`
      - `ports: ["<allocated-port>:<internal-port>"]`
