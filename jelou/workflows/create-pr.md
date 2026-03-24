@@ -7,6 +7,59 @@
 
 ---
 
+## GitHub API Rate Limit Handling
+
+All `gh` CLI commands in this workflow (Steps 6, 7e, 8) MUST use the retry protocol below.
+
+### Retry Protocol
+
+**Parameters:**
+- **Max retries**: 3 per `gh` command (retries numbered 1–3; the initial attempt is attempt 0)
+- **Detection**: Check stderr/stdout for `rate limit`, `abuse detection`, `HTTP 403`, or `HTTP 429`
+- **Backoff schedule**: 5s, 15s, 45s (exponential: `5 * 3^(retry-1)`)
+- **Logging**: On each retry, inform the user: "Rate limited by GitHub API. Retrying in Ns... (retry M/3)"
+
+**Bash pattern:**
+~~~bash
+rate_limit_hit=false
+for attempt in 0 1 2 3; do
+  if [ "$attempt" -gt 0 ]; then
+    sleep_time=$((5 * 3 ** (attempt - 1)))
+    echo "Rate limited. Retrying in ${sleep_time}s (retry $attempt/3)..."
+    sleep "$sleep_time"
+  fi
+  result=$(cd <SERVICE_CWD> && gh <command> 2>&1) && { rate_limit_hit=false; break; }
+  if echo "$result" | grep -qi "rate limit\|abuse detection\|HTTP 403\|HTTP 429"; then
+    rate_limit_hit=true
+  else
+    rate_limit_hit=false
+    break  # Non-rate-limit error, don't retry
+  fi
+done
+
+# Post-exhaustion escalation (Steps 6 and 7e only)
+if [ "$rate_limit_hit" = true ]; then
+  # Present escalation options to user — see "Post-Exhaustion Escalation" below
+fi
+~~~
+
+### Post-Exhaustion Escalation
+
+When all 3 retries are exhausted for a `gh` command in **Steps 6 or 7e**, present to the user:
+
+```
+GitHub API rate limit exceeded after 3 retries for <command> on <service-id>.
+
+Options:
+1. Wait 60 seconds and retry
+2. Skip this service
+3. Abort the entire operation
+```
+
+For **Step 8** (`gh pr edit`), on exhaustion: warn "Cross-reference update for <service-id> failed due to rate limit — skipping (non-critical)" and continue to the next service.
+
+---
+
 ## Step 1 — Resolve Task
 
 1. If `task-slug` is provided as an argument:
@@ -125,10 +178,10 @@ Parse the result:
 ### 7a. Detect Default Branch
 
 ```bash
-cd <SERVICE_CWD> && gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'
+cd <SERVICE_CWD> && git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@'
 ```
 
-If the command fails, fall back to `main`.
+This uses local git data (no API call). If the command fails or returns empty, fall back to `main`.
 
 **Store**: `DEFAULT_BRANCH`
 
