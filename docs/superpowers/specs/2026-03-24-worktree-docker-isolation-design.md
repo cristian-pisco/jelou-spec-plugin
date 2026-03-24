@@ -46,6 +46,7 @@ done
 
 For each Docker-enabled service, generate a `docker-compose.override.yml` in the worktree that overrides:
 
+- **`name`**: `<service-id>-<TASK_SLUG>` (sets the Docker Compose project name)
 - **`container_name`**: `<service-id>-<TASK_SLUG>`
 - **Host port mapping**: `<allocated-port>:<internal-port>`
 - **Network alias**: `<service-id>-<TASK_SLUG>` on the existing `app-network`
@@ -53,6 +54,8 @@ For each Docker-enabled service, generate a `docker-compose.override.yml` in the
 Example for `marketplace-service`, task `add-oauth-flow`, allocated port `3100`:
 
 ```yaml
+name: marketplace-service-add-oauth-flow
+
 services:
   app:
     container_name: marketplace-service-add-oauth-flow
@@ -67,6 +70,8 @@ services:
 **Secondary containers** (e.g., `orchestrator-service`'s `router-vector-db`) are also suffixed with `-<TASK_SLUG>` to avoid collisions. Example for `orchestrator-service` with task `add-oauth-flow`, allocated port `3101`, DB port `5433`:
 
 ```yaml
+name: orchestrator-service-add-oauth-flow
+
 services:
   app:
     container_name: orchestrator-service-add-oauth-flow
