@@ -16,7 +16,7 @@ When `jlu:new-task` creates worktrees for multi-service tasks, two categories of
 
 - Non-destructive: override files don't touch the base compose
 - Clean separation: worktree config is self-contained
-- Compatible: all services already share the external `devlabs_mynetwork` network, so aliases resolve automatically
+- Compatible: all services already share the external `devlabs_mynetwork` network (referenced as `app-network` in each service's compose file), so aliases resolve automatically
 
 ### Alternatives considered
 
@@ -64,7 +64,25 @@ services:
           - marketplace-service-add-oauth-flow
 ```
 
-**Secondary containers** (e.g., `orchestrator-service`'s `router-vector-db`) are also suffixed with `-<TASK_SLUG>` to avoid collisions.
+**Secondary containers** (e.g., `orchestrator-service`'s `router-vector-db`) are also suffixed with `-<TASK_SLUG>` to avoid collisions. Example for `orchestrator-service` with task `add-oauth-flow`, allocated port `3101`, DB port `5433`:
+
+```yaml
+services:
+  app:
+    container_name: orchestrator-service-add-oauth-flow
+    ports:
+      - "3101:8080"
+    networks:
+      app-network:
+        aliases:
+          - orchestrator-service-add-oauth-flow
+  router-vector-db:
+    container_name: router-vector-db-add-oauth-flow
+    ports:
+      - "5433:5432"
+```
+
+**Note:** `app-network` is the compose-internal network name that maps to the external `devlabs_mynetwork` network. All services use this same pattern.
 
 If a `docker-compose.override.yml` already exists in the repo root, it is NOT copied. The generated one in the worktree takes precedence.
 
