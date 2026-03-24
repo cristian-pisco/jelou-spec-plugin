@@ -239,12 +239,13 @@ For each service in `CONFIRMED_SERVICES`:
 
 ### Phase 2 — Port allocation (sequential)
 
+1. Run `docker ps --format '{{.Ports}}'` once to get the initial set of occupied host ports.
+2. Initialize an in-memory set of allocated ports from the `docker ps` output.
+
 For each service that has a `docker` config in `services.yaml` AND a successfully created worktree:
 
-1. Run `docker ps --format '{{.Ports}}'` to find occupied host ports.
-2. Parse port numbers, select next free port starting from 3100 (increment by 1, skip occupied ports).
 3. Read the service's base compose file (from `docker.compose_file` in `services.yaml`) to discover all container definitions.
-4. Allocate one port per container: the primary service container gets the first port, secondary containers (e.g., databases) get subsequent ports.
+4. Allocate one port per container from the next free port starting from 3100 (increment by 1, skip any port in the allocated set). Add each allocated port to the set before processing the next container.
 5. Update the worktree's `.env`: replace `^<PORT_ENV>=.*` with `<PORT_ENV>=<allocated-primary-port>`.
 6. Secondary container ports are NOT written to `.env` — they are only used in the override file generated in Phase 3.
 
