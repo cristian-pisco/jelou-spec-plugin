@@ -157,6 +157,8 @@ Run:
 cd <SERVICE_CWD> && gh pr view spec/<TASK_SLUG> --json url,state,title,number 2>&1
 ```
 
+> **Rate limit**: Apply the retry protocol (see "GitHub API Rate Limit Handling" above). On exhaustion, escalate to user.
+
 Parse the result:
 
 - **`OPEN`**: Store URL and number. Record action as `existing`. Skip to next service.
@@ -235,6 +237,8 @@ EOF
 )"
 ```
 
+> **Rate limit**: Apply the retry protocol (see "GitHub API Rate Limit Handling" above). On exhaustion, escalate to user.
+
 Parse the output to extract the PR URL and number. Record action as `created`.
 
 ---
@@ -260,7 +264,7 @@ EOF
 )"
 ```
 
-If updating fails, warn but continue — cross-references are non-critical.
+> **Rate limit**: Apply the retry protocol (see "GitHub API Rate Limit Handling" above). On exhaustion, warn "Cross-reference update for <service-id> failed due to rate limit — skipping (non-critical)" and continue. Non-rate-limit failures also warn and continue — cross-references are non-critical.
 
 ---
 
