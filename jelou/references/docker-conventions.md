@@ -29,6 +29,101 @@ Each task worktree gets its own Docker instance on a unique host port to avoid c
 4. Select the next free port starting from 3100, incrementing by 1, skipping any port found in `docker ps` output.
 5. Write the assigned port into the worktree's `.env` file under the service's `port_env` variable (default: `APP_PORT`).
 
+## Untracked File Copying
+
+Git worktrees only contain tracked files. The following untracked/gitignored files must be copied from the service repo root to the worktree after `git worktree add`:
+
+| File | Purpose |
+|------|---------|
+| `.env` | Runtime configuration, port assignment, inter-service URLs |
+| `.npmrc` | GitHub package registry authentication tokens |
+
+If a file does not exist in the repo root, skip it silently.
+
+```bash
+for file in .env .npmrc; do
+  [ -f <repo>/$file ] && cp <repo>/$file <worktree>/$file
+done
+```
+
+## Override Generation
+
+For each Docker-enabled service worktree, generate a `docker-compose.override.yml` that overrides:
+
+- **`container_name`**: `<service-id>-<TASK_SLUG>`
+- **Host port mapping**: `<allocated-port>:<internal-port>`
+- **Network alias**: `<service-id>-<TASK_SLUG>` on the existing `app-network`
+
+`app-network` is the compose-internal network name that maps to the external `devlabs_mynetwork` network. All services use this same pattern.
+
+Example for `marketplace-service`, task `add-oauth-flow`, allocated port `3100`:
+
+```yaml
+services:
+  app:
+    container_name: marketplace-service-add-oauth-flow
+    ports:
+      - "3100:8080"
+    networks:
+      app-network:
+        aliases:
+          - marketplace-service-add-oauth-flow
+```
+
+### Secondary Containers
+
+Services with multiple containers in their compose file (e.g., `orchestrator-service` has `app` and `router-vector-db`) must override **all** container definitions. Process every `services:` key in the base compose file, not just the one matching `docker.service` in `services.yaml`.
+
+Secondary containers get:
+- `container_name`: `<original-container-name>-<TASK_SLUG>`
+- Unique port allocation (same algorithm as primary)
+- No network alias needed (secondary containers are typically databases, not addressed by service URLs)
+
+Example for `orchestrator-service`, task `add-oauth-flow`, app port `3101`, DB port `5433`:
+
+```yaml
+services:
+  app:
+    container_name: orchestrator-service-add-oauth-flow
+    ports:
+      - "3101:8080"
+    networks:
+      app-network:
+        aliases:
+          - orchestrator-service-add-oauth-flow
+  router-vector-db:
+    container_name: router-vector-db-add-oauth-flow
+    ports:
+      - "5433:5432"
+```
+
+### Rules
+
+- If a `docker-compose.override.yml` already exists in the repo root, do NOT copy it to the worktree. The generated override takes precedence.
+- The internal container port (e.g., `8080`, `5432`) stays the same — only the host port changes.
+- Extract container names and internal ports by reading the base compose file specified in `services.yaml` (`docker.compose_file`).
+- If the base compose file has no explicit `container_name` for a service, use Docker Compose default naming (`<project>-<service>-1`) and suffix with `-<TASK_SLUG>`.
+
+## Inter-Service URL Wiring
+
+After all worktree overrides are generated, update each worktree's `.env` to replace references to sibling task services with their task-specific network aliases.
+
+**Replacement rule:** For each sibling service in the task, find occurrences of the **original `container_name`** (from the base compose file) in the `.env` and replace with the task alias `<service-id>-<TASK_SLUG>`.
+
+**Key rules:**
+- Only replace references to services that are **part of the same task**. Services not in the task keep their original container names (pointing to main instances).
+- The internal port in the URL stays the same (e.g., `:8080`). Aliases resolve inside the Docker network.
+- The replacement uses the original `container_name` from the base compose file as the search pattern, not the service-id.
+- If the `.env` has no references to sibling services, no replacements are needed — skip.
+
+Example — task affects `api-gateway-service` (container: `jelou-api-gateway`) and `marketplace-service` (container: `marketplace-service`):
+
+In `api-gateway-service` worktree `.env`:
+```diff
+- MARKETPLACE_SERVER_URL=http://marketplace-service:8080
++ MARKETPLACE_SERVER_URL=http://marketplace-service-add-oauth-flow:8080
+```
+
 ## Teardown Policy
 
 When a task closes, Docker resources must be destroyed **before** the worktree is removed (the compose file lives in the worktree):
