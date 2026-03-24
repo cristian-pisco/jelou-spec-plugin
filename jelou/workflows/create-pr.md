@@ -116,6 +116,8 @@ PR_RESULTS[<service-id>] = {
 }
 ```
 
+**Rate limit throttle**: After completing Steps 4–7 for a service, wait 3 seconds before starting the next service iteration. The delay fires only between services, not after the final service in the loop.
+
 ---
 
 ## Step 4 — Resolve Service Working Directory
