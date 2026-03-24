@@ -214,7 +214,12 @@ Spawn a **background Agent** (`run_in_background: true`) using the `jlu-git-agen
 - The task slug (`TASK_SLUG`)
 - The repo path for each service from `services.yaml`
 
-The background agent should, for each service in `CONFIRMED_SERVICES`:
+The background agent executes 5 phases in order:
+
+### Phase 1 — Create worktrees and copy untracked files (parallel, per service)
+
+For each service in `CONFIRMED_SERVICES`:
+
 1. Look up the service's repo path from `services.yaml`.
 2. Navigate to that repo path.
 3. Create a worktree:
@@ -222,18 +227,62 @@ The background agent should, for each service in `CONFIRMED_SERVICES`:
    git worktree add .worktrees/<TASK_SLUG> -b spec/<TASK_SLUG>
    ```
 4. If the branch `spec/<TASK_SLUG>` already exists: use the existing branch.
-5. **If the service has a `docker` config in `services.yaml`**:
-   a. Run `docker ps --format '{{.Ports}}'` to find occupied host ports.
-   b. Parse port numbers, select next free port starting from 3100 (increment by 1, skip occupied ports).
-   c. Copy `.env` from the service repo root to the worktree: `cp <repo>/.env <worktree>/.env`
-   d. Update the worktree's `.env`: replace `^<PORT_ENV>=.*` with `<PORT_ENV>=<free-port>`.
-   e. Start Docker: `cd <worktree> && docker compose up -d`
-   f. Verify container is running: `docker compose ps` (poll up to 30s).
-   g. Record container ID + port for the final report.
-6. **If no `docker` config**: skip Docker steps (current behavior).
-7. Record the worktree path for the final report.
+5. Copy untracked files from repo root to worktree (skip if file doesn't exist):
+   ```bash
+   for file in .env .npmrc; do
+     [ -f <repo>/$file ] && cp <repo>/$file <worktree>/$file
+   done
+   ```
+6. Record the worktree path.
 
-**Error handling** (for the background agent): If `git worktree add` fails (dirty working tree, branch conflicts), report the error but do NOT block the workflow. Continue with whatever worktrees succeed.
+**Error handling**: If `git worktree add` fails (dirty working tree, branch conflicts), report the error but do NOT block the workflow. Continue with whatever worktrees succeed.
+
+### Phase 2 — Port allocation (sequential)
+
+For each service that has a `docker` config in `services.yaml` AND a successfully created worktree:
+
+1. Run `docker ps --format '{{.Ports}}'` to find occupied host ports.
+2. Parse port numbers, select next free port starting from 3100 (increment by 1, skip occupied ports).
+3. Read the service's base compose file (from `docker.compose_file` in `services.yaml`) to discover all container definitions.
+4. Allocate one port per container: the primary service container gets the first port, secondary containers (e.g., databases) get subsequent ports.
+5. Update the worktree's `.env`: replace `^<PORT_ENV>=.*` with `<PORT_ENV>=<allocated-primary-port>`.
+6. Secondary container ports are NOT written to `.env` — they are only used in the override file generated in Phase 3.
+
+### Phase 3 — Generate `docker-compose.override.yml` (parallel, per service)
+
+For each Docker-enabled service with a successfully created worktree:
+
+1. Read the base compose file to extract all `container_name` values and their port mappings.
+2. Generate `<worktree>/docker-compose.override.yml` with:
+   - For the primary container (`docker.service` from `services.yaml`):
+     - `container_name: <service-id>-<TASK_SLUG>`
+     - `ports: ["<allocated-port>:<internal-port>"]`
+     - `networks.app-network.aliases: [<service-id>-<TASK_SLUG>]`
+   - For each secondary container:
+     - `container_name: <original-container-name>-<TASK_SLUG>`
+     - `ports: ["<allocated-port>:<internal-port>"]`
+
+See `jelou/references/docker-conventions.md` → "Override Generation" for full rules and examples.
+
+### Phase 4 — Wire inter-service URLs (sequential)
+
+For each Docker-enabled service in the task:
+
+1. Build a replacement map: for each **other** Docker-enabled service in the task, map its original `container_name` → `<service-id>-<TASK_SLUG>`.
+2. In the worktree's `.env`, find-and-replace each original `container_name` with its task alias.
+3. Only replace references to services that are part of the same task. Services not in the task keep their original container names.
+
+See `jelou/references/docker-conventions.md` → "Inter-Service URL Wiring" for full rules and examples.
+
+### Phase 5 — Start Docker (parallel, per service)
+
+For each Docker-enabled service with a successfully created worktree:
+
+1. Start Docker: `cd <worktree> && docker compose up -d`
+2. Verify container is running: `docker compose ps` (poll up to 30s).
+3. Record container ID + port for the final report.
+
+**If no `docker` config**: skip Phases 2-5 for that service (only Phase 1 applies).
 
 **Store**: `WORKTREE_AGENT_TASK` = reference to the background agent task (to check later in Step 15)
 
