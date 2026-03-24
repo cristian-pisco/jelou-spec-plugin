@@ -67,8 +67,8 @@ Status: <lifecycle-state>
 
   | State | Next Step |
   |-------|-----------|
-  | `draft` | Run `/jlu:refine-spec` to expand the spec. |
-  | `refining` | Continue `/jlu:refine-spec` — interview not yet complete. |
+  | `draft` | Run `/jlu:new-task` to expand the spec via inline interview. |
+  | `refining` | Re-run `/jlu:new-task <slug>` — spec interview not yet complete. |
   | `planned` | Run `/jlu:execute-task` to begin TDD implementation. |
   | `implementing` | Run `/jlu:execute-task` to resume — next phase is `<recovery-info.next-phase>`. |
   | `validating` | Run `/jlu:execute-task` to complete QA, then `/jlu:create-pr`. |

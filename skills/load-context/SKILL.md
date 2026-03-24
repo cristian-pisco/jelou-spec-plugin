@@ -88,8 +88,8 @@ Before presenting context, compute a compact status summary from the TASKS.md yo
 
    | State | Human Label | Next Step Message |
    |-------|-------------|-------------------|
-   | `draft` | Spec seed created — not yet refined | Run `/jlu:refine-spec` to expand the spec seed into a full specification. |
-   | `refining` | Spec refinement in progress | Continue `/jlu:refine-spec` — spec interview is not yet complete. |
+   | `draft` | Spec seed created — not yet refined | Run `/jlu:new-task` to expand the spec via inline interview. |
+   | `refining` | Spec refinement in progress | Re-run `/jlu:new-task <slug>` — spec interview is not yet complete. |
    | `planned` | Spec finalized — ready to implement | Run `/jlu:execute-task` to begin TDD implementation. |
    | `implementing` | TDD execution in progress | Run `/jlu:execute-task` to resume — next phase is `<recovery-info.next-phase>` (phase <N>/<total>). |
    | `validating` | All phases complete — QA running | Run `/jlu:execute-task` to complete QA, then `/jlu:create-pr` when all services pass. |

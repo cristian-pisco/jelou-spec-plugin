@@ -11,7 +11,7 @@ draft -> refining -> planned -> implementing -> validating -> ready_to_publish -
 | State | Description | Entry Condition |
 |-------|-------------|-----------------|
 | `draft` | Task created, SPEC.md is a minimal seed | `/jlu:new-task` executed |
-| `refining` | Spec interview in progress | `/jlu:refine-spec` started |
+| `refining` | Spec interview in progress | `/jlu:new-task (inline interview)` started |
 | `planned` | Spec approved, PROPOSAL.md generated, phases defined | Spec approved by user |
 | `implementing` | Code agents executing phases via TDD | User approves `planned -> implementing` |
 | `validating` | All phases complete, final QA validation running | All phase implementations done |
@@ -25,7 +25,7 @@ draft -> refining -> planned -> implementing -> validating -> ready_to_publish -
 
 | From | To | Trigger | Gate |
 |------|----|---------|------|
-| `draft` | `refining` | `/jlu:refine-spec` invoked | None |
+| `draft` | `refining` | `/jlu:new-task (inline interview)` invoked | None |
 | `refining` | `planned` | Spec interview complete | **Human approval** of final SPEC.md |
 | `planned` | `implementing` | `/jlu:execute-task` invoked | **Human approval** to begin execution |
 | `implementing` | `validating` | All phases in current scope complete | Automatic (orchestrator detects completion) |

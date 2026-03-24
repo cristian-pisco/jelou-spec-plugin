@@ -48,7 +48,7 @@
 
 ## Step 3 — Mini Interview (Decision #24)
 
-Conduct a focused interview about the extension. This is shorter and more targeted than `/jlu:refine-spec`.
+Conduct a focused interview about the extension. This is shorter and more targeted than the full spec interview in `/jlu:new-task`.
 
 Using AskUserQuestion, ask the following questions. Wait for the user's response after each round before proceeding:
 
@@ -135,7 +135,7 @@ If the extension only ADDS new requirements without modifying existing ones:
 If the extension MODIFIES requirements that have already been implemented:
 1. Mark affected `done` phases as needing re-validation.
 2. Reopen the task status:
-   - If the modification requires spec-level changes: transition to `refining` and recommend re-running `/jlu:refine-spec`.
+   - If the modification requires spec-level changes: transition to `refining` and recommend re-running `/jlu:refine-task`.
    - If the modification is implementation-level only: transition to `planned` and mark affected phases for re-execution.
 3. Existing code is preserved as the baseline (Decision #15) — changes build on top, not replace.
 
@@ -254,7 +254,7 @@ Present the extension summary:
 <if modifying>
 - Re-run `/jlu:execute-task` — affected phases will be re-executed with updated requirements.
 <if refining needed>
-- Run `/jlu:refine-spec` to update the spec with the new requirements, then `/jlu:execute-task`.
+- Run `/jlu:refine-task` to update the spec with the new requirements, then `/jlu:execute-task`.
 ```
 
 ---
@@ -288,4 +288,4 @@ Present the extension summary:
 | Decision | Application |
 |----------|-------------|
 | #15 | Preserve existing code as baseline — new/modified phases build on top |
-| #24 | Mini interview focused on the extension (shorter than /jlu:refine-spec) |
+| #24 | Mini interview focused on the extension (shorter than the full spec interview in /jlu:new-task) |

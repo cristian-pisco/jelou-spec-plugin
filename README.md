@@ -69,7 +69,7 @@ cd jelou-spec-plugin
 |---------|---------|
 | `/jlu:map-codebase` | Analyze a service and generate 6 codebase knowledge files |
 | `/jlu:new-task` | Create a new task with spec, worktrees, and affected service detection |
-| `/jlu:refine-spec` | Structured interview to expand a minimal spec into a full specification |
+| `/jlu:refine-task` | Apply a targeted change to an approved spec via structured interview |
 | `/jlu:execute-task` | Run TDD implementation (autonomous or step-by-step mode) |
 | `/jlu:extend-phase` | Add scope to an in-progress task via focused mini-interview |
 | `/jlu:sync-clickup` | Create/update ClickUp macro task and subtasks via MCP |
@@ -139,7 +139,7 @@ Per-service concrete rules in each service's `CONVENTIONS.md`.
 
 ## How It Works (Simplified)
 
-1. **Spec** → Write a minimal seed, refine via structured interview
+1. **Spec** → `/jlu:new-task` creates a seed, refines via inline interview, and sets up worktrees
 2. **Proposal** → Two-pass generation (global strategy + per-service details)
 3. **Execute** → Dependency-driven, TDD-enforced implementation with specialized agents
 4. **Validate** → Continuous QA per phase + final cross-service validation
@@ -152,7 +152,7 @@ All state is file-based. No external database required.
 ```mermaid
 stateDiagram-v2
     [*] --> draft : /jlu:new-task
-    draft --> refining : /jlu:refine-spec
+    draft --> refining : /jlu:new-task (inline interview)
     refining --> planned : spec approved
     planned --> implementing : /jlu:execute-task
     implementing --> validating : all phases done
@@ -190,7 +190,7 @@ flowchart TB
     subgraph commands["User Commands"]
         new["/jlu:new-task"]
         map["/jlu:map-codebase"]
-        refine["/jlu:refine-spec"]
+        refine["/jlu:refine-task"]
         exec["/jlu:execute-task"]
         close["/jlu:close-task"]
     end
@@ -200,7 +200,7 @@ flowchart TB
         proposal["proposal-agent"]
     end
 
-    subgraph sonnet["Research & Implementation Tier — Sonnet"]
+    subgraph opus_agents["Research Tier — Opus"]
         direction TB
         subgraph researchers["6 Parallel Researchers"]
             arch["architecture"]
@@ -211,15 +211,18 @@ flowchart TB
             concerns["concerns"]
         end
         cross["cross-validator"]
+    end
+
+    subgraph sonnet["Implementation Tier — Sonnet"]
         tw["test-writer · Red"]
         impl["implementer · Green"]
         qa["qa-agent"]
         tasks_ag["tasks-agent"]
+        build["build-validator"]
+        summary["summary-agent"]
     end
 
     subgraph haiku["Operations Tier — Haiku"]
-        pm["pm-agent · ClickUp (deprecated)"]
-        slack["slack-agent"]
         git["git-agent"]
     end
 
@@ -233,7 +236,8 @@ flowchart TB
 
     map --> researchers
     researchers --> cross --> codebase
-    refine --> spec_int --> spec_file
+    new --> spec_int --> spec_file
+    refine --> spec_int
     exec --> proposal --> prop_file & phase_files
     exec --> tw --> impl --> qa
     qa --> tasks_ag --> tasks_file

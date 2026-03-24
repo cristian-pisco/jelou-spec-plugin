@@ -40,7 +40,7 @@
    - Any blocked or failed phases
 
 **Validation**:
-- If status is `draft` or `refining`: stop. "Task is in `<status>` state. Run `/jlu:refine-spec` first to get it to `planned`."
+- If status is `draft` or `refining`: stop. "Task is in `<status>` state. Run `/jlu:new-task <slug>` first to complete the spec interview and get it to `planned`."
 - If status is `closed` or `cancelled`: stop. "Task is already `<status>`. Cannot execute."
 
 **Store**: `CURRENT_STATUS`, `AFFECTED_SERVICES`, `PHASE_STATE`
