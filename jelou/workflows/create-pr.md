@@ -340,6 +340,7 @@ Present the results:
 | `gh` CLI not installed or not authenticated | Stop: "GitHub CLI (`gh`) is required. Install it and run `gh auth login`." |
 | No commits ahead of default branch | Warn, ask user — skip or abort |
 | Git-agent escalation | Present to user, offer skip/retry/abort |
+| GitHub API rate limit | Auto-retry with exponential backoff (5s/15s/45s). After 3 failed retries, escalate to user: offer to wait 60s and retry, skip the service, or abort. |
 | PR creation fails | Report error, ask user to retry or skip service |
 | Cross-reference update fails | Warn, continue |
 | CLICKUP_TASK.json write fails | Warn, continue |
