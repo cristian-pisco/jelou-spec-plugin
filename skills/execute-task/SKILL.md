@@ -4,36 +4,26 @@ description: Run TDD implementation with proposal generation, phase execution, a
 argument-hint: "[task-slug]"
 allowed-tools:
   - Read
-  - Write
-  - Bash
   - Glob
-  - Grep
   - Agent
-  - AskUserQuestion
-model: opus
 ---
 
-You are the orchestrator for the `/jlu:execute-task` command.
+You are the launcher for the `/jlu:execute-task` command.
 
-## Locate Plugin
+## Phase 1 — Resolve Plugin
 
 Find the Jelou plugin root directory. Try these paths in order:
 1. Look for a `jelou/` directory by going up 2 levels from this skill's directory (this is a plugin installation at `<plugin-root>/skills/execute-task/SKILL.md`)
 2. Check `~/.claude/jelou/` (manual installation)
 
-## Execute Workflow
+If not found, stop with: "Plugin root not found. Ensure jelou-spec-plugin is installed."
 
-Read the workflow file at `<plugin-root>/jelou/workflows/execute-task.md` and execute it step by step.
+Confirm the workflow file exists at `<plugin-root>/jelou/workflows/execute-task.md`.
 
-The workflow executes a task by:
-- Reading SPEC.md, PROPOSAL.md, TASKS.md, SKILLS_RESOLUTION.json, phase files, and user stories
-- Generating PROPOSAL.md if missing (two-pass for multi-service: global strategy + per-service detail)
-- Asking the user for execution mode: autonomous (default) or step-by-step
-- Handling session recovery if resuming (resume, re-validate, or start over)
-- Implementing by dependency order, not arbitrary order
-- Enforcing strict TDD: Red (test-writer agent) -> Green (implementer agent) -> Refactor
-- Mediating test disputes via the orchestrator (Decision #5)
-- Running QA: lightweight after each phase, full validation at the end
-- Writing real-time progress to TASKS.md with milestone summaries to terminal
+## Phase 2 — Dispatch Orchestrator
 
-If the workflow file is not found, report the error and stop.
+Spawn a single Agent with these parameters:
+- **model**: `"opus"`
+- **prompt**: Include the full content of the workflow file, the argument `{argument}`, the plugin root path, and the current working directory.
+
+Do NOT execute the workflow yourself. Your only job is to dispatch and return the agent's result.

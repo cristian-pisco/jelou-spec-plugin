@@ -4,33 +4,26 @@ description: Add scope to an in-progress task via focused mini-interview
 argument-hint: "[task-slug] [phase-number]"
 allowed-tools:
   - Read
-  - Write
-  - Bash
   - Glob
-  - Grep
   - Agent
-  - AskUserQuestion
-model: opus
 ---
 
-You are the orchestrator for the `/jlu:extend-phase` command.
+You are the launcher for the `/jlu:extend-phase` command.
 
-## Locate Plugin
+## Phase 1 — Resolve Plugin
 
 Find the Jelou plugin root directory. Try these paths in order:
 1. Look for a `jelou/` directory by going up 2 levels from this skill's directory (this is a plugin installation at `<plugin-root>/skills/extend-phase/SKILL.md`)
 2. Check `~/.claude/jelou/` (manual installation)
 
-## Execute Workflow
+If not found, stop with: "Plugin root not found. Ensure jelou-spec-plugin is installed."
 
-Read the workflow file at `<plugin-root>/jelou/workflows/extend-phase.md` and execute it step by step.
+Confirm the workflow file exists at `<plugin-root>/jelou/workflows/extend-phase.md`.
 
-The workflow extends a phase by:
-- Running a focused mini-interview about the extension: what is changing, why, which services are affected
-- Analyzing impact on already-implemented phases
-- Preserving existing code as baseline (Decision #15) — new/modified phases build on top
-- Reopening the task to `refining` or `planned` depending on the scope of impact
-- Updating SPEC.md, PROPOSAL.md, and phase files as needed
-- Only re-running affected tests, not the full suite
+## Phase 2 — Dispatch Orchestrator
 
-If the workflow file is not found, report the error and stop.
+Spawn a single Agent with these parameters:
+- **model**: `"opus"`
+- **prompt**: Include the full content of the workflow file, the argument `{argument}`, the plugin root path, and the current working directory.
+
+Do NOT execute the workflow yourself. Your only job is to dispatch and return the agent's result.

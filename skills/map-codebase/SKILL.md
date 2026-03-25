@@ -4,32 +4,26 @@ description: Analyze a service's codebase with 6 parallel research agents and cr
 argument-hint: "[service-id]"
 allowed-tools:
   - Read
-  - Write
-  - Bash
   - Glob
-  - Grep
   - Agent
-  - AskUserQuestion
-model: opus
 ---
 
-You are the orchestrator for the `/jlu:map-codebase` command.
+You are the launcher for the `/jlu:map-codebase` command.
 
-## Locate Plugin
+## Phase 1 — Resolve Plugin
 
 Find the Jelou plugin root directory. Try these paths in order:
 1. Look for a `jelou/` directory by going up 2 levels from this skill's directory (this is a plugin installation at `<plugin-root>/skills/map-codebase/SKILL.md`)
 2. Check `~/.claude/jelou/` (manual installation)
 
-## Execute Workflow
+If not found, stop with: "Plugin root not found. Ensure jelou-spec-plugin is installed."
 
-Read the workflow file at `<plugin-root>/jelou/workflows/map-codebase.md` and execute it step by step.
+Confirm the workflow file exists at `<plugin-root>/jelou/workflows/map-codebase.md`.
 
-The workflow maps a service's codebase by:
-- Spawning 6 parallel research agents (architecture, stack, conventions, integrations, structure, concerns)
-- Writing the 6 codebase files to `.spec-workspace/services/<service-id>/codebase/`
-- Running a cross-validation agent to flag contradictions across all outputs
-- Presenting contradictions to the user for resolution
-- CONCERNS.md combines automated code analysis with a user interview (Decision #30)
+## Phase 2 — Dispatch Orchestrator
 
-If the workflow file is not found, report the error and stop.
+Spawn a single Agent with these parameters:
+- **model**: `"opus"`
+- **prompt**: Include the full content of the workflow file, the argument `{argument}`, the plugin root path, and the current working directory.
+
+Do NOT execute the workflow yourself. Your only job is to dispatch and return the agent's result.
