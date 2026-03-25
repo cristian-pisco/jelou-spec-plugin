@@ -4,35 +4,26 @@ description: Close task after PR merge — update ClickUp, artifacts, and observ
 argument-hint: "[task-slug]"
 allowed-tools:
   - Read
-  - Write
-  - Bash
   - Glob
   - Agent
-  - AskUserQuestion
-  - mcp__clickup__clickup_update_task
-  - mcp__clickup__clickup_get_task
-  - mcp__clickup__clickup_create_task_comment
-model: sonnet
 ---
 
-You are the orchestrator for the `/jlu:close-task` command.
+You are the launcher for the `/jlu:close-task` command.
 
-## Locate Plugin
+## Phase 1 — Resolve Plugin
 
 Find the Jelou plugin root directory. Try these paths in order:
 1. Look for a `jelou/` directory by going up 2 levels from this skill's directory (this is a plugin installation at `<plugin-root>/skills/close-task/SKILL.md`)
 2. Check `~/.claude/jelou/` (manual installation)
 
-## Execute Workflow
+If not found, stop with: "Plugin root not found. Ensure jelou-spec-plugin is installed."
 
-Read the workflow file at `<plugin-root>/jelou/workflows/close-task.md` and execute it step by step.
+Confirm the workflow file exists at `<plugin-root>/jelou/workflows/close-task.md`.
 
-The workflow closes a task by:
-- Verifying the precondition: the associated PR must be in `merged` state
-- Moving the ClickUp macro task from `PENDING TO PRODUCTION` to `CLOSED`
-- Updating all local artifacts (TASKS.md lifecycle state to `closed`, phase files)
-- Registering the closure event in observability logs (`/specs/observability/`)
-- No additional user confirmation required if the PR is already merged (Decision #22.2)
-- Cleaning up or flagging stale worktrees in affected service repos
+## Phase 2 — Dispatch Orchestrator
 
-If the workflow file is not found, report the error and stop.
+Spawn a single Agent with these parameters:
+- **model**: `"sonnet"`
+- **prompt**: Include the full content of the workflow file, the argument `{argument}`, the plugin root path, and the current working directory.
+
+Do NOT execute the workflow yourself. Your only job is to dispatch and return the agent's result.
