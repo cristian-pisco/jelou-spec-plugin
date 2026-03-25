@@ -85,7 +85,7 @@ Read and assemble:
 
 ### 4b. Global Strategy Pass (Decision #21)
 
-Spawn `jlu-proposal-agent` with:
+Spawn `jlu-proposal-agent` with model: **opus**:
 - All context from 4a
 - Task: "Produce the global proposal — cross-service strategy, dependency order, phase structure, contract boundaries, risks, testing strategy."
 - The agent writes a draft global strategy.
@@ -93,7 +93,7 @@ Spawn `jlu-proposal-agent` with:
 ### 4c. Local Detail Pass (Multi-Service Only)
 
 If there are **2+ affected services**:
-- For each affected service, spawn a `jlu-proposal-agent` in parallel:
+- For each affected service, spawn a `jlu-proposal-agent` with model: **opus** in parallel:
   - Pass: the global strategy draft + service-specific codebase files + SPEC.md
   - Task: "Expand service-specific execution details for `<service-id>`: local scope, relevant modules, implementation constraints, service-level phases."
 - Wait for all local agents to complete.
@@ -134,7 +134,7 @@ For each phase defined in PROPOSAL.md, for each affected service:
 
 ### 4f. Generate User Stories
 
-Spawn a sub-agent to derive user stories from SPEC.md + PROPOSAL.md:
+Spawn a sub-agent with model: **sonnet** to derive user stories from SPEC.md + PROPOSAL.md:
 - For each affected service, create story files at `<TASK_DIR>/services/<service-id>/uh/<story-slug>.md`.
 - Use the user-story.md template from `<plugin-root>/jelou/templates/user-story.md` if available.
 - Each story follows the hybrid format (Decision #38):
@@ -214,7 +214,7 @@ Read the phases from PROPOSAL.md in dependency order. For each phase:
 
 ### 7d. TDD Red — Spawn Test Writer
 
-Spawn `jlu-test-writer` agent:
+Spawn `jlu-test-writer` agent with model: **sonnet**:
 - **Input**:
   - Phase requirements (from the phase file's immutable section)
   - `<TASK_DIR>/services/<service-id>/CONTEXT.md` (if exists)
@@ -238,13 +238,13 @@ Spawn `jlu-test-writer` agent:
 2. Confirm the new tests FAIL (Red state).
 3. If any new tests PASS unexpectedly:
    - Log to terminal: "Test `<test-name>` passes without implementation — auto-investigating."
-   - Spawn a fresh `jlu-test-writer` to evaluate whether the test is correct or the requirement is already implemented.
+   - Spawn a fresh `jlu-test-writer` with model: **sonnet** to evaluate whether the test is correct or the requirement is already implemented.
    - If already implemented: mark requirement as covered, skip to next.
    - If test is incorrect: rewrite and re-verify Red state.
 
 ### 7e. TDD Green — Spawn Implementer
 
-Spawn `jlu-implementer` agent:
+Spawn `jlu-implementer` agent with model: **sonnet**:
 - **Input**:
   - Phase requirements
   - Test file paths (from the test writer)
@@ -266,14 +266,14 @@ After the implementer finishes and tests are green, run lint and format inside t
 2. Confirm all tests PASS (Green state).
 3. If tests still fail after implementation:
    - Log failures to terminal.
-   - Spawn a fresh `jlu-implementer` with accumulated failure context (Decision #1).
+   - Spawn a fresh `jlu-implementer` with model: **sonnet** and accumulated failure context (Decision #1).
    - Retry up to 5 times total.
    - If still failing after 5 attempts: pause and notify user (see Escalation Format below).
 
 ### 7f. Test Dispute Resolution (Decision #5)
 
 If the implementer flags that a test is incorrect:
-1. Spawn a **fresh** `jlu-test-writer` agent with:
+1. Spawn a **fresh** `jlu-test-writer` agent with model: **sonnet** and:
    - The original phase requirements from SPEC.md and the phase file
    - The implementer's objection (what it believes is wrong with the test)
    - The test code in question
@@ -295,7 +295,7 @@ After Green:
 
 ### 7h. Per-Phase QA (Decision #13)
 
-Spawn `jlu-qa-agent` for a lightweight per-phase check:
+Spawn `jlu-qa-agent` with model: **sonnet** for a lightweight per-phase check:
 - **Docker context** (only if `IS_DOCKER_SERVICE` is true): Include the same `## Execution Environment` block as in Step 7d. Omit for non-Docker services.
 - All phase tests pass
 - No regression in existing tests
@@ -304,20 +304,20 @@ Spawn `jlu-qa-agent` for a lightweight per-phase check:
 
 If QA finds issues:
 - Log issues to terminal.
-- Attempt to fix automatically: spawn `jlu-implementer` with QA findings.
+- Attempt to fix automatically: spawn `jlu-implementer` with model: **sonnet** and QA findings.
 - Retry up to 5 times total.
 - If still failing after 5 attempts: pause and notify user (see Escalation Format below).
 
 ### 7i. Update TASKS.md
 
-Spawn `jlu-tasks-agent` (or update directly):
+Spawn `jlu-tasks-agent` with model: **sonnet** (or update directly):
 - Update phase status in TASKS.md
 - Record: test results, artifacts created, any deviations
 - Record agent summaries from this phase
 
 ### 7j. Git Commit
 
-Spawn `jlu-git-agent`:
+Spawn `jlu-git-agent` with model: **haiku**:
 - Stage all changes from this phase (in the task worktree only)
 - Commit with a conventional commit message referencing the phase
 - **Restrictions**: Only commit to `spec/<TASK_SLUG>` branch. Never to main/master/alpha.
@@ -325,7 +325,7 @@ Spawn `jlu-git-agent`:
 
 ### 7k. Build Validation
 
-Spawn `jlu-build-validator` agent:
+Spawn `jlu-build-validator` agent with model: **sonnet**:
 - **Input**:
   - Service source path (worktree or repo)
   - `<WORKSPACE_PATH>/services/<service-id>/codebase/CONVENTIONS.md`
@@ -334,7 +334,7 @@ Spawn `jlu-build-validator` agent:
 - **Task**: Run the project build, fix any failures, verify tests still pass.
 
 **If the agent reports PASS** (with or without fixes):
-- If fixes were applied: re-spawn `jlu-git-agent` to commit the build fixes (message: `fix(<service>): resolve build errors from phase <NN>`).
+- If fixes were applied: re-spawn `jlu-git-agent` with model: **haiku** to commit the build fixes (message: `fix(<service>): resolve build errors from phase <NN>`).
 - If no fixes needed: continue to 7l.
 
 **If the agent reports SKIP** (no build command detected):
@@ -354,7 +354,7 @@ Spawn `jlu-build-validator` agent:
 
 After all phases are complete:
 
-Spawn `jlu-qa-agent` for comprehensive final validation:
+Spawn `jlu-qa-agent` with model: **sonnet** for comprehensive final validation:
 - **Full coverage analysis**: Are all requirements from SPEC.md covered by tests?
 - **Edge case review**: Were edge cases from the spec addressed?
 - **Regression check**: Full test suite across all affected services
@@ -387,7 +387,7 @@ If all validation passes:
    - Status: `validating` → `ready_to_publish`
    - Add completion timestamp
    - Record final test counts
-2. Dispatch `jlu-summary-agent`:
+2. Dispatch `jlu-summary-agent` with model: **sonnet**:
    - Pass `TASK_DIR` (the resolved task directory path)
    - Pass `CONTEXT_HINT` = `post-execution`
    - Print the agent's output verbatim — do not add to or reformat it.
