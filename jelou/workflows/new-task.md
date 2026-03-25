@@ -209,7 +209,7 @@ Notify the user before launching:
 Launching worktree creation in background for <N> services...
 ```
 
-Spawn a **background Agent** (`run_in_background: true`) using the `jlu-git-agent` with:
+Spawn a **background Agent** (`run_in_background: true`) using the `jlu-git-agent` with model: **haiku** and:
 - The confirmed services list (`CONFIRMED_SERVICES`)
 - The task slug (`TASK_SLUG`)
 - The repo path for each service from `services.yaml`
