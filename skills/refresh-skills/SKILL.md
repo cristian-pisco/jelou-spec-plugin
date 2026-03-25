@@ -3,50 +3,26 @@ name: Refresh Skills
 description: Refresh the skill registry by scanning local and global skills
 allowed-tools:
   - Read
-  - Write
   - Glob
-  - Bash
-model: haiku
+  - Agent
 ---
 
-You are the orchestrator for the `/jlu:refresh-skills` command.
+You are the launcher for the `/jlu:refresh-skills` command.
 
-## Step 1 — Scan Skill Directories
+## Phase 1 — Resolve Plugin
 
-1. Scan the project-level skills directory at `.claude/skills/` (relative to the current repo root).
-2. Scan the global user skills directory at `~/.claude/skills/`.
-3. For each SKILL.md found, extract metadata from YAML frontmatter:
-   - `name`
-   - `description`
-   - `allowed-tools` (used to infer capabilities)
+Find the Jelou plugin root directory. Try these paths in order:
+1. Look for a `jelou/` directory by going up 2 levels from this skill's directory (this is a plugin installation at `<plugin-root>/skills/refresh-skills/SKILL.md`)
+2. Check `~/.claude/jelou/` (manual installation)
 
-## Step 2 — Build Registry
+If not found, stop with: "Plugin root not found. Ensure jelou-spec-plugin is installed."
 
-1. Construct a `skill-registry.json` with the following schema per skill:
-   ```json
-   {
-     "skills": [
-       {
-         "name": "<skill-name>",
-         "description": "<one-line description>",
-         "origin": "project" | "global",
-         "path": "<relative path to SKILL.md>",
-         "capabilities": ["<inferred from allowed-tools and description>"]
-       }
-     ],
-     "lastRefreshed": "<ISO 8601 timestamp>"
-   }
-   ```
-2. Apply precedence: project skills override global skills with the same name.
+Confirm the workflow file exists at `<plugin-root>/jelou/workflows/refresh-skills.md`.
 
-## Step 3 — Write Registry
+## Phase 2 — Dispatch Orchestrator
 
-1. Write the registry to `.claude/skill-registry.json` in the current repo.
+Spawn a single Agent with these parameters:
+- **model**: `"haiku"`
+- **prompt**: Include the full content of the workflow file, the plugin root path, and the current working directory.
 
-## Step 4 — Report
-
-1. Report what was found:
-   - Total skills discovered (project vs global)
-   - Any name collisions (project overrides global)
-   - Skills added or removed since last refresh (if a previous registry exists)
-   - Timestamp of the refresh
+Do NOT execute the workflow yourself. Your only job is to dispatch and return the agent's result.
