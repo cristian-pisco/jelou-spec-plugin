@@ -135,7 +135,7 @@ For the current service:
 
 ## Step 5 — Stage, Commit, Push (via git-agent)
 
-Spawn `jlu-git-agent` in `SERVICE_CWD` with this task:
+Spawn `jlu-git-agent` in `SERVICE_CWD` with model: **haiku** and this task:
 
 > Verify you are on branch `spec/<TASK_SLUG>`. Stage all task-related changes, commit, and push.
 > Commit style: brief, descriptive, no emojis. Follow the project's commit convention (detect from git log or config). Example: `feat(auth): add JWT token validation for user sessions`
