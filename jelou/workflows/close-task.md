@@ -67,6 +67,12 @@
 
 If all preconditions pass (or user overrides), proceed with closure.
 
+> **Timestamp**: Before executing any closure action, generate the current UTC timestamp by running:
+> ```bash
+> date -u +"%Y-%m-%dT%H:%M:%SZ"
+> ```
+> Store the output as `CLOSE_TIMESTAMP`. Use this value everywhere a closure timestamp is needed below.
+
 ### 3a. Update ClickUp (if synced)
 
 1. Check if `<TASK_DIR>/CLICKUP_TASK.json` exists.
@@ -78,7 +84,7 @@ If all preconditions pass (or user overrides), proceed with closure.
    e. Record the closure in `CLICKUP_TASK.json`:
       ```json
       {
-        "closedAt": "<ISO-timestamp>",
+        "closedAt": "<CLOSE_TIMESTAMP>",
         "closedBy": "jlu:close-task",
         "previousStatus": "<previous-status>"
       }
@@ -90,7 +96,7 @@ If all preconditions pass (or user overrides), proceed with closure.
 
 Update `<TASK_DIR>/TASKS.md`:
 - Status: `closed`
-- Add closure timestamp: `- Closed: <current-datetime-ISO>`
+- Add closure timestamp: `- Closed: <CLOSE_TIMESTAMP>`
 - Add PR reference (if verified): `- PR merged: <PR_URL> at <merge-timestamp>`
 - Preserve all existing content (phase history, test results, etc.)
 
@@ -101,7 +107,7 @@ For each affected service:
 2. Create or append to `<service-repo>/specs/observability/events.jsonl`:
    ```json
    {
-     "timestamp": "<ISO-timestamp>",
+     "timestamp": "<CLOSE_TIMESTAMP>",
      "event": "task_closed",
      "task": "<TASK_SLUG>",
      "service": "<service-id>",
