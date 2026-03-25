@@ -69,6 +69,7 @@ If MCP is already configured, this may be a transient ClickUp API error. Try re-
 | Responsible | Responsable |
 | Requester | Solicitante |
 | Story Points | Story points |
+| Sprint Points | Sprint points |
 | Size | Talla |
 | Risk | Riesgo |
 | Project Type | Tipo proyecto |
@@ -96,6 +97,7 @@ Infer these fields inline (no pm-agent):
 | Field | Inference Logic |
 |-------|----------------|
 | **Story Points / Talla** | From number of phases, services, requirements, codebase complexity |
+| **Sprint Points** | Same value as Story Points — must always be equal |
 | **Priority / Riesgo** | From urgency, impact, cross-service dependencies |
 | **Tipo proyecto** | From task intent: new feature, enhancement, bugfix, refactor |
 | **Front** | "Reliability" for Issues, else "Enhancement" or "AI" |
@@ -149,7 +151,7 @@ For each user story file in `uh/`:
 
 1. Match existing subtasks by slug via CLICKUP_TASK.json.
 2. **Create new**: Use `clickup_create_task` with `parent` = macro task ID.
-3. **Subtasks inherit ALL parent custom fields**: Riesgo, Equipo, Tipo proyecto, Solicitante, Front, Talla, Responsable, Sprint, Story Points, Necesita Diseno.
+3. **Subtasks inherit ALL parent custom fields**: Riesgo, Equipo, Tipo proyecto, Solicitante, Front, Talla, Responsable, Sprint, Story Points, Sprint Points, Necesita Diseno.
 4. **Update existing**: Use `clickup_update_task`.
 5. Set `time_estimate` on each subtask (proportional to phase scope) — use `clickup_update_task` after create.
 6. **Never delete subtasks** (Decision #27).
@@ -171,7 +173,8 @@ Write the updated sync state:
     "Tipo proyecto": "<field-id>",
     "Front": "<field-id>",
     "Necesita Diseno": "<field-id>",
-    "Sprint": "<field-id>"
+    "Sprint": "<field-id>",
+    "Sprint points": "<field-id>"
   },
   "defaults": {
     "equipo": "<value>",
