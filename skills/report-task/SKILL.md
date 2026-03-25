@@ -4,70 +4,26 @@ description: Executive summary with progress, blockers, and stale worktree detec
 argument-hint: "[task-slug]"
 allowed-tools:
   - Read
-  - Bash
   - Glob
-  - Grep
-  - AskUserQuestion
-model: sonnet
+  - Agent
 ---
 
-You are the orchestrator for the `/jlu:report-task` command.
+You are the launcher for the `/jlu:report-task` command.
 
-## Step 1 — Resolve Task
+## Phase 1 — Resolve Plugin
 
-1. If a task slug is provided as an argument, use it.
-2. Otherwise, find the most recent task in `.spec-workspace/specs/` by reading `.spec-workspace.json` to locate the workspace.
+Find the Jelou plugin root directory. Try these paths in order:
+1. Look for a `jelou/` directory by going up 2 levels from this skill's directory (this is a plugin installation at `<plugin-root>/skills/report-task/SKILL.md`)
+2. Check `~/.claude/jelou/` (manual installation)
 
-## Step 2 — Gather Task Artifacts
+If not found, stop with: "Plugin root not found. Ensure jelou-spec-plugin is installed."
 
-1. Read the following files from the task's spec folder (`<workspace>/specs/<date>/<task-slug>/`):
-   - `TASKS.md` — current execution status, lifecycle state, testing status
-   - `SPEC.md` — task title and problem statement
-   - `PROPOSAL.md` — planned phases, affected services, dependency order
-   - `CLICKUP_TASK.json` — external links and sync state (if exists)
+Confirm the workflow file exists at `<plugin-root>/jelou/workflows/report-task.md`.
 
-## Step 3 — Gather Phase Status
+## Phase 2 — Dispatch Orchestrator
 
-1. For each affected service, read the phase files from `services/<service-id>/phases/`.
-2. Extract the status of each phase: pending, in_progress, done, blocked.
-3. Check user stories in `uh/` for completion status.
+Spawn a single Agent with these parameters:
+- **model**: `"sonnet"`
+- **prompt**: Include the full content of the workflow file, the argument `{argument}`, the plugin root path, and the current working directory.
 
-## Step 4 — Detect Stale Worktrees
-
-1. Scan service repos for `/.worktrees/` directories.
-2. Cross-reference with task states — worktrees for tasks in `done` or `closed` state are stale.
-3. If stale worktrees are found, include a cleanup prompt in the report (Decision #17).
-
-## Step 5 — Consolidate Observability
-
-1. Read observability logs from `/specs/observability/` in each affected service repo.
-2. Identify recent events, blockers, and notable activity.
-
-## Step 6 — Present Dashboard Summary
-
-Present an executive summary in dashboard style (default verbosity — Decision #12):
-
-```
-## Task: <task-title>
-**State**: <lifecycle-state> | **Services**: <count> affected
-
-### Progress
-| Service | Phase | Status | Tests |
-|---------|-------|--------|-------|
-| ...     | ...   | ...    | ...   |
-
-### Blockers
-- <blocker descriptions, if any>
-
-### Recent Activity
-- <recent events from observability>
-
-### Stale Worktrees (if any)
-- <repo>: /.worktrees/<task-slug> — task is <state>, consider cleanup
-
-### External Links
-- ClickUp: <url>
-- PR: <url>
-```
-
-If the user requests detailed mode, include code highlights, test results, and agent reasoning from phase execution sections.
+Do NOT execute the workflow yourself. Your only job is to dispatch and return the agent's result.
