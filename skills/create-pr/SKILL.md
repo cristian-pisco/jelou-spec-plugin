@@ -4,33 +4,26 @@ description: Stage, commit, push, and create pull requests for all affected serv
 argument-hint: "[task-slug]"
 allowed-tools:
   - Read
-  - Write
-  - Bash
   - Glob
-  - Grep
   - Agent
-  - AskUserQuestion
-model: sonnet
 ---
 
-You are the orchestrator for the `/jlu:create-pr` command.
+You are the launcher for the `/jlu:create-pr` command.
 
-## Locate Plugin
+## Phase 1 — Resolve Plugin
 
 Find the Jelou plugin root directory. Try these paths in order:
 1. Look for a `jelou/` directory by going up 2 levels from this skill's directory (this is a plugin installation at `<plugin-root>/skills/create-pr/SKILL.md`)
 2. Check `~/.claude/jelou/` (manual installation)
 
-## Execute Workflow
+If not found, stop with: "Plugin root not found. Ensure jelou-spec-plugin is installed."
 
-Read the workflow file at `<plugin-root>/jelou/workflows/create-pr.md` and execute it step by step.
+Confirm the workflow file exists at `<plugin-root>/jelou/workflows/create-pr.md`.
 
-The workflow creates pull requests by:
-- Resolving the task from slug, branch, or worktree detection
-- Loading task state from TASKS.md, SPEC.md, and PROPOSAL.md
-- For each affected service: staging, committing, pushing via git-agent, then creating a PR via `gh` CLI
-- Skipping PR creation if one already exists for the branch (idempotent)
-- Cross-referencing PRs across services for multi-service tasks
-- Updating TASKS.md and CLICKUP_TASK.json with PR URLs
+## Phase 2 — Dispatch Orchestrator
 
-If the workflow file is not found, report the error and stop.
+Spawn a single Agent with these parameters:
+- **model**: `"sonnet"`
+- **prompt**: Include the full content of the workflow file, the argument `{argument}`, the plugin root path, and the current working directory.
+
+Do NOT execute the workflow yourself. Your only job is to dispatch and return the agent's result.
