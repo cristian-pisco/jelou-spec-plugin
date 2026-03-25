@@ -81,7 +81,7 @@ Spawn all 6 agents simultaneously using the Agent tool. Each agent receives the 
 - `OUTPUT_DIR`: where to write the output file
 - `service-id`: the service identifier
 
-### Agent 1: jlu-architecture-researcher
+### Agent 1: jlu-architecture-researcher (model: **opus**)
 - **Prompt**: Read the agent definition from `<plugin-root>/agents/jlu-architecture-researcher.md`. Prepend:
   ```
   Service ID: <service-id>
@@ -90,7 +90,7 @@ Spawn all 6 agents simultaneously using the Agent tool. Each agent receives the 
   ```
 - **Output**: `<OUTPUT_DIR>/ARCHITECTURE.md`
 
-### Agent 2: jlu-stack-researcher
+### Agent 2: jlu-stack-researcher (model: **opus**)
 - **Prompt**: Read the agent definition from `<plugin-root>/agents/jlu-stack-researcher.md`. Prepend:
   ```
   Service ID: <service-id>
@@ -99,7 +99,7 @@ Spawn all 6 agents simultaneously using the Agent tool. Each agent receives the 
   ```
 - **Output**: `<OUTPUT_DIR>/STACK.md`
 
-### Agent 3: jlu-conventions-researcher
+### Agent 3: jlu-conventions-researcher (model: **opus**)
 - **Prompt**: Read the agent definition from `<plugin-root>/agents/jlu-conventions-researcher.md`. Prepend:
   ```
   Service ID: <service-id>
@@ -108,7 +108,7 @@ Spawn all 6 agents simultaneously using the Agent tool. Each agent receives the 
   ```
 - **Output**: `<OUTPUT_DIR>/CONVENTIONS.md`
 
-### Agent 4: jlu-integrations-researcher
+### Agent 4: jlu-integrations-researcher (model: **opus**)
 - **Prompt**: Read the agent definition from `<plugin-root>/agents/jlu-integrations-researcher.md`. Prepend:
   ```
   Service ID: <service-id>
@@ -117,7 +117,7 @@ Spawn all 6 agents simultaneously using the Agent tool. Each agent receives the 
   ```
 - **Output**: `<OUTPUT_DIR>/INTEGRATIONS.md`
 
-### Agent 5: jlu-structure-researcher
+### Agent 5: jlu-structure-researcher (model: **opus**)
 - **Prompt**: Read the agent definition from `<plugin-root>/agents/jlu-structure-researcher.md`. Prepend:
   ```
   Service ID: <service-id>
@@ -126,7 +126,7 @@ Spawn all 6 agents simultaneously using the Agent tool. Each agent receives the 
   ```
 - **Output**: `<OUTPUT_DIR>/STRUCTURE.md`
 
-### Agent 6: jlu-concerns-researcher
+### Agent 6: jlu-concerns-researcher (model: **opus**)
 - **Prompt**: Read the agent definition from `<plugin-root>/agents/jlu-concerns-researcher.md`. Prepend:
   ```
   Service ID: <service-id>
@@ -159,7 +159,7 @@ All 6 agents must complete before proceeding. If any agent fails:
 
 ## Step 7 — Cross-Validation
 
-Spawn the `jlu-cross-validator` agent:
+Spawn the `jlu-cross-validator` agent with model: **opus**:
 
 - **Prompt**: Read the agent definition from `<plugin-root>/agents/jlu-cross-validator.md`. Prepend the contents of all 6 codebase files:
   ```
