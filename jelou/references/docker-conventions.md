@@ -21,13 +21,14 @@ All dependency and framework commands (`npm`, `nest`, `npx`, `yarn`, `composer`,
 
 ## Port Allocation Algorithm
 
-Each task worktree gets its own Docker instance on a unique host port to avoid collisions with other running tasks.
+Each task worktree gets its own Docker instance on unique host ports to avoid collisions with other running tasks.
 
 1. Base port: **3100**
 2. Run `docker ps --format '{{.Ports}}'` to find currently occupied host ports.
 3. Parse port numbers from the output.
-4. Select the next free port starting from 3100, incrementing by 1, skipping any port found in `docker ps` output.
-5. Write the assigned port into the worktree's `.env` file under the service's `port_env` variable (default: `APP_PORT`).
+4. Read the base compose file to discover **all** port mappings for each container (a single container may expose multiple ports, e.g., `8080` for the server and `9001` for a debugger).
+5. Allocate one host port **per port mapping** from the next free port starting from 3100, incrementing by 1, skipping any port in the allocated set or found in `docker ps` output. Add each allocated port to the set before processing the next mapping.
+6. Write the primary port (the one matching `port_env`) into the worktree's `.env` file under the service's `port_env` variable (default: `APP_PORT`). Secondary port mappings are only used in the override file.
 
 ## Untracked File Copying
 
@@ -52,25 +53,28 @@ For each Docker-enabled service worktree, generate a `docker-compose.override.ym
 
 - **`name`**: `<service-id>-<TASK_SLUG>` (sets the Docker Compose project name, preventing cross-service collisions)
 - **`container_name`**: `<service-id>-<TASK_SLUG>`
-- **Host port mapping**: `<allocated-port>:<internal-port>`
+- **Host port mappings**: One re-mapped port per base compose port mapping, using `!override` to fully replace the base list
 - **Network alias**: `<service-id>-<TASK_SLUG>` on the existing `app-network`
 
 `app-network` is the compose-internal network name that maps to the external `devlabs_mynetwork` network. All services use this same pattern.
 
-Example for `marketplace-service`, task `add-oauth-flow`, allocated port `3100`:
+**Why `!override`?** Without it, Docker Compose **merges** the override ports with the base ports, leaving the original host ports bound. When multiple worktrees of the same service run simultaneously, all would try to bind the same original host ports, causing conflicts. `!override` ensures only the allocated ports are mapped.
+
+Example for `api-gateway-service`, task `add-oauth-flow`, allocated ports `3100` and `3101` (base has `8998:8080` and `13214:9001`):
 
 ```yaml
-name: marketplace-service-add-oauth-flow
+name: api-gateway-service-add-oauth-flow
 
 services:
   app:
-    container_name: marketplace-service-add-oauth-flow
-    ports:
+    container_name: api-gateway-service-add-oauth-flow
+    ports: !override
       - "3100:8080"
+      - "3101:9001"
     networks:
       app-network:
         aliases:
-          - marketplace-service-add-oauth-flow
+          - api-gateway-service-add-oauth-flow
 ```
 
 ### Secondary Containers
@@ -79,10 +83,10 @@ Services with multiple containers in their compose file (e.g., `orchestrator-ser
 
 Secondary containers get:
 - `container_name`: `<original-container-name>-<TASK_SLUG>`
-- Unique port allocation (same algorithm as primary)
+- `ports: !override` with one allocated port per base port mapping (same algorithm as primary)
 - No network alias needed (secondary containers are typically databases, not addressed by service URLs)
 
-Example for `orchestrator-service`, task `add-oauth-flow`, app port `3101`, DB port `5433`:
+Example for `orchestrator-service`, task `add-oauth-flow`, app ports `3101`+`3102`, DB port `5433` (base app has `8080` and `9001`, base DB has `5432`):
 
 ```yaml
 name: orchestrator-service-add-oauth-flow
@@ -90,15 +94,16 @@ name: orchestrator-service-add-oauth-flow
 services:
   app:
     container_name: orchestrator-service-add-oauth-flow
-    ports:
+    ports: !override
       - "3101:8080"
+      - "3102:9001"
     networks:
       app-network:
         aliases:
           - orchestrator-service-add-oauth-flow
   router-vector-db:
     container_name: router-vector-db-add-oauth-flow
-    ports:
+    ports: !override
       - "5433:5432"
 ```
 

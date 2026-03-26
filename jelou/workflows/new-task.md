@@ -244,10 +244,10 @@ For each service in `CONFIRMED_SERVICES`:
 
 For each service that has a `docker` config in `services.yaml` AND a successfully created worktree:
 
-3. Read the service's base compose file (from `docker.compose_file` in `services.yaml`) to discover all container definitions.
-4. Allocate one port per container from the next free port starting from 3100 (increment by 1, skip any port in the allocated set). Add each allocated port to the set before processing the next container.
+3. Read the service's base compose file (from `docker.compose_file` in `services.yaml`) to discover all container definitions and their port mappings.
+4. Allocate one host port **per port mapping** (not per container) from the next free port starting from 3100 (increment by 1, skip any port in the allocated set). A container with two port mappings (e.g., `8080` + `9001`) gets two allocated ports. Add each allocated port to the set before processing the next mapping.
 5. Update the worktree's `.env`: replace `^<PORT_ENV>=.*` with `<PORT_ENV>=<allocated-primary-port>`.
-6. Secondary container ports are NOT written to `.env` — they are only used in the override file generated in Phase 3.
+6. Secondary port mappings and secondary container ports are NOT written to `.env` — they are only used in the override file generated in Phase 3.
 
 ### Phase 3 — Generate `docker-compose.override.yml` (parallel, per service)
 
@@ -258,11 +258,11 @@ For each Docker-enabled service with a successfully created worktree:
    - Top-level `name: <service-id>-<TASK_SLUG>` (sets Docker Compose project name)
    - For the primary container (`docker.service` from `services.yaml`):
      - `container_name: <service-id>-<TASK_SLUG>`
-     - `ports: ["<allocated-port>:<internal-port>"]`
+     - `ports: !override` with one `"<allocated-port>:<internal-port>"` entry per base port mapping
      - `networks.app-network.aliases: [<service-id>-<TASK_SLUG>]`
    - For each secondary container:
      - `container_name: <original-container-name>-<TASK_SLUG>`
-     - `ports: ["<allocated-port>:<internal-port>"]`
+     - `ports: !override` with one `"<allocated-port>:<internal-port>"` entry per base port mapping
 
 See `jelou/references/docker-conventions.md` → "Override Generation" for full rules and examples.
 
