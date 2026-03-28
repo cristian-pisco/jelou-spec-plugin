@@ -219,5 +219,5 @@ After the user approves (or declines) the spec update:
 |----------|-------------|
 | #6 | Structured questionnaire after reading codebase |
 | #37 | Minimal seed + interview expands to structured spec |
-| #33 | Context loaded by orchestrator, not self-read by agent (tiered prompts) |
+| #33 | Context loaded in earlier steps, not during interview (separation of concerns) |
 | #43 | Global principles + per-service conventions both injected |
