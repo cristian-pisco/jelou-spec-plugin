@@ -96,88 +96,85 @@ Track which files exist and which are missing.
 
 ---
 
-## Step 7 — Build Composite Context
+## Step 7 — Review Loaded Context
 
-Assemble the full context string that will be injected into the spec-interviewer agent's prompt. The change request is prepended so the agent knows its primary objective:
+Before starting the interview, confirm you have loaded:
+- `CHANGE_REQUEST` from Step 2
+- `SPEC_CONTENT` from Step 2
+- `CODEBASE_CONTEXT` from Step 4
+- `PRINCIPLES_CONTENT` from Step 5
 
-```
-=== CHANGE REQUEST ===
-<CHANGE_REQUEST>
-
-=== SPEC.md (Current Approved Specification) ===
-<SPEC_CONTENT>
-
-=== Engineering Principles ===
-<PRINCIPLES_CONTENT>
-
-=== Service: <service-id-1> ===
-
---- ARCHITECTURE.md ---
-<content>
-
---- STACK.md ---
-<content>
-
---- CONVENTIONS.md ---
-<content>
-
---- INTEGRATIONS.md ---
-<content>
-
---- STRUCTURE.md ---
-<content>
-
---- CONCERNS.md ---
-<content>
-
-=== Service: <service-id-2> ===
-(repeat for each affected service)
-```
-
-**Store**: `COMPOSITE_CONTEXT` = the full assembled context string
+All of these are already in memory from previous steps. No assembly needed — proceed directly to the interview.
 
 ---
 
-## Step 8 — Spawn Spec-Interviewer Agent
+## Step 8 — Interview and Update Spec
 
-Notify the user before spawning:
-```
-Spawning spec-interviewer agent (Opus) to analyze the change and interview you about implications...
-```
+> **Tool requirement reminder**: Every question and confirmation in this step MUST use `AskUserQuestion`. Never output questions as plain text.
 
-Spawn a single `jlu-spec-interviewer` agent with model: **opus**.
+### 8a — Change Analysis (silent)
 
-**Agent prompt construction**:
+Before asking any questions, silently analyze:
+- Which sections of the existing SPEC.md are affected by `CHANGE_REQUEST`
+- Conflicts between the change and the existing architecture/conventions in `CODEBASE_CONTEXT`
+- Implicit assumptions the change introduces that need confirmation
+- Edge cases, error scenarios, and security implications specific to the change
+- Integration points affected (cross-reference with INTEGRATIONS.md in `CODEBASE_CONTEXT`)
 
-1. Read the agent definition from `<plugin-root>/agents/jlu-spec-interviewer.md`.
-2. Prepend `COMPOSITE_CONTEXT` before the agent instructions.
-3. Append task metadata:
-   ```
-   Task slug: <TASK_SLUG>
-   Task directory: <TASK_DIR>
-   SPEC.md path: <TASK_DIR>/SPEC.md
-   Affected services: <comma-separated list>
-   Mode: refine (apply targeted change to existing spec)
-   Change request: <CHANGE_REQUEST>
-   ```
+Prioritize by impact: architectural implications > behavioral changes > edge cases > cosmetic details.
 
-**What the agent does** (the orchestrator does NOT analyze the change itself — full delegation):
+### 8b — Structured Interview
 
-1. **Change analysis** (silent) — Analyzes the change request against the existing spec and codebase. Identifies implications, conflicts, gaps the change introduces, and sections of the spec that are affected.
-2. **Structured interview** — Asks the user focused questions to clarify the change's scope and constraints. Questions are specific to the change (not a full re-interview of the original spec).
-3. **Update SPEC.md** — Updates only the affected sections of the spec, preserving everything else. Maintains numbered requirements for traceability.
-4. **Present for approval** — Shows the updated spec (or diff of changes) to the user. User must explicitly approve.
+Using `AskUserQuestion`, interview the user to clarify the change's scope and constraints.
 
-**Important**: The orchestrator does NOT perform the change analysis or update the spec. It delegates entirely to the spec-interviewer agent.
+Rules:
+- **2-4 questions per round**, grouped by theme — never random
+- **Scoped to the change** — do NOT re-interview the full spec. Only ask about implications, conflicts, or gaps introduced by `CHANGE_REQUEST`.
+- **Themes** (in rough priority order):
+  1. Technical implementation details (how does this change get built? what patterns apply?)
+  2. Tradeoffs & alternatives (why this change over others? what are we giving up?)
+  3. Architecture & design impact (how does this change affect the existing system design?)
+  4. Behavioral changes (what exactly changes in each affected scenario?)
+  5. Edge cases & error handling (what new failure modes does this change introduce?)
+  6. Security & authorization (does this change affect access control or sensitive data?)
+  7. Performance & scalability (does this change affect latency, throughput, or resource usage?)
+  8. Integration points (does this change affect other services or external systems?)
+  9. UX/UI implications (if applicable — user-facing behavior changes)
+  10. Constraints & out-of-scope (what should we explicitly NOT change?)
+- **Ask non-obvious questions** — informed by what you found in the codebase context, not generic. Reference specific files, patterns, or conventions you observed.
+  - Good: "INTEGRATIONS.md shows this service uses async events for payments. Does this change affect the event schema?"
+  - Bad: "Are there any other systems affected?"
+- **Go deep** — don't accept vague answers. If the user says "it should be fast", ask "what's the latency budget?"
+- **Continue until complete** — keep interviewing until you can confidently update all affected sections of the spec.
+- **Respect the user** — if the user says "that's enough" or "move on", stop the interview and update the spec with what you have.
+
+### 8c — Update SPEC.md
+
+After the interview is complete:
+1. Update only the affected sections of `<TASK_DIR>/SPEC.md`, preserving everything else.
+2. Maintain numbered requirements for traceability (FR-N, NFR-N, SC-N). When adding new requirements, continue the existing numbering sequence.
+3. If a requirement is modified, keep its original number and update the text.
+4. If a requirement is removed, note it as "Removed" rather than renumbering.
+
+Write the result to `<TASK_DIR>/SPEC.md`.
+
+### 8d — Present for Approval
+
+Using `AskUserQuestion`, present the updated spec to the user:
+1. A brief summary of what changed and why
+2. List of sections that were modified
+3. Any areas where you had to make judgment calls or where information was incomplete
+4. Ask clearly: "Do you approve these changes to SPEC.md?"
+
+If the user wants changes, make them and re-present. Loop until the user approves or explicitly stops.
 
 ---
 
-## Step 9 — Post-Agent Confirmation
+## Step 9 — Post-Interview Confirmation
 
-After the spec-interviewer agent completes:
+After the user approves (or declines) the spec update:
 
 1. Verify that `<TASK_DIR>/SPEC.md` has been updated.
-   - If not updated: warn "The spec-interviewer did not appear to update SPEC.md. Review the agent output."
 
 2. Update `<TASK_DIR>/TASKS.md` based on the task's current status:
    - If task status is `planned` or `implementing`: **keep current status** (a spec refinement does not reset execution state).
@@ -200,8 +197,8 @@ After the spec-interviewer agent completes:
 | SPEC.md missing or empty | Stop with message to run `/jlu:new-task` first |
 | All codebase files missing | Warn, offer `/jlu:map-codebase`, allow continue without |
 | Engineering principles missing | Note and continue |
-| Spec-interviewer agent fails | Report failure, suggest re-running the command |
-| User cancels interview midway | Agent updates spec with what it has, orchestrator preserves partial work |
+| Interview interrupted (session timeout, user abort) | Save any spec changes made so far, report partial state |
+| User cancels interview midway | Update spec with answers gathered so far, preserve partial work |
 
 ---
 
