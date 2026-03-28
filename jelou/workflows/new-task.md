@@ -336,97 +336,131 @@ Track which files exist and which are missing.
 
 ---
 
-## Step 13 — Build Composite Context
+## Step 13 — Review Loaded Context
 
-Assemble the full context string that will be injected into the spec-interviewer agent's prompt. Order matters for clarity:
+Before starting the interview, confirm you have loaded:
+- `TASK_DESCRIPTION` from Step 3
+- `CODEBASE_CONTEXT` from Step 10
+- `PRINCIPLES_CONTENT` from Step 11
+- `CONFIRMED_SERVICES` from Step 8
 
-```
-=== Task Description ===
-<TASK_DESCRIPTION>
-
-=== Engineering Principles ===
-<PRINCIPLES_CONTENT>
-
-=== Service: <service-id-1> ===
-
---- ARCHITECTURE.md ---
-<content>
-
---- STACK.md ---
-<content>
-
---- CONVENTIONS.md ---
-<content>
-
---- INTEGRATIONS.md ---
-<content>
-
---- STRUCTURE.md ---
-<content>
-
---- CONCERNS.md ---
-<content>
-
-=== Service: <service-id-2> ===
-(repeat for each affected service)
-```
-
-**Store**: `COMPOSITE_CONTEXT` = the full assembled context string
+All of these are already in memory from previous steps. No assembly needed — proceed directly to the interview.
 
 ---
 
-## Step 14 — Spawn Spec-Interviewer Agent
+## Step 14 — Interview and Write Spec
 
-Notify the user before spawning:
+> **Tool requirement reminder**: Every question and confirmation in this step MUST use `AskUserQuestion`. Never output questions as plain text.
+
+### 14a — Gap Analysis (silent)
+
+Before asking any questions, silently analyze the task description (`TASK_DESCRIPTION`) against the codebase knowledge (`CODEBASE_CONTEXT`). Identify:
+- Ambiguities or missing details in the task description
+- Conflicts between the task and existing architecture, conventions, or integration patterns
+- Implicit assumptions that need explicit confirmation
+- Edge cases, error scenarios, and security implications not addressed
+- Integration points with other services or systems referenced in INTEGRATIONS.md
+- Non-functional requirements (performance, scalability, observability) not mentioned
+- Known concerns from CONCERNS.md that intersect with this task
+
+Prioritize gaps by impact: architectural decisions > behavioral requirements > edge cases > cosmetic details.
+
+### 14b — Structured Interview
+
+Using `AskUserQuestion`, interview the user to resolve all identified gaps.
+
+Rules:
+- **2-4 questions per round**, grouped by theme — never random
+- **Themes to cover** (in rough priority order):
+  1. Technical implementation details (how will this be built? what patterns apply?)
+  2. Tradeoffs & alternatives (why this approach over others? what are we giving up?)
+  3. Architecture & design decisions (how does this fit into the existing system?)
+  4. Behavioral requirements (what exactly should happen in each scenario?)
+  5. Edge cases & error handling (what happens when things go wrong?)
+  6. Security & authorization (who can do what? what's sensitive?)
+  7. Performance & scalability (volume expectations, latency constraints?)
+  8. Integration points (what other services/systems are affected?)
+  9. UX/UI implications (if applicable — user-facing behavior)
+  10. Constraints & out-of-scope (what should we explicitly NOT do?)
+- **Ask non-obvious questions** — informed by what you found in the codebase context, not generic. Reference specific files, patterns, or conventions you observed.
+  - Good: "INTEGRATIONS.md shows this service communicates with service-payments via async events. Should the new feature use the same event bus, or does it need a synchronous call?"
+  - Bad: "What technology should we use?"
+- **Go deep** — don't accept vague answers. If the user says "it should be fast", ask "what's the latency budget? p95 under 200ms?"
+- **Ask about tradeoffs** — if the user chose approach A, ask why not B. Surface implicit decisions.
+- **Continue until complete** — keep interviewing until you can confidently fill all 5 output sections.
+- **Respect the user** — if the user says "that's enough" or "move on", stop the interview and write the spec with what you have.
+
+### 14c — Write SPEC.md
+
+After the interview is complete, write `<TASK_DIR>/SPEC.md` with these structured sections:
+
+```markdown
+# <Task Title>
+
+## Problem Statement
+What problem this solves and why it matters. Include business context.
+
+## Requirements
+
+### Functional
+- FR-1: <requirement>
+- FR-2: <requirement>
+...
+
+### Non-Functional
+- NFR-1: <requirement> (e.g., performance, security, scalability, observability)
+...
+
+## Constraints
+Technical, business, or timeline constraints that bound the solution.
+
+## Out of Scope
+Explicitly excluded from this task — things that might seem related but are NOT part of this work.
+
+## Success Criteria
+How to verify the task is complete. Concrete, testable conditions.
+- SC-1: <criterion>
+- SC-2: <criterion>
+...
 ```
-Spawning spec-interviewer agent (Opus) to analyze the codebase and interview you about requirements...
-```
 
-Spawn a single `jlu-spec-interviewer` agent with model: **opus**.
+Rules for writing:
+- Preserve the user's original intent from the task description
+- Add precision and detail from interview answers
+- Number requirements and criteria for traceability (FR-1, NFR-1, SC-1)
+- Make every requirement concrete enough that a developer could implement it and a QA agent could verify it
 
-**Agent prompt construction**:
+### 14d — Present for Approval
 
-1. Read the agent definition from `<plugin-root>/agents/jlu-spec-interviewer.md`.
-2. Prepend `COMPOSITE_CONTEXT` before the agent instructions.
-3. Append task metadata:
-   ```
-   Task slug: <TASK_SLUG>
-   Task directory: <TASK_DIR>
-   SPEC.md path: <TASK_DIR>/SPEC.md
-   Affected services: <comma-separated list>
-   ```
+Using `AskUserQuestion`, present the complete SPEC.md to the user:
+1. A brief executive summary of what the spec covers
+2. A count of requirements (FR: X, NFR: Y) and success criteria (SC: Z)
+3. Any areas where you had to make judgment calls or where information was incomplete
+4. Ask clearly: "Do you approve this spec to move to `planned` status?"
 
-**What the agent does** (defined in its agent file, summarized here for reference):
-
-1. **Gap analysis** (silent) — Analyzes the task description against codebase knowledge. Identifies ambiguities, conflicts, implicit assumptions, edge cases, integration points, NFRs, and known concerns.
-2. **Structured interview** — Asks the user 2-4 themed questions per round. Themes: architecture, behavior, edge cases, security, performance, integrations, UX, constraints. Questions are informed by codebase context (non-obvious, specific). Continues until the agent has enough to fill all 5 sections.
-3. **Write SPEC.md** — Writes `<TASK_DIR>/SPEC.md` with structured sections: Problem Statement, Requirements (FR/NFR), Constraints, Out of Scope, Success Criteria. Requirements are numbered (FR-1, NFR-1, SC-1) for traceability.
-4. **Present for approval** — Shows the complete spec to the user. User must explicitly approve.
-
-**Important**: The orchestrator does NOT perform the interview or write the spec. It delegates entirely to the spec-interviewer agent. The orchestrator's job is to load context and spawn the agent.
+If the user wants changes, make them and re-present. Loop until the user approves or explicitly stops.
 
 ---
 
-## Step 15 — Post-Agent Confirmation
+## Step 15 — Post-Interview Confirmation
 
-After the spec-interviewer agent completes:
+After the user approves (or declines) the spec:
 
 1. Verify that `<TASK_DIR>/SPEC.md` exists and has all 5 structured sections.
-   - If not created or incomplete: warn "The spec-interviewer did not appear to complete SPEC.md. Review the agent output."
+   - If not created or incomplete: warn "SPEC.md could not be completed. Review the interview output."
 
-2. Check the agent's output for approval status:
-   - If the user **approved** the spec:
-     a. Update `<TASK_DIR>/TASKS.md`:
-        - Change `Status: refining` to `Status: planned`
-        - Add transition timestamp: `- Planned: <current-datetime-ISO>`
-     b. Check `WORKTREE_AGENT_TASK` result:
-        - If the background worktree agent completed successfully: log the created worktrees.
-        - If it failed or is still running: report the worktree errors and note the user can create worktrees manually.
-   - If the user **did not approve** or the agent ended without approval:
-     a. Leave TASKS.md status as `refining`.
-     b. Report: "SPEC.md was created but not yet approved. You can:"
-        - "Review and edit `<TASK_DIR>/SPEC.md` manually, then re-run `/jlu:new-task <TASK_SLUG>`"
-        - "Or re-run `/jlu:refine-task <TASK_SLUG>` to apply targeted changes"
+2. If the user **approved** the spec:
+   a. Update `<TASK_DIR>/TASKS.md`:
+      - Change `Status: refining` to `Status: planned`
+      - Add transition timestamp: `- Planned: <current-datetime-ISO>`
+   b. Check `WORKTREE_AGENT_TASK` result:
+      - If the background worktree agent completed successfully: log the created worktrees.
+      - If it failed or is still running: report the worktree errors and note the user can create worktrees manually.
+3. If the user **did not approve** or the interview ended without approval:
+   a. Leave TASKS.md status as `refining`.
+   b. Report: "SPEC.md was created but not yet approved. You can:"
+      - "Review and edit `<TASK_DIR>/SPEC.md` manually, then re-run `/jlu:new-task <TASK_SLUG>`"
+      - "Or re-run `/jlu:refine-task <TASK_SLUG>` to apply targeted changes"
 
 ---
 
@@ -484,6 +518,7 @@ Run `/jlu:execute-task` to begin implementation.
 | Git worktree creation fails | Background agent reports error, skip that worktree, continue |
 | INTEGRATIONS.md missing | Proceed without integration-based detection, rely on user input |
 | Codebase files missing | Warn, offer `/jlu:map-codebase`, allow continue without |
+| Interview interrupted (session timeout, user abort) | Save any spec content written so far, report partial state |
 | User cancels at any confirmation step | Save any artifacts created so far, report partial state |
 
 ---
