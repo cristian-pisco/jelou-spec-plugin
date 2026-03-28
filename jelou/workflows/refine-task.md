@@ -144,7 +144,8 @@ Rules:
 - **Ask non-obvious questions** — informed by what you found in the codebase context, not generic. Reference specific files, patterns, or conventions you observed.
   - Good: "INTEGRATIONS.md shows this service uses async events for payments. Does this change affect the event schema?"
   - Bad: "Are there any other systems affected?"
-- **Go deep** — don't accept vague answers. If the user says "it should be fast", ask "what's the latency budget?"
+- **Go deep** — don't accept vague answers. If the user says "it should be fast", ask "what's the latency budget? p95 under 200ms?"
+- **Ask about tradeoffs** — if the user chose approach A, ask why not B. Surface implicit decisions.
 - **Continue until complete** — keep interviewing until you can confidently update all affected sections of the spec.
 - **Respect the user** — if the user says "that's enough" or "move on", stop the interview and update the spec with what you have.
 

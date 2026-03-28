@@ -429,6 +429,7 @@ Rules for writing:
 - Add precision and detail from interview answers
 - Number requirements and criteria for traceability (FR-1, NFR-1, SC-1)
 - Make every requirement concrete enough that a developer could implement it and a QA agent could verify it
+- The spec must be directly usable by the proposal-agent to generate PROPOSAL.md without ambiguity
 
 ### 14d — Present for Approval
 
