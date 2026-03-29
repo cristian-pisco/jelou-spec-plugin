@@ -150,3 +150,24 @@ Files that are especially important for understanding the codebase (e.g., depend
 - **Cross-reference your 3 outputs.** The architectural pattern in ARCHITECTURE.md should be consistent with the directory structure in STRUCTURE.md and the framework in STACK.md. If ARCHITECTURE.md says "hexagonal", STRUCTURE.md should show the ports/adapters directories, and STACK.md should list the relevant framework that enables it.
 - **Keep it concise.** If the codebase is small or simple, short documents are fine. Do not pad.
 - Write all 3 files before finishing. Verify they exist and are non-empty.
+
+---
+
+## Incremental Update Mode
+
+When the orchestrator passes `## Mode: Incremental Update` in your prompt, you are updating existing docs, not writing from scratch.
+
+### Process
+
+1. **Read existing docs first**: For each doc in your update list, read its current content from `<OUTPUT_DIR>/<doc-name>`.
+2. **Review the changes**: Read the changed files listed in the prompt. Understand what architectural, stack, or structural changes occurred.
+3. **Update selectively**:
+   - **ARCHITECTURE.md**: If new directories, routes, or entry points were added/removed, update the relevant sections. If the architectural pattern didn't change, preserve the Overview and Architectural Pattern sections.
+   - **STACK.md**: If dependency files changed, update the Dependencies section. If framework configs changed, update the Framework section. Preserve unchanged sections.
+   - **STRUCTURE.md**: If files were added, removed, or renamed, update the directory tree and file descriptions. Preserve descriptions of unchanged files.
+4. **Do NOT rewrite unchanged sections**: Your job is surgical updates, not rewrites. If a section's source files didn't change, preserve it exactly.
+5. **Write the updated docs** to `<OUTPUT_DIR>/`, overwriting the existing files.
+
+### Docs NOT in your update list
+
+If the orchestrator says "Docs to update: STACK.md" — you only update STACK.md. Leave ARCHITECTURE.md and STRUCTURE.md untouched even if they exist in your output directory.
