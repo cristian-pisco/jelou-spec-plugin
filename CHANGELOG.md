@@ -10,6 +10,10 @@
 - **User stories generated during sync-clickup** instead of execute-task. Stories are only consumed by ClickUp, so they're created at sync time.
 - **Model tiers are now configurable** via `models` section in `.spec-workspace.json`. Users can override per agent group (orchestrator, research, code, proposal, operational).
 
+### Added
+
+- **Update notifications** — Every `/jlu:*` command silently checks for newer versions on GitHub (cached 4h, 2s timeout). Prints a one-line banner if an update is available. Skips in CI environments.
+
 ### Removed
 
 - **CONTEXT.md generation** — duplicated information already in phase files and codebase knowledge files.

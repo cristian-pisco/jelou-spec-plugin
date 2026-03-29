@@ -51,6 +51,8 @@ To pull the latest version inside a Claude Code session:
 /plugin update jlu@jelou-spec-plugin
 ```
 
+The plugin silently checks for updates when you run any `/jlu:*` command. If a newer version exists, you'll see a one-line notice with the update command. Checks are cached for 4 hours and skip in CI environments.
+
 ### Local Development / Manual Installation
 
 ```bash
