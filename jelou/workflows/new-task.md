@@ -240,6 +240,54 @@ Update `TASKS.md` with the confirmed affected services list.
 
 ---
 
+### 8b. Conflict Detection
+
+After confirming affected services, scan for overlapping active tasks:
+
+1. **Scan active tasks**:
+   a. List all date folders under `<WORKSPACE_PATH>/specs/`.
+   b. For each date folder, list all task slug directories.
+   c. For each task directory (excluding the current task being created):
+      - Read `TASKS.md` and extract the task status.
+      - If status is `closed`, `cancelled`, or `rolled_back`: skip.
+      - Otherwise: extract the affected services list from TASKS.md.
+      - If TASKS.md doesn't list services, try reading SPEC.md for service references.
+
+2. **Detect overlaps**:
+   For each active task, compare its affected services with `CONFIRMED_SERVICES`.
+   If any service-id appears in both lists, record the overlap:
+   - Active task slug
+   - Active task status (e.g., "implementing, Phase 3/5")
+   - Overlapping service IDs
+   - Active task's spec title (from SPEC.md first line, if readable)
+
+3. **Report conflicts**:
+   If overlaps were found, present via AskUserQuestion:
+   ```
+   Conflict detected with active task(s):
+
+   Task: <active-task-slug> (<status>)
+     Title: <spec title>
+     Overlapping services: <service-id-1>, <service-id-2>
+
+   Task: <another-task-slug> (<status>)
+     Title: <spec title>
+     Overlapping services: <service-id-3>
+
+   These tasks modify some of the same services. Concurrent changes
+   may cause merge conflicts or unexpected interactions.
+
+   Options:
+   A) Proceed anyway (I know about these tasks)
+   B) Abort task creation
+   ```
+
+   If the user selects "Abort": stop the workflow. Report: "Task creation aborted due to conflicts. Review active tasks and retry."
+
+4. **No conflicts**: continue silently to Step 9.
+
+---
+
 ## Step 9 — Launch Background Worktree Creation
 
 Notify the user before launching:
