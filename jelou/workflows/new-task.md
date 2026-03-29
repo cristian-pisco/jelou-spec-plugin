@@ -40,6 +40,15 @@
 
 ---
 
+### 1b. Resolve Model Configuration
+
+1. Read `.spec-workspace.json` from the current directory (already read in Step 1).
+2. If a `models` section exists, extract the model overrides.
+3. Store as `MODEL_CONFIG`.
+4. Use `MODEL_CONFIG.operational` (default: haiku) for the git-agent spawn in Step 9.
+
+---
+
 ## Step 2 — Verify Service Registration
 
 1. Read `<WORKSPACE_PATH>/registry/services.yaml`.
@@ -209,7 +218,7 @@ Notify the user before launching:
 Launching worktree creation in background for <N> services...
 ```
 
-Spawn a **background Agent** (`run_in_background: true`) using the `jlu-git-agent` with model: **haiku** and:
+Spawn a **background Agent** (`run_in_background: true`) using the `jlu-git-agent` with model: **MODEL_CONFIG.operational** (default: haiku) and:
 - The confirmed services list (`CONFIRMED_SERVICES`)
 - The task slug (`TASK_SLUG`)
 - The repo path for each service from `services.yaml`

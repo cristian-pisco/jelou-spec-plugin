@@ -10,17 +10,16 @@
 |-------|---------------|
 | **main-orchestrator** | Coordinates all agents, makes delegation decisions, mediates disputes, enforces lifecycle gates. Requires the strongest reasoning. |
 | **spec-interviewer** | Conducts structured interviews, performs gap analysis against codebase, produces the foundational SPEC.md. Quality here determines everything downstream. |
-| **proposal-agent** | Translates spec into execution-ready plan with phases, dependencies, risks, and testing strategy. Architectural reasoning required. |
 
 ### Tier 2: Sonnet — Implementation and Analysis Roles
 
 | Agent | Justification |
 |-------|---------------|
-| **research agents** (architecture, stack, conventions, integrations, structure, concerns) | Analyze codebases in depth, produce structured knowledge documents. Need strong code comprehension. |
+| **research agents** (codebase-analyzer-structural, codebase-analyzer-operational) | Analyze codebases, produce structured knowledge documents. Two consolidated agents replace the original six. |
+| **proposal-agent** | Translates spec into execution-ready plan with phases, dependencies, risks. Structured document generation from clear inputs. |
 | **code agents** (test-writer, implementer) | Write tests and implementation code. Need strong coding ability with awareness of conventions and patterns. |
 | **tasks-agent** | Manages TASKS.md updates, tracks progress, handles execution state. Needs accuracy in structured updates. |
 | **qa-agent** | Validates implementations against spec, reviews coverage, checks cross-service contracts. Needs thorough analytical ability. |
-| **cross-validation agent** | Reads all 6 codebase files and flags contradictions. Needs strong analytical reasoning. |
 
 ### Tier 3: Haiku — Lightweight Operational Roles
 
@@ -45,12 +44,39 @@ On escalation, the orchestrator decides whether to:
 
 ## User Override
 
-Users can override model assignments at two levels:
+Users can override model assignments by adding a `models` section to `.spec-workspace.json`:
 
-- **Per task**: Specify model overrides in the task configuration (e.g., use Opus for code agents on a particularly complex task).
-- **Per agent invocation**: Override at execution time when the orchestrator presents the execution plan.
+```json
+{
+  "workspace": "../.spec-workspace",
+  "serviceId": "my-service",
+  "models": {
+    "orchestrator": "opus",
+    "research": "sonnet",
+    "code": "sonnet",
+    "proposal": "sonnet",
+    "operational": "haiku"
+  }
+}
+```
 
-Override decisions are logged in the task's observability events.
+### Model Groups
+
+| Group | Default | Agents |
+|-------|---------|--------|
+| `orchestrator` | opus | main orchestrator (new-task, execute-task) |
+| `research` | sonnet | codebase-analyzer-structural, codebase-analyzer-operational |
+| `proposal` | sonnet | proposal-agent |
+| `code` | sonnet | test-writer, implementer, qa-agent, build-validator |
+| `operational` | haiku | git-agent, tasks-agent, summary-agent |
+
+### Resolution Order
+
+1. Check `.spec-workspace.json` → `models.<group>` for the agent's group
+2. Fall back to the agent's frontmatter `model:` field
+3. Fall back to the default for the group (table above)
+
+Orchestrator workflows that spawn agents MUST check for model overrides before specifying the model parameter. Read `.spec-workspace.json` once at the start of the workflow and resolve each agent's model from the config.
 
 ## Cost Implications
 
