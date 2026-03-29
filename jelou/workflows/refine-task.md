@@ -41,6 +41,17 @@
 
 ---
 
+### 2b. Capture Pre-Refinement Snapshot
+
+1. Store the current SPEC.md content as `SPEC_BEFORE` (already read as `SPEC_CONTENT` in Step 2).
+2. Check if `<TASK_DIR>/versions/` directory exists.
+   - If not: create it and save the current SPEC.md as `SPEC-v1.md` (retroactive first version).
+3. Count existing `SPEC-v*.md` files in `<TASK_DIR>/versions/` to determine the current version number.
+
+**Store**: `SPEC_BEFORE` = current SPEC.md content, `CURRENT_VERSION` = highest existing version number
+
+---
+
 ## Step 3 — Identify Affected Services
 
 1. Read `<TASK_DIR>/TASKS.md`.
@@ -187,6 +198,39 @@ After the user approves (or declines) the spec update:
 3. Report the outcome:
    - If approved: "Spec updated. Task status remains `<STATUS>`. Change recorded in TASKS.md lifecycle."
    - If not approved: "SPEC.md was updated but not yet approved. Re-run `/jlu:refine-task <TASK_SLUG>` to continue."
+
+---
+
+## Step 9b — Save Version and Generate Changelog
+
+After the spec update is confirmed (Step 9 item 2):
+
+1. Compute `NEW_VERSION` = `CURRENT_VERSION + 1`.
+2. Copy the updated `<TASK_DIR>/SPEC.md` to `<TASK_DIR>/versions/SPEC-v<NEW_VERSION>.md`.
+3. Compare `SPEC_BEFORE` with the updated SPEC.md content. Generate a structured diff:
+   - **Added**: New requirements, criteria, or sections not present in the old version.
+   - **Changed**: Requirements or sections whose text was modified.
+   - **Removed**: Requirements or sections that were deleted (should be rare — prefer "Removed" markers per existing convention).
+4. Append the diff entry to `<TASK_DIR>/versions/SPEC-changelog.md`:
+   ```markdown
+
+   ## v<PREV> -> v<NEW> (<current-date>)
+   Refined via: /jlu:refine-task "<CHANGE_REQUEST first 100 chars>"
+
+   ### Added
+   - <each new item>
+
+   ### Changed
+   - <each modified item, showing what changed>
+
+   ### Removed
+   - <each removed item, or "(nothing)">
+   ```
+5. If this is the first changelog entry and the file doesn't exist, create it with a header:
+   ```markdown
+   # Spec Changelog
+   ```
+   Then append the entry.
 
 ---
 
