@@ -67,7 +67,7 @@ cd jelou-spec-plugin
 
 | Command | Purpose |
 |---------|---------|
-| `/jlu:map-codebase` | Analyze a service and generate 6 codebase knowledge files |
+| `/jlu:map-codebase` | Analyze a service with 2 parallel agents, generate 6 codebase knowledge files |
 | `/jlu:new-task` | Create a new task with spec, worktrees, and affected service detection |
 | `/jlu:refine-task` | Apply a targeted change to an approved spec via structured interview |
 | `/jlu:execute-task` | Run TDD implementation (autonomous or step-by-step mode) |
@@ -77,7 +77,7 @@ cd jelou-spec-plugin
 | `/jlu:load-context` | Load task context into a fresh session for Q&A |
 | `/jlu:create-pr [task-slug]` | Stage, commit, push, and create pull requests for all affected services |
 | `/jlu:post-slack [date] #channel` | Generate and post daily summary to Slack |
-| `/jlu:close-task` | Close task after PR merge — updates ClickUp, artifacts, observability |
+| `/jlu:close-task` | Close task after PR merge — updates ClickUp, cleans worktrees |
 | `/jlu:refresh-skills` | Refresh the skill registry |
 
 ## Workspace Structure
@@ -197,23 +197,14 @@ flowchart TB
 
     subgraph opus["Orchestrator Tier — Opus"]
         spec_int["spec-interviewer"]
-        proposal["proposal-agent"]
     end
 
-    subgraph opus_agents["Research Tier — Opus"]
-        direction TB
-        subgraph researchers["6 Parallel Researchers"]
-            arch["architecture"]
-            stack["stack"]
-            conv["conventions"]
-            integ["integrations"]
-            struct["structure"]
-            concerns["concerns"]
+    subgraph sonnet["Research & Implementation Tier — Sonnet"]
+        subgraph researchers["2 Parallel Analyzers"]
+            structural["structural analyzer"]
+            operational["operational analyzer"]
         end
-        cross["cross-validator"]
-    end
-
-    subgraph sonnet["Implementation Tier — Sonnet"]
+        proposal["proposal-agent"]
         tw["test-writer · Red"]
         impl["implementer · Green"]
         qa["qa-agent"]
@@ -234,8 +225,7 @@ flowchart TB
         tasks_file["TASKS.md"]
     end
 
-    map --> researchers
-    researchers --> cross --> codebase
+    map --> researchers --> codebase
     new --> spec_int --> spec_file
     refine --> spec_int
     exec --> proposal --> prop_file & phase_files

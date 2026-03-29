@@ -1,6 +1,23 @@
 # Changelog
 
-## [Unreleased]
+## [0.3.0]
+
+### Changed
+
+- **9 skill launchers now execute workflows directly** instead of spawning a redundant Opus sub-agent. Saves 10-30s latency per command invocation. Affected commands: close-task, create-pr, report-task, refresh-skills, post-slack, load-context, sync-clickup, refine-task, extend-phase.
+- **map-codebase uses 2 Sonnet agents instead of 7 Opus agents.** Two consolidated analyzers (structural + operational) replace six individual researchers plus a cross-validator. ~7x reduction in token cost per codebase analysis.
+- **Proposal agent downgraded from Opus to Sonnet.** Structured document generation doesn't need Opus-level reasoning.
+- **User stories generated during sync-clickup** instead of execute-task. Stories are only consumed by ClickUp, so they're created at sync time.
+- **Model tiers are now configurable** via `models` section in `.spec-workspace.json`. Users can override per agent group (orchestrator, research, code, proposal, operational).
+
+### Removed
+
+- **CONTEXT.md generation** — duplicated information already in phase files and codebase knowledge files.
+- **Observability events** in close-task — write-only artifact with no consumer.
+- **Cross-validator agent** — consolidated agents see the full codebase, eliminating contradictions.
+- **6 individual research agents** — replaced by 2 consolidated analyzers.
+
+## [Unreleased — pre-0.3.0]
 
 - Merge spec interview into `/jlu:new-task` — interview runs inline immediately after service confirmation, worktrees created in background
 - Introduce `/jlu:refine-task` — apply last-minute targeted changes to an approved spec via structured agent interview
