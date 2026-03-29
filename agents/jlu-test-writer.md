@@ -33,11 +33,10 @@ You have access to real-time library documentation via context7 MCP tools. Use t
 Before writing any tests, read these files in order:
 
 1. **Phase file** — The phase's requirements section tells you WHAT to test. Location: `.spec-workspace/specs/<date>/<task>/services/<service-id>/phases/<phase>.md`
-2. **CONTEXT.md** — Tells you which modules, endpoints, and models are relevant. Location: `.spec-workspace/specs/<date>/<task>/services/<service-id>/CONTEXT.md`
-3. **CONVENTIONS.md** — Tells you HOW to write tests (framework, patterns, file naming, assertion style). Location: `.spec-workspace/services/<service-id>/codebase/CONVENTIONS.md`
-4. **STACK.md** — Confirms the testing framework and tools available. Location: `.spec-workspace/services/<service-id>/codebase/STACK.md`
-5. **STRUCTURE.md** — Tells you WHERE to put test files. Location: `.spec-workspace/services/<service-id>/codebase/STRUCTURE.md`
-6. **Existing tests** — Read 2-3 existing test files to match the exact style and patterns in use.
+2. **CONVENTIONS.md** — Tells you HOW to write tests (framework, patterns, file naming, assertion style). Location: `.spec-workspace/services/<service-id>/codebase/CONVENTIONS.md`
+3. **STACK.md** — Confirms the testing framework and tools available. Location: `.spec-workspace/services/<service-id>/codebase/STACK.md`
+4. **STRUCTURE.md** — Tells you WHERE to put test files. Location: `.spec-workspace/services/<service-id>/codebase/STRUCTURE.md`
+5. **Existing tests** — Read 2-3 existing test files to match the exact style and patterns in use.
 
 ## Test Writing Process
 

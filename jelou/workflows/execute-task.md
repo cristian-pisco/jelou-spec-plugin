@@ -85,7 +85,7 @@ Read and assemble:
 
 ### 4b. Global Strategy Pass (Decision #21)
 
-Spawn `jlu-proposal-agent` with model: **opus**:
+Spawn `jlu-proposal-agent` with model: **sonnet**:
 - All context from 4a
 - Task: "Produce the global proposal — cross-service strategy, dependency order, phase structure, contract boundaries, risks, testing strategy."
 - The agent writes a draft global strategy.
@@ -93,7 +93,7 @@ Spawn `jlu-proposal-agent` with model: **opus**:
 ### 4c. Local Detail Pass (Multi-Service Only)
 
 If there are **2+ affected services**:
-- For each affected service, spawn a `jlu-proposal-agent` with model: **opus** in parallel:
+- For each affected service, spawn a `jlu-proposal-agent` with model: **sonnet** in parallel:
   - Pass: the global strategy draft + service-specific codebase files + SPEC.md
   - Task: "Expand service-specific execution details for `<service-id>`: local scope, relevant modules, implementation constraints, service-level phases."
 - Wait for all local agents to complete.
@@ -132,30 +132,7 @@ For each phase defined in PROPOSAL.md, for each affected service:
    ### Deviations
    ```
 
-### 4f. Generate User Stories
-
-Spawn a sub-agent with model: **sonnet** to derive user stories from SPEC.md + PROPOSAL.md:
-- For each affected service, create story files at `<TASK_DIR>/services/<service-id>/uh/<story-slug>.md`.
-- Use the user-story.md template from `<plugin-root>/jelou/templates/user-story.md` if available.
-- Each story follows the hybrid format (Decision #38):
-  ```markdown
-  # <story-slug>
-
-  ## Story
-  As a [user], I want [action], so that [benefit].
-
-  ## Acceptance Criteria
-
-  ### Scenario: <scenario-name>
-  - Given <precondition>
-  - When <action>
-  - Then <expected-result>
-
-  ## Phase Mapping
-  - Phase <NN>: <phase-name>
-  ```
-
-### 4g. Auto-Approve Proposal
+### 4f. Auto-Approve Proposal
 
 Log the proposal summary to terminal (do not ask for approval):
 ```
@@ -169,7 +146,7 @@ Full proposal: <TASK_DIR>/PROPOSAL.md
 
 Continue to Step 6 (Transition to Implementing).
 
-### 4h. If PROPOSAL.md Already Exists
+### 4g. If PROPOSAL.md Already Exists
 
 Skip proposal generation. Read the existing PROPOSAL.md and phase files to resume execution.
 
@@ -217,7 +194,6 @@ Read the phases from PROPOSAL.md in dependency order. For each phase:
 Spawn `jlu-test-writer` agent with model: **sonnet**:
 - **Input**:
   - Phase requirements (from the phase file's immutable section)
-  - `<TASK_DIR>/services/<service-id>/CONTEXT.md` (if exists)
   - `<WORKSPACE_PATH>/services/<service-id>/codebase/CONVENTIONS.md`
   - Service source path (worktree or repo)
   - SPEC.md relevant sections
@@ -248,7 +224,6 @@ Spawn `jlu-implementer` agent with model: **sonnet**:
 - **Input**:
   - Phase requirements
   - Test file paths (from the test writer)
-  - `<TASK_DIR>/services/<service-id>/CONTEXT.md`
   - `<WORKSPACE_PATH>/services/<service-id>/codebase/CONVENTIONS.md`
   - Service source path
 - **Docker context** (only if `IS_DOCKER_SERVICE` is true): Include the same `## Execution Environment` block as in Step 7d. Omit for non-Docker services.
@@ -470,8 +445,6 @@ Awaiting your input to proceed.
 | PROPOSAL.md | `.spec-workspace/specs/<date>/<task-slug>/PROPOSAL.md` |
 | TASKS.md | `.spec-workspace/specs/<date>/<task-slug>/TASKS.md` |
 | Phase files | `.spec-workspace/specs/<date>/<task-slug>/services/<service-id>/phases/<NN>-<phase>.md` |
-| User stories | `.spec-workspace/specs/<date>/<task-slug>/services/<service-id>/uh/<story-slug>.md` |
-| CONTEXT.md | `.spec-workspace/specs/<date>/<task-slug>/services/<service-id>/CONTEXT.md` |
 | Implementation | `<service-repo>/.worktrees/<task-slug>/` (or service repo if no worktree) |
 
 ---

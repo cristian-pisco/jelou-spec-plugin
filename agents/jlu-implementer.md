@@ -28,11 +28,10 @@ Before writing any implementation code, read these files in order:
 
 1. **Failing test files** — Understand exactly what behavior is expected. These are your specification.
 2. **Phase file** — The requirements section for additional context. Location: `.spec-workspace/specs/<date>/<task>/services/<service-id>/phases/<phase>.md`
-3. **CONTEXT.md** — Which modules and files are relevant. Location: `.spec-workspace/specs/<date>/<task>/services/<service-id>/CONTEXT.md`
-4. **CONVENTIONS.md** — How to write code in this service (naming, patterns, error handling). Location: `.spec-workspace/services/<service-id>/codebase/CONVENTIONS.md`
-5. **ARCHITECTURE.md** — Where new code fits in the architecture. Location: `.spec-workspace/services/<service-id>/codebase/ARCHITECTURE.md`
-6. **STRUCTURE.md** — Where to place new files. Location: `.spec-workspace/services/<service-id>/codebase/STRUCTURE.md`
-7. **Existing source code** — Read the modules you're modifying to understand current patterns.
+3. **CONVENTIONS.md** — How to write code in this service (naming, patterns, error handling). Location: `.spec-workspace/services/<service-id>/codebase/CONVENTIONS.md`
+4. **ARCHITECTURE.md** — Where new code fits in the architecture. Location: `.spec-workspace/services/<service-id>/codebase/ARCHITECTURE.md`
+5. **STRUCTURE.md** — Where to place new files. Location: `.spec-workspace/services/<service-id>/codebase/STRUCTURE.md`
+6. **Existing source code** — Read the modules you're modifying to understand current patterns.
 
 ## Implementation Process
 
@@ -124,7 +123,7 @@ Brief description of what was implemented and the approach taken.
 - **Command**: `<exact command used>`
 
 ### Deviations from Expected Approach
-- <any deviations from CONTEXT.md or phase requirements, with justification>
+- <any deviations from phase requirements, with justification>
 
 ### Test Objections (if any)
 - <list of flagged test issues, or "None">
