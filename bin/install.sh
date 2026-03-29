@@ -34,6 +34,15 @@ if [ -d "$PLUGIN_DIR/agents" ]; then
   echo "  Installed $(find "$PLUGIN_DIR/agents" -name "*.md" | wc -l) agents"
 fi
 
+# Copy update check script
+if [ -f "$PLUGIN_DIR/bin/check-update.sh" ]; then
+  echo "Installing update check..."
+  mkdir -p "$CLAUDE_DIR/bin"
+  cp "$PLUGIN_DIR/bin/check-update.sh" "$CLAUDE_DIR/bin/"
+  chmod +x "$CLAUDE_DIR/bin/check-update.sh"
+  echo "  Installed check-update.sh"
+fi
+
 # Copy shared resources
 if [ -d "$PLUGIN_DIR/jelou" ]; then
   echo "Installing shared resources..."

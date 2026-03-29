@@ -5,6 +5,7 @@ argument-hint: "[change description]"
 allowed-tools:
   - Read
   - Write
+  - Bash
   - Glob
   - Grep
   - AskUserQuestion
@@ -19,6 +20,8 @@ Find the Jelou plugin root directory. Try these paths in order:
 2. Check `~/.claude/jelou/` (manual installation)
 
 If not found, stop with: "Plugin root not found. Ensure jelou-spec-plugin is installed."
+
+After resolving the plugin root, run the update check protocol at `<plugin-root>/jelou/references/update-check.md`.
 
 ## Phase 2 — Execute Workflow
 

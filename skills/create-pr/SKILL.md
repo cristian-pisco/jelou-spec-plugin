@@ -22,6 +22,8 @@ Find the Jelou plugin root directory. Try these paths in order:
 
 If not found, stop with: "Plugin root not found. Ensure jelou-spec-plugin is installed."
 
+After resolving the plugin root, run the update check protocol at `<plugin-root>/jelou/references/update-check.md`.
+
 ## Phase 2 — Execute Workflow
 
 Read the workflow file at `<plugin-root>/jelou/workflows/create-pr.md`.

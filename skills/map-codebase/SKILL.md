@@ -4,6 +4,7 @@ description: Analyze a service's codebase with 2 parallel research agents
 argument-hint: "[service-id]"
 allowed-tools:
   - Read
+  - Bash
   - Glob
   - Agent
 ---
@@ -19,6 +20,8 @@ Find the Jelou plugin root directory. Try these paths in order:
 If not found, stop with: "Plugin root not found. Ensure jelou-spec-plugin is installed."
 
 Confirm the workflow file exists at `<plugin-root>/jelou/workflows/map-codebase.md`.
+
+After resolving the plugin root, run the update check protocol at `<plugin-root>/jelou/references/update-check.md`.
 
 ## Phase 2 — Dispatch Orchestrator
 
