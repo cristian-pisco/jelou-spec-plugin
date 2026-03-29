@@ -136,7 +136,40 @@ Run after ALL phases are complete. This is a comprehensive review.
 - Is the code readable? Would a new team member understand it?
 - Is the code secure? Are there any attack vectors?
 
-#### 8. Artifact Completeness
+#### 8. Code Smell Detection
+Review ALL new and modified files across all phases for structural issues:
+- **God classes / large classes** — Any class with 300+ lines or 10+ methods likely has too many responsibilities. Identify which responsibilities should be extracted.
+- **Long methods** — Any method exceeding 100 lines (per engineering principles). Also flag methods over 50 lines that do more than one thing.
+- **Long parameter lists** — Functions with 5+ parameters. Suggest grouping into an options/config object.
+- **Data clumps** — Groups of variables that appear together in multiple places (e.g., `startDate`/`endDate`/`timezone` passed around separately). Suggest encapsulating in a value object.
+- **Feature envy** — Methods that use more data from another class than their own. The method probably belongs in the other class.
+- **Inappropriate intimacy** — Modules reaching into another module's internals instead of using its public interface.
+- **Dead code** — Unreachable branches, unused imports, commented-out code blocks, functions that are defined but never called.
+- **Duplicated logic** — Same or very similar logic appearing in 2+ places across the implementation. Flag with both locations.
+
+For each finding: provide the exact file path and line range, classify as HIGH (blocks pipeline) or MEDIUM (logged, does not block), and include a one-line fix suggestion.
+
+**Severity rules:**
+- HIGH: god class 300+ lines, method 100+ lines, duplicated logic across 3+ locations
+- MEDIUM: everything else (long params, data clumps, feature envy, dead code, duplicated logic in 2 locations)
+- Do NOT flag issues that are consistent with patterns already established in the codebase (check CONVENTIONS.md)
+
+#### 9. Over-Engineering Detection
+Review ALL new and modified files for unnecessary complexity:
+- **Single-implementation abstractions** — Interfaces or abstract classes with exactly one concrete implementation and no indication in the spec that more are expected. Unless the codebase convention requires it (e.g., NestJS providers), flag it.
+- **Premature generalization** — Configuration options, extension points, or generic types that serve only one use case in the current implementation.
+- **Unnecessary indirection** — Wrapper functions that add no logic, delegation chains where a direct call would suffice, service layers that just proxy to a repository.
+- **Complex patterns for simple problems** — Full strategy/state patterns for 2 cases, factory patterns for single-type creation, event buses for point-to-point calls.
+- **Speculative code** — Code paths that handle scenarios not in the spec and not tested (they're dead weight until proven needed).
+
+For each finding: provide the exact file path and line range, classify as HIGH or MEDIUM, and suggest the simpler alternative.
+
+**Severity rules:**
+- HIGH: unnecessary indirection adding 50+ lines, complex pattern for a problem solvable in <10 lines
+- MEDIUM: single-implementation abstraction, premature generalization, speculative code
+- Do NOT flag patterns that match the codebase's established architecture (check ARCHITECTURE.md)
+
+#### 10. Artifact Completeness
 - All phase files have execution sections filled in
 - TASKS.md is up to date
 - No leftover TODO or FIXME comments added during implementation
@@ -182,7 +215,17 @@ Run after ALL phases are complete. This is a comprehensive review.
 - Unbounded queries: PASS | <issues>
 - Missing indexes: PASS | <issues>
 
-### Issues Found
+### Code Smells
+| ID | Smell | Location | Severity | Recommendation |
+|----|-------|----------|----------|----------------|
+| CS-1 | <smell type> | `src/file.ts:45-120` | HIGH/MEDIUM | <one-line fix> |
+
+### Over-Engineering
+| ID | Issue | Location | Severity | Simpler Alternative |
+|----|-------|----------|----------|---------------------|
+| OE-1 | <issue type> | `src/file.ts:10-80` | HIGH/MEDIUM | <simpler approach> |
+
+### Other Issues
 | ID | Severity | Description | Location |
 |----|----------|-------------|----------|
 | QA-1 | high | ... | `src/...` |
