@@ -83,6 +83,14 @@ cd jelou-spec-plugin
 | `/jlu:rollback-phase` | Reset service worktrees to the last known-good phase state |
 | `/jlu:refresh-skills` | Refresh the skill registry |
 
+### Spec Compliance Review
+
+When creating a PR via `/jlu:create-pr`, a spec compliance review runs automatically:
+- Checks every SPEC.md requirement against the actual code diff
+- Reports COVERED / MISSING / UNTESTED status with file:line evidence
+- Detects scope creep (code changes not in the spec)
+- Includes the report in the PR description for human reviewers
+
 ### Spec Templates
 
 When creating a new task, you can choose from built-in templates that pre-fill SPEC.md sections and focus the interview on the right questions:

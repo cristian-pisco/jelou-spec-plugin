@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.3.6]
+
+### Added
+
+- **Spec compliance review** in `/jlu:create-pr`: new `jlu-spec-reviewer` agent checks code diff against SPEC.md requirements before PR creation
+- **Requirements coverage table** (COVERED / PARTIALLY_COVERED / UNTESTED / MISSING) with file:line evidence
+- **Scope creep detection** flags code changes not mentioned in spec or proposal
+- **Compliance report** included in PR description as a collapsible `<details>` section
+- Non-blocking gate: user can proceed with known gaps or abort to implement missing requirements
+
 ## [0.3.5]
 
 ### Added
