@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.3]
+
+### Added
+
+- **Automatic spec versioning**: SPEC.md snapshots saved to `versions/SPEC-v<N>.md` after each interview or refinement
+- **Human-readable spec changelog** at `versions/SPEC-changelog.md` with Added/Changed/Removed sections
+- **Retroactive first version** creation if versioning is added to an existing task via `/jlu:refine-task`
+
 ## [0.3.2]
 
 ### Added
