@@ -147,6 +147,21 @@ Infer these fields inline (no pm-agent):
 
 ## Step 7 — Create or Update Subtasks from User Stories
 
+### 7a. Generate User Stories (if missing)
+
+1. Check if `<TASK_DIR>/services/<primary-service>/uh/` directory exists and has `.md` files.
+2. If user stories already exist, skip to 7b.
+3. If no user stories exist:
+   a. Read `<TASK_DIR>/SPEC.md` and `<TASK_DIR>/PROPOSAL.md`.
+   b. For each affected service, derive user stories from requirements (FR-1, FR-2, etc.):
+      - Format: "As a [user], I want [action], so that [benefit]."
+      - Each story has acceptance criteria in Given/When/Then format.
+      - Each story maps to one or more phases from PROPOSAL.md.
+   c. Write story files to `<TASK_DIR>/services/<service-id>/uh/<story-slug>.md`.
+   d. Use the user-story.md template from `<plugin-root>/jelou/templates/user-story.md` if available.
+
+### 7b. Sync Subtasks to ClickUp
+
 For each user story file in `uh/`:
 
 1. Match existing subtasks by slug via CLICKUP_TASK.json.
