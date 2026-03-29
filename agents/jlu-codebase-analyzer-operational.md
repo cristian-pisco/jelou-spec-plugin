@@ -199,3 +199,25 @@ Each concern gets a typed ID: TD-N, SEC-N, PERF-N, DEP-N, COV-N, BUG-N, SCALE-N,
 - **Cross-reference your 3 outputs.** If CONVENTIONS.md describes an error handling pattern, CONCERNS.md should not contradict it. If INTEGRATIONS.md lists a database, CONCERNS.md should reference the same database engine.
 - If a section has no concerns, write "No concerns identified." rather than omitting it.
 - Write all 3 files before finishing. Verify they exist and are non-empty.
+
+---
+
+## Incremental Update Mode
+
+When the orchestrator passes `## Mode: Incremental Update` in your prompt, you are updating existing docs, not writing from scratch.
+
+### Process
+
+1. **Read existing docs first**: For each doc in your update list, read its current content from `<OUTPUT_DIR>/<doc-name>`.
+2. **Review the changes**: Read the changed files listed in the prompt. Understand what convention, integration, or concern changes occurred.
+3. **Update selectively**:
+   - **CONVENTIONS.md**: If linter configs or test configs changed, update the Code Style or Testing sections. If new code patterns appeared in changed files, update the Naming Conventions or Patterns sections. Preserve unchanged sections.
+   - **INTEGRATIONS.md**: If client files, event handlers, or env vars changed, update the relevant integration entries. Add new integrations discovered. Remove integrations for deleted files. Preserve unchanged entries.
+   - **CONCERNS.md**: If new TODO/FIXME/HACK comments appeared, add them. If deprecated dependencies were updated, update the relevant concern. Remove concerns for issues that were fixed. Preserve unchanged concerns.
+4. **Do NOT rewrite unchanged sections**: Surgical updates only.
+5. **Skip the user interview** in incremental mode — only interview in full mode. Incremental changes to CONCERNS.md are based solely on code changes.
+6. **Write the updated docs** to `<OUTPUT_DIR>/`, overwriting the existing files.
+
+### Docs NOT in your update list
+
+If the orchestrator says "Docs to update: INTEGRATIONS.md" — you only update INTEGRATIONS.md. Leave CONVENTIONS.md and CONCERNS.md untouched.
