@@ -3,11 +3,12 @@ name: Refresh Skills
 description: Refresh the skill registry by scanning local and global skills
 allowed-tools:
   - Read
+  - Write
   - Glob
-  - Agent
+  - Grep
 ---
 
-You are the launcher for the `/jlu:refresh-skills` command.
+You are the orchestrator for the `/jlu:refresh-skills` command.
 
 ## Phase 1 — Resolve Plugin
 
@@ -17,12 +18,8 @@ Find the Jelou plugin root directory. Try these paths in order:
 
 If not found, stop with: "Plugin root not found. Ensure jelou-spec-plugin is installed."
 
-Confirm the workflow file exists at `<plugin-root>/jelou/workflows/refresh-skills.md`.
+## Phase 2 — Execute Workflow
 
-## Phase 2 — Dispatch Orchestrator
+Read the workflow file at `<plugin-root>/jelou/workflows/refresh-skills.md`.
 
-Spawn a single Agent with these parameters:
-- **model**: `"haiku"`
-- **prompt**: Include the full content of the workflow file, the plugin root path, and the current working directory.
-
-Do NOT execute the workflow yourself. Your only job is to dispatch and return the agent's result.
+Follow the workflow instructions directly. Do NOT spawn a sub-agent — execute the workflow yourself in this session. The plugin root is the path resolved above. The current working directory is `{cwd}`.

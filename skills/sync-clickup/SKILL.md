@@ -4,11 +4,14 @@ description: Create or update ClickUp macro task and subtasks from user stories
 argument-hint: "[task-slug]"
 allowed-tools:
   - Read
+  - Write
+  - Bash
   - Glob
-  - Agent
+  - Grep
+  - AskUserQuestion
 ---
 
-You are the launcher for the `/jlu:sync-clickup` command.
+You are the orchestrator for the `/jlu:sync-clickup` command.
 
 ## Phase 1 — Resolve Plugin
 
@@ -18,12 +21,8 @@ Find the Jelou plugin root directory. Try these paths in order:
 
 If not found, stop with: "Plugin root not found. Ensure jelou-spec-plugin is installed."
 
-Confirm the workflow file exists at `<plugin-root>/jelou/workflows/sync-clickup.md`.
+## Phase 2 — Execute Workflow
 
-## Phase 2 — Dispatch Orchestrator
+Read the workflow file at `<plugin-root>/jelou/workflows/sync-clickup.md`.
 
-Spawn a single Agent with these parameters:
-- **model**: `"sonnet"`
-- **prompt**: Include the full content of the workflow file, the argument `{argument}`, the plugin root path, and the current working directory.
-
-Do NOT execute the workflow yourself. Your only job is to dispatch and return the agent's result.
+Follow the workflow instructions directly. Do NOT spawn a sub-agent — execute the workflow yourself in this session. The argument is `{argument}`. The plugin root is the path resolved above. The current working directory is `{cwd}`.
