@@ -1,6 +1,6 @@
 ---
 name: Map Codebase
-description: Analyze a service's codebase with 6 parallel research agents and cross-validation
+description: Analyze a service's codebase with 2 parallel research agents
 argument-hint: "[service-id]"
 allowed-tools:
   - Read
@@ -23,7 +23,7 @@ Confirm the workflow file exists at `<plugin-root>/jelou/workflows/map-codebase.
 ## Phase 2 — Dispatch Orchestrator
 
 Spawn a single Agent with these parameters:
-- **model**: `"opus"`
+- **model**: `"sonnet"`
 - **prompt**: Include the full content of the workflow file, the argument `{argument}`, the plugin root path, and the current working directory.
 
 Do NOT execute the workflow yourself. Your only job is to dispatch and return the agent's result.

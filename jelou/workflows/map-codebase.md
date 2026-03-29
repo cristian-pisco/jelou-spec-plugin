@@ -1,7 +1,7 @@
 # Workflow: map-codebase
 
 > Orchestrator workflow for `/jlu:map-codebase [service-id]`
-> Maps a service's codebase using 6 parallel research agents + cross-validation.
+> Maps a service's codebase using 2 parallel research agents.
 
 > **Tool requirement**: All prompts, questions, and confirmations to the user in this workflow MUST use `AskUserQuestion`. Never output questions as plain text.
 
@@ -74,151 +74,66 @@
 
 ---
 
-## Step 5 — Spawn 6 Research Agents in Parallel
+## Step 5 — Spawn 2 Research Agents in Parallel
 
-Spawn all 6 agents simultaneously using the Agent tool. Each agent receives the same base context:
+Spawn both agents simultaneously using the Agent tool. Each agent receives the same base context:
 - `SOURCE_ROOT`: the service's source code path
-- `OUTPUT_DIR`: where to write the output file
+- `OUTPUT_DIR`: where to write output files
 - `service-id`: the service identifier
 
-### Agent 1: jlu-architecture-researcher (model: **opus**)
-- **Prompt**: Read the agent definition from `<plugin-root>/agents/jlu-architecture-researcher.md`. Prepend:
+### Agent 1: jlu-codebase-analyzer-structural (model: **sonnet**)
+- **Prompt**: Read the agent definition from `<plugin-root>/agents/jlu-codebase-analyzer-structural.md`. Prepend:
   ```
   Service ID: <service-id>
   Source code path: <SOURCE_ROOT>
-  Output file: <OUTPUT_DIR>/ARCHITECTURE.md
+  Output directory: <OUTPUT_DIR>
   ```
-- **Output**: `<OUTPUT_DIR>/ARCHITECTURE.md`
+- **Output**: `<OUTPUT_DIR>/ARCHITECTURE.md`, `<OUTPUT_DIR>/STACK.md`, `<OUTPUT_DIR>/STRUCTURE.md`
 
-### Agent 2: jlu-stack-researcher (model: **opus**)
-- **Prompt**: Read the agent definition from `<plugin-root>/agents/jlu-stack-researcher.md`. Prepend:
+### Agent 2: jlu-codebase-analyzer-operational (model: **sonnet**)
+- **Prompt**: Read the agent definition from `<plugin-root>/agents/jlu-codebase-analyzer-operational.md`. Prepend:
   ```
   Service ID: <service-id>
   Source code path: <SOURCE_ROOT>
-  Output file: <OUTPUT_DIR>/STACK.md
+  Output directory: <OUTPUT_DIR>
   ```
-- **Output**: `<OUTPUT_DIR>/STACK.md`
+- **Output**: `<OUTPUT_DIR>/CONVENTIONS.md`, `<OUTPUT_DIR>/INTEGRATIONS.md`, `<OUTPUT_DIR>/CONCERNS.md`
+- **Note**: This agent combines automated code analysis with a user interview. It will use `AskUserQuestion` to gather concerns not visible in the code (planned deprecations, scaling limits, tribal knowledge). See Decision #30.
 
-### Agent 3: jlu-conventions-researcher (model: **opus**)
-- **Prompt**: Read the agent definition from `<plugin-root>/agents/jlu-conventions-researcher.md`. Prepend:
-  ```
-  Service ID: <service-id>
-  Source code path: <SOURCE_ROOT>
-  Output file: <OUTPUT_DIR>/CONVENTIONS.md
-  ```
-- **Output**: `<OUTPUT_DIR>/CONVENTIONS.md`
-
-### Agent 4: jlu-integrations-researcher (model: **opus**)
-- **Prompt**: Read the agent definition from `<plugin-root>/agents/jlu-integrations-researcher.md`. Prepend:
-  ```
-  Service ID: <service-id>
-  Source code path: <SOURCE_ROOT>
-  Output file: <OUTPUT_DIR>/INTEGRATIONS.md
-  ```
-- **Output**: `<OUTPUT_DIR>/INTEGRATIONS.md`
-
-### Agent 5: jlu-structure-researcher (model: **opus**)
-- **Prompt**: Read the agent definition from `<plugin-root>/agents/jlu-structure-researcher.md`. Prepend:
-  ```
-  Service ID: <service-id>
-  Source code path: <SOURCE_ROOT>
-  Output file: <OUTPUT_DIR>/STRUCTURE.md
-  ```
-- **Output**: `<OUTPUT_DIR>/STRUCTURE.md`
-
-### Agent 6: jlu-concerns-researcher (model: **opus**)
-- **Prompt**: Read the agent definition from `<plugin-root>/agents/jlu-concerns-researcher.md`. Prepend:
-  ```
-  Service ID: <service-id>
-  Source code path: <SOURCE_ROOT>
-  Output file: <OUTPUT_DIR>/CONCERNS.md
-  ```
-- **Output**: `<OUTPUT_DIR>/CONCERNS.md`
-- **Note**: This agent combines automated code analysis (TODOs, vulnerability patterns, test coverage gaps, deprecated deps) with a user interview. It will use `AskUserQuestion` to ask about known concerns not visible in the code (planned deprecations, scaling limits, tribal knowledge). See Decision #30.
-
-**Important**: All 6 agents MUST be spawned in parallel (do not wait for one before spawning the next). Use 6 separate Agent tool calls in a single response.
+**Important**: Both agents MUST be spawned in parallel (2 separate Agent tool calls in a single response).
 
 ---
 
-## Step 6 — Wait for All Agents
+## Step 6 — Wait for Both Agents
 
-All 6 agents must complete before proceeding. If any agent fails:
+Both agents must complete before proceeding. If either fails:
 - Report which agent failed and the error.
-- Offer to retry the failed agent(s) individually.
-- Do not proceed to cross-validation until all 6 files exist.
+- Offer to retry the failed agent individually.
+- Do not proceed until all 6 files exist.
 
 **Validation check**: Verify each of the 6 output files exists and is non-empty:
 - `<OUTPUT_DIR>/ARCHITECTURE.md`
 - `<OUTPUT_DIR>/STACK.md`
+- `<OUTPUT_DIR>/STRUCTURE.md`
 - `<OUTPUT_DIR>/CONVENTIONS.md`
 - `<OUTPUT_DIR>/INTEGRATIONS.md`
-- `<OUTPUT_DIR>/STRUCTURE.md`
 - `<OUTPUT_DIR>/CONCERNS.md`
 
 ---
 
-## Step 7 — Cross-Validation
+## Step 7 — Consistency Check
 
-Spawn the `jlu-cross-validator` agent with model: **opus**:
+Read all 6 produced files. Do a quick inline scan for obvious inconsistencies:
+- Different framework versions mentioned across files
+- Contradictory architecture claims (e.g., ARCHITECTURE.md says "hexagonal" but CONVENTIONS.md describes MVC patterns)
+- Inconsistent terminology or naming between files
+- Factual discrepancies (e.g., different database engines referenced)
 
-- **Prompt**: Read the agent definition from `<plugin-root>/agents/jlu-cross-validator.md`. Prepend the contents of all 6 codebase files:
-  ```
-  Service ID: <service-id>
-
-  === ARCHITECTURE.md ===
-  <contents of ARCHITECTURE.md>
-
-  === STACK.md ===
-  <contents of STACK.md>
-
-  === CONVENTIONS.md ===
-  <contents of CONVENTIONS.md>
-
-  === INTEGRATIONS.md ===
-  <contents of INTEGRATIONS.md>
-
-  === STRUCTURE.md ===
-  <contents of STRUCTURE.md>
-
-  === CONCERNS.md ===
-  <contents of CONCERNS.md>
-  ```
-- **Task**: The agent reads all 6 files and identifies:
-  - Contradictions between files (e.g., ARCHITECTURE.md says "hexagonal" but CONVENTIONS.md references MVC patterns)
-  - Inconsistencies in terminology or naming
-  - Gaps where one file references something another file should cover but does not
-  - Factual discrepancies (e.g., different framework versions mentioned)
-- **Output**: A structured list of findings, each with:
-  - Which files are involved
-  - What the contradiction/inconsistency is
-  - A suggested resolution
+If inconsistencies are found, fix them directly in the affected files. No separate agent is needed.
 
 ---
 
-## Step 8 — Present Cross-Validation Results
-
-1. If the cross-validator found **no contradictions**:
-   - Report: "Cross-validation passed. No contradictions found across the 6 codebase files."
-   - Skip to Step 9.
-
-2. If contradictions **were found**:
-   - Present each contradiction to the user, one at a time:
-     ```
-     **Contradiction #<N>**
-     - Files: <file1> vs <file2>
-     - Issue: <description>
-     - Suggested resolution: <suggestion>
-
-     How would you like to resolve this? (Accept suggestion / Provide your own / Skip)
-     ```
-   - For each resolution:
-     - If "Accept suggestion": Apply the correction to the affected file(s).
-     - If "Provide your own": Apply the user's correction to the affected file(s).
-     - If "Skip": Leave as-is and note it in the report.
-
----
-
-## Step 9 — Report Summary
+## Step 8 — Report Summary
 
 Present a final summary to the user:
 
@@ -228,15 +143,14 @@ Present a final summary to the user:
 ### Files Created
 - <OUTPUT_DIR>/ARCHITECTURE.md
 - <OUTPUT_DIR>/STACK.md
+- <OUTPUT_DIR>/STRUCTURE.md
 - <OUTPUT_DIR>/CONVENTIONS.md
 - <OUTPUT_DIR>/INTEGRATIONS.md
-- <OUTPUT_DIR>/STRUCTURE.md
 - <OUTPUT_DIR>/CONCERNS.md
 
-### Cross-Validation
-- Contradictions found: <N>
-- Resolved: <N>
-- Skipped: <N>
+### Consistency
+- Checked: <N> cross-references
+- Issues found and fixed: <N>
 
 ### Notes
 - <any areas flagged for manual review>
@@ -252,9 +166,7 @@ Present a final summary to the user:
 | `.spec-workspace.json` not found and user declines to provide service-id | Stop with clear message |
 | Workspace directory cannot be resolved or created | Stop with clear message |
 | Source code root does not exist | Stop with path and suggestion |
-| Individual research agent fails | Report failure, offer retry for that agent only |
-| Cross-validator agent fails | Report failure, note that cross-validation was skipped |
-| User cancels during contradiction resolution | Save progress so far, report partial resolution |
+| Research agent fails | Report failure, offer retry for that agent only |
 
 ---
 
