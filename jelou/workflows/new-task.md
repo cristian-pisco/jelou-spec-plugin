@@ -498,6 +498,18 @@ After the user approves (or declines) the spec:
 1. Verify that `<TASK_DIR>/SPEC.md` exists and has all 5 structured sections.
    - If not created or incomplete: warn "SPEC.md could not be completed. Review the interview output."
 
+1b. Create the version history:
+    a. Create `<TASK_DIR>/versions/` directory.
+    b. Copy `<TASK_DIR>/SPEC.md` to `<TASK_DIR>/versions/SPEC-v1.md`.
+    c. Write `<TASK_DIR>/versions/SPEC-changelog.md`:
+       ```markdown
+       # Spec Changelog
+
+       ## v1 (<current-date>)
+       Initial spec created via /jlu:new-task interview.
+       Template used: <SELECTED_TEMPLATE or "none">
+       ```
+
 2. If the user **approved** the spec:
    a. Update `<TASK_DIR>/TASKS.md`:
       - Change `Status: refining` to `Status: planned`
