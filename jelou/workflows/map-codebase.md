@@ -74,14 +74,54 @@
 
 ---
 
-## Step 5 — Spawn 2 Research Agents in Parallel
+### 4b. Detect Incremental Mode
+
+1. Check if `<OUTPUT_DIR>/.last-analysis.json` exists.
+2. If it exists:
+   a. Read the JSON and extract the `commit` SHA.
+   b. Verify all 6 docs exist in `<OUTPUT_DIR>/` (ARCHITECTURE.md, STACK.md, STRUCTURE.md, CONVENTIONS.md, INTEGRATIONS.md, CONCERNS.md).
+   c. If any doc is missing: set `ANALYSIS_MODE` = `full` and continue to Step 5.
+   d. Run: `cd <SOURCE_ROOT> && git diff <commit>..HEAD --stat`
+   e. If no changes: log "Codebase unchanged since last analysis (commit <commit>). Skipping." and skip to Step 8 (report).
+   f. If changes exist: categorize changed files and set `ANALYSIS_MODE` = `incremental`.
+3. If `.last-analysis.json` does not exist: set `ANALYSIS_MODE` = `full` and continue to Step 5.
+
+**File categorization heuristic:**
+
+For each changed file in the diff stat, classify which docs it affects:
+
+| Changed file pattern | Affects |
+|---|---|
+| New/deleted directories, `*/routes/*`, `*/controllers/*`, `*/handlers/*`, entry points (`main.*`, `app.*`, `index.*`) | ARCHITECTURE.md |
+| `package.json`, `*.lock`, `go.mod`, `go.sum`, `composer.json`, `Cargo.toml`, framework config files | STACK.md |
+| Any new, deleted, or renamed file | STRUCTURE.md |
+| `.eslintrc*`, `.prettierrc*`, `tsconfig.json`, `jest.config.*`, `.editorconfig`, test config files | CONVENTIONS.md |
+| `*/clients/*`, `*/events/*`, `*/providers/*`, `.env*`, `*/api/*` route files, webhook handlers | INTEGRATIONS.md |
+| Files matching `TODO\|FIXME\|HACK\|DEPRECATED` in the diff content, deprecated dependency updates | CONCERNS.md |
+
+A single changed file can affect multiple docs.
+
+Build `DOCS_TO_UPDATE` = set of doc names that need updating.
+
+**Determine which agents to run:**
+- If `DOCS_TO_UPDATE` contains any of {ARCHITECTURE, STACK, STRUCTURE}: run structural agent in incremental mode
+- If `DOCS_TO_UPDATE` contains any of {CONVENTIONS, INTEGRATIONS, CONCERNS}: run operational agent in incremental mode
+- Track which specific docs each agent should update: `STRUCTURAL_DOCS_TO_UPDATE`, `OPERATIONAL_DOCS_TO_UPDATE`
+
+**Store**: `ANALYSIS_MODE`, `DOCS_TO_UPDATE`, `STRUCTURAL_DOCS_TO_UPDATE`, `OPERATIONAL_DOCS_TO_UPDATE`, `CHANGED_FILES_STAT`, `LAST_COMMIT`
+
+---
+
+## Step 5 — Spawn Research Agents
+
+### Full Mode (ANALYSIS_MODE = full)
 
 Spawn both agents simultaneously using the Agent tool. Each agent receives the same base context:
 - `SOURCE_ROOT`: the service's source code path
 - `OUTPUT_DIR`: where to write output files
 - `service-id`: the service identifier
 
-### Agent 1: jlu-codebase-analyzer-structural (model: **sonnet**)
+#### Agent 1: jlu-codebase-analyzer-structural (model: **sonnet**)
 - **Prompt**: Read the agent definition from `<plugin-root>/agents/jlu-codebase-analyzer-structural.md`. Prepend:
   ```
   Service ID: <service-id>
@@ -90,7 +130,7 @@ Spawn both agents simultaneously using the Agent tool. Each agent receives the s
   ```
 - **Output**: `<OUTPUT_DIR>/ARCHITECTURE.md`, `<OUTPUT_DIR>/STACK.md`, `<OUTPUT_DIR>/STRUCTURE.md`
 
-### Agent 2: jlu-codebase-analyzer-operational (model: **sonnet**)
+#### Agent 2: jlu-codebase-analyzer-operational (model: **sonnet**)
 - **Prompt**: Read the agent definition from `<plugin-root>/agents/jlu-codebase-analyzer-operational.md`. Prepend:
   ```
   Service ID: <service-id>
@@ -101,6 +141,35 @@ Spawn both agents simultaneously using the Agent tool. Each agent receives the s
 - **Note**: This agent combines automated code analysis with a user interview. It will use `AskUserQuestion` to gather concerns not visible in the code (planned deprecations, scaling limits, tribal knowledge). See Decision #30.
 
 **Important**: Both agents MUST be spawned in parallel (2 separate Agent tool calls in a single response).
+
+### Incremental Mode (ANALYSIS_MODE = incremental)
+
+Spawn only the agents that have docs to update. For each agent that runs, include incremental context in the prompt:
+
+**Base context (same as full mode):**
+- `SOURCE_ROOT`, `OUTPUT_DIR`, `service-id`
+
+**Incremental additions to the agent prompt:**
+```
+## Mode: Incremental Update
+
+You are updating existing codebase analysis documents, NOT writing from scratch.
+
+### Docs to update:
+<list from STRUCTURAL_DOCS_TO_UPDATE or OPERATIONAL_DOCS_TO_UPDATE>
+
+### Files changed since last analysis (commit <LAST_COMMIT>):
+<CHANGED_FILES_STAT>
+
+### Instructions:
+- Read each existing doc you are updating FIRST.
+- Review the changed files to understand what shifted.
+- UPDATE the existing document: preserve sections that are still accurate, modify sections affected by changes, add new sections if changes introduce new patterns not previously documented.
+- Do NOT rewrite sections unrelated to the changes.
+- For docs NOT in your update list: do not touch them.
+```
+
+If only one agent needs to run, spawn only that one (not both).
 
 ---
 
@@ -130,6 +199,27 @@ Read all 6 produced files. Do a quick inline scan for obvious inconsistencies:
 - Factual discrepancies (e.g., different database engines referenced)
 
 If inconsistencies are found, fix them directly in the affected files. No separate agent is needed.
+
+---
+
+### 7b. Write Analysis Marker
+
+After all docs are verified, write the analysis marker to `<OUTPUT_DIR>/.last-analysis.json`:
+
+```json
+{
+  "commit": "<current HEAD SHA from: cd <SOURCE_ROOT> && git rev-parse HEAD>",
+  "timestamp": "<current ISO datetime>",
+  "docs_generated": [
+    "ARCHITECTURE.md",
+    "STACK.md",
+    "STRUCTURE.md",
+    "CONVENTIONS.md",
+    "INTEGRATIONS.md",
+    "CONCERNS.md"
+  ]
+}
+```
 
 ---
 
