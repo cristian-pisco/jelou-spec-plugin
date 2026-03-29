@@ -82,6 +82,17 @@ cd jelou-spec-plugin
 | `/jlu:close-task` | Close task after PR merge — updates ClickUp, cleans worktrees |
 | `/jlu:refresh-skills` | Refresh the skill registry |
 
+### Spec Templates
+
+When creating a new task, you can choose from built-in templates that pre-fill SPEC.md sections and focus the interview on the right questions:
+
+- **REST API Endpoint** — request/response schema, validation, auth, rate limits
+- **UI Component** — states, interactions, accessibility, responsive behavior
+- **Database Migration** — schema changes, rollback strategy, zero-downtime
+- **Event Consumer** — idempotency, retry logic, dead letter handling
+
+Custom templates can be added to `<WORKSPACE_PATH>/templates/`.
+
 ## Workspace Structure
 
 The plugin uses `.spec-workspace/` in the parent directory of your services as the canonical root:

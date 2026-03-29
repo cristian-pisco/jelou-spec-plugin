@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.1]
+
+### Added
+
+- **Spec templates**: 4 built-in templates (REST API, UI component, database migration, event consumer) pre-fill SPEC.md sections and guide the interview
+- **Template registry** at `<WORKSPACE_PATH>/templates/` supports custom user-defined templates
+- **Template selection step** in `/jlu:new-task` workflow (Step 2c) — templates are auto-copied from plugin on first use
+
 ## [0.3.0]
 
 ### Changed
