@@ -100,31 +100,7 @@ Update `<TASK_DIR>/TASKS.md`:
 - Add PR reference (if verified): `- PR merged: <PR_URL> at <merge-timestamp>`
 - Preserve all existing content (phase history, test results, etc.)
 
-### 3c. Register Observability Event
-
-For each affected service:
-1. Determine the service repo path from `<WORKSPACE_PATH>/registry/services.yaml`.
-2. Create or append to `<service-repo>/specs/observability/events.jsonl`:
-   ```json
-   {
-     "timestamp": "<CLOSE_TIMESTAMP>",
-     "event": "task_closed",
-     "task": "<TASK_SLUG>",
-     "service": "<service-id>",
-     "inputs": {
-       "pr_url": "<PR_URL>",
-       "pr_state": "merged"
-     },
-     "decision": "close_task",
-     "outputs": {
-       "clickup_updated": true|false,
-       "worktrees_cleaned": true|false
-     }
-   }
-   ```
-3. Ensure the `specs/observability/` directory exists before writing.
-
-### 3d. Clean Up Docker and Worktrees
+### 3c. Clean Up Docker and Worktrees
 
 1. For each affected service:
    a. Look up the service repo path from `services.yaml`.
@@ -183,9 +159,6 @@ Present the final summary:
 ### ClickUp
 - <Updated to CLOSED / Not configured / No task associated>
 
-### Observability
-- Events registered in: <list of service repos>
-
 ### Docker Cleanup
 - <service-id-1>: containers stopped, volumes removed, images removed
 - <service-id-2>: no Docker
@@ -213,7 +186,6 @@ Present the final summary:
 | ClickUp update fails | Report error, continue with rest of closure |
 | Worktree removal fails | Report error, skip that worktree, continue |
 | Branch deletion fails | Report error, skip, continue |
-| Observability directory creation fails | Report error, continue |
 
 ---
 
@@ -223,6 +195,5 @@ Present the final summary:
 |----------|------|
 | TASKS.md (updated) | `.spec-workspace/specs/<date>/<task-slug>/TASKS.md` |
 | CLICKUP_TASK.json (updated) | `.spec-workspace/specs/<date>/<task-slug>/CLICKUP_TASK.json` |
-| Observability events | `<service-repo>/specs/observability/events.jsonl` |
 | Worktrees (removed) | `<service-repo>/.worktrees/<task-slug>` |
 | Branch (deleted) | `spec/<task-slug>` |
