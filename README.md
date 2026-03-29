@@ -80,6 +80,7 @@ cd jelou-spec-plugin
 | `/jlu:create-pr [task-slug]` | Stage, commit, push, and create pull requests for all affected services |
 | `/jlu:post-slack [date] #channel` | Generate and post daily summary to Slack |
 | `/jlu:close-task` | Close task after PR merge — updates ClickUp, cleans worktrees |
+| `/jlu:rollback-phase` | Reset service worktrees to the last known-good phase state |
 | `/jlu:refresh-skills` | Refresh the skill registry |
 
 ### Spec Templates

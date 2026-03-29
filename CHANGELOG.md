@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.2]
+
+### Added
+
+- **`/jlu:rollback-phase` command**: manually reset service worktrees to the last known-good phase state
+- **Commit SHA tracking** per phase in TASKS.md (recorded during `/jlu:execute-task`)
+- **Pre-execution commit baseline** for rolling back to before any phase started
+
 ## [0.3.1]
 
 ### Added
