@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.4]
+
+### Added
+
+- **Conflict detection** in `/jlu:new-task`: warns when a new task overlaps with active tasks on the same services
+- Requires explicit user confirmation to proceed when conflicts are found
+
 ## [0.3.3]
 
 ### Added
