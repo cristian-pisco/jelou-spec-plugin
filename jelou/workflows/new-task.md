@@ -88,6 +88,35 @@ After service registration (or if already registered):
 
 ---
 
+### 2c. Template Selection
+
+1. Check if `<WORKSPACE_PATH>/templates/` directory exists.
+   - If not, create it and copy built-in templates from `<PLUGIN_ROOT>/jelou/templates/spec-templates/` to `<WORKSPACE_PATH>/templates/`.
+2. Scan `<WORKSPACE_PATH>/templates/` for `.md` files.
+3. For each file, read the `## Description` section to extract the one-line description.
+4. Present the template selector via AskUserQuestion:
+   ```
+   Select a spec template to start with:
+
+   1. REST API Endpoint — New REST API endpoint with request/response schema, validation, and auth.
+   2. UI Component — New UI component with states, interactions, accessibility, and responsive behavior.
+   3. Database Migration — Schema change with data transformation, rollback strategy, and zero-downtime deployment.
+   4. Event Consumer — Async event consumer with idempotency, retry logic, and dead letter handling.
+   5. <any custom templates found>
+   6. Blank (no template)
+   ```
+5. If a template is selected (not "Blank"):
+   a. Read the full template file.
+   b. Extract the `## Pre-filled Sections` content.
+   c. Store the `## Interview Hints` content.
+   d. Set `SELECTED_TEMPLATE` = template name, `TEMPLATE_PREFILL` = pre-filled sections, `INTERVIEW_HINTS` = hints content.
+6. If "Blank" is selected:
+   a. Set `SELECTED_TEMPLATE` = "none", `TEMPLATE_PREFILL` = empty, `INTERVIEW_HINTS` = empty.
+
+**Store**: `SELECTED_TEMPLATE`, `TEMPLATE_PREFILL`, `INTERVIEW_HINTS`
+
+---
+
 ## Step 3 — Prompt for Task Details
 
 1. **Task description**:
@@ -371,6 +400,7 @@ Before asking any questions, silently analyze the task description (`TASK_DESCRI
 - Integration points with other services or systems referenced in INTEGRATIONS.md
 - Non-functional requirements (performance, scalability, observability) not mentioned
 - Known concerns from CONCERNS.md that intersect with this task
+- If `INTERVIEW_HINTS` is non-empty: incorporate the template's interview hints as high-priority gap areas. These tell you which questions are most relevant for this type of work.
 
 Prioritize gaps by impact: architectural decisions > behavioral requirements > edge cases > cosmetic details.
 
@@ -432,6 +462,15 @@ How to verify the task is complete. Concrete, testable conditions.
 - SC-2: <criterion>
 ...
 ```
+
+If `TEMPLATE_PREFILL` is non-empty:
+- Use the template's pre-filled sections as the starting structure for SPEC.md.
+- Replace `<!-- FILL: ... -->` placeholders with answers from the interview.
+- Preserve pre-filled requirements that are still relevant; remove any that don't apply.
+- Add new requirements discovered during the interview.
+
+If `SELECTED_TEMPLATE` is not "none":
+- Record the template name in a comment at the top of SPEC.md: `<!-- Template: <SELECTED_TEMPLATE> -->`
 
 Rules for writing:
 - Preserve the user's original intent from the task description
