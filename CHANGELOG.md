@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.5]
+
+### Added
+
+- **Incremental codebase analysis**: `/jlu:map-codebase` auto-detects changes since last analysis and only re-analyzes affected docs
+- **`.last-analysis.json` marker** tracks the commit SHA of the last analysis
+- **File categorization heuristic** maps changed files to the docs they affect
+- Structural and operational analyzer agents support **incremental update mode**
+
 ## [0.3.4]
 
 ### Added
