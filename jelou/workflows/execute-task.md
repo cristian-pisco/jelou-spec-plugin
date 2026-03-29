@@ -171,6 +171,16 @@ Skip proposal generation. Read the existing PROPOSAL.md and phase files to resum
    - Status: `implementing`
    - Add timestamp: `- Implementing: <current-datetime-ISO>`
 
+2. For each affected service, record the current worktree HEAD as the pre-execution baseline:
+   ```bash
+   cd <SERVICE_SOURCE_PATH> && git rev-parse --short HEAD
+   ```
+   Record in TASKS.md under a new `## Commit Tracking` section:
+   ```markdown
+   ## Commit Tracking
+   - Pre-execution commit: <sha>
+   ```
+
 ---
 
 ## Step 7 — Execute Phases
@@ -335,6 +345,17 @@ Spawn `jlu-build-validator` agent with model: **MODEL_CONFIG.code** (default: so
 
 1. Update phase file status to `done`.
 2. Output milestone to terminal: "Phase <NN> complete. Tests: <pass-count>/<total-count> passing."
+3. Record the phase's commit SHA in TASKS.md. After the git-agent commits (Step 7j), capture the commit:
+   ```bash
+   cd <SERVICE_SOURCE_PATH> && git rev-parse --short HEAD
+   ```
+   Update the phase entry in TASKS.md:
+   ```markdown
+   ### Phase <NN>: <Phase Name>
+   - Status: done
+   - Commit: <sha>
+   - Completed: <ISO datetime>
+   ```
 
 ---
 
