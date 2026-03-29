@@ -103,6 +103,47 @@ For **Step 8** (`gh pr edit`), on exhaustion: warn "Cross-reference update for <
 
 ---
 
+### 2b. Spec Compliance Review
+
+1. Read `<TASK_DIR>/SPEC.md`.
+2. Read `<TASK_DIR>/PROPOSAL.md` (if exists).
+3. Read `<TASK_DIR>/versions/SPEC-changelog.md` (if exists).
+4. For each affected service, collect the git diff:
+   a. Resolve the service working directory (worktree or repo root, same logic as Step 4).
+   b. Detect the default branch:
+      ```bash
+      cd <SERVICE_CWD> && git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@'
+      ```
+      Fall back to `main` if this fails.
+   c. Collect the diff:
+      ```bash
+      cd <SERVICE_CWD> && git diff <DEFAULT_BRANCH>..spec/<TASK_SLUG>
+      ```
+5. Spawn `jlu-spec-reviewer` agent with model: **MODEL_CONFIG.code** (default: sonnet):
+   - Pass: SPEC.md content, PROPOSAL.md content (or empty), SPEC-changelog.md content (or empty), combined git diff for all services, service source paths.
+6. Receive the compliance report from the agent.
+7. **Decision gate**:
+   a. If the report shows any MISSING requirements, present via AskUserQuestion:
+      ```
+      Spec Compliance Review found gaps:
+
+      Missing requirements:
+      - FR-<N>: <requirement>
+      - NFR-<N>: <requirement>
+
+      Coverage: <N>/<total> (<percentage>%)
+
+      Options:
+      A) Proceed with PR creation (known gaps, will address in follow-up)
+      B) Abort PR creation (go implement missing requirements)
+      ```
+   b. If all requirements are COVERED or PARTIALLY_COVERED: log the summary to terminal and continue.
+8. Store the compliance report for inclusion in PR descriptions.
+
+**Store**: `COMPLIANCE_REPORT`
+
+---
+
 ## Step 3 — Iterate Over Affected Services
 
 For each affected service, execute Steps 4–7. Collect results into a `PR_RESULTS` map:
@@ -222,6 +263,17 @@ Derive from the task title. The title must be:
 
 ### Test Results
 <Test summary from TASKS.md for this service, if available>
+```
+
+If `COMPLIANCE_REPORT` exists, append to the PR body:
+
+```html
+<details>
+<summary>Spec Compliance Review (<N>/<total> requirements covered)</summary>
+
+<COMPLIANCE_REPORT content>
+
+</details>
 ```
 
 ### 7e. Create the PR
