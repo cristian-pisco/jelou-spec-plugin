@@ -93,12 +93,14 @@ When creating a PR via `/jlu:create-pr`, a spec compliance review runs automatic
 
 ### Spec Templates
 
-When creating a new task, you can choose from built-in templates that pre-fill SPEC.md sections and focus the interview on the right questions:
+The interview automatically detects which domains your task involves and applies matching templates:
 
 - **REST API Endpoint** — request/response schema, validation, auth, rate limits
 - **UI Component** — states, interactions, accessibility, responsive behavior
 - **Database Migration** — schema changes, rollback strategy, zero-downtime
 - **Event Consumer** — idempotency, retry logic, dead letter handling
+
+Cross-cutting tasks (e.g., API + migration + events) get all relevant templates merged automatically. No manual selection needed.
 
 Custom templates can be added to `<WORKSPACE_PATH>/templates/`.
 

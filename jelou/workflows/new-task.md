@@ -88,32 +88,39 @@ After service registration (or if already registered):
 
 ---
 
-### 2c. Template Selection
+### 2c. Template Auto-Detection
 
 1. Check if `<WORKSPACE_PATH>/templates/` directory exists.
    - If not, create it and copy built-in templates from `<PLUGIN_ROOT>/jelou/templates/spec-templates/` to `<WORKSPACE_PATH>/templates/`.
 2. Scan `<WORKSPACE_PATH>/templates/` for `.md` files.
 3. For each file, read the `## Description` section to extract the one-line description.
-4. Present the template selector via AskUserQuestion:
-   ```
-   Select a spec template to start with:
+4. Analyze the task description (`TASK_DESCRIPTION`) against each template's description and interview hints.
+   Determine which templates are relevant based on keyword and semantic matching:
+   - API/endpoint/route/request/response keywords → rest-api template
+   - UI/component/frontend/screen/form/modal keywords → ui-component template
+   - Database/migration/schema/table/column keywords → db-migration template
+   - Event/consumer/async/queue/message/subscriber keywords → event-consumer template
+   - Custom templates: match against their `## Description` content
+5. If one or more templates match:
+   a. Read each matching template file.
+   b. Merge `## Pre-filled Sections` from all matching templates:
+      - Combine Functional Requirements lists (re-number sequentially: FR-1, FR-2, ...)
+      - Combine Non-Functional Requirements lists (re-number sequentially: NFR-1, NFR-2, ...)
+      - Merge Constraints (deduplicate overlapping constraints)
+      - Merge Success Criteria (re-number sequentially: SC-1, SC-2, ...)
+      - For Problem Statement: keep one `<!-- FILL -->` placeholder
+      - For Out of Scope: keep one `<!-- FILL -->` placeholder
+   c. Merge `## Interview Hints` from all matching templates into a combined list (deduplicate overlapping hints).
+   d. Set `DETECTED_TEMPLATES` = list of template names,
+      `MERGED_PREFILL` = merged pre-filled sections,
+      `MERGED_HINTS` = combined interview hints.
+6. If no templates match:
+   a. Set `DETECTED_TEMPLATES` = empty, `MERGED_PREFILL` = empty, `MERGED_HINTS` = empty.
+7. Log detected templates to terminal:
+   "Auto-detected templates: <template-1>, <template-2>" or
+   "No domain-specific templates matched. Using generic interview."
 
-   1. REST API Endpoint — New REST API endpoint with request/response schema, validation, and auth.
-   2. UI Component — New UI component with states, interactions, accessibility, and responsive behavior.
-   3. Database Migration — Schema change with data transformation, rollback strategy, and zero-downtime deployment.
-   4. Event Consumer — Async event consumer with idempotency, retry logic, and dead letter handling.
-   5. <any custom templates found>
-   6. Blank (no template)
-   ```
-5. If a template is selected (not "Blank"):
-   a. Read the full template file.
-   b. Extract the `## Pre-filled Sections` content.
-   c. Store the `## Interview Hints` content.
-   d. Set `SELECTED_TEMPLATE` = template name, `TEMPLATE_PREFILL` = pre-filled sections, `INTERVIEW_HINTS` = hints content.
-6. If "Blank" is selected:
-   a. Set `SELECTED_TEMPLATE` = "none", `TEMPLATE_PREFILL` = empty, `INTERVIEW_HINTS` = empty.
-
-**Store**: `SELECTED_TEMPLATE`, `TEMPLATE_PREFILL`, `INTERVIEW_HINTS`
+**Store**: `DETECTED_TEMPLATES`, `MERGED_PREFILL`, `MERGED_HINTS`
 
 ---
 
@@ -429,6 +436,7 @@ Before starting the interview, confirm you have loaded:
 - `CODEBASE_CONTEXT` from Step 10
 - `PRINCIPLES_CONTENT` from Step 11
 - `CONFIRMED_SERVICES` from Step 8
+- `DETECTED_TEMPLATES`, `MERGED_PREFILL`, `MERGED_HINTS` from Step 2c
 
 All of these are already in memory from previous steps. No assembly needed — proceed directly to the interview.
 
@@ -448,7 +456,13 @@ Before asking any questions, silently analyze the task description (`TASK_DESCRI
 - Integration points with other services or systems referenced in INTEGRATIONS.md
 - Non-functional requirements (performance, scalability, observability) not mentioned
 - Known concerns from CONCERNS.md that intersect with this task
-- If `INTERVIEW_HINTS` is non-empty: incorporate the template's interview hints as high-priority gap areas. These tell you which questions are most relevant for this type of work.
+- If `MERGED_HINTS` is non-empty: incorporate the merged interview hints from all auto-detected templates as high-priority gap areas. These cover domain-specific questions from each applicable template and tell you which questions are most relevant for this type of work.
+- Additionally, apply domain-aware gap detection for any domains NOT already covered by detected templates:
+  - **API/endpoint work**: HTTP method, URL path, auth model, request/response schema, validation rules, pagination, rate limits, partial failure handling
+  - **UI/frontend work**: visual state machine (idle/loading/success/error/empty), interaction events, data source, accessibility, responsive breakpoints, animation
+  - **Database/migration work**: data volume, additive vs destructive, old-code compatibility, rollback DDL, FK ordering, backfill strategy, index lock duration
+  - **Event/async work**: message broker, idempotency mechanism, timeout behavior, ordering guarantees, dead letter strategy, schema versioning, consumer lag
+  - **Cross-cutting tasks**: apply relevant probes from each applicable domain above
 
 Prioritize gaps by impact: architectural decisions > behavioral requirements > edge cases > cosmetic details.
 
@@ -511,14 +525,15 @@ How to verify the task is complete. Concrete, testable conditions.
 ...
 ```
 
-If `TEMPLATE_PREFILL` is non-empty:
-- Use the template's pre-filled sections as the starting structure for SPEC.md.
+If `MERGED_PREFILL` is non-empty:
+- Use the merged pre-filled sections as the starting structure for SPEC.md.
 - Replace `<!-- FILL: ... -->` placeholders with answers from the interview.
 - Preserve pre-filled requirements that are still relevant; remove any that don't apply.
+- Deduplicate requirements that overlap between merged templates.
 - Add new requirements discovered during the interview.
 
-If `SELECTED_TEMPLATE` is not "none":
-- Record the template name in a comment at the top of SPEC.md: `<!-- Template: <SELECTED_TEMPLATE> -->`
+If `DETECTED_TEMPLATES` is non-empty:
+- Record the detected templates in a comment at the top of SPEC.md: `<!-- Templates: <template-1>, <template-2> -->`
 
 Rules for writing:
 - Preserve the user's original intent from the task description
@@ -555,7 +570,7 @@ After the user approves (or declines) the spec:
 
        ## v1 (<current-date>)
        Initial spec created via /jlu:new-task interview.
-       Template used: <SELECTED_TEMPLATE or "none">
+       Templates auto-detected: <DETECTED_TEMPLATES or "none">
        ```
 
 2. If the user **approved** the spec:

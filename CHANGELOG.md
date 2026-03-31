@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.7]
+
+### Changed
+
+- **Auto-detect spec templates**: `/jlu:new-task` no longer asks users to pick a template. The interview automatically detects which domains the task involves and merges all applicable templates. Cross-cutting tasks get combined FR/NFR scaffolding and interview hints from multiple templates.
+- Domain-aware gap detection as fallback for tasks not covered by any template (API, UI, DB, events)
+
 ## [0.3.6]
 
 ### Added
