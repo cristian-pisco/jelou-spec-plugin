@@ -67,13 +67,17 @@
 
 ## Testing Strategy
 
-### Unit Tests
-<!-- Approach for unit testing across all affected services.
-     What patterns, what coverage targets. -->
+### Tier 1: TDD Cycle (unit + mocks)
+<!-- Fast tests that run during Red-Green-Refactor. No external infrastructure.
+     What business logic, validation, transformations will be unit-tested?
+     What will be mocked (databases, HTTP clients, message queues)?
+     What mocking patterns does the project use (from CONVENTIONS.md)? -->
 
-### Integration Tests
-<!-- How services will be tested together.
-     Contract testing, API testing, event testing. -->
+### Tier 2: Final Validation (integration + real infrastructure)
+<!-- Tests that run once at the end. Real databases, Testcontainers, real services.
+     Which requirements CANNOT be meaningfully tested with mocks?
+     What integration tests are needed (DB persistence, API contracts, event flows)?
+     What Testcontainer images are needed? -->
 
 ### E2E Tests
 <!-- End-to-end test scenarios when applicable.
