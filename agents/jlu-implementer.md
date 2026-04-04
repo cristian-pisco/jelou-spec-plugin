@@ -59,10 +59,12 @@ Before writing any implementation code, read these files in order:
 - Do NOT add untested code paths
 
 ### Step 4: Run Tests
-Use `Bash` to run the test suite. **If the orchestrator provided a `DOCKER_EXEC_PREFIX` in your execution environment, prefix ALL test, lint, and build commands with it.** File read/write operations always run on the host.
-1. Run the specific tests from this phase — they must all PASS (Green)
-2. Run the full test suite — no existing tests should break (no regressions)
+Use `Bash` to run the tests. **If the orchestrator provided a `DOCKER_EXEC_PREFIX` in your execution environment, prefix ALL test, lint, and build commands with it.** File read/write operations always run on the host.
+1. Run ONLY the test files from this phase — use the exact file paths from the test-writer's report. Example: `jest path/to/phase-test.spec.ts` or `pytest path/to/test_phase.py`
+2. All phase tests must PASS (Green)
 3. If any test fails, analyze and fix your implementation (not the test)
+
+Do NOT run the full test suite. Regression checking happens once at final validation (Step 8). Running only phase tests keeps the TDD feedback loop fast and avoids booting heavy test infrastructure.
 
 ### Step 5: Verify Minimum Code
 Review your implementation and ask:
