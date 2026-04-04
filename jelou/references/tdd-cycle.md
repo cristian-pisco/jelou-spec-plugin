@@ -92,6 +92,42 @@ A task is not considered complete until:
 - Cross-service contracts and integrations are verified.
 - All spec artifacts are complete and consistent.
 
+## Test Tiers
+
+The TDD cycle uses a tiered testing strategy to keep the feedback loop fast while maintaining full coverage at the end.
+
+### Tier 1: TDD Feedback Loop
+- Unit tests and mock-based integration tests
+- No external infrastructure (no Testcontainers, no real databases, no running services)
+- Must run in under 5 seconds per phase
+- Used during Red-Green-Refactor (Steps 7d, 7e, 7g)
+- Run only the phase's test files, not the full suite
+
+### Tier 2: Final Validation
+- Integration tests with real infrastructure (Testcontainers, real databases, message queues)
+- Written after all phases are complete, for requirements that couldn't be meaningfully tested with mocks
+- Run exactly ONCE during Step 8 (Final Validation)
+- This is the only time the full test suite executes
+
+### Why
+Running integration tests with Testcontainers during every TDD iteration (20-36 times per task) causes:
+- Memory exhaustion from accumulated Docker containers
+- Slow feedback loops (minutes instead of seconds per cycle)
+- Zombie containers from interrupted or retried test runs
+
+The TDD cycle's value comes from speed. Integration tests' value comes from fidelity. Separating them by tier serves both purposes without compromise.
+
+### Test Count Per Task
+
+| Step | What runs | Times |
+|------|-----------|-------|
+| 7d Red | Phase test files only (Tier 1) | 1 per phase |
+| 7e Green | Phase test files only (Tier 1) | 1-5 per phase |
+| 7g Refactor | Phase test files only (Tier 1) | 0-1 per phase |
+| 7h QA | Nothing (static analysis) | 0 |
+| 7k Build | Nothing (compile only) | 0 |
+| Step 8 Final | Full suite (Tier 1 + Tier 2) | **1 total** |
+
 ## QA Agent Validation (Decision #13)
 
 The QA agent operates at two levels:
