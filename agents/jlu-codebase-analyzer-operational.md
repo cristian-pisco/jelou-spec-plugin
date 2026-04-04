@@ -23,7 +23,14 @@ You receive from the orchestrator:
 1. **Read 10-15 representative files**: Controllers, services, repositories, models, tests, middleware, utilities — enough to see the patterns.
 2. **Scan for patterns**: Use Grep to search for TODOs, FIXMEs, deprecated usage, error handling patterns, logging calls, external HTTP calls, database queries, environment variables.
 3. **Map external calls**: Identify all outbound connections — other services, databases, external APIs, file storage, message queues, auth providers.
-4. **Interview the user**: Use AskUserQuestion to gather tribal knowledge about concerns not visible in code (mandatory for CONCERNS.md).
+4. **Detect test infrastructure weight**: Search for heavy test dependencies and filtering capabilities:
+   - Grep for `testcontainers`, `TestContainers`, `@Testcontainers`, `GenericContainer`, `PostgreSQLContainer`, `DockerComposeContainer` in source and test files
+   - Grep for `docker-compose.test`, `docker-compose.ci`, `docker-compose.integration` files
+   - Check if test directories separate unit from integration (e.g., `test/unit/`, `test/integration/`, `__tests__/unit/`, `__tests__/integration/`)
+   - Check test framework config for test path patterns, tags, or markers (Jest config `projects` or `testMatch`, pytest markers, Go build tags)
+   - Check package.json scripts for separate test commands (e.g., `test:unit`, `test:integration`, `test:e2e`)
+   - Determine the command to run only specific test files (framework-dependent: Jest accepts file paths as args, pytest accepts file paths, Go uses `-run` flag)
+5. **Interview the user**: Use AskUserQuestion to gather tribal knowledge about concerns not visible in code (mandatory for CONCERNS.md).
 
 ## Output 1: CONVENTIONS.md
 
@@ -50,6 +57,30 @@ Logging library, log levels used, structured logging patterns, what gets logged 
 
 ## Testing Conventions
 Test file location (co-located vs separate directory), naming pattern, setup/teardown patterns, mocking approach, assertion style.
+
+### Test Infrastructure Weight
+Whether the test suite uses heavy infrastructure that spins up external processes or containers during test runs.
+
+| Signal | Detected | Details |
+|--------|----------|---------|
+| Testcontainers | yes/no | Library, which tests use it, what containers are spawned |
+| Docker-in-test | yes/no | docker-compose.test.yml or similar test-specific compose files |
+| In-memory databases | yes/no | SQLite, H2, or embedded alternatives used in tests |
+| External service dependencies | yes/no | Tests that require running services (Redis, Postgres, Kafka, etc.) |
+
+**Weight classification**: lightweight (unit + mocks only) | mixed (some tests use heavy infra) | heavy (most tests require containers/external services)
+
+### Test Filtering Commands
+How to run a subset of tests by type or path. The AI must discover these from the project's test framework configuration.
+
+| Filter | Command | Notes |
+|--------|---------|-------|
+| Run specific files only | `<command>` | e.g., `jest path/to/test.spec.ts` or `pytest path/to/test.py` |
+| Run unit tests only | `<command>` | e.g., `jest --testPathPattern=unit` or `pytest -m "not integration"` |
+| Run integration tests only | `<command>` | e.g., `jest --testPathPattern=integration` or `pytest -m integration` |
+| Run all tests | `<command>` | The standard full suite command |
+
+If the project has no explicit test type separation (no directories, no tags, no naming convention distinguishing unit from integration), document that and note: "Test filtering not available — all tests run together."
 
 ## Import Organization
 How imports are ordered and grouped (e.g., external first, then internal, then relative).
