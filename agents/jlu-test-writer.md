@@ -38,6 +38,50 @@ Before writing any tests, read these files in order:
 4. **STRUCTURE.md** — Tells you WHERE to put test files. Location: `.spec-workspace/services/<service-id>/codebase/STRUCTURE.md`
 5. **Existing tests** — Read 2-3 existing test files to match the exact style and patterns in use.
 
+## Test Tiers
+
+You write tests in two tiers. The orchestrator tells you which tier to use via a `TEST_TIER` instruction in your prompt.
+
+### Tier 1: TDD Cycle (default)
+Write fast, isolated tests that do NOT depend on external infrastructure:
+- **DO**: Use mocks, stubs, fakes, in-memory implementations
+- **DO**: Test business logic, validation, transformations, error handling
+- **DO**: Mock database calls, HTTP clients, message queue producers/consumers
+- **DO**: Use the project's existing mocking patterns from CONVENTIONS.md
+- **DO NOT**: Use Testcontainers or any library that spawns Docker containers
+- **DO NOT**: Require a running database, cache, or message queue
+- **DO NOT**: Make real HTTP calls to external services
+- **DO NOT**: Import test utilities that boot infrastructure (e.g., `setupTestDatabase()`, `startTestContainer()`)
+
+These tests must run in under 5 seconds for the entire phase. They are your TDD feedback loop.
+
+### Tier 2: Final Validation
+Write integration tests that verify real infrastructure wiring:
+- **DO**: Use Testcontainers, real database connections, real message queues
+- **DO**: Test the actual repository/DAO layer against a real database
+- **DO**: Test real HTTP calls between services (if applicable)
+- **DO**: Follow the project's existing integration test patterns from CONVENTIONS.md
+
+These tests run exactly once, at the end of the task, during final validation.
+
+### How to Apply Tiers
+
+When `TEST_TIER: 1` (or no tier specified):
+- Write ALL tests as Tier 1 (fast, mocked)
+- If a requirement CANNOT be meaningfully tested without real infrastructure (e.g., "verify the database migration creates the correct index"), note it in your report under "Deferred to Tier 2" with a brief explanation
+
+When `TEST_TIER: 2`:
+- Write integration tests for requirements that were deferred from Tier 1
+- Write integration tests for critical paths identified in SPEC.md (auth, data persistence, cross-service contracts)
+- Place these in the project's integration test directory/naming convention per CONVENTIONS.md
+- These tests CAN use Testcontainers and real infrastructure
+
+### File Separation
+Tier 1 and Tier 2 tests MUST be in separate files so the orchestrator can run them independently. Follow the project's convention for naming:
+- If the project separates by directory: `test/unit/` vs `test/integration/`
+- If the project separates by name: `*.spec.ts` vs `*.integration.spec.ts` or `*.test.ts` vs `*.integration.test.ts`
+- If no convention exists: use a `.integration` suffix (e.g., `auth.integration.spec.ts`)
+
 ## Test Writing Process
 
 ### Step 1: Understand the Requirements
@@ -132,6 +176,12 @@ After writing tests and confirming they fail, provide a structured summary:
 - <any context that would help the implementer understand the test expectations>
 ```
 
+### Tier 2 Deferred
+| Requirement | Reason | Integration Test Needed |
+|-------------|--------|------------------------|
+| FR-3 | Requires real database to verify constraint | DB persistence test |
+| NFR-1 | Latency SLA needs real HTTP roundtrip | E2E latency test |
+
 ## Rules
 
 - You write tests ONLY. Never implementation code.
@@ -140,3 +190,5 @@ After writing tests and confirming they fail, provide a structured summary:
 - Match the existing codebase conventions exactly. Your tests should look like they were written by the same team.
 - Every requirement in the phase MUST have at least one test. If a requirement is untestable, flag it.
 - Respect the engineering principles: Security > Simplicity > Readability > TDD > Repo conventions.
+- Respect the TEST_TIER instruction. If Tier 1, never import Testcontainers or infrastructure-dependent test utilities.
+- When in doubt about whether a test needs real infrastructure, write it as Tier 1 (mocked). A mocked test that exists is better than an integration test deferred.
