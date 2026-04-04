@@ -220,6 +220,7 @@ Spawn `jlu-test-writer` agent with model: **MODEL_CONFIG.code** (default: sonnet
   - `<WORKSPACE_PATH>/services/<service-id>/codebase/CONVENTIONS.md`
   - Service source path (worktree or repo)
   - SPEC.md relevant sections
+  - `TEST_TIER: 1` (TDD cycle — fast, isolated tests only)
 - **Docker context** (only if `IS_DOCKER_SERVICE` is true): Include in the agent prompt:
   ```
   ## Execution Environment
@@ -233,7 +234,9 @@ Spawn `jlu-test-writer` agent with model: **MODEL_CONFIG.code** (default: sonnet
 - **Output**: Test file paths and a summary of what was tested.
 
 **Red verification**:
-1. Run the test suite for the affected files.
+1. Run ONLY the new test files produced by the test-writer (use exact file paths from the agent's report).
+   - Example: `<DOCKER_EXEC_PREFIX> jest path/to/new-test.spec.ts` or `<DOCKER_EXEC_PREFIX> pytest path/to/new_test.py`
+   - Do NOT run the full test suite.
 2. Confirm the new tests FAIL (Red state).
 3. If any new tests PASS unexpectedly:
    - Log to terminal: "Test `<test-name>` passes without implementation — auto-investigating."
@@ -257,11 +260,13 @@ Spawn `jlu-implementer` agent with model: **MODEL_CONFIG.code** (default: sonnet
 After the implementer finishes and tests are green, run lint and format inside the container:
 1. Detect the lint command from `package.json` scripts or `CONVENTIONS.md`.
 2. Run: `<DOCKER_EXEC_PREFIX> npx eslint --fix . && <DOCKER_EXEC_PREFIX> npx prettier --write .`
-3. Re-run tests to confirm Green is maintained after formatting changes.
+3. Re-run ONLY the phase test files to confirm Green is maintained after formatting changes.
 
 **Green verification**:
-1. Run the test suite.
-2. Confirm all tests PASS (Green state).
+1. Run ONLY the phase test files (use the exact file paths from the test-writer's report).
+   - Example: `<DOCKER_EXEC_PREFIX> jest path/to/phase-test.spec.ts` or `<DOCKER_EXEC_PREFIX> pytest path/to/test_phase.py`
+   - Do NOT run the full test suite. Regression checking happens once at Step 8.
+2. Confirm all phase tests PASS (Green state).
 3. If tests still fail after implementation:
    - Log failures to terminal.
    - Spawn a fresh `jlu-implementer` with model: **MODEL_CONFIG.code** (default: sonnet) and accumulated failure context (Decision #1).
@@ -289,20 +294,22 @@ After Green:
    - Naming improvements
    - Overly complex logic that can be simplified
    - Functions exceeding 100 lines must be refactored into smaller units
-2. If changes are made, re-run tests to confirm Green is maintained.
+2. If changes are made, re-run ONLY the phase test files to confirm Green is maintained. Do not run the full suite.
 
 ### 7h. Per-Phase QA (Decision #13)
 
-Spawn `jlu-qa-agent` with model: **MODEL_CONFIG.code** (default: sonnet) for a lightweight per-phase check:
-- **Docker context** (only if `IS_DOCKER_SERVICE` is true): Include the same `## Execution Environment` block as in Step 7d. Omit for non-Docker services.
-- All phase tests pass
-- No regression in existing tests
-- Conventions from CONVENTIONS.md are followed
-- No obvious security or performance issues
+Spawn `jlu-qa-agent` with model: **MODEL_CONFIG.code** (default: sonnet) for a static per-phase review:
+- Phase file with requirements
+- List of files created/modified in this phase
+- `<WORKSPACE_PATH>/services/<service-id>/codebase/CONVENTIONS.md`
+- `<WORKSPACE_PATH>/services/<service-id>/codebase/STRUCTURE.md`
 
-If QA finds issues:
+The QA agent performs static analysis ONLY — it reads code and checks conventions. It does NOT run tests. Test execution is reserved for Step 8.
+
+If QA finds code quality issues (convention violations, function length, test tier violations):
 - Log issues to terminal.
 - Attempt to fix automatically: spawn `jlu-implementer` with model: **MODEL_CONFIG.code** (default: sonnet) and QA findings.
+- After fix, re-run ONLY the phase test files to confirm Green is maintained.
 - Retry up to 5 times total.
 - If still failing after 5 attempts: pause and notify user (see Escalation Format below).
 
@@ -329,10 +336,10 @@ Spawn `jlu-build-validator` agent with model: **MODEL_CONFIG.code** (default: so
   - `<WORKSPACE_PATH>/services/<service-id>/codebase/CONVENTIONS.md`
   - Phase context (phase number, service-id)
 - **Docker context** (only if `IS_DOCKER_SERVICE` is true): Include the same `## Execution Environment` block as in Step 7d. Omit for non-Docker services.
-- **Task**: Run the project build, fix any failures, verify tests still pass.
+- **Task**: Run the project build command and fix any compilation failures. Do NOT run the test suite.
 
 **If the agent reports PASS** (with or without fixes):
-- If fixes were applied: re-spawn `jlu-git-agent` with model: **MODEL_CONFIG.operational** (default: haiku) to commit the build fixes (message: `fix(<service>): resolve build errors from phase <NN>`).
+- If fixes were applied: re-run ONLY the phase test files to confirm Green is maintained. Then re-spawn `jlu-git-agent` with model: **MODEL_CONFIG.operational** (default: haiku) to commit the build fixes (message: `fix(<service>): resolve build errors from phase <NN>`).
 - If no fixes needed: continue to 7l.
 
 **If the agent reports SKIP** (no build command detected):
@@ -356,19 +363,60 @@ Spawn `jlu-build-validator` agent with model: **MODEL_CONFIG.code** (default: so
    - Commit: <sha>
    - Completed: <ISO datetime>
    ```
+4. **Container cleanup** (Docker-enabled services only):
+   ```bash
+   docker container prune -f 2>/dev/null || true
+   ```
+   Remove any orphaned containers from interrupted test runs to prevent memory accumulation across phases.
 
 ---
 
 ## Step 8 — Final Validation
 
-After all phases are complete:
+After all phases are complete, this is the SINGLE full test suite run for the entire task.
+
+### 8a. Write Tier 2 Integration Tests
+
+For each service that has Tier 2 deferred requirements (from test-writer reports across phases):
+1. Collect all deferred requirements from phase files.
+2. Spawn `jlu-test-writer` with model: **MODEL_CONFIG.code** (default: sonnet):
+   - **Input**: Deferred requirements list, CONVENTIONS.md, service source path
+   - **TEST_TIER: 2** (integration tests — Testcontainers and real infrastructure allowed)
+   - **Docker context**: Include if applicable
+   - **Task**: Write integration tests for all deferred requirements.
+3. Spawn `jlu-implementer` with model: **MODEL_CONFIG.code** (default: sonnet) if the integration tests reveal missing wiring (e.g., a repository method needs a real database query that was mocked in Tier 1).
+
+### 8b. Full Test Suite Run
+
+This is the only time the full test suite runs during the entire task execution.
+
+1. **Container cleanup first**:
+   ```bash
+   docker container prune -f 2>/dev/null || true
+   ```
+
+2. Run the complete test suite for each affected service:
+   - Use the full test command from CONVENTIONS.md (e.g., `npm test`, `pytest`, `go test ./...`)
+   - If Docker-enabled: `<DOCKER_EXEC_PREFIX> <full test command>`
+   - This includes ALL tests: unit, integration, Testcontainer-based, e2e
+   
+3. If tests fail:
+   - Analyze failures: are they Tier 1 tests (regression) or Tier 2 tests (new integration tests)?
+   - Spawn `jlu-implementer` to fix. Retry up to 5 times.
+   - If still failing after 5 attempts: pause and notify user.
+
+### 8c. Comprehensive QA
 
 Spawn `jlu-qa-agent` with model: **MODEL_CONFIG.code** (default: sonnet) for comprehensive final validation:
+- **Docker context** (only if `IS_DOCKER_SERVICE` is true): Include the `## Execution Environment` block. Omit for non-Docker services.
 - **Full coverage analysis**: Are all requirements from SPEC.md covered by tests?
 - **Edge case review**: Were edge cases from the spec addressed?
-- **Regression check**: Full test suite across all affected services
 - **Cross-service contract verification** (if multi-service): Do the services communicate correctly? Are contracts honored?
 - **Convention compliance**: Final check against CONVENTIONS.md
+- **Code smell detection**: Full structural review
+- **Over-engineering detection**: Verify minimum viable implementation
+
+The QA agent MAY run the test suite during final validation — this is the sanctioned full run.
 
 Log the validation results to terminal:
 ```
@@ -377,6 +425,8 @@ Log the validation results to terminal:
 ### Coverage
 - Requirements covered: <N>/<total>
 - Test suites passing: <N>/<total>
+- Tier 1 (unit/mock) tests: <count>
+- Tier 2 (integration) tests: <count>
 
 ### Issues Found
 - <issue-1>
@@ -384,6 +434,13 @@ Log the validation results to terminal:
 
 ### Cross-Service Contracts
 - <contract check results>
+```
+
+### 8d. Post-Validation Cleanup
+
+For Docker-enabled services, clean up Testcontainer instances:
+```bash
+docker container prune -f 2>/dev/null || true
 ```
 
 ---
