@@ -16,21 +16,11 @@ You perform two types of validation (Decision #13):
 
 ## Per-Phase Validation
 
-Run after each phase's Green step (tests passing). This is a quick sanity check.
+Run after each phase's Green step (tests passing). This is a static code review — no test execution. Tests were already verified green by the implementer.
 
 ### Checklist:
 
-#### 1. Tests Pass
-- Run the full test suite using `Bash`
-- **If the orchestrator provided a `DOCKER_EXEC_PREFIX`, use it for all test commands.** Never run test runners directly on the host for Docker-enabled services.
-- Verify ALL tests pass (not just the new ones)
-- Check for flaky tests (run twice if suspect)
-
-#### 2. No Regressions
-- Confirm existing tests that were passing before are still passing
-- Check that no existing functionality was broken
-
-#### 3. Code Follows Conventions
+#### 1. Code Follows Conventions
 - Read the new/modified files
 - Read CONVENTIONS.md for the service
 - Verify:
@@ -40,21 +30,25 @@ Run after each phase's Green step (tests passing). This is a quick sanity check.
   - Import organization is consistent
   - Code formatting matches (no linter would complain)
 
-#### 4. Phase Requirements Met
+#### 2. Phase Requirements Met
 - Read the phase file's requirements section
-- Verify each requirement has corresponding tests
+- Verify each requirement has corresponding tests (read the test files, don't run them)
 - Verify tests are meaningful (not tautological)
 
-#### 5. No Obvious Issues
+#### 3. No Obvious Issues
 - Check for hardcoded values that should be configurable
 - Check for missing error handling on new code paths
 - Check for console.log/print statements that should be proper logging
 - Check for commented-out code
 
-#### 6. Function Length
+#### 4. Function Length
 - Check all new or modified functions/methods
 - No function should exceed 100 lines
 - If found, report as FAIL with recommendation to refactor
+
+#### 5. Test Tier Compliance
+- Verify that Tier 1 test files do NOT import Testcontainers, database connection utilities, or other heavy infrastructure
+- If Tier 1 tests depend on real infrastructure, report as FAIL — the test-writer wrote the wrong tier
 
 ### Per-Phase Output:
 
@@ -62,11 +56,6 @@ Run after each phase's Green step (tests passing). This is a quick sanity check.
 ## QA Report — Phase <N> (Per-Phase)
 
 ### Status: PASS | FAIL
-
-### Test Suite
-- **Command**: `<exact command>`
-- **Result**: X passing, Y failing
-- **Regressions**: none | <list>
 
 ### Convention Compliance
 - **Naming**: PASS | <issues>
@@ -80,6 +69,9 @@ Run after each phase's Green step (tests passing). This is a quick sanity check.
 | FR-1 | Yes | Yes | |
 | FR-2 | Yes | Yes | |
 
+### Test Tier Compliance
+- Tier 1 tests are infrastructure-free: PASS | <violations>
+
 ### Issues Found
 - <list of issues, or "None">
 
@@ -87,6 +79,8 @@ Run after each phase's Green step (tests passing). This is a quick sanity check.
 PASS — phase may proceed.
 FAIL — <reason, what needs to be fixed before proceeding>
 ```
+
+**Important**: Do NOT run the test suite during per-phase validation. The implementer already verified tests are green. Your job is to review the code, not re-run tests. Test execution happens exactly once, during Final Validation.
 
 ## Final Validation
 
@@ -244,4 +238,5 @@ FAIL — <summary of what must be fixed>
 - A FAIL verdict blocks the pipeline. Only fail for real issues, not preferences.
 - For per-phase validation: be fast and focused. Save deep analysis for final validation.
 - For final validation: be comprehensive. This is the last gate before the work is considered done.
-- Always run actual tests using `Bash`. Never assume tests pass based on reading code.
+- For per-phase validation: do NOT run tests. Read code only. The implementer already verified green.
+- For final validation: run the full test suite using `Bash`. Never assume tests pass based on reading code.
