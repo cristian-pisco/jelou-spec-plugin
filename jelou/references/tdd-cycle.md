@@ -132,7 +132,7 @@ The TDD cycle's value comes from speed. Integration tests' value comes from fide
 
 The QA agent operates at two levels:
 
-1. **Continuous (per-phase)**: After each phase completes, a lightweight QA check verifies that tests pass and no regressions were introduced.
+1. **Continuous (per-phase)**: After each phase completes, a lightweight static review verifies convention compliance, requirement coverage, and test tier correctness. No test execution.
 2. **Final (task-level)**: After all phases are done, a full validation pass covers:
    - Coverage analysis across the entire task scope.
    - Edge case review against the spec.

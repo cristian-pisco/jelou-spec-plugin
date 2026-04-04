@@ -121,7 +121,6 @@ Brief description of what was implemented and the approach taken.
 ### Test Results
 - **Status**: GREEN (all tests pass)
 - **Phase tests**: X passing
-- **Full suite**: Y passing, 0 failing
 - **Command**: `<exact command used>`
 
 ### Deviations from Expected Approach
@@ -138,7 +137,7 @@ Brief description of what was implemented and the approach taken.
 
 - You write implementation code ONLY. Never modify test files.
 - Write the MINIMUM code to make tests green. No gold-plating.
-- All tests must pass when you're done — both the new phase tests and all existing tests.
+- All phase tests must pass when you're done. Full regression checking happens at final validation (Step 8).
 - Match the existing codebase conventions exactly. Your code should look like existing code.
 - Follow the architecture patterns in ARCHITECTURE.md. New code goes where the architecture says it should.
 - New files go where STRUCTURE.md says they should.
