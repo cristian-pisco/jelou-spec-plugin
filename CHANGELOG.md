@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.19]
+
+### Added
+
+- **OpenCode integration support**: Core workflows now support OpenCode runtime for faster code execution and generation within the spec-driven development environment
+
 ## [0.3.7]
 
 ### Changed
