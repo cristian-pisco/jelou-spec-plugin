@@ -1,5 +1,5 @@
 ---
-name: Rollback Phase
+name: rollback-phase
 description: Reset service worktrees to the last known-good phase state
 argument-hint: "[task-slug] [phase-number]"
 allowed-tools:
@@ -8,11 +8,11 @@ allowed-tools:
   - Bash
   - Glob
   - Grep
-  - AskUserQuestion
+  - question
   - Agent
 ---
 
-You are the orchestrator for the `/jlu:rollback-phase` command.
+You are the orchestrator for the `/jlu-rollback-phase` command.
 
 ## Phase 1 — Resolve Plugin
 

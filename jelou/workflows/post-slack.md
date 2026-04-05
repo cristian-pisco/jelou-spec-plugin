@@ -1,13 +1,13 @@
 # Workflow: post-slack
 
-> Orchestrator workflow for `/jlu:post-slack [date] #channel`
+> Orchestrator workflow for `/jlu-post-slack [date] #channel`
 > Generate and post daily summary to Slack.
 
-> **Tool requirement**: All prompts, questions, and confirmations to the user in this workflow MUST use `AskUserQuestion`. Never output questions as plain text.
+> **Tool requirement**: All prompts, questions, and confirmations to the user in this workflow MUST use `question`. Never output questions as plain text.
 
 ---
 
-You are the orchestrator for the `/jlu:post-slack` command. You generate a Slack message from task data and channel templates, then post it after user approval.
+You are the orchestrator for the `/jlu-post-slack` command. You generate a Slack message from task data and channel templates, then post it after user approval.
 
 ## Step 1 — Parse Arguments
 
@@ -21,7 +21,7 @@ You are the orchestrator for the `/jlu:post-slack` command. You generate a Slack
 1. Starting from the current working directory, search for `.spec-workspace.json` in the current directory and up to 5 parent directories.
 2. Read the file and extract the `workspace` field.
 3. Resolve it to an absolute path.
-4. If `.spec-workspace.json` is not found, stop with: "No workspace found. Run /jlu:new-task first to initialize one."
+4. If `.spec-workspace.json` is not found, stop with: "No workspace found. Run /jlu-new-task first to initialize one."
 
 ## Step 3 — Load Channel Template
 
@@ -118,7 +118,7 @@ One task per line.
 For each field name in the template's `manual_fields` list (in order):
 
 1. Read the prompt text from `manual_prompts.<field-name>`.
-2. Ask the user using AskUserQuestion with the prompt text.
+2. Ask the user using question with the prompt text.
 3. Store the user's response as the value for `{{<field-name>}}`.
 
 Manual field values are inserted as-is into the template with no additional formatting (NFR-4).

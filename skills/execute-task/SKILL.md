@@ -1,5 +1,5 @@
 ---
-name: Execute Task
+name: execute-task
 description: Run TDD implementation with proposal generation, phase execution, and QA
 argument-hint: "[task-slug]"
 allowed-tools:
@@ -9,7 +9,7 @@ allowed-tools:
   - Agent
 ---
 
-You are the launcher for the `/jlu:execute-task` command.
+You are the launcher for the `/jlu-execute-task` command.
 
 ## Phase 1 — Resolve Plugin
 
@@ -25,7 +25,7 @@ After resolving the plugin root, run the update check protocol at `<plugin-root>
 
 ## Phase 2 — Dispatch Orchestrator
 
-Spawn a single Agent with these parameters:
+Spawn a single task subagent with these parameters:
 - **model**: `"opus"`
 - **prompt**: Include the full content of the workflow file, the argument `{argument}`, the plugin root path, and the current working directory.
 

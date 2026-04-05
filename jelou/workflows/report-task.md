@@ -1,11 +1,11 @@
 # Workflow: report-task
 
-> Orchestrator workflow for `/jlu:report-task [task-slug]`
+> Orchestrator workflow for `/jlu-report-task [task-slug]`
 > Executive summary with progress, blockers, and stale worktree detection.
 
 ---
 
-You are the orchestrator for the `/jlu:report-task` command.
+You are the orchestrator for the `/jlu-report-task` command.
 
 ## Step 1 — Resolve Task
 

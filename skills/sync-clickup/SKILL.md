@@ -1,5 +1,5 @@
 ---
-name: Sync ClickUp
+name: sync-clickup
 description: Create or update ClickUp macro task and subtasks from user stories
 argument-hint: "[task-slug]"
 allowed-tools:
@@ -8,10 +8,10 @@ allowed-tools:
   - Bash
   - Glob
   - Grep
-  - AskUserQuestion
+  - question
 ---
 
-You are the orchestrator for the `/jlu:sync-clickup` command.
+You are the orchestrator for the `/jlu-sync-clickup` command.
 
 ## Phase 1 — Resolve Plugin
 

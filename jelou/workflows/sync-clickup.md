@@ -1,13 +1,13 @@
 # Workflow: sync-clickup
 
-> Orchestrator workflow for `/jlu:sync-clickup [task-slug]`
+> Orchestrator workflow for `/jlu-sync-clickup [task-slug]`
 > Create or update ClickUp macro task and subtasks from user stories.
 
-> **Tool requirement**: All prompts, questions, and confirmations to the user in this workflow MUST use `AskUserQuestion`. Never output questions as plain text.
+> **Tool requirement**: All prompts, questions, and confirmations to the user in this workflow MUST use `question`. Never output questions as plain text.
 
 ---
 
-You are the orchestrator for the `/jlu:sync-clickup` command. You use the ClickUp MCP server directly — no API key, no WebFetch, no pm-agent.
+You are the orchestrator for the `/jlu-sync-clickup` command. You use the ClickUp MCP server directly — no API key, no WebFetch, no pm-agent.
 
 ## Step 0 — Verify ClickUp MCP
 
@@ -19,7 +19,7 @@ Call `clickup_get_workspace_hierarchy` with no arguments as a connectivity probe
 ```
 ⚠️ ClickUp MCP unavailable or returned an error.
 
-/jlu:sync-clickup requires the official ClickUp MCP server to be running and authenticated.
+/jlu-sync-clickup requires the official ClickUp MCP server to be running and authenticated.
 
 If MCP is not yet configured:
 1. Add the ClickUp MCP server to your Claude Code settings or .mcp.json:
@@ -34,7 +34,7 @@ If MCP is not yet configured:
    }
    Full setup docs: https://clickup.com/integrations/mcp
 2. Restart Claude Code or reload your MCP configuration so the server starts.
-3. Re-run /jlu:sync-clickup.
+3. Re-run /jlu-sync-clickup.
 
 If MCP is already configured, this may be a transient ClickUp API error. Try re-running the command.
 ```
@@ -55,7 +55,7 @@ If MCP is already configured, this may be a transient ClickUp API error. Try re-
 1. If `CLICKUP_TASK.json` has a `list_id` → use it.
 2. Else:
    a. Use `clickup_get_workspace_hierarchy` to fetch available workspaces, spaces, folders, and lists.
-   b. Present the list hierarchy to the user via AskUserQuestion and let them pick the target list.
+   b. Present the list hierarchy to the user via question and let them pick the target list.
    c. Persist the chosen `list_id` in `CLICKUP_TASK.json` for future runs.
 
 ## Step 3 — Discover Custom Fields
@@ -102,7 +102,7 @@ Infer these fields inline (no pm-agent):
 | **Tipo proyecto** | From task intent: new feature, enhancement, bugfix, refactor |
 | **Front** | "Reliability" for Issues, else "Enhancement" or "AI" |
 | **Necesita Diseno** | "Si" for frontend tasks, "No" for backend |
-| **Equipo, Responsable, Solicitante** | From config defaults — ask user on first run via AskUserQuestion, persist in CLICKUP_TASK.json |
+| **Equipo, Responsable, Solicitante** | From config defaults — ask user on first run via question, persist in CLICKUP_TASK.json |
 | **Sprint** | From TASKS.md sprint number |
 
 ## Step 5 — Create or Update Macro Task
@@ -258,9 +258,9 @@ Present the sync results to the user:
 - Sync is **idempotent** — running it multiple times produces the same result.
 - Never delete ClickUp tasks or subtasks. Only create and update.
 - `time_estimate` is **REQUIRED** on every task and subtask. Never skip it.
-- All user interaction MUST use `AskUserQuestion`. Never output questions as plain text.
+- All user interaction MUST use `question`. Never output questions as plain text.
 - If a ClickUp MCP tool returns an error, report it clearly. Do not retry silently.
-- If there's a duplicate custom field name, ask for resolution once via AskUserQuestion and persist the choice.
-- Sprint is **mandatory** — if not set in TASKS.md, ask the user via AskUserQuestion.
+- If there's a duplicate custom field name, ask for resolution once via question and persist the choice.
+- Sprint is **mandatory** — if not set in TASKS.md, ask the user via question.
 - **NEVER use WebFetch, Bash, or any HTTP tool to call the ClickUp API. `WebFetch` is not in `allowed-tools` and must never be invoked via any other path. MCP tools only.**
 - **If Step 0 fails, do NOT attempt any fallback.** Stop immediately and display the error message defined in Step 0.

@@ -1,5 +1,5 @@
 ---
-name: Refine Task
+name: refine-task
 description: Apply a last-minute change to an approved spec via structured agent interview
 argument-hint: "[change description]"
 allowed-tools:
@@ -8,10 +8,10 @@ allowed-tools:
   - Bash
   - Glob
   - Grep
-  - AskUserQuestion
+  - question
 ---
 
-You are the orchestrator for the `/jlu:refine-task` command.
+You are the orchestrator for the `/jlu-refine-task` command.
 
 ## Phase 1 — Resolve Plugin
 

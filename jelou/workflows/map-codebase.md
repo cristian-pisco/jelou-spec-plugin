@@ -1,9 +1,9 @@
 # Workflow: map-codebase
 
-> Orchestrator workflow for `/jlu:map-codebase [service-id]`
+> Orchestrator workflow for `/jlu-map-codebase [service-id]`
 > Maps a service's codebase using 2 parallel research agents.
 
-> **Tool requirement**: All prompts, questions, and confirmations to the user in this workflow MUST use `AskUserQuestion`. Never output questions as plain text.
+> **Tool requirement**: All prompts, questions, and confirmations to the user in this workflow MUST use `question`. Never output questions as plain text.
 
 ---
 
@@ -116,7 +116,7 @@ Build `DOCS_TO_UPDATE` = set of doc names that need updating.
 
 ### Full Mode (ANALYSIS_MODE = full)
 
-Spawn both agents simultaneously using the Agent tool. Each agent receives the same base context:
+Spawn both agents simultaneously using the task tool. Each agent receives the same base context:
 - `SOURCE_ROOT`: the service's source code path
 - `OUTPUT_DIR`: where to write output files
 - `service-id`: the service identifier
@@ -138,9 +138,9 @@ Spawn both agents simultaneously using the Agent tool. Each agent receives the s
   Output directory: <OUTPUT_DIR>
   ```
 - **Output**: `<OUTPUT_DIR>/CONVENTIONS.md`, `<OUTPUT_DIR>/INTEGRATIONS.md`, `<OUTPUT_DIR>/CONCERNS.md`
-- **Note**: This agent combines automated code analysis with a user interview. It will use `AskUserQuestion` to gather concerns not visible in the code (planned deprecations, scaling limits, tribal knowledge). See Decision #30.
+- **Note**: This agent combines automated code analysis with a user interview. It will use `question` to gather concerns not visible in the code (planned deprecations, scaling limits, tribal knowledge). See Decision #30.
 
-**Important**: Both agents MUST be spawned in parallel (2 separate Agent tool calls in a single response).
+**Important**: Both agents MUST be spawned in parallel (2 separate task tool calls in a single response).
 
 ### Incremental Mode (ANALYSIS_MODE = incremental)
 

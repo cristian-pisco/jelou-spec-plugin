@@ -1,9 +1,9 @@
 # Workflow: close-task
 
-> Orchestrator workflow for `/jlu:close-task [task-slug]`
+> Orchestrator workflow for `/jlu-close-task [task-slug]`
 > Performs post-production closure: ClickUp update, artifact finalization, worktree cleanup.
 
-> **Tool requirement**: All prompts, questions, and confirmations to the user in this workflow MUST use `AskUserQuestion`. Never output questions as plain text.
+> **Tool requirement**: All prompts, questions, and confirmations to the user in this workflow MUST use `question`. Never output questions as plain text.
 
 ---
 

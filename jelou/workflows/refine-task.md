@@ -1,9 +1,9 @@
 # Workflow: refine-task
 
-> Orchestrator workflow for `/jlu:refine-task [change description]`
+> Orchestrator workflow for `/jlu-refine-task [change description]`
 > Apply a last-minute targeted change to an already-approved spec via structured agent interview.
 
-> **Tool requirement**: All prompts, questions, and confirmations to the user in this workflow MUST use `AskUserQuestion`. Never output questions as plain text.
+> **Tool requirement**: All prompts, questions, and confirmations to the user in this workflow MUST use `question`. Never output questions as plain text.
 
 ---
 
@@ -20,7 +20,7 @@
       - Within the most recent date folder, pick the most recently modified task folder.
    c. Confirm with the user: "Found task `<task-slug>` from `<date>`. Apply changes to this one?"
 
-**Error gate**: If no task can be resolved, stop: "No task found. Run `/jlu:new-task` first to create one."
+**Error gate**: If no task can be resolved, stop: "No task found. Run `/jlu-new-task` first to create one."
 
 **Store**: `TASK_DIR` = absolute path to the task folder, `TASK_SLUG`
 
@@ -30,7 +30,7 @@
 
 1. Read `<TASK_DIR>/SPEC.md`.
    - If the file does not exist or is empty:
-     - Stop: "SPEC.md is missing or empty at `<TASK_DIR>/SPEC.md`. Run `/jlu:new-task` to create it."
+     - Stop: "SPEC.md is missing or empty at `<TASK_DIR>/SPEC.md`. Run `/jlu-new-task` to create it."
 
 2. Determine `CHANGE_REQUEST`:
    - If the command argument looks like a change description (not a task slug), use it as `CHANGE_REQUEST`.
@@ -101,8 +101,8 @@ Track which files exist and which are missing.
        - STACK.md
        - (etc.)
      ```
-   - Offer: "Run `/jlu:map-codebase <service-id>` to generate them? Or continue without codebase context?"
-   - If user chooses to map: pause this workflow, instruct user to run `/jlu:map-codebase`, then re-run `/jlu:refine-task`.
+   - Offer: "Run `/jlu-map-codebase <service-id>` to generate them? Or continue without codebase context?"
+   - If user chooses to map: pause this workflow, instruct user to run `/jlu-map-codebase`, then re-run `/jlu-refine-task`.
    - If user chooses to continue: proceed with whatever context is available.
 
 ---
@@ -121,7 +121,7 @@ All of these are already in memory from previous steps. No assembly needed — p
 
 ## Step 8 — Interview and Update Spec
 
-> **Tool requirement reminder**: Every question and confirmation in this step MUST use `AskUserQuestion`. Never output questions as plain text.
+> **Tool requirement reminder**: Every question and confirmation in this step MUST use `question`. Never output questions as plain text.
 
 ### 8a — Change Analysis (silent)
 
@@ -136,7 +136,7 @@ Prioritize by impact: architectural implications > behavioral changes > edge cas
 
 ### 8b — Structured Interview
 
-Using `AskUserQuestion`, interview the user to clarify the change's scope and constraints.
+Using `question`, interview the user to clarify the change's scope and constraints.
 
 Rules:
 - **2-4 questions per round**, grouped by theme — never random
@@ -172,7 +172,7 @@ Write the result to `<TASK_DIR>/SPEC.md`.
 
 ### 8d — Present for Approval
 
-Using `AskUserQuestion`, present the updated spec to the user:
+Using `question`, present the updated spec to the user:
 1. A brief summary of what changed and why
 2. List of sections that were modified
 3. Any areas where you had to make judgment calls or where information was incomplete
@@ -197,7 +197,7 @@ After the user approves (or declines) the spec update:
 
 3. Report the outcome:
    - If approved: "Spec updated. Task status remains `<STATUS>`. Change recorded in TASKS.md lifecycle."
-   - If not approved: "SPEC.md was updated but not yet approved. Re-run `/jlu:refine-task <TASK_SLUG>` to continue."
+   - If not approved: "SPEC.md was updated but not yet approved. Re-run `/jlu-refine-task <TASK_SLUG>` to continue."
 
 ---
 
@@ -215,7 +215,7 @@ After the spec update is confirmed (Step 9 item 2):
    ```markdown
 
    ## v<PREV> -> v<NEW> (<current-date>)
-   Refined via: /jlu:refine-task "<CHANGE_REQUEST first 100 chars>"
+   Refined via: /jlu-refine-task "<CHANGE_REQUEST first 100 chars>"
 
    ### Added
    - <each new item>
@@ -238,9 +238,9 @@ After the spec update is confirmed (Step 9 item 2):
 
 | Error | Action |
 |-------|--------|
-| No task found | Stop with message to run `/jlu:new-task` first |
-| SPEC.md missing or empty | Stop with message to run `/jlu:new-task` first |
-| All codebase files missing | Warn, offer `/jlu:map-codebase`, allow continue without |
+| No task found | Stop with message to run `/jlu-new-task` first |
+| SPEC.md missing or empty | Stop with message to run `/jlu-new-task` first |
+| All codebase files missing | Warn, offer `/jlu-map-codebase`, allow continue without |
 | Engineering principles missing | Note and continue |
 | Interview interrupted (session timeout, user abort) | Save any spec changes made so far, report partial state |
 | User cancels interview midway | Update spec with answers gathered so far, preserve partial work |

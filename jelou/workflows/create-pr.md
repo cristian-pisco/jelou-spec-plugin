@@ -1,9 +1,9 @@
 # Workflow: create-pr
 
-> Orchestrator workflow for `/jlu:create-pr [task-slug]`
+> Orchestrator workflow for `/jlu-create-pr [task-slug]`
 > Stages all changes, commits, pushes, and creates pull requests for all affected services. Idempotent — skips if PR already exists.
 
-> **Tool requirement**: All prompts, questions, and confirmations to the user in this workflow MUST use `AskUserQuestion`. Never output questions as plain text.
+> **Tool requirement**: All prompts, questions, and confirmations to the user in this workflow MUST use `question`. Never output questions as plain text.
 
 ---
 
@@ -72,7 +72,7 @@ For **Step 8** (`gh pr edit`), on exhaustion: warn "Cross-reference update for <
    d. If multiple candidates: present the list and ask user to choose.
    e. Confirm: "Create PR for task `<task-slug>`?"
 
-**Error gate**: If no task found, stop: "No task found. Run `/jlu:new-task` first."
+**Error gate**: If no task found, stop: "No task found. Run `/jlu-new-task` first."
 
 **Store**: `TASK_DIR`, `TASK_SLUG`, `WORKSPACE_PATH`
 
@@ -123,7 +123,7 @@ For **Step 8** (`gh pr edit`), on exhaustion: warn "Cross-reference update for <
    - Pass: SPEC.md content, PROPOSAL.md content (or empty), SPEC-changelog.md content (or empty), combined git diff for all services, service source paths.
 6. Receive the compliance report from the agent.
 7. **Decision gate**:
-   a. If the report shows any MISSING requirements, present via AskUserQuestion:
+   a. If the report shows any MISSING requirements, present via question:
       ```
       Spec Compliance Review found gaps:
 
@@ -377,7 +377,7 @@ Present the results:
 
 ### Next Steps
 - Request code review on the PR(s) above
-- After merge, run `/jlu:close-task` to finalize
+- After merge, run `/jlu-close-task` to finalize
 ```
 
 ---

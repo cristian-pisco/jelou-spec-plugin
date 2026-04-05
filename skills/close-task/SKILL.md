@@ -1,5 +1,5 @@
 ---
-name: Close Task
+name: close-task
 description: Close task after PR merge — update ClickUp, artifacts, and observability
 argument-hint: "[task-slug]"
 allowed-tools:
@@ -8,11 +8,11 @@ allowed-tools:
   - Bash
   - Glob
   - Grep
-  - AskUserQuestion
+  - question
   - Agent
 ---
 
-You are the orchestrator for the `/jlu:close-task` command.
+You are the orchestrator for the `/jlu-close-task` command.
 
 ## Phase 1 — Resolve Plugin
 

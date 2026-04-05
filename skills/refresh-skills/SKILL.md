@@ -1,5 +1,5 @@
 ---
-name: Refresh Skills
+name: refresh-skills
 description: Refresh the skill registry by scanning local and global skills
 allowed-tools:
   - Read
@@ -9,7 +9,7 @@ allowed-tools:
   - Grep
 ---
 
-You are the orchestrator for the `/jlu:refresh-skills` command.
+You are the orchestrator for the `/jlu-refresh-skills` command.
 
 ## Phase 1 — Resolve Plugin
 

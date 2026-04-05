@@ -1,6 +1,6 @@
 # Workflow: execute-task
 
-> Orchestrator workflow for `/jlu:execute-task [task-slug]`
+> Orchestrator workflow for `/jlu-execute-task [task-slug]`
 > Runs TDD implementation with proposal generation, phase-by-phase execution, and QA validation.
 
 > **Autonomy mode**: This workflow runs fully autonomous. The ONLY case where execution pauses for user input is after 5 failed retry attempts on a phase or build step. All other decisions are auto-resolved.
@@ -24,7 +24,7 @@
    a. Find the most recent task (latest date folder, latest task within it).
    b. Auto-select it. Log to terminal: "Auto-selected task `<task-slug>`."
 
-**Error gate**: If no task found, stop: "No task found. Run `/jlu:new-task` first."
+**Error gate**: If no task found, stop: "No task found. Run `/jlu-new-task` first."
 
 **Store**: `TASK_DIR`, `TASK_SLUG`, `WORKSPACE_PATH`
 
@@ -40,7 +40,7 @@
    - Any blocked or failed phases
 
 **Validation**:
-- If status is `draft` or `refining`: stop. "Task is in `<status>` state. Run `/jlu:new-task <slug>` first to complete the spec interview and get it to `planned`."
+- If status is `draft` or `refining`: stop. "Task is in `<status>` state. Run `/jlu-new-task <slug>` first to complete the spec interview and get it to `planned`."
 - If status is `closed` or `cancelled`: stop. "Task is already `<status>`. Cannot execute."
 
 **Store**: `CURRENT_STATUS`, `AFFECTED_SERVICES`, `PHASE_STATE`
@@ -503,7 +503,7 @@ If validation fails or phases have unresolved issues:
 
 ## Escalation Format
 
-When any retry limit (5 attempts) is exhausted, this is the **only** point where execution pauses for user input. Use `AskUserQuestion` with this format:
+When any retry limit (5 attempts) is exhausted, this is the **only** point where execution pauses for user input. Use `question` with this format:
 
 ```
 ## Execution Paused — Manual Intervention Needed

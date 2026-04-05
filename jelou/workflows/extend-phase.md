@@ -1,9 +1,9 @@
 # Workflow: extend-phase
 
-> Orchestrator workflow for `/jlu:extend-phase [task-slug] [phase-number]`
+> Orchestrator workflow for `/jlu-extend-phase [task-slug] [phase-number]`
 > Add or modify scope in an in-progress task via a focused mini-interview.
 
-> **Tool requirement**: All prompts, questions, and confirmations to the user in this workflow MUST use `AskUserQuestion`. Never output questions as plain text.
+> **Tool requirement**: All prompts, questions, and confirmations to the user in this workflow MUST use `question`. Never output questions as plain text.
 
 ---
 
@@ -48,9 +48,9 @@
 
 ## Step 3 — Mini Interview (Decision #24)
 
-Conduct a focused interview about the extension. This is shorter and more targeted than the full spec interview in `/jlu:new-task`.
+Conduct a focused interview about the extension. This is shorter and more targeted than the full spec interview in `/jlu-new-task`.
 
-Using AskUserQuestion, ask the following questions. Wait for the user's response after each round before proceeding:
+Using question, ask the following questions. Wait for the user's response after each round before proceeding:
 
 ### Round 1: What and Why
 1. "What is changing? Describe the new or modified requirements."
@@ -135,7 +135,7 @@ If the extension only ADDS new requirements without modifying existing ones:
 If the extension MODIFIES requirements that have already been implemented:
 1. Mark affected `done` phases as needing re-validation.
 2. Reopen the task status:
-   - If the modification requires spec-level changes: transition to `refining` and recommend re-running `/jlu:refine-task`.
+   - If the modification requires spec-level changes: transition to `refining` and recommend re-running `/jlu-refine-task`.
    - If the modification is implementation-level only: transition to `planned` and mark affected phases for re-execution.
 3. Existing code is preserved as the baseline (Decision #15) — changes build on top, not replace.
 
@@ -250,11 +250,11 @@ Present the extension summary:
 
 ### Next Steps
 <if additive>
-- Continue execution with `/jlu:execute-task` — the new requirements will be picked up in the phase.
+- Continue execution with `/jlu-execute-task` — the new requirements will be picked up in the phase.
 <if modifying>
-- Re-run `/jlu:execute-task` — affected phases will be re-executed with updated requirements.
+- Re-run `/jlu-execute-task` — affected phases will be re-executed with updated requirements.
 <if refining needed>
-- Run `/jlu:refine-task` to update the spec with the new requirements, then `/jlu:execute-task`.
+- Run `/jlu-refine-task` to update the spec with the new requirements, then `/jlu-execute-task`.
 ```
 
 ---
@@ -266,7 +266,7 @@ Present the extension summary:
 | No task found | Stop with message |
 | TASKS.md or PROPOSAL.md missing | Stop — nothing to extend |
 | Phase number out of range | Show valid range, ask again |
-| No phases exist yet | Suggest running `/jlu:execute-task` first to generate proposal and phases |
+| No phases exist yet | Suggest running `/jlu-execute-task` first to generate proposal and phases |
 | User cancels during interview | Stop, no changes applied |
 | Test re-run fails on infra issues | Report, note tests need to be re-run manually |
 
@@ -288,4 +288,4 @@ Present the extension summary:
 | Decision | Application |
 |----------|-------------|
 | #15 | Preserve existing code as baseline — new/modified phases build on top |
-| #24 | Mini interview focused on the extension (shorter than the full spec interview in /jlu:new-task) |
+| #24 | Mini interview focused on the extension (shorter than the full spec interview in /jlu-new-task) |

@@ -1,5 +1,5 @@
 ---
-name: Create PR
+name: create-pr
 description: Stage, commit, push, and create pull requests for all affected services
 argument-hint: "[task-slug]"
 allowed-tools:
@@ -8,11 +8,11 @@ allowed-tools:
   - Bash
   - Glob
   - Grep
-  - AskUserQuestion
+  - question
   - Agent
 ---
 
-You are the orchestrator for the `/jlu:create-pr` command.
+You are the orchestrator for the `/jlu-create-pr` command.
 
 ## Phase 1 — Resolve Plugin
 

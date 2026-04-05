@@ -1,9 +1,9 @@
 # Workflow: rollback-phase
 
-> Orchestrator workflow for `/jlu:rollback-phase [task-slug] [phase-number]`
+> Orchestrator workflow for `/jlu-rollback-phase [task-slug] [phase-number]`
 > Resets service worktrees to the last known-good state after a failed phase.
 
-> **Tool requirement**: All prompts, questions, and confirmations to the user in this workflow MUST use `AskUserQuestion`. Never output questions as plain text.
+> **Tool requirement**: All prompts, questions, and confirmations to the user in this workflow MUST use `question`. Never output questions as plain text.
 
 ---
 
@@ -16,7 +16,7 @@
    a. Find the most recent task in `implementing` state.
    b. Confirm with the user: "Rollback phases for task `<task-slug>`?"
 
-**Error gate**: If no task found, stop: "No task found. Run `/jlu:new-task` first."
+**Error gate**: If no task found, stop: "No task found. Run `/jlu-new-task` first."
 
 **Store**: `TASK_DIR`, `TASK_SLUG`, `WORKSPACE_PATH`
 
@@ -75,7 +75,7 @@ cd <SERVICE_CWD> && git status --porcelain
 
 If there are uncommitted changes:
 - Stop processing this service.
-- Warn via AskUserQuestion:
+- Warn via question:
   ```
   Uncommitted changes detected in <service-id> worktree at <SERVICE_CWD>.
 
@@ -94,7 +94,7 @@ Count files that will be reverted:
 cd <SERVICE_CWD> && git diff --stat <TARGET_COMMIT>..HEAD
 ```
 
-Present via AskUserQuestion:
+Present via question:
 ```
 Rollback Preview — <service-id>
 
@@ -166,8 +166,8 @@ For each phase in `PHASES_TO_ROLLBACK`, for each affected service:
 | Phase <NN>: <name> | done | rolled_back |
 
 ### Next Steps
-- Re-run `/jlu:execute-task <TASK_SLUG>` to retry from the first rolled-back phase
-- Or run `/jlu:refine-task <TASK_SLUG>` to adjust the spec before retrying
+- Re-run `/jlu-execute-task <TASK_SLUG>` to retry from the first rolled-back phase
+- Or run `/jlu-refine-task <TASK_SLUG>` to adjust the spec before retrying
 ```
 
 ---

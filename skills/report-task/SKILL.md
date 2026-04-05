@@ -1,5 +1,5 @@
 ---
-name: Report Task
+name: report-task
 description: Executive summary with progress, blockers, and stale worktree detection
 argument-hint: "[task-slug]"
 allowed-tools:
@@ -10,7 +10,7 @@ allowed-tools:
   - Agent
 ---
 
-You are the orchestrator for the `/jlu:report-task` command.
+You are the orchestrator for the `/jlu-report-task` command.
 
 ## Phase 1 — Resolve Plugin
 

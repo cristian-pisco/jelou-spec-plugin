@@ -1,5 +1,5 @@
 ---
-name: Post Slack
+name: post-slack
 description: Generate and post daily summary to Slack
 argument-hint: "[date] #channel"
 allowed-tools:
@@ -8,10 +8,10 @@ allowed-tools:
   - Bash
   - Glob
   - Grep
-  - AskUserQuestion
+  - question
 ---
 
-You are the orchestrator for the `/jlu:post-slack` command.
+You are the orchestrator for the `/jlu-post-slack` command.
 
 ## Phase 1 — Resolve Plugin
 

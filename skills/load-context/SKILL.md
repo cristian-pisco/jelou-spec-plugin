@@ -1,5 +1,5 @@
 ---
-name: Load Context
+name: load-context
 description: Load completed or in-progress task context into a fresh session for Q&A
 argument-hint: "[task-slug]"
 allowed-tools:
@@ -10,7 +10,7 @@ allowed-tools:
   - Agent
 ---
 
-You are the orchestrator for the `/jlu:load-context` command.
+You are the orchestrator for the `/jlu-load-context` command.
 
 ## Phase 1 — Resolve Plugin
 

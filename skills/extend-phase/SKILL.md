@@ -1,5 +1,5 @@
 ---
-name: Extend Phase
+name: extend-phase
 description: Add scope to an in-progress task via focused mini-interview
 argument-hint: "[task-slug] [phase-number]"
 allowed-tools:
@@ -8,11 +8,11 @@ allowed-tools:
   - Bash
   - Glob
   - Grep
-  - AskUserQuestion
+  - question
   - Agent
 ---
 
-You are the orchestrator for the `/jlu:extend-phase` command.
+You are the orchestrator for the `/jlu-extend-phase` command.
 
 ## Phase 1 — Resolve Plugin
 

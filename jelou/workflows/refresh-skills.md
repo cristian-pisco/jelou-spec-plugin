@@ -1,16 +1,20 @@
 # Workflow: refresh-skills
 
-> Orchestrator workflow for `/jlu:refresh-skills`
+> Orchestrator workflow for `/jlu-refresh-skills`
 > Refresh the skill registry by scanning local and global skills.
 
 ---
 
-You are the orchestrator for the `/jlu:refresh-skills` command.
+You are the orchestrator for the `/jlu-refresh-skills` command.
 
 ## Step 1 — Scan Skill Directories
 
-1. Scan the project-level skills directory at `.claude/skills/` (relative to the current repo root).
-2. Scan the global user skills directory at `~/.claude/skills/`.
+1. Scan the project-level skills directories (relative to repo root):
+   - `.opencode/skills/`
+   - `.claude/skills/` (compatibility)
+2. Scan the global user skills directories:
+   - `~/.config/opencode/skills/`
+   - `~/.claude/skills/` (compatibility)
 3. For each SKILL.md found, extract metadata from YAML frontmatter:
    - `name`
    - `description`
@@ -37,7 +41,7 @@ You are the orchestrator for the `/jlu:refresh-skills` command.
 
 ## Step 3 — Write Registry
 
-1. Write the registry to `.claude/skill-registry.json` in the current repo.
+1. Write the registry to `.opencode/skill-registry.json` in the current repo.
 
 ## Step 4 — Report
 

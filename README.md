@@ -1,8 +1,8 @@
-# Jelou Spec Plugin — Spec-Driven Development for Claude Code
+# Jelou Spec Plugin — Spec-Driven Development for Claude Code and OpenCode
 
-A Claude Code plugin that implements Spec-Driven Development with specialized agents, strict TDD, multi-service orchestration, and a shared workspace as the single source of documentary truth.
+A spec-driven workflow plugin that runs on Claude Code and OpenCode with specialized agents, strict TDD, multi-service orchestration, and a shared workspace as the single source of documentary truth.
 
-Follows the conventions established by [OpenSpec](https://github.com/Fission-AI/OpenSpec) (`/opsx:`) and [Get Shit Done](https://github.com/gsd-build/get-shit-done) (`/gsd:`), with the **`/jlu:`** command namespace.
+Follows the conventions established by [OpenSpec](https://github.com/Fission-AI/OpenSpec) (`/opsx:`) and [Get Shit Done](https://github.com/gsd-build/get-shit-done) (`/gsd:`), with the **`/jlu-`** command namespace.
 
 ## What It Does
 
@@ -10,16 +10,72 @@ Follows the conventions established by [OpenSpec](https://github.com/Fission-AI/
 - **Multi-service coordination**: Manages tasks that span multiple repos/services with dependency-driven execution, coordinated branches, and cross-service validation.
 - **Agent specialization**: The orchestrator never writes code. It delegates to purpose-built agents (spec-interviewer, proposal, test-writer, implementer, QA) and consolidates their output.
 - **Strict TDD**: Red → Green → Refactor enforced per phase. Separate test-writer and implementer agents ensure discipline.
-- **Integrations**: ClickUp task management, Slack dailies (via MCP), Git worktree management, and PR coordination.
+- **Integrations**: Git worktree management and PR coordination in Phase 1; ClickUp and Slack MCP integrations in Phase 2.
 
 ## Prerequisites
 
-- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and configured
+- [OpenCode CLI](https://opencode.ai/docs/) or [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code)
 - Git
-- (Optional) ClickUp MCP server for task management integration
-- (Optional) Slack MCP server for daily posts
+- (Phase 2) ClickUp MCP server for task management integration
+- (Phase 2) Slack MCP server for daily posts
 
-## Quick Start
+## Quick Start (OpenCode)
+
+Run OpenCode from this repository root:
+
+```bash
+opencode
+```
+
+Use the command palette with the `jlu-` namespace:
+
+```
+# Create a new task (will offer to set up .spec-workspace if missing)
+/jlu-new-task
+
+# (Optional) Map your codebase first
+/jlu-map-codebase
+```
+
+## Install in an Existing OpenCode Project
+
+Automatic install (recommended):
+
+```bash
+# from this plugin repo
+./bin/install-opencode.sh /path/to/your-project
+```
+
+What it does automatically:
+- Copies `.opencode/` into the target project
+- Copies `jelou/` workflows/templates/references into the target project
+- Injects/updates a managed Jelou block in the target `AGENTS.md` (idempotent)
+
+Manual install (if you prefer):
+
+```bash
+# from your target project root
+cp -R /path/to/jelou-spec-plugin/.opencode ./
+cp -R /path/to/jelou-spec-plugin/jelou ./
+```
+
+After that, start OpenCode in the target repo and run:
+
+```bash
+opencode
+```
+
+Use commands like `/jlu-new-task`, `/jlu-execute-task`, `/jlu-create-pr`.
+
+### Update in Existing Project
+
+Run the same installer again:
+
+```bash
+./bin/install-opencode.sh /path/to/your-project
+```
+
+### Quick Start (Claude Code)
 
 Inside a Claude Code session, run:
 
@@ -31,19 +87,7 @@ Inside a Claude Code session, run:
 /plugin install jlu@jelou-spec-plugin
 ```
 
-Then navigate to your project's parent directory and start using commands:
-
-```
-# Create a new task (will offer to set up .spec-workspace if missing)
-/jlu:new-task
-
-# (Optional) Map your codebase first
-/jlu:map-codebase
-
-# (Optional) ClickUp integration works automatically via MCP on first /jlu:sync-clickup
-```
-
-### Updating the Plugin
+### Updating the Claude Plugin
 
 To pull the latest version inside a Claude Code session:
 
@@ -51,9 +95,9 @@ To pull the latest version inside a Claude Code session:
 /plugin update jlu@jelou-spec-plugin
 ```
 
-The plugin silently checks for updates when you run any `/jlu:*` command. If a newer version exists, you'll see a one-line notice with the update command. Checks are cached for 4 hours and skip in CI environments.
+The plugin silently checks for updates when you run any `/jlu-*` command. If a newer version exists, you'll see a one-line notice with the update command. Checks are cached for 4 hours and skip in CI environments.
 
-### Local Development / Manual Installation
+### Local Development / Manual Installation (Claude)
 
 ```bash
 # Option A: Load directly from a local directory
@@ -67,25 +111,27 @@ cd jelou-spec-plugin
 
 ## Core Commands
 
+OpenCode command definitions live in `.opencode/commands/`. All commands use the `jlu-` namespace.
+
 | Command | Purpose |
 |---------|---------|
-| `/jlu:map-codebase` | Analyze a service with 2 parallel agents, generate 6 codebase knowledge files |
-| `/jlu:new-task` | Create a new task with spec, worktrees, and affected service detection |
-| `/jlu:refine-task` | Apply a targeted change to an approved spec via structured interview |
-| `/jlu:execute-task` | Run TDD implementation (autonomous or step-by-step mode) |
-| `/jlu:extend-phase` | Add scope to an in-progress task via focused mini-interview |
-| `/jlu:sync-clickup` | Create/update ClickUp macro task and subtasks via MCP |
-| `/jlu:report-task` | Executive summary with progress, blockers, and stale worktree detection |
-| `/jlu:load-context` | Load task context into a fresh session for Q&A |
-| `/jlu:create-pr [task-slug]` | Stage, commit, push, and create pull requests for all affected services |
-| `/jlu:post-slack [date] #channel` | Generate and post daily summary to Slack |
-| `/jlu:close-task` | Close task after PR merge — updates ClickUp, cleans worktrees |
-| `/jlu:rollback-phase` | Reset service worktrees to the last known-good phase state |
-| `/jlu:refresh-skills` | Refresh the skill registry |
+| `/jlu-map-codebase` | Analyze a service with 2 parallel agents, generate 6 codebase knowledge files |
+| `/jlu-new-task` | Create a new task with spec, worktrees, and affected service detection |
+| `/jlu-refine-task` | Apply a targeted change to an approved spec via structured interview |
+| `/jlu-execute-task` | Run TDD implementation (autonomous or step-by-step mode) |
+| `/jlu-extend-phase` | Add scope to an in-progress task via focused mini-interview |
+| `/jlu-sync-clickup` | (Phase 2) Create/update ClickUp macro task and subtasks via MCP |
+| `/jlu-report-task` | Executive summary with progress, blockers, and stale worktree detection |
+| `/jlu-load-context` | Load task context into a fresh session for Q&A |
+| `/jlu-create-pr [task-slug]` | Stage, commit, push, and create pull requests for all affected services |
+| `/jlu-post-slack [date] #channel` | (Phase 2) Generate and post daily summary to Slack |
+| `/jlu-close-task` | Close task after PR merge — updates ClickUp, cleans worktrees |
+| `/jlu-rollback-phase` | Reset service worktrees to the last known-good phase state |
+| `/jlu-refresh-skills` | Refresh the skill registry |
 
 ### Spec Compliance Review
 
-When creating a PR via `/jlu:create-pr`, a spec compliance review runs automatically:
+When creating a PR via `/jlu-create-pr`, a spec compliance review runs automatically:
 - Checks every SPEC.md requirement against the actual code diff
 - Reports COVERED / MISSING / UNTESTED status with file:line evidence
 - Detects scope creep (code changes not in the spec)
@@ -143,11 +189,11 @@ Each service repo only stores a minimal `.spec-workspace.json` pointer:
 
 ### ClickUp
 
-ClickUp integration uses the ClickUp MCP server (no API key needed). On first run of `/jlu:sync-clickup`, you'll be prompted to select a target list. Field mappings are auto-discovered and persisted in `CLICKUP_TASK.json` per task.
+Phase 2. ClickUp integration uses the ClickUp MCP server (no API key needed). On first run of `/jlu-sync-clickup`, you'll be prompted to select a target list. Field mappings are auto-discovered and persisted in `CLICKUP_TASK.json` per task.
 
 ### Slack
 
-Requires a Slack MCP server configured in your Claude Code settings. The plugin generates message content; the MCP server handles delivery.
+Phase 2. Requires a Slack MCP server configured in your OpenCode or Claude Code MCP settings. The plugin generates message content; the MCP server handles delivery.
 
 Channel templates can be customized in `.spec-workspace/registry/slack/<channel>.md`.
 
@@ -163,11 +209,11 @@ Per-service concrete rules in each service's `CONVENTIONS.md`.
 
 ## How It Works (Simplified)
 
-1. **Spec** → `/jlu:new-task` creates a seed, refines via inline interview, and sets up worktrees
+1. **Spec** → `/jlu-new-task` creates a seed, refines via inline interview, and sets up worktrees
 2. **Proposal** → Two-pass generation (global strategy + per-service details)
 3. **Execute** → Dependency-driven, TDD-enforced implementation with specialized agents
 4. **Validate** → Continuous QA per phase + final cross-service validation
-5. **Deliver** → Create PRs (`/jlu:create-pr`), sync to ClickUp, post to Slack
+5. **Deliver** → Create PRs (`/jlu-create-pr`), sync to ClickUp, post to Slack
 
 All state is file-based. No external database required.
 
@@ -175,18 +221,18 @@ All state is file-based. No external database required.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> draft : /jlu:new-task
-    draft --> refining : /jlu:new-task (inline interview)
+    [*] --> draft : /jlu-new-task
+    draft --> refining : /jlu-new-task (inline interview)
     refining --> planned : spec approved
-    planned --> implementing : /jlu:execute-task
+    planned --> implementing : /jlu-execute-task
     implementing --> validating : all phases done
     validating --> ready_to_publish : QA passed
     ready_to_publish --> done : closure approved
-    done --> closed : /jlu:close-task
+    done --> closed : /jlu-close-task
 
-    implementing --> refining : /jlu:extend-phase (major)
-    implementing --> planned : /jlu:extend-phase (minor)
-    validating --> planned : /jlu:extend-phase
+    implementing --> refining : /jlu-extend-phase (major)
+    implementing --> planned : /jlu-extend-phase (minor)
+    validating --> planned : /jlu-extend-phase
 
     state implementing {
         [*] --> proposal_generation
@@ -212,11 +258,11 @@ stateDiagram-v2
 ```mermaid
 flowchart TB
     subgraph commands["User Commands"]
-        new["/jlu:new-task"]
-        map["/jlu:map-codebase"]
-        refine["/jlu:refine-task"]
-        exec["/jlu:execute-task"]
-        close["/jlu:close-task"]
+        new["/jlu-new-task"]
+        map["/jlu-map-codebase"]
+        refine["/jlu-refine-task"]
+        exec["/jlu-execute-task"]
+        close["/jlu-close-task"]
     end
 
     subgraph opus["Orchestrator Tier — Opus"]
