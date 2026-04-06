@@ -115,11 +115,19 @@ Infer these fields inline (no pm-agent):
    - `assignees`: From config defaults
    - `priority`: Inferred priority (1=urgent, 2=high, 3=normal, 4=low)
    - `custom_fields`: ALL mapped fields from Step 3-4
-2. **Immediately after create**: Use `clickup_update_task` to set `time_estimate` (not available on create).
+2. **Immediately after create**: Use `clickup_update_task` to set `time_estimate` (not available on create):
+   ```
+   clickup_update_task(task_id: "<new-task-id>", time_estimate: "<milliseconds>")
+   ```
+   Example: `clickup_update_task(task_id: "86e0r6mek", time_estimate: "7200000")` for 2h.
 
 ### Update (existing macro task)
 
-1. Use `clickup_update_task` with changed fields + `time_estimate` + status mapping.
+1. Use `clickup_update_task` with changed fields + `time_estimate` + status mapping:
+   ```
+   clickup_update_task(task_id: "<macro-task-id>", time_estimate: "<milliseconds>", status: "<mapped-status>")
+   ```
+   Example: `clickup_update_task(task_id: "86e0r6mek", time_estimate: "14400000")` for 4h.
 
 ### Status Mapping
 
@@ -168,7 +176,11 @@ For each user story file in `uh/`:
 2. **Create new**: Use `clickup_create_task` with `parent` = macro task ID.
 3. **Subtasks inherit ALL parent custom fields**: Riesgo, Equipo, Tipo proyecto, Solicitante, Front, Talla, Responsable, Sprint, Story Points, Sprint Points, Necesita Diseno.
 4. **Update existing**: Use `clickup_update_task`.
-5. Set `time_estimate` on each subtask (proportional to phase scope) — use `clickup_update_task` after create.
+5. Set `time_estimate` on each subtask (proportional to phase scope) — use `clickup_update_task` after create:
+   ```
+   clickup_update_task(task_id: "<subtask-id>", time_estimate: "<milliseconds>")
+   ```
+   Example: `clickup_update_task(task_id: "86e0r6mek", time_estimate: "3600000")` for 1h.
 6. **Never delete subtasks** (Decision #27).
 
 ## Step 8 — Persist to CLICKUP_TASK.json
