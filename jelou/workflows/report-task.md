@@ -32,6 +32,31 @@ You are the orchestrator for the `/jlu-report-task` command.
 2. Cross-reference with task states — worktrees for tasks in `done` or `closed` state are stale.
 3. If stale worktrees are found, include a cleanup prompt in the report (Decision #17).
 
+### Stale Temp Staging Worktrees
+
+For each registered service repo, check for temp staging worktrees older than 1 hour:
+
+```bash
+find <SERVICE_REPO_ROOT>/.worktrees -maxdepth 1 -type d -name '*-staging-tmp' -mmin +60
+```
+
+For each match, report as a leaked worktree:
+
+> Leaked temp staging worktree: `<path>` (older than 1 hour). Likely left behind by a crashed `/jlu-create-pr`. Remove with:
+> ```bash
+> git -C <service-repo> worktree remove --force <path>
+> ```
+
+### Stale Branch-Mode Branches
+
+For tasks in `done` or `closed` state with `Mode: branch`, check for local `production/<TASK_SLUG>` branches still present in service repos:
+
+```bash
+git -C <service-repo> rev-parse --verify production/<TASK_SLUG> 2>/dev/null
+```
+
+If present, report as a candidate for cleanup (not auto-removed).
+
 ## Step 5 — Consolidate Observability
 
 1. Read observability logs from `/specs/observability/` in each affected service repo.
