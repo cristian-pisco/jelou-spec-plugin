@@ -102,9 +102,11 @@ Read `<TASK_DIR>/TASKS.md` → `## Branching → Mode`:
 
 ### Branch-mode pre-flight (runs before the first phase)
 
-For each affected service:
+**Skip this pre-flight entirely if Step 3 set `RESUME_FROM`.** On session resume, `production/<TASK_SLUG>` is already the active branch and its working tree legitimately contains the in-progress phase's edits — running the dirty-tree check here would produce a false abort.
 
-1. `cd <SERVICE_REPO_ROOT>` (the main repo, since there is no worktree).
+For each affected service (first execution only):
+
+1. Resolve the service's main repo root: `SERVICE_REPO_ROOT = <WORKSPACE_PATH> + services.yaml[service-id].path`. `cd <SERVICE_REPO_ROOT>` (the main repo, since there is no worktree).
 2. Verify the working tree is clean:
    ```bash
    DIRTY=$(git status --porcelain)
