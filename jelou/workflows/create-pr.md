@@ -208,6 +208,165 @@ Spawn `jlu-git-agent` in `SERVICE_CWD` with model: **haiku** and this task:
 
 ---
 
+## Step 5b — Dual-PR Cherry-Pick Synthesis
+
+**Runs only if `DUAL_PR = yes`.** Executes per-service inside the loop started in Step 3, right after Step 5 completes for that service.
+
+### 5b.1 — Fetch
+
+```bash
+cd <SERVICE_REPO_ROOT>   # main repo root, NOT the primary task worktree
+git fetch origin
+```
+
+Use the service's main repo root (from `services.yaml`), not the worktree. The cherry-pick always runs from the main repo because the temp staging worktree is added off it, and the main repo's refs are where `origin/alpha` lives.
+
+### 5b.2 — Verify alpha exists
+
+```bash
+ALPHA_EXISTS=$(git ls-remote --heads origin alpha | head -1)
+```
+
+If empty, warn and skip to Step 6 for this service:
+
+> Service `<service-id>` has no `alpha` branch at origin. Skipping staging PR. Trunk PR still proceeds.
+
+Record `STAGING_SYNC[<service-id>] = "skipped-no-alpha"` in the PR_RESULTS map.
+
+### 5b.3 — Rebuild vs incremental decision
+
+```bash
+CURRENT_ALPHA_SHA=$(git rev-parse origin/alpha)
+CURRENT_PRODUCTION_SHA=$(git rev-parse production/<TASK_SLUG>)
+```
+
+Decision tree (using `LAST_ALPHA_SHA` and `LAST_CHERRYPICKED_PROD_SHA` from Step 2):
+
+- If `LAST_ALPHA_SHA` is empty OR `LAST_CHERRYPICKED_PROD_SHA` is empty → **rebuild** (first sync). Cherry-pick range: `origin/<TRUNK>..production/<TASK_SLUG>`.
+- Else if `CURRENT_ALPHA_SHA != LAST_ALPHA_SHA` → **rebuild**. Cherry-pick range: `origin/<TRUNK>..production/<TASK_SLUG>`.
+- Else if `CURRENT_PRODUCTION_SHA == LAST_CHERRYPICKED_PROD_SHA` → **no-op** (staging already current). Skip to Step 6 for this service. Record `STAGING_SYNC[<service-id>] = "no-op"`.
+- Else → **incremental**. Cherry-pick range: `<LAST_CHERRYPICKED_PROD_SHA>..production/<TASK_SLUG>`.
+
+Store for this service: `SYNC_MODE ∈ {rebuild, incremental, no-op}`, `CHERRY_PICK_RANGE`.
+
+### 5b.4 — Prepare temp staging worktree
+
+For `SYNC_MODE = rebuild`:
+
+```bash
+# Tear down any stale local staging branch
+git branch -D staging/<TASK_SLUG> 2>/dev/null || true
+# Create fresh temp worktree on a brand-new staging branch from origin/alpha
+git worktree add -b staging/<TASK_SLUG> .worktrees/<TASK_SLUG>-staging-tmp origin/alpha
+```
+
+For `SYNC_MODE = incremental`:
+
+```bash
+# Local staging branch exists from a previous run; add a worktree on it
+git worktree add .worktrees/<TASK_SLUG>-staging-tmp staging/<TASK_SLUG>
+```
+
+If either worktree add fails (e.g., temp worktree already exists), abort for this service:
+
+> Temp staging worktree for `<service-id>` is in an unexpected state. Remove `.worktrees/<TASK_SLUG>-staging-tmp` manually and re-run `/jlu-create-pr`.
+
+Record as an abort and continue to the next service.
+
+### 5b.5 — Spawn jlu-conflict-resolver
+
+Spawn `jlu-conflict-resolver` with `MODEL_CONFIG.code` (default sonnet) and pass:
+
+- `temp_worktree_path`: `<SERVICE_REPO_ROOT>/.worktrees/<TASK_SLUG>-staging-tmp`
+- `commit_range`: `CHERRY_PICK_RANGE`
+- `spec_content`: full contents of `<TASK_DIR>/SPEC.md`
+- `service_source_paths`: map of every affected service's source path (so the agent can read adjacent code across services if needed)
+- `service_id`: `<service-id>`
+
+### 5b.6 — Handle sub-agent result
+
+On `{status: "success", last_staged_sha}`:
+
+Proceed to Step 5b.7.
+
+On `{status: "aborted", unresolved_commit, conflicting_files, reason, explanation}`:
+
+1. Clean up:
+   ```bash
+   git worktree remove --force .worktrees/<TASK_SLUG>-staging-tmp
+   git branch -D staging/<TASK_SLUG> 2>/dev/null || true
+   ```
+   (Force-delete local staging — this run's partial state is discarded. Next `/jlu-create-pr` will rebuild from scratch.)
+2. Using `question`, present to the user:
+   ```
+   Staging-PR synthesis aborted for <service-id>.
+     Commit: <unresolved_commit>
+     Reason: <reason>
+     Conflicting files:
+       - <path1>
+       - <path2>
+     Explanation: <explanation>
+
+   Options:
+     A) Resolve manually — cut staging/<TASK_SLUG> from origin/alpha, cherry-pick <CHERRY_PICK_RANGE>, resolve conflicts, push, then re-run /jlu-create-pr.
+     B) Disable dual-PR for this task — edit TASKS.md (Dual PR: no), then re-run /jlu-create-pr.
+     C) Abort /jlu-create-pr entirely.
+   ```
+3. On "A": stop the workflow. Note that the trunk PR may already exist — report its state. User resolves and re-runs.
+4. On "B": update `<TASK_DIR>/TASKS.md` → `## Branching → Dual PR: no`. Continue with trunk-only flow (skip to Step 6 for remaining services; skip all remaining 5b steps).
+5. On "C": stop the workflow.
+
+### 5b.7 — Push staging
+
+For `SYNC_MODE = rebuild`:
+```bash
+git push --force-with-lease origin staging/<TASK_SLUG>
+```
+
+For `SYNC_MODE = incremental`:
+```bash
+git push origin staging/<TASK_SLUG>
+```
+
+If either push is rejected (non-fast-forward on incremental, or `--force-with-lease` detects an unexpected remote ref), abort per Option A logic:
+
+> Remote `staging/<TASK_SLUG>` has diverged unexpectedly for `<service-id>`. Inspect remote, reconcile, and re-run `/jlu-create-pr`.
+
+Clean up the temp worktree and local staging branch before aborting:
+```bash
+git worktree remove --force .worktrees/<TASK_SLUG>-staging-tmp
+git branch -D staging/<TASK_SLUG> 2>/dev/null || true
+```
+
+### 5b.8 — Update markers
+
+Write into `<TASK_DIR>/TASKS.md` → `## Branching`:
+- `Last alpha SHA: <CURRENT_ALPHA_SHA>`
+- `Last cherry-picked production SHA: <CURRENT_PRODUCTION_SHA>`
+
+(If multiple services are affected and each has its own sync, use a nested form under `## Branching`:
+```
+## Branching
+- Dual PR: yes
+- ...
+- Sync markers per service:
+  - <service-id-1>: alpha=<sha>, production=<sha>
+  - <service-id-2>: alpha=<sha>, production=<sha>
+```
+Single-service tasks use the flat form.)
+
+### 5b.9 — Remove temp worktree
+
+```bash
+git worktree remove .worktrees/<TASK_SLUG>-staging-tmp
+```
+
+Keep the local `staging/<TASK_SLUG>` branch for future incremental runs.
+
+Record `STAGING_SYNC[<service-id>] = SYNC_MODE` (rebuild | incremental | no-op).
+
+---
+
 ## Step 6 — Check for Existing PR
 
 Run:
