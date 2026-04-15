@@ -1,6 +1,6 @@
 ---
 name: rollback-phase
-description: Reset service worktrees to the last known-good phase state
+description: Use when a phase went wrong — resets service worktrees to the last known-good state. Triggers: "rollback", "undo phase", "start over", "phase failed, go back"
 argument-hint: "[task-slug] [phase-number]"
 allowed-tools:
   - Read

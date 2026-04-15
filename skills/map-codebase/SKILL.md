@@ -1,6 +1,6 @@
 ---
 name: map-codebase
-description: Analyze a service's codebase with 2 parallel research agents
+description: Use before starting work on a new service — analyzes architecture, stack, conventions, integrations, and concerns. Triggers: "map codebase", "analyze the service", "understand the code", "explore the repo"
 argument-hint: "[service-id]"
 allowed-tools:
   - Read

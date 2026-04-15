@@ -1,6 +1,6 @@
 ---
 name: extend-phase
-description: Add scope to an in-progress task via focused mini-interview
+description: Use when scope changes mid-task — adds new requirements to an in-progress phase via focused interview. Triggers: "add to the task", "scope changed", "I also need X", "extend phase"
 argument-hint: "[task-slug] [phase-number]"
 allowed-tools:
   - Read

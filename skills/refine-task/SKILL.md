@@ -1,6 +1,6 @@
 ---
 name: refine-task
-description: Apply a last-minute change to an approved spec via structured agent interview
+description: Use when a spec needs changes after approval — applies targeted refinements via structured interview. Triggers: "change the spec", "update requirements", "the spec needs X", "refine task"
 argument-hint: "[change description]"
 allowed-tools:
   - Read

@@ -7,6 +7,20 @@
 
 ---
 
+## Principles
+
+> **Precision over speed. Ask before assuming. The spec is the contract.**
+
+- A vague spec produces vague code. Invest in clarity now to avoid rewrites later.
+- Every question should be informed by what you found in the codebase, not generic.
+- The user's time is valuable — ask 2-4 focused questions per round, not 10 scattered ones.
+- When the user says "that's enough", stop. Write the spec with what you have.
+- The spec is complete when a developer could implement it without guessing.
+
+**When to simplify:** For obvious, well-bounded tasks (single endpoint, single fix, clear requirements), the interview can be as short as 1-2 rounds. Don't force 8 rounds of questions on a task that's already clear.
+
+---
+
 ## Step 1 — Resolve Workspace
 
 1. Read `.spec-workspace.json` from the current working directory.

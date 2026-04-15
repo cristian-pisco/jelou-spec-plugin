@@ -1,6 +1,6 @@
 ---
 name: load-context
-description: Load completed or in-progress task context into a fresh session for Q&A
+description: Use when resuming work in a fresh session — loads task context so you can pick up where you left off. Triggers: "pick up where I left off", "load context", "what was I working on", "resume task"
 argument-hint: "[task-slug]"
 allowed-tools:
   - Read

@@ -15,6 +15,20 @@
 
 ---
 
+## Principles
+
+> **Minimum viable work. Verify before proceeding. Escalate before guessing.**
+
+- Each phase follows strict TDD: Red -> Green -> Refactor. No shortcuts.
+- Agents write the minimum code to satisfy tests. Over-engineering is a defect.
+- Every phase must end with verified green tests before the next phase starts.
+- When something fails after 5 retries, escalate to the user — don't hack around it.
+- When the process feels heavy for a trivial change, that's by design. The discipline prevents drift.
+
+**When to simplify:** For single-file, single-function changes with no cross-service impact, the orchestrator may consolidate multiple phases into one if PROPOSAL.md supports it. The TDD cycle within each phase is never skipped.
+
+---
+
 ## Step 1 — Resolve Task
 
 1. If a `task-slug` is provided as a command argument:

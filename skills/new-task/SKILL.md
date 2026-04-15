@@ -1,6 +1,6 @@
 ---
 name: new-task
-description: Create a new task with inline spec interview and background worktree creation
+description: Use when starting new work — creates a task, interviews you about the spec, and sets up worktrees. Triggers: "new task", "start a task", "I want to build X", "create a spec"
 argument-hint: "[task description]"
 allowed-tools:
   - Read

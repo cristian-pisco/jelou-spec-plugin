@@ -1,6 +1,6 @@
 ---
 name: execute-task
-description: Run TDD implementation with proposal generation, phase execution, and QA
+description: Use when a spec is approved and ready to implement — runs the full TDD pipeline with proposal generation, phase execution, and QA. Triggers: "execute task", "start implementation", "build it", "run the task"
 argument-hint: "[task-slug]"
 allowed-tools:
   - Read

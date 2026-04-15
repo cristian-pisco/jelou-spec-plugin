@@ -1,6 +1,6 @@
 ---
 name: refresh-skills
-description: Refresh the skill registry by scanning local and global skills
+description: Use when skills aren't showing up or after plugin updates — rescans and reloads the skill registry. Triggers: "refresh skills", "reload plugins", "update skills", "skills not working"
 allowed-tools:
   - Read
   - Write

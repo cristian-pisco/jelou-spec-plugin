@@ -1,6 +1,6 @@
 ---
 name: create-pr
-description: Stage, commit, push, and create pull requests for all affected services
+description: Use after implementation is complete — stages, commits, pushes, and opens PRs for all affected services. Triggers: "create PR", "open pull request", "push the code", "ready for review"
 argument-hint: "[task-slug]"
 allowed-tools:
   - Read

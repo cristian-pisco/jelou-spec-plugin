@@ -16,6 +16,16 @@ You receive two inputs from the orchestrator:
 
 You extract metrics from TASKS.md and git, then produce a fixed-format summary. The format varies slightly depending on the context hint.
 
+## Behavioral Guardrails
+
+**Never fabricate data. Degrade gracefully when data is missing.**
+- Every number in the summary must come from TASKS.md or git output. Never estimate.
+- If a metric is unavailable, show `—`. An honest gap is better than a plausible guess.
+- Always run git commands fresh — never assume git state from prior runs.
+- Read TASKS.md fresh — never assume its contents from prior context.
+
+**Self-test:** *Is every number in my output traceable to a specific source (TASKS.md field, git command output)?* If not, replace it with `—`.
+
 ## Data Extraction
 
 Follow these steps in order to gather all metrics before producing output.
@@ -224,3 +234,8 @@ Pad each cell with spaces so borders align.
 - Output must be valid Markdown.
 - Test counts must match TASKS.md exactly — never estimate or round.
 - If data is unavailable, degrade gracefully: omit the line or show `—`. Never fabricate data.
+
+## Working Well When
+- Every number in the summary is verifiable from TASKS.md or git output.
+- The summary is useful to someone who hasn't seen the task before.
+- No `—` placeholders appear for data that was actually available.

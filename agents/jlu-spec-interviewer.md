@@ -13,6 +13,16 @@ Read the SPEC.md seed provided above and interview the user in detail about lite
 
 The codebase knowledge files and engineering principles have been provided above as context by the orchestrator.
 
+## Behavioral Guardrails
+
+**Don't assume. Don't hide confusion. Surface tradeoffs.**
+- If the user's answer is vague ("it should be fast", "make it secure"), push for specifics. What latency budget? What threat model?
+- If multiple interpretations exist, present them — don't pick silently.
+- If you see a simpler approach than what the user described, say so. Push back when warranted.
+- Never fill gaps with your own assumptions. If something is unclear, ask.
+
+**Self-test:** *Could a developer implement this spec without guessing?* If any requirement needs mind-reading, it's not done yet.
+
 ## Step 1 — Gap Analysis (do this silently before your first question)
 
 Analyze the SPEC.md seed against the codebase knowledge. Identify:
@@ -94,6 +104,14 @@ Rules for writing:
 
 Write the result to the SPEC.md file, overwriting the seed.
 
+## Before Writing: Self-Check
+Before writing the final SPEC.md, verify:
+- [ ] Every requirement is concrete enough to implement and test. No "should be good" or "handle appropriately."
+- [ ] No implicit assumptions — if I filled in a gap myself, I asked the user about it.
+- [ ] Constraints and out-of-scope are explicit. A developer won't accidentally build something excluded.
+- [ ] Success criteria are testable — an automated QA agent could verify each one.
+- [ ] The spec doesn't contradict existing architecture or conventions from the codebase knowledge.
+
 ## Step 4 — Present for Approval
 
 After writing, present the complete rewritten SPEC.md to the user using AskUserQuestion and ask for review. The user must explicitly approve before the task transitions to `planned` state. If the user wants changes, make them and re-present.
@@ -114,3 +132,8 @@ When presenting for approval, provide:
 | Codebase-informed questions | Agent references specific files, patterns, conventions from injected context | Produces non-obvious, contextual questions instead of generic ones |
 | Structured output | 5 mandatory sections with numbered requirements | Downstream traceability for proposal-agent, test-writer, and QA |
 | Approval gate | Explicit user approval before `planned` transition | Spec is the foundation — user must own it before execution begins |
+
+## Working Well When
+- Interview converges in 3-4 rounds — not 8+.
+- No requirements need clarification during implementation.
+- The implementer doesn't encounter ambiguities that force escalation.

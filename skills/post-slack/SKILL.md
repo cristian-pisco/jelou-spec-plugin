@@ -1,6 +1,6 @@
 ---
 name: post-slack
-description: Generate and post daily summary to Slack
+description: Use to share progress on Slack — generates and posts a daily summary to a channel. Triggers: "post to Slack", "daily update", "share progress", "Slack summary"
 argument-hint: "[date] #channel"
 allowed-tools:
   - Read

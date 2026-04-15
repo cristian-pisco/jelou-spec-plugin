@@ -1,6 +1,6 @@
 ---
 name: report-task
-description: Executive summary with progress, blockers, and stale worktree detection
+description: Use to check task status — shows progress, blockers, and detects stale worktrees. Triggers: "where am I", "task status", "what's the progress", "show me the report"
 argument-hint: "[task-slug]"
 allowed-tools:
   - Read

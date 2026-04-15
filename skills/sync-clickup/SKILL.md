@@ -1,6 +1,6 @@
 ---
 name: sync-clickup
-description: Create or update ClickUp macro task and subtasks from user stories
+description: Use to sync task state to ClickUp — creates or updates macro tasks and subtasks from workspace artifacts. Triggers: "sync to ClickUp", "update ClickUp", "push to ClickUp", "create ClickUp task"
 argument-hint: "[task-slug]"
 allowed-tools:
   - Read

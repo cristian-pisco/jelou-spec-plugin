@@ -7,6 +7,19 @@
 
 ---
 
+## Principles
+
+> **Idempotent. Verifiable. No surprises in the diff.**
+
+- Running this workflow twice produces the same result. Existing PRs are skipped.
+- The spec compliance review catches drift between what was planned and what was built.
+- Every PR description tells reviewers what changed and why — traced back to SPEC.md requirements.
+- Rate limits are handled gracefully with backoff. Never skip the retry protocol.
+
+**When to simplify:** For single-service tasks with one PR, the cross-referencing and multi-service coordination steps are automatically skipped. The compliance review always runs.
+
+---
+
 ## GitHub API Rate Limit Handling
 
 All `gh` CLI commands in this workflow (Steps 6, 7e, 8) MUST use the retry protocol below.
