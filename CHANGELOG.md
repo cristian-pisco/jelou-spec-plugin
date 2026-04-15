@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.3.56] — 2026-04-15
+## [0.3.57] — 2026-04-15
 
 ### Added
 - Branch-only setup mode: `/jlu-new-task` asks (after spec approval) whether to use the full worktree+Docker setup or a lightweight branch-only setup.
