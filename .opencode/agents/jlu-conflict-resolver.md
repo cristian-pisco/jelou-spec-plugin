@@ -24,7 +24,7 @@ The orchestrator spawns you with:
 **Evidence or abort. No guessing.**
 - Every conflict resolution must be backed by a concrete SPEC requirement, a test expectation, or a clear pattern in adjacent code. If both sides look equally plausible and the SPEC is silent, abort.
 - Never run `git cherry-pick --skip`. Skipping produces content drift invisible to reviewers.
-- Never force-push, never rebase, never reset. Your scope is the temp worktree and cherry-pick operations only.
+- Never force-push, never rebase. Never `git reset` except as part of the Abort cleanup sequence defined below. Your scope is the temp worktree and cherry-pick operations only.
 - Never edit SPEC.md, TASKS.md, or any artifact outside `temp_worktree_path`.
 - Never `git commit --amend`.
 
@@ -49,22 +49,27 @@ The orchestrator spawns you with:
       git status --porcelain | awk '/^(UU|AA|DD|AU|UA|DU|UD) /{print $2}'
       ```
    b. For each conflicted path:
-      i. Read the file, identify `<<<<<<<` / `=======` / `>>>>>>>` markers.
-      ii. Read the surrounding ±30 lines for context.
-      iii. Grep the SPEC for the identifiers involved (function names, class names, route paths) to find authoritative requirements.
-      iv. Inspect adjacent files if the conflict involves function signatures, API contracts, or shared types.
-      v. Decide the resolution:
+      i. Detect binary/submodule conflicts:
+         ```bash
+         git diff HEAD MERGE_HEAD -- <path> | head -1 | grep -q '^Binary'
+         ```
+         If the file is binary (or a submodule), abort immediately with `{status: "aborted", unresolved_commit: <sha>, conflicting_files: [<path>], reason: "binary-conflict", explanation: "Binary file conflict cannot be resolved by text-merge reasoning."}`. Binary files have no `<<<<<<<` markers and must not be auto-resolved.
+      ii. Read the file, identify `<<<<<<<` / `=======` / `>>>>>>>` markers.
+      iii. Read the surrounding ±30 lines for context.
+      iv. Grep the SPEC for the identifiers involved (function names, class names, route paths) to find authoritative requirements.
+      v. Inspect adjacent files if the conflict involves function signatures, API contracts, or shared types.
+      vi. Decide the resolution:
          - If SPEC explicitly dictates one side: apply that resolution.
          - If both sides are plausible and SPEC is silent: abort the cherry-pick (`git cherry-pick --abort`) and return `{status: "aborted", unresolved_commit: <sha>, conflicting_files: [<paths>], reason: "ambiguous-no-spec-evidence"}`.
          - If one side matches an established pattern in adjacent code and the other does not: prefer the side that matches the pattern.
          - If the conflict is purely structural (e.g., import ordering, trailing whitespace): merge both sides, keeping the union.
-      vi. Write the resolved file. Remove all conflict markers.
-      vii. `git add <path>`.
+      vii. Write the resolved file. Remove all conflict markers.
+      viii. `git add <path>`.
    c. After all conflicts are resolved and staged:
       ```bash
       git cherry-pick --continue --no-edit
       ```
-      Use `--no-edit` to preserve the original commit message. If `--continue` fails (e.g., remaining conflicts you missed), abort.
+      Use `--no-edit` to preserve the original commit message. If `--continue` exits non-zero, abort with `{status: "aborted", unresolved_commit: <sha>, reason: "continue-failed", explanation: "<output of git status --short>"}`.
 5. After the final commit cherry-picks cleanly, capture:
    ```bash
    LAST_SHA=$(git rev-parse HEAD)
@@ -83,12 +88,11 @@ The orchestrator spawns you with:
 }
 ```
 
-Before returning, ensure the temp worktree is in a clean state:
+Before returning, ensure the in-flight cherry-pick is aborted so the worktree is not left mid-operation:
 ```bash
 git cherry-pick --abort 2>/dev/null || true
-git reset --hard HEAD 2>/dev/null || true
 ```
-(The orchestrator will remove the temp worktree; you only need to abort the in-flight cherry-pick so the worktree is not left mid-operation.)
+`git cherry-pick --abort` restores HEAD and the index; no further reset is required. The orchestrator will remove the temp worktree regardless of its state, so do not attempt `git reset --hard` or `git clean` here.
 
 ## Success Output Format
 
