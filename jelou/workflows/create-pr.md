@@ -22,7 +22,7 @@
 
 ## GitHub API Rate Limit Handling
 
-All `gh` CLI commands in this workflow (Steps 6, 7e, 8) MUST use the retry protocol below.
+All `gh` CLI commands in this workflow (Steps 6, 6b, 7e, 7f, 8, 8b) MUST use the retry protocol below.
 
 ### Retry Protocol
 
@@ -244,7 +244,11 @@ Decision tree (using `LAST_ALPHA_SHA` and `LAST_CHERRYPICKED_PROD_SHA` from Step
 
 - If `LAST_ALPHA_SHA` is empty OR `LAST_CHERRYPICKED_PROD_SHA` is empty → **rebuild** (first sync). Cherry-pick range: `origin/<TRUNK>..production/<TASK_SLUG>`.
 - Else if `CURRENT_ALPHA_SHA != LAST_ALPHA_SHA` → **rebuild**. Cherry-pick range: `origin/<TRUNK>..production/<TASK_SLUG>`.
-- Else if `CURRENT_PRODUCTION_SHA == LAST_CHERRYPICKED_PROD_SHA` → **no-op** (staging already current). Skip to Step 6 for this service. Record `STAGING_SYNC[<service-id>] = "no-op"`.
+- Else if `CURRENT_PRODUCTION_SHA == LAST_CHERRYPICKED_PROD_SHA` → **no-op candidate**. Before recording, verify the remote staging branch still exists:
+  ```bash
+  STAGING_REMOTE_EXISTS=$(git ls-remote --heads origin staging/<TASK_SLUG> | head -1)
+  ```
+  If `STAGING_REMOTE_EXISTS` is empty (branch was deleted externally since the last sync), downgrade to **rebuild** with range `origin/<TRUNK>..production/<TASK_SLUG>`. Otherwise record `STAGING_SYNC[<service-id>] = "no-op"` and skip to Step 6 for this service.
 - Else → **incremental**. Cherry-pick range: `<LAST_CHERRYPICKED_PROD_SHA>..production/<TASK_SLUG>`.
 
 Store for this service: `SYNC_MODE ∈ {rebuild, incremental, no-op}`, `CHERRY_PICK_RANGE`.
@@ -328,15 +332,21 @@ For `SYNC_MODE = incremental`:
 git push origin staging/<TASK_SLUG>
 ```
 
-If either push is rejected (non-fast-forward on incremental, or `--force-with-lease` detects an unexpected remote ref), abort per Option A logic:
+If either push is rejected (non-fast-forward on incremental, or `--force-with-lease` detects an unexpected remote ref), abort per Option A logic. Clean up the temp worktree and preserve the local `staging/<TASK_SLUG>` branch — the push rejection is not a content problem, so the local branch is still valid.
 
-> Remote `staging/<TASK_SLUG>` has diverged unexpectedly for `<service-id>`. Inspect remote, reconcile, and re-run `/jlu-create-pr`.
-
-Clean up the temp worktree and local staging branch before aborting:
+For `SYNC_MODE = rebuild` (push-rejection means a force-push was refused because `--force-with-lease` saw an unexpected remote):
 ```bash
 git worktree remove --force .worktrees/<TASK_SLUG>-staging-tmp
 git branch -D staging/<TASK_SLUG> 2>/dev/null || true
 ```
+> Remote `staging/<TASK_SLUG>` has diverged unexpectedly for `<service-id>`. Inspect remote, reconcile, and re-run `/jlu-create-pr`.
+
+For `SYNC_MODE = incremental` (push-rejection means a fast-forward was not possible — typically someone pushed to `origin/staging/<TASK_SLUG>` externally):
+```bash
+git worktree remove --force .worktrees/<TASK_SLUG>-staging-tmp
+# Do NOT delete local staging/<TASK_SLUG> — it is a valid branch; only the push was rejected.
+```
+> Remote `staging/<TASK_SLUG>` diverged since the last sync for `<service-id>`. Local branch is intact. Inspect remote, reconcile, then re-run `/jlu-create-pr`.
 
 ### 5b.8 — Update markers
 
@@ -378,8 +388,8 @@ cd <SERVICE_CWD> && gh pr view production/<TASK_SLUG> --json url,state,title,num
 
 Parse the result:
 
-- **`OPEN`**: Store URL and number. Record action as `existing`. Skip to next service.
-- **`MERGED`**: Store URL and number. Record action as `existing`. Skip to next service.
+- **`OPEN`**: Store URL and number. Record action as `existing`. If `DUAL_PR = yes`, continue to Step 6b (the staging PR may still need creation on re-runs); otherwise skip to Step 8.
+- **`MERGED`**: Store URL and number. Record action as `existing`. If `DUAL_PR = yes`, continue to Step 6b (same reason); otherwise skip to Step 8.
 - **`CLOSED`**: Ask user:
   ```
   A closed PR exists for `production/<TASK_SLUG>` in <service-id>:
@@ -642,9 +652,10 @@ Present the results:
 ```
 ## PR Summary — <TASK_SLUG>
 
-| Service | Action | PR URL | State |
-|---------|--------|--------|-------|
-| <service-id> | created / existing / skipped | <url> | OPEN / MERGED |
+| Service | PR Type | Action | PR URL | State |
+|---------|---------|--------|--------|-------|
+| <service-id> | trunk | created / existing / skipped | <url> | OPEN / MERGED |
+| <service-id> | alpha | created / existing / skipped / n/a | <url> | OPEN / MERGED |   (alpha row present only when DUAL_PR = yes)
 
 ### Artifacts Updated
 - TASKS.md: External Links and Timeline updated
