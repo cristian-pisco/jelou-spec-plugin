@@ -557,6 +557,88 @@ Update `<TASK_DIR>/TASKS.md` → `## Branching` → replace `Mode: (pending ...)
 
 ---
 
+## Step 15c — Dispatch Setup Subtask
+
+Runs only if the user approved the spec in Step 15.
+
+Notify the user:
+```
+Setting up work environment (<SETUP_MODE> mode) for <N> services...
+```
+
+Spawn a task subagent using `jlu-git-agent` with `MODEL_CONFIG.operational` (default haiku). Pass:
+- `CONFIRMED_SERVICES` (list)
+- `TASK_SLUG`
+- `SETUP_MODE` ∈ {`worktree`, `branch`}
+- Per-service repo paths from `services.yaml`
+
+The subtask executes the following per-service algorithm.
+
+### Source-branch verification (both modes)
+
+For each service in `CONFIRMED_SERVICES`:
+
+1. `cd <repo>` and run `git fetch origin` to get latest refs.
+2. Detect trunk:
+   ```bash
+   TRUNK=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@')
+   [ -z "$TRUNK" ] && TRUNK=main
+   git rev-parse --verify origin/$TRUNK >/dev/null 2>&1 || TRUNK=master
+   ```
+3. If `origin/$TRUNK` still does not resolve, abort this service: **"Cannot resolve trunk branch for `<service-id>`."**
+
+**In branch mode only**, additionally:
+
+4. Check working tree cleanliness:
+   ```bash
+   DIRTY=$(git status --porcelain)
+   ```
+   If `DIRTY` is non-empty, abort this service with the first 5 dirty paths plus the total count: **"Working tree of `<service-id>` is dirty. Commit or stash before branch-only mode can create branches in place. Dirty files: `<paths...>` (total: N)."**
+5. Check current HEAD:
+   ```bash
+   CURR=$(git rev-parse --abbrev-ref HEAD)
+   ```
+   If `CURR != $TRUNK`, abort: **"`<service-id>` is currently on `$CURR`, not `$TRUNK`. Check out `$TRUNK` first."**
+
+In worktree mode, skip steps 4 and 5 — the main repo's HEAD and working-tree state do not affect worktree creation.
+
+### Branch creation
+
+**If `SETUP_MODE = worktree`** (existing five-phase behavior):
+
+1. Create the worktree on the new branch:
+   ```bash
+   git worktree add .worktrees/<TASK_SLUG> -b production/<TASK_SLUG> origin/$TRUNK
+   ```
+   If `production/<TASK_SLUG>` already exists locally, abort this service: **"Branch `production/<TASK_SLUG>` already exists locally for `<service-id>`. Delete it or use a different slug."**
+2. Copy untracked files from repo root to worktree:
+   ```bash
+   for file in .env .npmrc; do
+     [ -f <repo>/$file ] && cp <repo>/$file <worktree>/$file
+   done
+   ```
+3. Run existing Phase 2 (port allocation), Phase 3 (docker-compose.override.yml), Phase 4 (inter-service URLs), Phase 5 (docker compose up -d) from the pre-removal Step 9. Wherever those phases referenced `spec/<TASK_SLUG>`, use `production/<TASK_SLUG>`.
+
+**If `SETUP_MODE = branch`** (new):
+
+1. Create the branch (not checked out):
+   ```bash
+   git branch production/<TASK_SLUG> origin/$TRUNK
+   ```
+   If the branch already exists, abort this service: **"Branch `production/<TASK_SLUG>` already exists locally for `<service-id>`. Delete it or use a different slug."**
+2. Skip Docker phases entirely. No `.env` copy, no override file, no port allocation, no container bring-up.
+
+### Record
+
+Record per service: `{ mode, production_branch, worktree_path (if worktree mode) }`. The orchestrator includes this in the final report (Step 16).
+
+### Error handling
+
+- Per-service aborts do NOT block the workflow. The orchestrator continues with remaining services and reports all aborts in the final report.
+- If the subtask itself crashes (Claude session interruption, infrastructure), any partial state (created branches, open worktrees) is left on disk. Re-running `/jlu-new-task <slug>` will detect existing branches and abort per-service with the "already exists" message.
+
+---
+
 ## Step 16 — Final Report
 
 Present the final summary:
