@@ -214,6 +214,8 @@ Write the initial tracker to `<TASK_DIR>/TASKS.md`:
 
 If a tasks.md template exists at `<plugin-root>/jelou/templates/tasks.md`, use it as the base. Otherwise, use the format above.
 
+Note: The `## Branching` section is NOT written here. It is appended to TASKS.md in Step 8c after `DUAL_PR` is known.
+
 ---
 
 ## Step 7 — Detect Affected Services
@@ -305,7 +307,33 @@ After confirming affected services, scan for overlapping active tasks:
 
    If the user selects "Abort": stop the workflow. Report: "Task creation aborted due to conflicts. Review active tasks and retry."
 
-4. **No conflicts**: continue silently to Step 9.
+4. **No conflicts**: continue silently to Step 8c.
+
+---
+
+### 8c. Dual-PR Intent
+
+Using `question`:
+
+> **"Will this task also need a PR to `alpha` (staging)?"**
+> - No — only a PR to trunk (default)
+> - Yes — two PRs: one to trunk (mandatory), one to alpha (synthesized at PR-creation time via cherry-pick with conflict resolver)
+
+Store as `DUAL_PR` (boolean).
+
+After storing `DUAL_PR`, **append** the `## Branching` section to the existing TASKS.md file, between the `## Services` and `## Phases` sections:
+
+```markdown
+## Branching
+- Dual PR: <DUAL_PR yes|no>
+- Primary branch: production/<TASK_SLUG>
+- Secondary branch: staging/<TASK_SLUG>   (intended; synthesized at first /jlu-create-pr when Dual PR = yes)
+- Mode: (pending — chosen after spec approval)
+- Last alpha SHA: (pending — populated at first dual-PR sync)
+- Last cherry-picked production SHA: (pending — populated at first dual-PR sync)
+```
+
+**Store**: `DUAL_PR`
 
 ---
 
