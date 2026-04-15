@@ -118,7 +118,8 @@ For each affected service:
        ```
      - If it exists, delete it:
        ```bash
-       git push origin :staging/<TASK_SLUG> || true
+       git push origin :staging/<TASK_SLUG> 2>/dev/null \
+         || echo "Warning: could not delete remote staging/<TASK_SLUG> for <service-id> (check branch protection or permissions). Continuing."
        ```
 
 3. **Local branch teardown**:
@@ -141,12 +142,13 @@ For each affected service:
    git worktree remove --force .worktrees/<TASK_SLUG>-staging-tmp 2>/dev/null || true
    ```
 
-5. **Primary worktree teardown** (only when `Mode: worktree`):
+5. **Primary worktree teardown** (only when `Mode: worktree`). Use absolute paths so each command is independent of shell cwd state:
    ```bash
    # Tear down Docker first if this is a Docker-enabled service
-   cd .worktrees/<TASK_SLUG> && docker compose down -v --rmi all --remove-orphans 2>/dev/null || true
-   cd <SERVICE_REPO_ROOT>
-   git worktree remove .worktrees/<TASK_SLUG> || git worktree remove --force .worktrees/<TASK_SLUG>
+   docker compose --project-directory <SERVICE_REPO_ROOT>/.worktrees/<TASK_SLUG> down -v --rmi all --remove-orphans 2>/dev/null || true
+   # Remove the worktree from the main repo context
+   git -C <SERVICE_REPO_ROOT> worktree remove .worktrees/<TASK_SLUG> \
+     || git -C <SERVICE_REPO_ROOT> worktree remove --force .worktrees/<TASK_SLUG>
    ```
 
 6. Record cleanup summary per service for the final report.
@@ -184,6 +186,7 @@ Present the final summary:
 
 ### Branch Cleanup
 - production/<TASK_SLUG>: deleted / kept / not found
+- staging/<TASK_SLUG>: deleted locally and remotely / local only / remote only / not applicable (DUAL_PR = no)
 ```
 
 ---
