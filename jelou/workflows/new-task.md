@@ -321,7 +321,7 @@ Using `question`:
 
 Store as `DUAL_PR` (boolean).
 
-After storing `DUAL_PR`, **append** the `## Branching` section to the existing TASKS.md file, between the `## Services` and `## Phases` sections:
+After storing `DUAL_PR`, **insert** the `## Branching` section into the existing TASKS.md file, between the `## Services` and `## Phases` sections:
 
 ```markdown
 ## Branching
@@ -617,7 +617,7 @@ In worktree mode, skip steps 4 and 5 — the main repo's HEAD and working-tree s
      [ -f <repo>/$file ] && cp <repo>/$file <worktree>/$file
    done
    ```
-3. Run existing Phase 2 (port allocation), Phase 3 (docker-compose.override.yml), Phase 4 (inter-service URLs), Phase 5 (docker compose up -d) from the pre-removal Step 9. Wherever those phases referenced `spec/<TASK_SLUG>`, use `production/<TASK_SLUG>`.
+3. Run the Docker isolation phases per `jelou/references/docker-conventions.md`: port allocation, `docker-compose.override.yml` generation, inter-service URL wiring, and `docker compose up -d`. Wherever those phases would have referenced `spec/<TASK_SLUG>`, use `production/<TASK_SLUG>`.
 
 **If `SETUP_MODE = branch`** (new):
 
@@ -725,4 +725,6 @@ If `DUAL_PR = yes`: append to the report:
 | Phase dir | `.spec-workspace/specs/<dd-mm-yyyy>/<task-slug>/services/<service-id>/phases/` |
 | User stories dir | `.spec-workspace/specs/<dd-mm-yyyy>/<task-slug>/services/<service-id>/uh/` |
 | Worktree | `<service-repo>/.worktrees/<task-slug>` |
-| Branch | `spec/<task-slug>` |
+| Branch (primary) | `production/<task-slug>` (in each affected service repo) |
+| Branch (alpha, opt-in) | `staging/<task-slug>` (synthesized at first `/jlu-create-pr` when Dual PR = yes) |
+| Temp staging worktree | `<service-repo>/.worktrees/<task-slug>-staging-tmp` (ephemeral, dual-PR sync only) |
