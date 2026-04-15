@@ -67,8 +67,8 @@ The orchestrator invokes you after significant events:
 - **Primary branch**: production/<task-slug>
 - **Secondary branch**: staging/<task-slug>  (intended; synthesized at first /jlu-create-pr when Dual PR = yes)
 - **Mode**: worktree | branch
-- **Last alpha SHA**: <sha>                         (populated at first dual-PR sync)
-- **Last cherry-picked production SHA**: <sha>     (populated at first dual-PR sync)
+- **Sync markers**: per-service map, populated on the first `/jlu-create-pr` dual-PR sync
+  - <service-id>: alpha=<sha>, production=<sha>
 
 ## Blockers
 | ID | Phase | Service | Description | Status |
@@ -118,7 +118,7 @@ If this task is resumed after interruption:
 
 7. **Track blockers** — When a blocker is reported, add it. When resolved, mark it resolved (don't delete).
 
-8. **Branching section is semi-append-only**. The "Dual PR", "Primary branch", "Secondary branch", and "Mode" fields are set once (at task creation / mode selection) and do not change. The "Last alpha SHA" and "Last cherry-picked production SHA" markers are overwritten on each `/jlu-create-pr` dual-PR sync.
+8. **Branching section is semi-append-only**. The "Dual PR", "Primary branch", "Secondary branch", and "Mode" fields are set once (at task creation / mode selection) and do not change. The per-service "Sync markers" entries (`<service-id>: alpha=<sha>, production=<sha>`) are overwritten on each `/jlu-create-pr` dual-PR sync.
 
 ## Initial Creation
 

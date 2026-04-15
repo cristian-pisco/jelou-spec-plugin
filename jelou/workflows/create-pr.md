@@ -100,8 +100,7 @@ For **Step 8** (`gh pr edit`), on exhaustion: warn "Cross-reference update for <
    - Task title
    - Dual PR (from `## Branching → Dual PR`, default "no" if section is absent)
    - Setup Mode (from `## Branching → Mode`, default "worktree" if section is absent)
-   - Last alpha SHA (from `## Branching → Last alpha SHA`, may be empty/pending)
-   - Last cherry-picked production SHA (from `## Branching → Last cherry-picked production SHA`, may be empty/pending)
+   - Sync markers per service (from `## Branching → Sync markers`). Parse the block into a per-service map `{<service-id>: {alpha: <sha>, production: <sha>}}`. Default to an empty map if the block is absent. On a single-service task there is exactly one entry; on multi-service there is one entry per service. Legacy flat fields (`Last alpha SHA:`, `Last cherry-picked production SHA:`) still count as the single-service entry if they appear without the `Sync markers` block.
 2. Read `<TASK_DIR>/SPEC.md`. Extract:
    - Title
    - Problem statement
@@ -116,7 +115,7 @@ For **Step 8** (`gh pr edit`), on exhaustion: warn "Cross-reference update for <
 - If status is `draft` or `refining`: warn and ask user to confirm proceeding.
 - If status is `closed`: stop. "Task is already closed. Cannot create PR."
 
-**Store**: `TASK_TITLE`, `PROBLEM_STATEMENT`, `PROPOSAL_SUMMARY`, `AFFECTED_SERVICES`, `SERVICE_PATHS`, `PHASE_PROGRESS`, `DUAL_PR`, `SETUP_MODE`, `LAST_ALPHA_SHA`, `LAST_CHERRYPICKED_PROD_SHA`
+**Store**: `TASK_TITLE`, `PROBLEM_STATEMENT`, `PROPOSAL_SUMMARY`, `AFFECTED_SERVICES`, `SERVICE_PATHS`, `PHASE_PROGRESS`, `DUAL_PR`, `SETUP_MODE`, `SYNC_MARKERS` (map of service-id → `{alpha_sha, production_sha}`)
 
 ---
 
@@ -240,9 +239,11 @@ CURRENT_ALPHA_SHA=$(git rev-parse origin/alpha)
 CURRENT_PRODUCTION_SHA=$(git rev-parse production/<TASK_SLUG>)
 ```
 
-Decision tree (using `LAST_ALPHA_SHA` and `LAST_CHERRYPICKED_PROD_SHA` from Step 2):
+Look up this service's markers: `LAST_ALPHA_SHA = SYNC_MARKERS[<service-id>].alpha_sha` (may be empty), `LAST_CHERRYPICKED_PROD_SHA = SYNC_MARKERS[<service-id>].production_sha` (may be empty).
 
-- If `LAST_ALPHA_SHA` is empty OR `LAST_CHERRYPICKED_PROD_SHA` is empty → **rebuild** (first sync). Cherry-pick range: `origin/<TRUNK>..production/<TASK_SLUG>`.
+Decision tree:
+
+- If `LAST_ALPHA_SHA` is empty OR `LAST_CHERRYPICKED_PROD_SHA` is empty → **rebuild** (first sync for this service). Cherry-pick range: `origin/<TRUNK>..production/<TASK_SLUG>`.
 - Else if `CURRENT_ALPHA_SHA != LAST_ALPHA_SHA` → **rebuild**. Cherry-pick range: `origin/<TRUNK>..production/<TASK_SLUG>`.
 - Else if `CURRENT_PRODUCTION_SHA == LAST_CHERRYPICKED_PROD_SHA` → **no-op candidate**. Before recording, verify the remote staging branch still exists:
   ```bash
@@ -350,20 +351,21 @@ git worktree remove --force .worktrees/<TASK_SLUG>-staging-tmp
 
 ### 5b.8 — Update markers
 
-Write into `<TASK_DIR>/TASKS.md` → `## Branching`:
-- `Last alpha SHA: <CURRENT_ALPHA_SHA>`
-- `Last cherry-picked production SHA: <CURRENT_PRODUCTION_SHA>`
+Write into `<TASK_DIR>/TASKS.md` → `## Branching` → `Sync markers`. The block is always a map keyed by service-id, even for single-service tasks:
 
-(If multiple services are affected and each has its own sync, use a nested form under `## Branching`:
 ```
 ## Branching
 - Dual PR: yes
-- ...
-- Sync markers per service:
-  - <service-id-1>: alpha=<sha>, production=<sha>
-  - <service-id-2>: alpha=<sha>, production=<sha>
+- Primary branch: production/<TASK_SLUG>
+- Secondary branch: staging/<TASK_SLUG>
+- Mode: worktree | branch
+- Sync markers:
+  - <service-id>: alpha=<CURRENT_ALPHA_SHA>, production=<CURRENT_PRODUCTION_SHA>
 ```
-Single-service tasks use the flat form.)
+
+When this run syncs only one service (of many), leave the other services' entries untouched — replace only the current service's line. If the `Sync markers` block does not yet exist, create it at the end of the `## Branching` section. Any legacy flat `Last alpha SHA:` / `Last cherry-picked production SHA:` fields from pre-upgrade tasks should be removed once the `Sync markers` block is present for their service.
+
+Step 2 of this workflow reads markers via the same map format, so reads and writes stay in sync regardless of service count.
 
 ### 5b.9 — Remove temp worktree
 

@@ -329,8 +329,7 @@ After storing `DUAL_PR`, **insert** the `## Branching` section into the existing
 - Primary branch: production/<TASK_SLUG>
 - Secondary branch: staging/<TASK_SLUG>   (intended; synthesized at first /jlu-create-pr when Dual PR = yes)
 - Mode: (pending — chosen after spec approval)
-- Last alpha SHA: (pending — populated at first dual-PR sync)
-- Last cherry-picked production SHA: (pending — populated at first dual-PR sync)
+- Sync markers: (pending — populated at first dual-PR sync as `<service-id>: alpha=<sha>, production=<sha>`)
 ```
 
 **Store**: `DUAL_PR`

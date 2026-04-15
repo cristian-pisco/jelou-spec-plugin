@@ -51,7 +51,7 @@ The orchestrator spawns you with:
    b. For each conflicted path:
       i. Detect binary/submodule conflicts:
          ```bash
-         git diff HEAD MERGE_HEAD -- <path> | head -1 | grep -q '^Binary'
+         git diff HEAD CHERRY_PICK_HEAD -- <path> | head -1 | grep -q '^Binary'
          ```
          If the file is binary (or a submodule), abort immediately with `{status: "aborted", unresolved_commit: <sha>, conflicting_files: [<path>], reason: "binary-conflict", explanation: "Binary file conflict cannot be resolved by text-merge reasoning."}`. Binary files have no `<<<<<<<` markers and must not be auto-resolved.
       ii. Read the file, identify `<<<<<<<` / `=======` / `>>>>>>>` markers.

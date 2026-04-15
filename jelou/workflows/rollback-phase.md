@@ -112,7 +112,7 @@ C) Abort entire rollback
 
 ### 4d. Mode-Aware Reset
 
-Read `<TASK_DIR>/TASKS.md` → `## Branching → Mode`.
+Read `<TASK_DIR>/TASKS.md` → `## Branching → Mode`. If the `## Branching` section is absent (legacy task created before branch-mode support), treat it as `Mode: worktree` and use the worktree path resolved in Step 4a.
 
 **If `Mode: worktree`**:
 

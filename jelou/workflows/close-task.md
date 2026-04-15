@@ -42,7 +42,7 @@
 ### 2b. Check PR Status
 
 1. Read `<TASK_DIR>/TASKS.md` → `## Branching → Dual PR` (default "no").
-2. Read `## Branching → Setup Mode` (default "worktree").
+2. Read `## Branching → Mode` (default "worktree").
 3. From `## External Links`, extract:
    - Trunk PR URL (row labeled "PR main (<service-id>)", or the legacy "PR (<service-id>)")
    - Alpha PR URL (row labeled "PR alpha (<service-id>)", only present when Dual PR = yes)
