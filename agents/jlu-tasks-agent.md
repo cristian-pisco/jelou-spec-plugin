@@ -55,8 +55,8 @@ The orchestrator invokes you after significant events:
 
 ### <service-id>
 - **Status**: planned | implementing | validating | done
-- **Branch**: spec/<task-slug>
-- **Worktree**: .worktrees/<task-slug>
+- **Branch**: production/<task-slug>
+- **Worktree**: .worktrees/<task-slug>  (present only when Mode: worktree)
 
 #### Phases
 | Phase | Status | Tests | Implementation | QA |
@@ -73,6 +73,14 @@ The orchestrator invokes you after significant events:
 
 ### <service-id-2>
 (same structure)
+
+## Branching
+- **Dual PR**: yes | no
+- **Primary branch**: production/<task-slug>
+- **Secondary branch**: staging/<task-slug>  (intended; synthesized at first /jlu-create-pr when Dual PR = yes)
+- **Mode**: worktree | branch
+- **Last alpha SHA**: <sha>                         (populated at first dual-PR sync)
+- **Last cherry-picked production SHA**: <sha>     (populated at first dual-PR sync)
 
 ## Blockers
 | ID | Phase | Service | Description | Status |
@@ -121,6 +129,8 @@ If this task is resumed after interruption:
 6. **Update recovery info** — Always keep the recovery section current so that session recovery (Decision #35) can work: last completed phase, next phase, and a brief state snapshot.
 
 7. **Track blockers** — When a blocker is reported, add it. When resolved, mark it resolved (don't delete).
+
+8. **Branching section is semi-append-only**. The "Dual PR", "Primary branch", "Secondary branch", and "Mode" fields are set once (at task creation / mode selection) and do not change. The "Last alpha SHA" and "Last cherry-picked production SHA" markers are overwritten on each `/jlu-create-pr` dual-PR sync.
 
 ## Initial Creation
 
