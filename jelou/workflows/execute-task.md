@@ -93,6 +93,40 @@ If TASKS.md shows a mid-execution state (status is `implementing` and some phase
 
 ---
 
+## Step 3b — Mode Detection and Auto-Checkout (Decision gate)
+
+Read `<TASK_DIR>/TASKS.md` → `## Branching → Mode`:
+
+- If `Mode: worktree` or the `## Branching` section is absent (old-style task): skip to Step 4. Implementation will run in the task worktree.
+- If `Mode: branch`: continue with the branch-mode pre-flight below.
+
+### Branch-mode pre-flight (runs before the first phase)
+
+For each affected service:
+
+1. `cd <SERVICE_REPO_ROOT>` (the main repo, since there is no worktree).
+2. Verify the working tree is clean:
+   ```bash
+   DIRTY=$(git status --porcelain)
+   ```
+   If `DIRTY` is non-empty, abort the workflow with:
+   > Working tree of `<service-id>` is dirty, cannot auto-checkout `production/<TASK_SLUG>`. Resolve first and re-run `/jlu-execute-task`.
+3. Verify `production/<TASK_SLUG>` exists locally:
+   ```bash
+   git rev-parse --verify production/<TASK_SLUG> >/dev/null 2>&1
+   ```
+   If missing, abort: *"Local branch `production/<TASK_SLUG>` is missing for `<service-id>`. Re-run `/jlu-new-task <TASK_SLUG>` to recreate, or create manually."*
+4. Checkout:
+   ```bash
+   git checkout production/<TASK_SLUG>
+   ```
+
+**Store**: `MODE = "branch"` (for downstream agents that may need it).
+
+Continue to Step 4.
+
+---
+
 ## Step 4 — Generate Proposal (if needed)
 
 If `<TASK_DIR>/PROPOSAL.md` does NOT exist:
@@ -339,7 +373,7 @@ Spawn `jlu-tasks-agent` with model: **MODEL_CONFIG.operational** (default: haiku
 Spawn `jlu-git-agent` with model: **MODEL_CONFIG.operational** (default: haiku):
 - Stage all changes from this phase (in the task worktree only)
 - Commit with a conventional commit message referencing the phase
-- **Restrictions**: Only commit to `spec/<TASK_SLUG>` branch. Never to main/master/alpha.
+- **Restrictions**: Only commit to `production/<TASK_SLUG>` branch. Never to main/master/alpha.
 - If unexpected or unrelated changes are detected in the worktree: block and escalate to user.
 
 ### 7k. Build Validation
@@ -570,4 +604,4 @@ Awaiting your input to proceed.
 | #35 | **Simplified**: session recovery always auto-resumes from first incomplete phase |
 | #36 | Real-time progress in TASKS.md + milestone terminal output |
 | #38 | Hybrid user story format |
-| #40 | Task branch `spec/<task-slug>` across all repos |
+| #40 | Task branch `production/<task-slug>` across all repos |
