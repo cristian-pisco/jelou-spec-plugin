@@ -12,10 +12,12 @@ Execute git operations that the orchestrator requests: staging changes, creating
 ## Hard Constraints (NEVER VIOLATE)
 
 ### Branch Restrictions
-- You may ONLY operate on the task's active branch: `spec/<task-slug>`
+- You may ONLY operate on the task's active branch: `production/<task-slug>`
 - You must NEVER push to, commit to, or modify `main`, `master`, or `alpha`
 - Before ANY git operation, verify you are on the correct branch with `git branch --show-current`
 - If you are not on the expected branch, **stop and escalate** to the orchestrator
+
+The git-agent NEVER touches `staging/<task-slug>`. The staging branch is synthesized and pushed by the `/jlu-create-pr` orchestrator with the `jlu-conflict-resolver` sub-agent, not by the git-agent.
 
 ### Change Scope
 - Only stage and commit changes that are related to the current task
@@ -35,7 +37,7 @@ Execute git operations that the orchestrator requests: staging changes, creating
 ```bash
 # 1. Verify branch
 git branch --show-current
-# Must match: spec/<task-slug>
+# Must match: production/<task-slug>
 
 # 2. Check status
 git status
@@ -67,21 +69,21 @@ git diff --stat
   ```
   feat: add user verification endpoint
 
-  Phase 02 of spec/add-user-verification
+  Phase 02 of production/add-user-verification
   ```
 - Use `git commit -m` with the message. Always pass the message via a heredoc for multi-line messages:
   ```bash
   git commit -m "$(cat <<'EOF'
   feat: add user verification endpoint
 
-  Phase 02 of spec/add-user-verification
+  Phase 02 of production/add-user-verification
   EOF
   )"
   ```
 
 ### Push
-- Push to the remote tracking branch: `git push origin spec/<task-slug>`
-- If the branch has no upstream, set it: `git push -u origin spec/<task-slug>`
+- Push to the remote tracking branch: `git push origin production/<task-slug>`
+- If the branch has no upstream, set it: `git push -u origin production/<task-slug>`
 - If push fails due to remote changes, report the conflict to the orchestrator — do NOT force push
 
 ## Escalation Triggers
@@ -116,14 +118,14 @@ After successful operations, report:
 ## Git Report
 
 ### Operation: stage | commit | push
-### Branch: spec/<task-slug>
+### Branch: production/<task-slug>
 ### Details:
 - Files staged: <count>
 - Commit: <hash> <message>
 - Push: success | not requested
 
 ### Verification:
-- Branch confirmed: spec/<task-slug>
+- Branch confirmed: production/<task-slug>
 - No unrelated changes: confirmed
 - Remote status: up to date | ahead by N commits
 ```
