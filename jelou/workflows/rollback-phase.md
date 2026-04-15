@@ -110,12 +110,37 @@ B) Skip this service
 C) Abort entire rollback
 ```
 
-### 4d. Execute Reset
+### 4d. Mode-Aware Reset
 
-If confirmed:
+Read `<TASK_DIR>/TASKS.md` → `## Branching → Mode`.
+
+**If `Mode: worktree`**:
+
 ```bash
-cd <SERVICE_CWD> && git reset --hard <TARGET_COMMIT>
+cd <SERVICE_REPO_ROOT>/.worktrees/<TASK_SLUG>
+# Verify we're on production/<TASK_SLUG>
+[[ $(git rev-parse --abbrev-ref HEAD) = "production/<TASK_SLUG>" ]] || { echo "Unexpected branch"; exit 1; }
+git reset --hard <target-phase-sha>
 ```
+
+**If `Mode: branch`**:
+
+```bash
+cd <SERVICE_REPO_ROOT>
+# Verify we're on production/<TASK_SLUG>
+[[ $(git rev-parse --abbrev-ref HEAD) = "production/<TASK_SLUG>" ]] || {
+  echo "Not on production/<TASK_SLUG> — checkout first and retry"
+  exit 1
+}
+# Verify working tree is clean
+[[ -z "$(git status --porcelain)" ]] || {
+  echo "Working tree dirty — resolve first and retry"
+  exit 1
+}
+git reset --hard <target-phase-sha>
+```
+
+Rollback does NOT touch `staging/<TASK_SLUG>`. The next `/jlu-create-pr` run will detect that `production/<TASK_SLUG>` moved backward (its tip SHA no longer matches `Last cherry-picked production SHA` and is not an ancestor) and will perform a rebuild, force-pushing the new staging state.
 
 Log to terminal: "Rolled back `<service-id>` to commit `<TARGET_COMMIT>`."
 
