@@ -59,7 +59,7 @@
 1. Read `.spec-workspace.json` from the current directory (already read in Step 1).
 2. If a `models` section exists, extract the model overrides.
 3. Store as `MODEL_CONFIG`.
-4. Use `MODEL_CONFIG.operational` (default: haiku) for the git-agent spawn in Step 9.
+4. Use `MODEL_CONFIG.operational` (default: haiku) for the git-agent spawn in Step 15c.
 
 ---
 
@@ -337,94 +337,6 @@ After storing `DUAL_PR`, **append** the `## Branching` section to the existing T
 
 ---
 
-## Step 9 — Launch Worktree Creation Subtask
-
-Notify the user before launching:
-```
-Launching worktree creation subtask for <N> services...
-```
-
-Spawn a task subagent using `jlu-git-agent` and pass:
-- The confirmed services list (`CONFIRMED_SERVICES`)
-- The task slug (`TASK_SLUG`)
-- The repo path for each service from `services.yaml`
-
-The background agent executes 5 phases in order:
-
-### Phase 1 — Create worktrees and copy untracked files (parallel, per service)
-
-For each service in `CONFIRMED_SERVICES`:
-
-1. Look up the service's repo path from `services.yaml`.
-2. Navigate to that repo path.
-3. Create a worktree:
-   ```bash
-   git worktree add .worktrees/<TASK_SLUG> -b spec/<TASK_SLUG>
-   ```
-4. If the branch `spec/<TASK_SLUG>` already exists: use the existing branch.
-5. Copy untracked files from repo root to worktree (skip if file doesn't exist):
-   ```bash
-   for file in .env .npmrc; do
-     [ -f <repo>/$file ] && cp <repo>/$file <worktree>/$file
-   done
-   ```
-6. Record the worktree path.
-
-**Error handling**: If `git worktree add` fails (dirty working tree, branch conflicts), report the error but do NOT block the workflow. Continue with whatever worktrees succeed.
-
-### Phase 2 — Port allocation (sequential)
-
-1. Run `docker ps --format '{{.Ports}}'` once to get the initial set of occupied host ports.
-2. Initialize an in-memory set of allocated ports from the `docker ps` output.
-
-For each service that has a `docker` config in `services.yaml` AND a successfully created worktree:
-
-3. Read the service's base compose file (from `docker.compose_file` in `services.yaml`) to discover all container definitions and their port mappings.
-4. Allocate one host port **per port mapping** (not per container) from the next free port starting from 3100 (increment by 1, skip any port in the allocated set). A container with two port mappings (e.g., `8080` + `9001`) gets two allocated ports. Add each allocated port to the set before processing the next mapping.
-5. Update the worktree's `.env`: replace `^<PORT_ENV>=.*` with `<PORT_ENV>=<allocated-primary-port>`.
-6. Secondary port mappings and secondary container ports are NOT written to `.env` — they are only used in the override file generated in Phase 3.
-
-### Phase 3 — Generate `docker-compose.override.yml` (parallel, per service)
-
-For each Docker-enabled service with a successfully created worktree:
-
-1. Read the base compose file to extract all `container_name` values and their port mappings.
-2. Generate `<worktree>/docker-compose.override.yml` with:
-   - Top-level `name: <service-id>-<TASK_SLUG>` (sets Docker Compose project name)
-   - For the primary container (`docker.service` from `services.yaml`):
-     - `container_name: <service-id>-<TASK_SLUG>`
-     - `ports: !override` with one `"<allocated-port>:<internal-port>"` entry per base port mapping
-     - `networks.app-network.aliases: [<service-id>-<TASK_SLUG>]`
-   - For each secondary container:
-     - `container_name: <original-container-name>-<TASK_SLUG>`
-     - `ports: !override` with one `"<allocated-port>:<internal-port>"` entry per base port mapping
-
-See `jelou/references/docker-conventions.md` → "Override Generation" for full rules and examples.
-
-### Phase 4 — Wire inter-service URLs (sequential)
-
-For each Docker-enabled service in the task:
-
-1. Build a replacement map: for each **other** Docker-enabled service in the task, map its original `container_name` → `<service-id>-<TASK_SLUG>`.
-2. In the worktree's `.env`, find-and-replace each original `container_name` with its task alias.
-3. Only replace references to services that are part of the same task. Services not in the task keep their original container names.
-
-See `jelou/references/docker-conventions.md` → "Inter-Service URL Wiring" for full rules and examples.
-
-### Phase 5 — Start Docker (parallel, per service)
-
-For each Docker-enabled service with a successfully created worktree:
-
-1. Start Docker: `cd <worktree> && docker compose up -d`
-2. Verify container is running: `docker compose ps` (poll up to 30s).
-3. Record container ID + port for the final report.
-
-**If no `docker` config**: skip Phases 2-5 for that service (only Phase 1 applies).
-
-**Store**: `WORKTREE_AGENT_TASK` = reference to the background agent task (to check later in Step 15)
-
----
-
 ## Step 10 — Load Codebase Files
 
 For each service in `CONFIRMED_SERVICES`, attempt to read:
@@ -619,9 +531,6 @@ After the user approves (or declines) the spec:
    a. Update `<TASK_DIR>/TASKS.md`:
       - Change `Status: refining` to `Status: planned`
       - Add transition timestamp: `- Planned: <current-datetime-ISO>`
-   b. Check `WORKTREE_AGENT_TASK` result:
-      - If the background worktree agent completed successfully: log the created worktrees.
-      - If it failed or is still running: report the worktree errors and note the user can create worktrees manually.
 3. If the user **did not approve** or the interview ended without approval:
    a. Leave TASKS.md status as `refining`.
    b. Report: "SPEC.md was created but not yet approved. You can:"
