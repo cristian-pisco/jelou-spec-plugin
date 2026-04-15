@@ -98,6 +98,10 @@ For **Step 8** (`gh pr edit`), on exhaustion: warn "Cross-reference update for <
    - Affected services list
    - Phase progress (per service)
    - Task title
+   - Dual PR (from `## Branching → Dual PR`, default "no" if section is absent)
+   - Setup Mode (from `## Branching → Mode`, default "worktree" if section is absent)
+   - Last alpha SHA (from `## Branching → Last alpha SHA`, may be empty/pending)
+   - Last cherry-picked production SHA (from `## Branching → Last cherry-picked production SHA`, may be empty/pending)
 2. Read `<TASK_DIR>/SPEC.md`. Extract:
    - Title
    - Problem statement
@@ -112,7 +116,7 @@ For **Step 8** (`gh pr edit`), on exhaustion: warn "Cross-reference update for <
 - If status is `draft` or `refining`: warn and ask user to confirm proceeding.
 - If status is `closed`: stop. "Task is already closed. Cannot create PR."
 
-**Store**: `TASK_TITLE`, `PROBLEM_STATEMENT`, `PROPOSAL_SUMMARY`, `AFFECTED_SERVICES`, `SERVICE_PATHS`, `PHASE_PROGRESS`
+**Store**: `TASK_TITLE`, `PROBLEM_STATEMENT`, `PROPOSAL_SUMMARY`, `AFFECTED_SERVICES`, `SERVICE_PATHS`, `PHASE_PROGRESS`, `DUAL_PR`, `SETUP_MODE`, `LAST_ALPHA_SHA`, `LAST_CHERRYPICKED_PROD_SHA`
 
 ---
 
