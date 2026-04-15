@@ -539,6 +539,24 @@ After the user approves (or declines) the spec:
 
 ---
 
+## Step 15b — Mode Selection
+
+Runs only if the user approved the spec in Step 15.
+
+Using `question`:
+
+> **"How should I set up the work environment for this task?"**
+> - Full setup (worktree + Docker) — recommended when multiple services, Docker-heavy, or parallel tasks planned
+> - Branch only — recommended when single-file fix, non-Docker service, or quick change
+
+Store as `SETUP_MODE` ∈ {`worktree`, `branch`}.
+
+Update `<TASK_DIR>/TASKS.md` → `## Branching` → replace `Mode: (pending ...)` with `Mode: <SETUP_MODE>`.
+
+**Store**: `SETUP_MODE`
+
+---
+
 ## Step 16 — Final Report
 
 Present the final summary:
