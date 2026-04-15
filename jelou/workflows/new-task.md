@@ -661,12 +661,19 @@ Present the final summary:
 - <service-id-2>
 - ...
 
-### Worktrees Created
-- <service-id-1>: <repo-path>/.worktrees/<TASK_SLUG> (branch: spec/<TASK_SLUG>)
-- <service-id-2>: <repo-path>/.worktrees/<TASK_SLUG> (branch: spec/<TASK_SLUG>)
+### Branching
+- Mode: <SETUP_MODE>
+- Dual PR: <DUAL_PR yes|no>
+- Branches created:
+  <service-id-1>: production/<TASK_SLUG>
+  <service-id-2>: production/<TASK_SLUG>
+  ...
+
+### Worktrees (Mode: worktree only)
+- <service-id-1>: <repo-path>/.worktrees/<TASK_SLUG>
 - ...
 
-### Docker Instances
+### Docker Instances (Mode: worktree only)
 - <service-id-1>: running on port <port> (container: <id>)
 - <service-id-2>: no Docker
 - ...
@@ -675,11 +682,21 @@ Present the final summary:
 - <any codebase map warnings>
 - <any skill staleness warnings>
 - <any unregistered service warnings>
-- <any worktree creation failures>
+- <any setup-subtask per-service aborts>
 
 ### Next Step
 Run `/jlu-execute-task` to begin implementation.
 ```
+
+**Mode-specific appendices:**
+
+If `SETUP_MODE = branch`: append to the report:
+
+> Branch-only mode: `/jlu-execute-task` will check out `production/<TASK_SLUG>` in each affected service repo before its first phase. Ensure working trees are clean at that point.
+
+If `DUAL_PR = yes`: append to the report:
+
+> Dual-PR enabled. The `staging/<TASK_SLUG>` branch will be synthesized automatically during `/jlu-create-pr` by cherry-picking from the latest `origin/alpha`, with conflicts resolved by the `jlu-conflict-resolver` sub-agent.
 
 ---
 
