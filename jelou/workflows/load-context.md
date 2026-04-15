@@ -14,7 +14,7 @@ Your job is to reconstruct task context from on-disk artifacts so the user can a
 Use worktree-first detection:
 
 1. Check current git branch: `git rev-parse --abbrev-ref HEAD`
-   - If it matches `spec/<task-slug>`, extract the task slug.
+   - If it matches `production/<task-slug>`, extract the task slug.
 2. Check current directory path for `/.worktrees/<task-slug>/` pattern — extract the slug from the path.
 3. If an argument was provided to the command, use it as the task slug (overrides auto-detection).
 4. **Fallback**: Read `.spec-workspace.json` in the current directory (or up to 5 parent directories) to find the workspace path, then scan `<workspace>/specs/` for the most recent task directory. If multiple tasks exist, list them and ask the user to pick one.
@@ -49,7 +49,7 @@ Run these commands on the task branch:
 1. `git log --oneline -20` — recent commit history on the branch.
 2. `git diff --stat main...HEAD` — scope of changes vs main (use `main` or the appropriate base branch).
 
-If the current branch is not the task branch, try `spec/<task-slug>` as the branch name for the git log.
+If the current branch is not the task branch, try `production/<task-slug>` as the branch name for the git log.
 
 ## Step 5 — Artifact Inventory
 
