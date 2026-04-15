@@ -595,7 +595,8 @@ In `<TASK_DIR>/TASKS.md`:
 
 Add or update PR rows in the External Links section:
 ```
-| PR (<service-id>) | <pr-url> |
+| PR main (<service-id>) | <trunk-pr-url> |
+| PR alpha (<service-id>) | <alpha-pr-url> |  (only when DUAL_PR = yes and alpha PR exists)
 ```
 
 If the External Links section doesn't exist, create it.
@@ -604,7 +605,8 @@ If the External Links section doesn't exist, create it.
 
 Append to the Timeline section:
 ```
-| <ISO-timestamp> | PR created | <service-id>: <pr-url> |
+| <ISO-timestamp> | PR created (trunk) | <service-id>: <trunk-pr-url> |
+| <ISO-timestamp> | PR created (alpha) | <service-id>: <alpha-pr-url> |  (only when alpha PR is new)
 ```
 
 For existing PRs that were not newly created, use "PR found (existing)" instead of "PR created".
@@ -614,15 +616,21 @@ For existing PRs that were not newly created, use "PR found (existing)" instead 
 ## Step 10 — Update CLICKUP_TASK.json
 
 1. If `<TASK_DIR>/CLICKUP_TASK.json` exists:
-   - Update the `pr` field with a per-service-id map:
+   - Update the `pr` field with a per-service nested object:
      ```json
      {
        "pr": {
-         "<service-id-1>": "<pr-url-1>",
-         "<service-id-2>": "<pr-url-2>"
+         "<service-id-1>": {
+           "main": "<trunk-pr-url>",
+           "alpha": "<alpha-pr-url>"
+         },
+         "<service-id-2>": {
+           "main": "<trunk-pr-url>"
+         }
        }
      }
      ```
+     Include `alpha` only when the service has an alpha PR (DUAL_PR = yes and alpha branch existed).
 2. If the file does not exist: skip.
 
 ---
