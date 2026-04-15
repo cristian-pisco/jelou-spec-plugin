@@ -41,25 +41,24 @@
 
 ### 2b. Check PR Status
 
-1. Look for PR information in TASKS.md (the "External Links" section).
-2. Also check `<TASK_DIR>/CLICKUP_TASK.json` (if exists) for PR references.
-3. If a PR URL or ID is recorded:
-   a. Check the PR status using `gh pr view <url> --json state,mergedAt` (via Bash).
-   b. The PR must be in `MERGED` state.
-   c. If the PR is NOT merged:
-      ```
-      PR <url> is in `<state>` state, not `merged`.
+1. Read `<TASK_DIR>/TASKS.md` → `## Branching → Dual PR` (default "no").
+2. Read `## Branching → Setup Mode` (default "worktree").
+3. From `## External Links`, extract:
+   - Trunk PR URL (row labeled "PR main (<service-id>)", or the legacy "PR (<service-id>)")
+   - Alpha PR URL (row labeled "PR alpha (<service-id>)", only present when Dual PR = yes)
 
-      Options:
-      1. Check a different PR URL
-      2. Skip PR check and close anyway
-      3. Abort closure
-      ```
-4. If NO PR information is found:
-   - Warn: "No PR found for this task. Closing without PR verification."
-   - Ask: "Provide a PR URL to verify, or close without PR check?"
+For each affected service:
 
-**Store**: `PR_STATUS`, `PR_URL` (if available)
+4. **Trunk PR** (required): `gh pr view <trunk-pr-url> --json state,mergedAt`. Must be in `MERGED` state. If not, present the same options as today (check different URL / skip PR check / abort).
+5. **Alpha PR** (if DUAL_PR = yes): `gh pr view <alpha-pr-url> --json state,mergedAt`. **Not required to be merged.** Record its state for later teardown (Step 4).
+
+Also check `<TASK_DIR>/CLICKUP_TASK.json` (if exists) for any additional PR references.
+
+If NO PR information is found:
+- Warn: "No PR found for this task. Closing without PR verification."
+- Ask: "Provide a PR URL to verify, or close without PR check?"
+
+**Store**: `DUAL_PR`, `SETUP_MODE`, `TRUNK_PR_URL`, `ALPHA_PR_URL`, `TRUNK_PR_STATUS`, `ALPHA_PR_STATUS` (if available)
 
 ---
 
@@ -100,42 +99,57 @@ Update `<TASK_DIR>/TASKS.md`:
 - Add PR reference (if verified): `- PR merged: <PR_URL> at <merge-timestamp>`
 - Preserve all existing content (phase history, test results, etc.)
 
-### 3c. Clean Up Docker and Worktrees
+### 3c. Cleanup
 
-1. For each affected service:
-   a. Look up the service repo path from `services.yaml`.
-   b. Check if `<service-repo>/.worktrees/<TASK_SLUG>` exists.
-   c. If it exists, collect it for cleanup.
-2. **Docker teardown** (must happen BEFORE worktree removal — the compose file lives in the worktree):
-   - For each worktree collected for cleanup:
-     a. Look up the service's `docker` config from `services.yaml`.
-     b. **If Docker-enabled and worktree exists**:
-        1. Check containers: `cd <worktree> && docker compose ps`
-        2. If running: `cd <worktree> && docker compose down -v --rmi all --remove-orphans`
-        3. Wait for completion.
-        4. Record Docker cleanup status for the closure report.
-     c. **If no `docker` config**: skip Docker teardown for this service.
-3. **Worktree removal** (after Docker teardown):
-   If any worktrees are found:
-   ```
-   Worktrees found for this task:
-   - <service-id-1>: <service-repo-1>/.worktrees/<TASK_SLUG>
-   - <service-id-2>: <service-repo-2>/.worktrees/<TASK_SLUG>
+For each affected service:
 
-   Remove these worktrees? (yes / no / select individually)
-   ```
-   - If "yes": for each worktree:
+1. `cd <SERVICE_REPO_ROOT>` (main repo).
+
+2. **Alpha PR teardown** (only when `DUAL_PR = yes` AND an alpha PR URL was recorded):
+   - If alpha PR state was `OPEN` or `DRAFT`:
      ```bash
-     cd <service-repo> && git worktree remove .worktrees/<TASK_SLUG>
+     gh pr close <alpha-pr-url> --delete-branch
      ```
-     If removal fails (e.g., uncommitted changes), report the error and skip that worktree.
-   - If "select individually": present each one and ask.
-   - If "no": leave worktrees in place, note them in the report.
-4. Optionally delete the task branch if it has been fully merged:
+     This closes the PR and deletes the remote `staging/<TASK_SLUG>` branch.
+   - Else if alpha PR state was `CLOSED` or `MERGED`:
+     - Check if remote `staging/<TASK_SLUG>` still exists:
+       ```bash
+       git ls-remote --heads origin staging/<TASK_SLUG>
+       ```
+     - If it exists, delete it:
+       ```bash
+       git push origin :staging/<TASK_SLUG> || true
+       ```
+
+3. **Local branch teardown**:
+   - Delete local `staging/<TASK_SLUG>` if present:
+     ```bash
+     git branch -D staging/<TASK_SLUG> 2>/dev/null || true
+     ```
+   - Delete local `production/<TASK_SLUG>` (must be merged on trunk, which was verified in Step 2b):
+     ```bash
+     git branch -d production/<TASK_SLUG>
+     ```
+     If this fails because git thinks it's not merged (e.g., squash-merge on GitHub), fall back to:
+     ```bash
+     git branch -D production/<TASK_SLUG>
+     ```
+     Force-delete is acceptable here because the trunk PR merge was verified in Step 2b.
+
+4. **Temp staging worktree teardown** (defensive — should already be gone):
    ```bash
-   git branch -d spec/<TASK_SLUG>
+   git worktree remove --force .worktrees/<TASK_SLUG>-staging-tmp 2>/dev/null || true
    ```
-   Only offer this if the branch is fully merged. Never force-delete.
+
+5. **Primary worktree teardown** (only when `Mode: worktree`):
+   ```bash
+   # Tear down Docker first if this is a Docker-enabled service
+   cd .worktrees/<TASK_SLUG> && docker compose down -v --rmi all --remove-orphans 2>/dev/null || true
+   cd <SERVICE_REPO_ROOT>
+   git worktree remove .worktrees/<TASK_SLUG> || git worktree remove --force .worktrees/<TASK_SLUG>
+   ```
+
+6. Record cleanup summary per service for the final report.
 
 ---
 
@@ -169,7 +183,7 @@ Present the final summary:
 - <service-id-2>: removed / skipped / not found
 
 ### Branch Cleanup
-- spec/<TASK_SLUG>: deleted / kept / not found
+- production/<TASK_SLUG>: deleted / kept / not found
 ```
 
 ---
@@ -196,4 +210,4 @@ Present the final summary:
 | TASKS.md (updated) | `.spec-workspace/specs/<date>/<task-slug>/TASKS.md` |
 | CLICKUP_TASK.json (updated) | `.spec-workspace/specs/<date>/<task-slug>/CLICKUP_TASK.json` |
 | Worktrees (removed) | `<service-repo>/.worktrees/<task-slug>` |
-| Branch (deleted) | `spec/<task-slug>` |
+| Branch (deleted) | `production/<task-slug>` |
