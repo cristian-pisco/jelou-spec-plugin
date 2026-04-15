@@ -11,7 +11,7 @@ For each affected service:
 3. Read the task's `TASKS.md` → `## Branching → Mode`:
    a. If `Mode: worktree`: the primary working directory is `<service-repo>/.worktrees/<TASK_SLUG>/`. Verify it exists — if missing, fall back to the main repo and log a warning: "Worktree missing for `<service-id>` despite `Mode: worktree` — using main repo."
    b. If `Mode: branch`: the primary working directory is the service repo root.
-   c. If the `## Branching` section is absent (old-style task on `spec/<slug>`): check if `<service-repo>/.worktrees/<TASK_SLUG>/` exists. If yes, use it; if no, use the repo root. Log a warning about the missing branching section.
+   c. If the `## Branching` section is absent: this is a legacy fallback for tasks created before the branch-mode upgrade (pre-existing `spec/<slug>` tasks). New tasks should never reach this branch. Check if `<service-repo>/.worktrees/<TASK_SLUG>/` exists. If yes, use it; if no, use the repo root. Log a warning: *"TASKS.md has no ## Branching section for `<service-id>` — assuming legacy spec/<slug> task. Verify task creation date and confirm this is expected."*
 4. If TASKS.md lists a service that is not in `services.yaml`, skip it with a warning: "Service `<service-id>` not found in registry — skipping worktree resolution."
 
 ## Temporary Staging Worktree

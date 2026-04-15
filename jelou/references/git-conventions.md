@@ -49,7 +49,7 @@ No automatic worktree cleanup. `/jlu-report-task` identifies:
 
 ## Protected Branch Restrictions
 
-The git-agent is **strictly forbidden** from pushing to `main`, `master`, or `alpha`. Staging push (to `origin/staging/<slug>`) is performed by the `/jlu-create-pr` orchestrator, not the git-agent.
+The git-agent is **strictly forbidden** from pushing to `main`, `master`, or `alpha`. Pushes to `staging/<slug>` are performed by the `/jlu-create-pr` orchestrator, not the git-agent.
 
 ## PR Strategy
 
