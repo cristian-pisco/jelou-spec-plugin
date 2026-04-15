@@ -137,6 +137,15 @@ When creating a PR via `/jlu-create-pr`, a spec compliance review runs automatic
 - Detects scope creep (code changes not in the spec)
 - Includes the report in the PR description for human reviewers
 
+### Dual-PR Tasks
+
+Tasks opting into dual-PR (via the `/jlu-new-task` prompt "Also create a PR to `alpha`?") produce **two** PRs on `/jlu-create-pr`:
+
+- `production/<slug>` → trunk (the mandatory primary PR)
+- `staging/<slug>` → `alpha` (synthesized on-demand: cut from `origin/alpha`, with production commits cherry-picked on top by the `jlu-conflict-resolver` sub-agent)
+
+If the conflict resolver cannot resolve a merge conflict with confidence, the staging side aborts cleanly and offers the user three options: resolve manually, disable dual-PR, or abort.
+
 ### Spec Templates
 
 The interview automatically detects which domains your task involves and applies matching templates:
