@@ -392,6 +392,23 @@ Parse the result:
   ```
 - **Not found** (command fails / no PR): Proceed to Step 7.
 
+### 6b — Check for Existing Staging PR
+
+Runs only if `DUAL_PR = yes` AND `STAGING_SYNC[<service-id>]` is not `"skipped-no-alpha"` and not `"aborted"`.
+
+```bash
+cd <SERVICE_CWD> && gh pr view staging/<TASK_SLUG> --json url,state,title,number 2>&1
+```
+
+Apply the retry protocol (same as Step 6).
+
+Parse the result:
+
+- **`OPEN`**: store URL and number. Record `STAGING_PR_ACTION[<service-id>] = "existing"`.
+- **`MERGED`**: store URL and number. Record `STAGING_PR_ACTION[<service-id>] = "existing"`.
+- **`CLOSED`**: ask the user whether to re-open a new staging PR (same flow as CLOSED for trunk PR).
+- **Not found**: proceed to Step 7 for the staging PR.
+
 ---
 
 ## Step 7 — Create PR
@@ -468,6 +485,55 @@ EOF
 > **Rate limit**: Apply the retry protocol (see "GitHub API Rate Limit Handling" above). On exhaustion, escalate to user.
 
 Parse the output to extract the PR URL and number. Record action as `created`.
+
+### 7f — Create Alpha PR (dual-PR path)
+
+Runs only if `DUAL_PR = yes` AND `STAGING_SYNC[<service-id>]` ∈ {rebuild, incremental, no-op} AND `STAGING_PR_ACTION[<service-id>]` is not `"existing"`.
+
+Construct the staging PR body:
+
+```markdown
+## Problem
+<Problem statement from SPEC.md>
+
+## Impact
+<Summary from PROPOSAL.md>
+
+## Changes
+**Service**: <SERVICE_ID>
+**Branch**: `staging/<TASK_SLUG>` → `alpha`
+
+### Phase Progress
+<Phase progress table from TASKS.md for this service>
+
+### Test Results
+<Test summary from TASKS.md for this service, if available>
+```
+
+If `STAGING_SYNC[<service-id>] = "rebuild"`, prepend to the PR body (before `## Problem`):
+
+```
+> Note: this branch was rebuilt from `origin/alpha` in the latest run. Prior review comments may be detached from their original commits.
+```
+
+If `COMPLIANCE_REPORT` exists, append the same `<details>` block used in the trunk PR body.
+
+Create the PR:
+
+```bash
+cd <SERVICE_CWD> && gh pr create \
+  --base alpha \
+  --head staging/<TASK_SLUG> \
+  --title "<PR_TITLE>" \
+  --body "$(cat <<'EOF'
+<STAGING_PR_BODY>
+EOF
+)"
+```
+
+Apply the retry protocol on rate limits.
+
+Record the PR URL and number as `STAGING_PR[<service-id>]`. Set `STAGING_PR_ACTION[<service-id>] = "created"`.
 
 ---
 
