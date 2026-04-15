@@ -562,6 +562,31 @@ EOF
 
 ---
 
+## Step 8b — Dual-PR Cross-Linking (per service)
+
+Runs only for services with `DUAL_PR = yes` AND both `production/<TASK_SLUG>` PR and `staging/<TASK_SLUG>` PR exist.
+
+For each qualifying service:
+
+1. Read the current body of the trunk PR: `gh pr view <trunk-pr-number> --json body`.
+2. Prepend to the trunk PR body, above the existing `## Problem` header:
+   ```
+   > Part of dual-PR task. Sibling PR: <staging-pr-url>
+
+   ```
+3. Update:
+   ```bash
+   cd <SERVICE_CWD> && gh pr edit <trunk-pr-number> --body "$(cat <<'EOF'
+   <UPDATED_TRUNK_BODY>
+   EOF
+   )"
+   ```
+4. Repeat symmetrically for the staging PR with `Sibling PR: <trunk-pr-url>`.
+
+Apply the retry protocol on rate limits. On exhaustion or failure, warn and continue — cross-linking is non-critical.
+
+---
+
 ## Step 9 — Update TASKS.md
 
 In `<TASK_DIR>/TASKS.md`:
