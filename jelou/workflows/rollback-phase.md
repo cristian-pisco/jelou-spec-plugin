@@ -117,9 +117,10 @@ Read `<TASK_DIR>/TASKS.md` → `## Branching → Mode`.
 **If `Mode: worktree`**:
 
 ```bash
-cd <SERVICE_REPO_ROOT>/.worktrees/<TASK_SLUG>
+cd <SERVICE_CWD>   # The worktree path resolved in Step 4a: <SERVICE_REPO_ROOT>/.worktrees/<TASK_SLUG>
 # Verify we're on production/<TASK_SLUG>
 [[ $(git rev-parse --abbrev-ref HEAD) = "production/<TASK_SLUG>" ]] || { echo "Unexpected branch"; exit 1; }
+# Working-tree cleanliness was already verified in Step 4b against SERVICE_CWD.
 git reset --hard <target-phase-sha>
 ```
 
