@@ -79,7 +79,7 @@ For **Step 8** (`gh pr edit`), on exhaustion: warn "Cross-reference update for <
    a. Read `.spec-workspace.json` to get the workspace path.
    b. Search `<WORKSPACE_PATH>/specs/` across all date folders for the matching slug.
 2. If not provided:
-   a. Check current git branch: if it matches `spec/<task-slug>`, extract the slug.
+   a. Check current git branch: if it matches `production/<task-slug>`, extract the slug.
    b. Check current directory path for `/.worktrees/<task-slug>/` — extract the slug.
    c. Fall back to finding the most recent task in `implementing`, `validating`, or `ready_to_publish` state.
    d. If multiple candidates: present the list and ask user to choose.
@@ -130,7 +130,7 @@ For **Step 8** (`gh pr edit`), on exhaustion: warn "Cross-reference update for <
       Fall back to `main` if this fails.
    c. Collect the diff:
       ```bash
-      cd <SERVICE_CWD> && git diff <DEFAULT_BRANCH>..spec/<TASK_SLUG>
+      cd <SERVICE_CWD> && git diff <DEFAULT_BRANCH>..production/<TASK_SLUG>
       ```
 5. Spawn `jlu-spec-reviewer` agent with model: **MODEL_CONFIG.code** (default: sonnet):
    - Pass: SPEC.md content, PROPOSAL.md content (or empty), SPEC-changelog.md content (or empty), combined git diff for all services, service source paths.
@@ -191,7 +191,7 @@ For the current service:
 
 Spawn `jlu-git-agent` in `SERVICE_CWD` with model: **haiku** and this task:
 
-> Verify you are on branch `spec/<TASK_SLUG>`. Stage all task-related changes, commit, and push.
+> Verify you are on branch `production/<TASK_SLUG>`. Stage all task-related changes, commit, and push.
 > Commit style: brief, descriptive, no emojis. Follow the project's commit convention (detect from git log or config). Example: `feat(auth): add JWT token validation for user sessions`
 > If there are no changes to commit, just push any unpushed commits. If fully up-to-date with no changes, report that.
 
@@ -208,7 +208,7 @@ Spawn `jlu-git-agent` in `SERVICE_CWD` with model: **haiku** and this task:
 
 Run:
 ```bash
-cd <SERVICE_CWD> && gh pr view spec/<TASK_SLUG> --json url,state,title,number 2>&1
+cd <SERVICE_CWD> && gh pr view production/<TASK_SLUG> --json url,state,title,number 2>&1
 ```
 
 > **Rate limit**: Apply the retry protocol (see "GitHub API Rate Limit Handling" above). On exhaustion, escalate to user.
@@ -219,7 +219,7 @@ Parse the result:
 - **`MERGED`**: Store URL and number. Record action as `existing`. Skip to next service.
 - **`CLOSED`**: Ask user:
   ```
-  A closed PR exists for `spec/<TASK_SLUG>` in <service-id>:
+  A closed PR exists for `production/<TASK_SLUG>` in <service-id>:
   <pr-url>
 
   Options:
@@ -246,7 +246,7 @@ This uses local git data (no API call). If the command fails or returns empty, f
 ### 7b. Check Commits Ahead
 
 ```bash
-cd <SERVICE_CWD> && git log --oneline <DEFAULT_BRANCH>..spec/<TASK_SLUG>
+cd <SERVICE_CWD> && git log --oneline <DEFAULT_BRANCH>..production/<TASK_SLUG>
 ```
 
 If no commits ahead: warn "No commits ahead of `<DEFAULT_BRANCH>` for `<service-id>`. Skip PR creation?" If user says yes, record as `skipped`.
@@ -255,7 +255,7 @@ If no commits ahead: warn "No commits ahead of `<DEFAULT_BRANCH>` for `<service-
 
 Derive from the task title. The title must be:
 - Specific and task-related (e.g., "Add retry logic for payment webhook processing")
-- NOT prefixed with `spec/<slug>:` or similar generic patterns
+- NOT prefixed with `production/<slug>:` or similar generic patterns
 - Truncated to 70 characters
 
 ### 7d. Construct PR Body
@@ -269,7 +269,7 @@ Derive from the task title. The title must be:
 
 ## Changes
 **Service**: <SERVICE_ID>
-**Branch**: `spec/<TASK_SLUG>` → `<DEFAULT_BRANCH>`
+**Branch**: `production/<TASK_SLUG>` → `<DEFAULT_BRANCH>`
 
 ### Phase Progress
 <Phase progress table from TASKS.md for this service>
@@ -294,7 +294,7 @@ If `COMPLIANCE_REPORT` exists, append to the PR body:
 ```bash
 cd <SERVICE_CWD> && gh pr create \
   --base <DEFAULT_BRANCH> \
-  --head spec/<TASK_SLUG> \
+  --head production/<TASK_SLUG> \
   --title "<PR_TITLE>" \
   --body "$(cat <<'EOF'
 <PR_BODY>
