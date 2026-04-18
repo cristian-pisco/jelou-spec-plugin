@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.3.60] — 2026-04-18
+
+### Added
+- add bin/changelog-entry.py: parses the commit message (HEREDOC, -m "...", -m '...'), bumps the patch version in all three manifests, and prepends a categorized entry to CHANGELOG.md
+- route .claude/hooks/pre-commit-version-bump.sh through the new script, skip on --amend, and block the commit with exit 2 if the message cannot be parsed so CHANGELOG and version never drift
+
+## [0.3.59] — 2026-04-15
+
+### Fixed
+- `close-task`: reads `## Branching → Mode` (not `Setup Mode`) so branch-mode cleanup dispatches correctly.
+- `jlu-conflict-resolver`: binary-file detection uses `CHERRY_PICK_HEAD` instead of `MERGE_HEAD` — git populates the former during cherry-pick conflicts.
+- `rollback-phase`: legacy fallback treats a missing `## Branching` section as `Mode: worktree`, so pre-upgrade tasks can still roll back.
+
+### Changed
+- `create-pr`: unified sync-marker format to a per-service map (`Sync markers: <service-id>: alpha=<sha>, production=<sha>`) in both Step 2 (read) and Step 5b.8 (write). Flat `Last-alpha`/`Last-cp` fields removed from the live schema; legacy flat fields are still honored on read for backwards compatibility.
+- `new-task` Step 8c and `jlu-tasks-agent` TASKS.md template now describe the `Sync markers` block instead of the old flat fields.
+
 ## [0.3.57] — 2026-04-15
 
 ### Added
