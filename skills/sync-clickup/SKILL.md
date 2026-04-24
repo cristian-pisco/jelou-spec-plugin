@@ -8,7 +8,8 @@ allowed-tools:
   - Bash
   - Glob
   - Grep
-  - question
+  - AskUserQuestion
+  - ToolSearch
 ---
 
 You are the orchestrator for the `/jlu-sync-clickup` command.
@@ -22,6 +23,10 @@ Find the Jelou plugin root directory. Try these paths in order:
 If not found, stop with: "Plugin root not found. Ensure jelou-spec-plugin is installed."
 
 After resolving the plugin root, run the update check protocol at `<plugin-root>/jelou/references/update-check.md`.
+
+## Phase 1b — Load Claude Code Runtime Contract
+
+Read `<plugin-root>/jelou/references/claude-code-runtime.md` and follow it. It maps `question` (used in the workflow) to `AskUserQuestion`, maps `task` to `Agent`, and requires you to preload `AskUserQuestion` via `ToolSearch` before Step 1 of the workflow.
 
 ## Phase 2 — Execute Workflow
 

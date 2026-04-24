@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.61] — 2026-04-24
+
+### Fixed
+- Add jelou/references/claude-code-runtime.md with the name mapping, mandatory ToolSearch preload step, and usage rules.
+- Dispatch skills (new-task, execute-task, map-codebase) now prepend the contract to the subagent prompt before the workflow content.
+- Inline skills (refine-task, close-task, create-pr, extend-phase, post-slack, rollback-phase, sync-clickup, load-context) load the contract in a new Phase 1b and replace `question` in allowed-tools with AskUserQuestion and ToolSearch.
+
 ## [0.3.60] — 2026-04-18
 
 ### Added

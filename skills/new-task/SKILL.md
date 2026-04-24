@@ -27,6 +27,10 @@ After resolving the plugin root, run the update check protocol at `<plugin-root>
 
 Spawn a single task subagent with these parameters:
 - **model**: `"opus"`
-- **prompt**: Include the full content of the workflow file, the argument `{argument}`, the plugin root path, and the current working directory.
+- **prompt**: Assemble the prompt in this exact order:
+  1. The full content of `<plugin-root>/jelou/references/claude-code-runtime.md` (the runtime contract — maps `question` → `AskUserQuestion`, `task` → `Agent`, and requires the subagent to preload `AskUserQuestion` via `ToolSearch` before Step 1).
+  2. A blank line.
+  3. The full content of the workflow file at `<plugin-root>/jelou/workflows/new-task.md`.
+  4. The argument `{argument}`, the plugin root path, and the current working directory.
 
 Do NOT execute the workflow yourself. Your only job is to dispatch and return the agent's result.
