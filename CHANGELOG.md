@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.79] — 2026-04-26
+
+### Added
+- add UBIQUITOUS_LANGUAGE.md template
+
 ## [0.3.78] — 2026-04-26
 
 ### Fixed
