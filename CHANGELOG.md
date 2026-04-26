@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.85] — 2026-04-26
+
+### Added
+- consult canonical glossary in Step 14 (read-only)
+
 ## [0.3.84] — 2026-04-26
 
 ### Added

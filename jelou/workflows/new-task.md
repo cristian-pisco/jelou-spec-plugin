@@ -399,6 +399,19 @@ All of these are already in memory from previous steps. No assembly needed — p
 
 > **Tool requirement reminder**: Every question and confirmation in this step MUST use `question`. Never output questions as plain text.
 
+### 14.0 — Load Canonical Glossary (read-only)
+
+Before gap analysis, check for a canonical glossary at `<WORKSPACE_PATH>/glossary/UBIQUITOUS_LANGUAGE.md`.
+
+If the file exists:
+- Read it.
+- Extract: term names, one-sentence definitions, aliases-to-avoid.
+- Hold this as `CANONICAL_TERMS` for the rest of Step 14.
+
+If the file does not exist, skip this sub-step silently. Do NOT prompt the user to create a glossary.
+
+> **No writes**: This sub-step (and all of Step 14) NEVER edits `UBIQUITOUS_LANGUAGE.md`, `candidates.json`, or any glossary artifact. Glossary curation happens via `/jlu-ubiquitous-language`, not here.
+
 ### 14a — Gap Analysis (silent)
 
 Before asking any questions, silently analyze the task description (`TASK_DESCRIPTION`) against the codebase knowledge (`CODEBASE_CONTEXT`). Identify:
@@ -443,6 +456,8 @@ Rules:
 - **Ask about tradeoffs** — if the user chose approach A, ask why not B. Surface implicit decisions.
 - **Continue until complete** — keep interviewing until you can confidently fill all 5 output sections.
 - **Respect the user** — if the user says "that's enough" or "move on", stop the interview and write the spec with what you have.
+- **Term-suggestion (when `CANONICAL_TERMS` is loaded)**: If the user mentions a word that appears as an alias-to-avoid in `CANONICAL_TERMS`, reflect back the canonical term and cite the glossary. Example: if canonical has `Workflow` with alias `Process`, and the user says "track when a Process completes", reply with "Got it — tracking Workflow completion. (Using 'Workflow' per the workspace glossary; 'Process' is listed as an alias to avoid.)"
+- **Definition-anchoring (when `CANONICAL_TERMS` is loaded)**: When asking clarifying questions about a term that is in `CANONICAL_TERMS`, phrase the question in terms of the canonical definition rather than re-asking what the term means.
 
 ### 14c — Write SPEC.md
 
@@ -476,6 +491,18 @@ How to verify the task is complete. Concrete, testable conditions.
 - SC-1: <criterion>
 - SC-2: <criterion>
 ...
+
+## Terms introduced by this spec
+
+<!--
+List any non-generic domain terms used in this spec that are NOT yet in the canonical glossary at .spec-workspace/glossary/UBIQUITOUS_LANGUAGE.md.
+This section is read by /jlu-ubiquitous-language as one of the spec/conversation sources.
+Free-text bulleted list. One line per term. No definitions required.
+Skip this section entirely if all terms used here are already canonical OR if no glossary exists.
+-->
+
+- {{Term1}} — {{optional one-line context}}
+- {{Term2}} — {{optional one-line context}}
 ```
 
 If `MERGED_PREFILL` is non-empty:
@@ -494,6 +521,8 @@ Rules for writing:
 - Number requirements and criteria for traceability (FR-1, NFR-1, SC-1)
 - Make every requirement concrete enough that a developer could implement it and a QA agent could verify it
 - The spec must be directly usable by the proposal-agent to generate PROPOSAL.md without ambiguity
+- If `CANONICAL_TERMS` is empty (no glossary exists), OMIT the `## Terms introduced by this spec` section entirely from `SPEC.md`.
+- If `CANONICAL_TERMS` is non-empty, populate the `## Terms introduced by this spec` section with every domain term used in `SPEC.md` that is NOT in `CANONICAL_TERMS`. Apply the same domain-specificity filter as `agents/jlu-glossary-extractor.md` — skip generic programming nouns. If no terms qualify, write the section header followed by `<!-- No new domain terms introduced. -->`.
 
 ### 14d — Present for Approval
 
