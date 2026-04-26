@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.96] — 2026-04-26
+
+### Added
+- add vocabulary contract reference
+
 ## [0.3.95] — 2026-04-26
 
 ### Internal
