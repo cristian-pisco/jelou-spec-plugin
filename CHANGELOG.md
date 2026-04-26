@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.99] — 2026-04-26
+
+### Added
+- add explorer agent (sonnet)
+
 ## [0.3.98] — 2026-04-26
 
 ### Added
