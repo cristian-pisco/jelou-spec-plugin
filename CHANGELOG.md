@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.75] — 2026-04-26
+
+### Internal
+- lock in multi-service union behavior
+
 ## [0.3.74] — 2026-04-26
 
 ### Added
