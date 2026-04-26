@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.73] — 2026-04-26
+
+### Internal
+- red — happy path merge into fresh candidates.json
+
 ## [0.3.72] — 2026-04-26
 
 ### Internal
