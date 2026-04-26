@@ -5,6 +5,7 @@ services:
       - "4001:4001"
     environment:
       NODE_ENV: test
+      BUG_MODE: ${BUG_MODE:-}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:4001/health"]
       interval: 2s

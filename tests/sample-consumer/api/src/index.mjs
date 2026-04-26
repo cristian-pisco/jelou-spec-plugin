@@ -33,11 +33,45 @@ function authUser(req) {
   return [...state.users.values()].find((u) => u.id === session.user_id) ?? null;
 }
 
+function html(res, status, body) {
+  res.writeHead(status, { 'content-type': 'text/html; charset=utf-8' });
+  res.end(body);
+}
+
+const DASHBOARD_HTML = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Sample Consumer — Dashboard</title>
+</head>
+<body>
+  <main>
+    <h1>Dashboard</h1>
+    <button id="cancel-btn">Cancel subscription</button>
+    <div id="banner" role="status" hidden></div>
+  </main>
+  <script>
+    document.getElementById('cancel-btn').addEventListener('click', async () => {
+      const response = await fetch('/api/subscriptions/cancel', { method: 'POST' });
+      if (response.ok) {
+        const banner = document.getElementById('banner');
+        banner.textContent = 'Your plan was downgraded to Free.';
+        banner.hidden = false;
+      }
+    });
+  </script>
+</body>
+</html>`;
+
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', `http://localhost:${PORT}`);
 
   if (url.pathname === '/health') {
     return json(res, 200, { status: 'ok' });
+  }
+
+  if ((url.pathname === '/' || url.pathname === '/dashboard') && req.method === 'GET') {
+    return html(res, 200, DASHBOARD_HTML);
   }
 
   // Test-only fixture endpoints

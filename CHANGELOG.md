@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.68] — 2026-04-26
+
+### Added
+- Add a Playwright project under frontend/ pinned to @playwright/test 1.49.1 (matches bin/extract-trace.mjs's trace.zip schema). One spec exercises login → dashboard → cancel via signInAs() helper using role-based locators.
+- Serve the dashboard HTML inline from the API (/, /dashboard) instead of spinning up a Next.js or Vite dev server in CI. Same-origin avoids CORS, keeps install time near zero, and matches the API's existing "stdlib only" ethos.
+- Forward BUG_MODE through docker-compose so the deliberate-bug job's job-level env var actually reaches the container — without this the variable was silently dropped and cancel always returned 200.
+- Rewrite tests/sample-consumer/README.md to reflect the actual architecture (no Next.js, single-container API + Playwright project).
+
 ## [0.3.67] — 2026-04-26
 
 ### Fixed
