@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.97] — 2026-04-26
+
+### Added
+- add ADR file-shape template
+
 ## [0.3.96] — 2026-04-26
 
 ### Added
