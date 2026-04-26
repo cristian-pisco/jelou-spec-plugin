@@ -1,0 +1,107 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Smoke-test the trace extractor
+        run: node bin/extract-trace.mjs --version
+      - name: Run unit suite
+        run: node --test tests/unit/*.test.mjs
+
+  pressure:
+    name: Pressure-test (replay mode)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Run pressure suite
+        env:
+          JLU_UI_QA_PRESSURE_MODE: replay
+        run: node tests/pressure/runner.mjs
+
+  sample-consumer-e2e:
+    name: Sample-consumer E2E (happy path)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Boot sample API
+        working-directory: tests/sample-consumer
+        run: |
+          docker compose up -d --wait api
+          curl -fsS http://localhost:4001/health
+      - name: Install Playwright
+        working-directory: tests/sample-consumer/frontend
+        run: |
+          npm ci || npm install
+          npx playwright install --with-deps chromium
+      - name: Run sample E2E
+        working-directory: tests/sample-consumer/frontend
+        run: npx playwright test --reporter=line
+      - name: Tear down
+        if: always()
+        working-directory: tests/sample-consumer
+        run: docker compose down -v
+
+  sample-consumer-e2e-fix-loop:
+    name: Sample-consumer E2E (deliberate bug surfaces in trace)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Boot sample API in BUG_MODE=500
+        working-directory: tests/sample-consumer
+        env:
+          BUG_MODE: '500'
+        run: docker compose up -d --wait api
+      - name: Install Playwright
+        working-directory: tests/sample-consumer/frontend
+        run: |
+          npm ci || npm install
+          npx playwright install --with-deps chromium
+      - name: Run sample E2E (expected to fail) and capture trace
+        working-directory: tests/sample-consumer/frontend
+        run: |
+          set +e
+          npx playwright test --reporter=line --trace=on
+          rc=$?
+          set -e
+          if [ "$rc" -eq 0 ]; then
+            echo "expected the test to fail with BUG_MODE=500, got exit 0"
+            exit 1
+          fi
+          test -d test-results
+      - name: Verify trace extraction surfaces the 500
+        working-directory: tests/sample-consumer/frontend
+        run: |
+          TRACE=$(find test-results -name 'trace.zip' | head -1)
+          if [ -z "$TRACE" ]; then echo "no trace.zip produced"; exit 1; fi
+          node ../../../bin/extract-trace.mjs "$TRACE" --out /tmp/summary.json
+          grep -q '"status": 500' /tmp/summary.json || (cat /tmp/summary.json; exit 1)
+      - name: Tear down
+        if: always()
+        working-directory: tests/sample-consumer
+        run: docker compose down -v

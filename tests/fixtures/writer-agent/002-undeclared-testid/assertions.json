@@ -1,0 +1,5 @@
+[
+  { "kind": "status_starts_with", "value": "NEEDS_CONTEXT" },
+  { "kind": "stdout_contains", "substring": "selectors.md" },
+  { "kind": "stdout_contains", "substring": "subscription-cancel-button" }
+]

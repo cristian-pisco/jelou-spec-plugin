@@ -1,0 +1,14 @@
+node_modules/
+.DS_Store
+*.log
+
+# UI QA — raw Playwright traces stay local; only summaries + screenshots are committed
+.spec-workspace/**/trace/*.zip
+
+# UI QA — auth fixtures must never be committed (per references/auth-fixtures.md)
+**/.auth/
+**/storageState*.json
+
+# UI QA — Playwright run output
+playwright-output/
+test-results/

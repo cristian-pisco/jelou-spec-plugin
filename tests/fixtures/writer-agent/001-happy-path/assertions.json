@@ -1,0 +1,12 @@
+[
+  { "kind": "status_equals", "value": "DONE — file=services/service-frontend/e2e/cancel-pro-subscription.spec.ts test_count=1" },
+  { "kind": "file_exists", "path": ".spec-workspace/specs/2026-04-25/sandbox-task/services/service-frontend/e2e/cancel-pro-subscription.spec.ts" },
+  { "kind": "file_exists", "path": ".spec-workspace/specs/2026-04-25/sandbox-task/services/service-frontend/e2e/INDEX.md" },
+  { "kind": "file_compiles_ts", "path": ".spec-workspace/specs/2026-04-25/sandbox-task/services/service-frontend/e2e/cancel-pro-subscription.spec.ts" },
+  { "kind": "file_contains", "path": ".spec-workspace/specs/2026-04-25/sandbox-task/services/service-frontend/e2e/cancel-pro-subscription.spec.ts", "substring": "import { test, expect } from '@playwright/test'" },
+  { "kind": "file_contains", "path": ".spec-workspace/specs/2026-04-25/sandbox-task/services/service-frontend/e2e/cancel-pro-subscription.spec.ts", "substring": "getByRole(" },
+  { "kind": "file_contains", "path": ".spec-workspace/specs/2026-04-25/sandbox-task/services/service-frontend/e2e/cancel-pro-subscription.spec.ts", "substring": "signInAs(page, request, 'user')" },
+  { "kind": "file_does_not_contain", "path": ".spec-workspace/specs/2026-04-25/sandbox-task/services/service-frontend/e2e/cancel-pro-subscription.spec.ts", "substring": "page.waitForTimeout" },
+  { "kind": "file_does_not_contain", "path": ".spec-workspace/specs/2026-04-25/sandbox-task/services/service-frontend/e2e/cancel-pro-subscription.spec.ts", "substring": "getByTestId(" },
+  { "kind": "file_does_not_contain", "path": ".spec-workspace/specs/2026-04-25/sandbox-task/services/service-frontend/e2e/cancel-pro-subscription.spec.ts", "substring": "page.locator(" }
+]

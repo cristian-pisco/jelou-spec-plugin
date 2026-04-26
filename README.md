@@ -128,6 +128,8 @@ OpenCode command definitions live in `.opencode/commands/`. All commands use the
 | `/jlu-close-task` | Close task after PR merge — updates ClickUp, cleans worktrees |
 | `/jlu-rollback-phase` | Reset service worktrees to the last known-good phase state |
 | `/jlu-refresh-skills` | Refresh the skill registry |
+| `/jlu-ui-qa-run [task-slug]` | Boot affected services and run the Playwright E2E suite with bounded auto-fix loop |
+| `/jlu-ui-qa-cleanup [task-slug]` | Recover from leaked dev servers, stale containers, or held lock files |
 
 ### Spec Compliance Review
 
@@ -159,6 +161,21 @@ Cross-cutting tasks (e.g., API + migration + events) get all relevant templates 
 
 Custom templates can be added to `<WORKSPACE_PATH>/templates/`.
 
+## UI QA — Spec-driven E2E Testing
+
+For tasks that touch a UI service, jelou-spec-plugin generates failing Playwright tests during the RED phase from a `user-flow.md` block in `SPEC.md`, and runs them post-deploy under a bounded auto-fix loop.
+
+| Phase | Command / Agent | What happens |
+|---|---|---|
+| **RED** (during `/jlu-execute-task`) | `jlu-ui-e2e-writer` agent | Reads `user-flow.md` blocks, emits failing Playwright tests under `.spec-workspace/specs/<task>/services/<ui-service>/e2e/`. Role-based locators by default; refuses to invent `data-testid` selectors not declared in `selectors.md`. |
+| **GREEN** (during `/jlu-execute-task`) | `jlu-implementer` (existing) | Writes UI source code to make the tests pass. |
+| **VERIFY** (post-deploy, user-triggered) | `/jlu-ui-qa-run [task-slug]` | Boots only the services in `affected_services`, runs Playwright headless single-worker, dispatches `jlu-ui-fix-loop` on failure with hard bounds (3 attempts/assertion, 15-min suite circuit-breaker). |
+| **RECOVER** (after a crashed run) | `/jlu-ui-qa-cleanup` | Frees stale dev servers, containers, ports, and lock files. |
+
+Each E2E-targeted service must declare a `dev` block in `services.yaml` (launcher, command, readiness signal, RAM estimate, data isolation). See [`jelou/references/dev-block-schema.md`](./jelou/references/dev-block-schema.md). Services without a `dev` block are skipped.
+
+Trace summaries (`trace-summary.json` + screenshots) are committed; raw `trace.zip` is gitignored.
+
 ## Workspace Structure
 
 The plugin uses `.spec-workspace/` in the parent directory of your services as the canonical root:
@@ -166,7 +183,7 @@ The plugin uses `.spec-workspace/` in the parent directory of your services as t
 ```
 .spec-workspace/
   registry/
-    services.yaml          # Service registry (id, path, stack)
+    services.yaml          # Service registry (id, path, stack, optional docker, optional dev)
   principles/
     ENGINEERING_PRINCIPLES.md
   services/
@@ -177,7 +194,7 @@ The plugin uses `.spec-workspace/` in the parent directory of your services as t
       <task-slug>/         # All task artifacts
         SPEC.md
         PROPOSAL.md
-        TASKS.md
+        TASKS.md           # YAML frontmatter exposes affected_services as structured data
         services/
           <service-id>/
             CONTEXT.md
@@ -193,6 +210,25 @@ Each service repo only stores a minimal `.spec-workspace.json` pointer:
   "serviceId": "service-auth"
 }
 ```
+
+### TASKS.md frontmatter
+
+`TASKS.md` carries a YAML frontmatter block as the structured source of truth for `affected_services`. Workflows that need to enumerate affected services (e.g., `/jlu-ui-qa-run`) read the frontmatter directly instead of parsing the markdown table:
+
+```yaml
+---
+affected_services:
+  - id: service-frontend
+    sub_state: planned
+    branch: production/<task-slug>
+---
+```
+
+The existing `## Services` markdown body is auto-derived from frontmatter for human reading. Legacy TASKS.md files without frontmatter remain valid (consumers fall back to body parsing).
+
+### `services.yaml` `dev` block (optional)
+
+A per-service `dev` block declares how to boot the service for E2E orchestration: launcher, command, readiness signal, RAM estimate, data isolation. Consumed by `/jlu-ui-qa-run`; ignored by all other workflows. Full schema in [`jelou/references/dev-block-schema.md`](./jelou/references/dev-block-schema.md). Services without a `dev` block remain valid; they're skipped by E2E orchestration with a clear message.
 
 ## Configuration
 
@@ -215,6 +251,8 @@ Per-service concrete rules in each service's `CONVENTIONS.md`.
 
 - **[Full Specification](./JELOU_SPEC_PROPOSAL.md)** — Complete design decisions, artifact schemas, and interview transcript
 - **[Architecture Diagrams](./docs/architecture.excalidraw)** — Editable diagrams (open with [excalidraw.com](https://excalidraw.com))
+- **[`dev` Block Schema](./jelou/references/dev-block-schema.md)** — `services.yaml` extension for E2E orchestration (consumed by `/jlu-ui-qa-run`)
+- **[`services.yaml` Reference](./jelou/templates/services-yaml.md)** — Field-by-field schema documentation for the service registry
 
 ## How It Works (Simplified)
 

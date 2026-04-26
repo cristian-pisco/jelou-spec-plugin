@@ -1,3 +1,10 @@
+---
+affected_services:
+  - id: {{service-id}}
+    sub_state: planned
+    branch: production/{{task-slug}}
+---
+
 # TASKS: {{task-title}}
 
 ## Metadata

@@ -1,0 +1,204 @@
+# Workflow: ui-qa-run
+
+Boot only the services this task affects, run the Playwright E2E suite headless single-worker, and on failure dispatch the bounded fix-loop. User-triggered post-deploy gate.
+
+## Inputs
+
+- Optional argument: task slug. When omitted, parsed from the current git branch (`production/<slug>` or `staging/<slug>`). Off-task branches refuse with: "no task slug detected from branch `<X>`; pass `<slug>` explicitly."
+- Optional flags:
+  - `--force` — override the pre-flight resource gate (use sparingly).
+  - `--allow-shared-data` — required when any affected service has `dev.data_isolation: shared`.
+  - `--allow-test-edits` — let the fix-loop edit `.spec.ts` files (default forbids this).
+  - `--workers=N` — Playwright worker count. Default 1. Refuses N>1 unless system has >8GB RAM available.
+
+## Process
+
+### Phase 1 — Resolve task and pre-flight
+
+1. **Resolve slug.**
+   ```bash
+   if [ -z "$ARG" ]; then
+     BRANCH=$(git rev-parse --abbrev-ref HEAD)
+     case "$BRANCH" in
+       production/*) SLUG=${BRANCH#production/} ;;
+       staging/*)    SLUG=${BRANCH#staging/} ;;
+       *)            echo "ERROR: no task slug detected from branch '$BRANCH'; pass <slug> explicitly"; exit 1 ;;
+     esac
+   else
+     SLUG="$ARG"
+   fi
+   ```
+
+2. **Locate the workspace.** Walk up from the current service repo to find `.spec-workspace/`. Refuse if missing: "this workflow requires a `.spec-workspace/` (created by /jlu-new-task)."
+
+3. **Locate the task directory.** `.spec-workspace/specs/*/$SLUG/`. Refuse if not found.
+
+4. **Acquire the per-task lock.**
+   ```bash
+   LOCK_FILE="$TASK_DIR/.ui-qa.lock"
+   exec 9>"$LOCK_FILE"
+   flock -n 9 || {
+     HOLDER=$(cat "$LOCK_FILE.pid" 2>/dev/null || echo "unknown")
+     echo "ERROR: another /jlu-ui-qa-run is active on this task (PID $HOLDER). Wait or kill it."
+     exit 1
+   }
+   echo $$ > "$LOCK_FILE.pid"
+   trap 'rm -f "$LOCK_FILE.pid"; flock -u 9' EXIT INT TERM
+   ```
+
+5. **Read TASKS.md frontmatter** for `affected_services`. Frontmatter is the structured source. Fallback to `## Services` markdown headings for legacy tasks (note in report).
+
+6. **Read services.yaml** for each affected service. Filter to those with a `dev` block (others are skipped with one-line note).
+
+7. **Read each user-flow.md** in SPEC.md for `Service Boot Order`. Compute the union of declared boot orders across all UI-targeted flows. If two flows disagree on order, refuse: "conflicting boot order across flows: <flow-a> says <X>; <flow-b> says <Y>. Reconcile in the spec."
+
+8. **Pre-flight resource check** (inline; no separate `bin/` script).
+   ```bash
+   OS=$(uname -s)
+   if [ "$OS" = "Linux" ] && grep -qiE 'microsoft|wsl' /proc/version 2>/dev/null; then
+     OS_VARIANT="WSL2"
+   else
+     OS_VARIANT="$OS"
+   fi
+
+   case "$OS_VARIANT" in
+     Linux|WSL2)
+       AVAIL_MB=$(awk '/MemAvailable/ {print  / 1024}' /proc/meminfo 2>/dev/null)
+       [ -z "$AVAIL_MB" ] && AVAIL_MB=$(awk '/MemFree/ {f=} /^Cached/ {c=} END {print (f+c) / 1024}' /proc/meminfo)
+       ;;
+     Darwin)
+       PAGE_SIZE=$(sysctl -n hw.pagesize)
+       FREE_PAGES=$(vm_stat | awk '/Pages free/ {gsub(/\./,"",); print }')
+       SPEC_PAGES=$(vm_stat | awk '/Pages speculative/ {gsub(/\./,"",); print }')
+       INACTIVE_PAGES=$(vm_stat | awk '/Pages inactive/ {gsub(/\./,"",); print }')
+       AVAIL_MB=$(( (FREE_PAGES + SPEC_PAGES + INACTIVE_PAGES) * PAGE_SIZE / 1024 / 1024 ))
+       ;;
+     *)
+       echo "ERROR: unsupported OS '$OS'. Linux + macOS + WSL2 supported. Windows-native is out of scope."
+       exit 1
+       ;;
+   esac
+
+   REQUIRED_MB=$(( SUM_DEV_RAM_ESTIMATES + 1300 ))   # 800MB Chromium+Node + 500MB headroom
+
+   if [ "$AVAIL_MB" -lt "$REQUIRED_MB" ] && [ -z "$FORCE" ]; then
+     echo "ERROR: pre-flight resource check failed."
+     echo "  available: ${AVAIL_MB}MB"
+     echo "  required:  ${REQUIRED_MB}MB"
+     echo "  Close apps or pass --force to override."
+     exit 1
+   fi
+   ```
+
+9. **Pre-flight port-availability check.** For each affected service's port (from `dev.health_url` or `dev.ready_signal.port`), verify it's free:
+   ```bash
+   if lsof -iTCP:"$PORT" -sTCP:LISTEN -P -n 2>/dev/null | grep -q LISTEN; then
+     echo "ERROR: port $PORT is already bound. Run /jlu-ui-qa-cleanup or kill the holder manually."
+     exit 1
+   fi
+   ```
+
+10. **Data-isolation guard.** If any affected service has `dev.data_isolation: shared` and `--allow-shared-data` was NOT passed, refuse: "service `<id>` declares `data_isolation: shared`. Concurrent runs will corrupt data. Pass `--allow-shared-data` to override."
+
+### Phase 2 — Resolve UI services and worktrees
+
+11. **Identify UI services** in `affected_services`. Heuristic: `services.yaml[id].stack` ∈ {`react`, `nextjs`, `vue`, `angular`, `svelte`}. If none, exit 0 with note "no UI service in affected_services — nothing to do."
+
+12. **Resolve each UI service's active worktree** by calling the algorithm in `jelou/references/worktree-resolution.md`. Pass the resolved path forward; do NOT use `services.yaml[*].path` directly.
+
+13. **For each UI service**, run Phase 3 sequentially. Multi-UI-service tasks iterate one at a time, with full boot+test+teardown per service.
+
+### Phase 3 — Boot, test, teardown (per UI service)
+
+14. **Boot affected services in declared order.**
+    ```
+    For each service in Service Boot Order:
+      Run dev.command (or derived `docker compose -f <compose_file> up -d <service>` when launcher: docker)
+      Capture stdout/stderr to <TASK_DIR>/services/<UI_SERVICE>/e2e/launch-<service>.log
+      Wait for readiness signal:
+        - health_url:    poll until 2xx response, or ready_timeout_s
+        - port_open:     TCP connect until success, or ready_timeout_s
+        - http_200:      poll until 2xx on port:path, or ready_timeout_s
+        - stdout_match:  tail launch log, regex-match pattern, or ready_timeout_s
+      On timeout: abort with STATUS: BLOCKED, reason: ready_timeout for <service>.
+    ```
+
+15. **Run Playwright** in the UI service's worktree.
+    ```bash
+    cd "$UI_WORKTREE"
+    npx playwright test \
+      --workers=${WORKERS:-1} \
+      --reporter=json \
+      --output="$TASK_DIR/services/$UI_SERVICE/e2e/playwright-output" \
+      --trace=on-first-retry \
+      > "$TASK_DIR/services/$UI_SERVICE/e2e/run.json" 2>&1
+    EXIT_CODE=$?
+    ```
+
+16. **Parse the JSON reporter output** for failures. Each failure has test title, file path, line, error, attached trace.zip path.
+
+17. **Mid-suite crash detection.** If any test failed:
+    ```
+    For each booted service:
+      Re-run its readiness check (one shot).
+      If fails:
+        Abort: STATUS: BLOCKED, reason: service_crashed:<id>
+        Capture last 50 lines of <service>'s launch log.
+        Skip the fix-loop entirely.
+    ```
+
+18. **Dispatch fix-loop**. For each remaining failure:
+    - Run `bin/extract-trace.mjs <trace.zip>` to produce `trace-summary.json`.
+    - Dispatch `jlu-ui-fix-loop` agent with the summary, the failing test source, the SPEC.md context, and the UI service's worktree path.
+    - Apply bounds: 3 attempts/assertion, 15-min suite circuit-breaker, no test-file edits unless `--allow-test-edits`, no cross-service writes.
+
+19. **Teardown.** The EXIT trap fires regardless of success/error/SIGINT/SIGTERM:
+    ```bash
+    trap '
+      for svc in "${BOOTED[@]}"; do
+        eval "${TEARDOWN_CMD[$svc]}" >/dev/null 2>&1 || true
+      done
+      flock -u 9
+      rm -f "$LOCK_FILE.pid"
+    ' EXIT INT TERM
+    ```
+
+20. **Write the run report** to `$TASK_DIR/services/$UI_SERVICE/e2e/run-$(date -u +%Y%m%dT%H%M%SZ).md`. Include pre-flight, boot order, per-test pass/fail/flagged, fix-loop activity, artifacts, summary.
+
+21. **Append to TASKS.md** Timeline:
+    ```
+    | <ts> | UI QA run | <pass>/<total> green, <flagged> flagged. Report: services/<ui>/e2e/run-<ts>.md |
+    ```
+
+    Update the YAML frontmatter `affected_services[*].sub_state` for each UI service: `validating` if all green, `blocked` if any flagged.
+
+## Phase 4 — Report
+
+22. Print the same summary the run report contains, with file:line links for any failures and a one-line remediation for each flagged test.
+
+23. Exit code: 0 if all tests green; 1 if any failing or flagged; 2 if BLOCKED (pre-flight / crash / lock).
+
+## Failure modes & UX
+
+| Scenario | Exit | Message |
+|---|---|---|
+| No `.spec-workspace/` | 2 | "requires a workspace" + how to make one |
+| Off-task branch, no slug arg | 2 | "no task slug detected from branch" + how to pass explicitly |
+| Pre-flight RAM fails | 2 | "available <X>MB < required <Y>MB" + `--force` hint |
+| Port held by stale | 2 | `/jlu-ui-qa-cleanup` hint |
+| Lock held | 2 | "PID <X> holds lock; wait or kill" |
+| Docker daemon down | 2 | "docker info failed; start Docker Desktop / dockerd" |
+| Service ready_timeout | 2 | "<service> didn't reach ready in <X>s; check launch log" |
+| Mid-suite service crash | 2 | "service_crashed:<id>; last 50 lines of launch log" |
+| All tests green | 0 | clean summary |
+| Some failing or flagged | 1 | summary with file:line per failure |
+
+## See also
+
+- `jelou/references/loading-context.md` — how the dispatched fix-loop loads its context
+- `jelou/references/dev-server-readiness.md` — per-stack ready signal cookbook
+- `jelou/references/auth-fixtures.md` — credential security contract
+- `jelou/references/dev-block-schema.md` — `services.yaml` `dev` block reference
+- `bin/extract-trace.mjs` — trace.zip → trace-summary.json
+- `agents/jlu-ui-fix-loop.md` — fix-loop agent
+- `jelou/workflows/ui-qa-cleanup.md` — recover from leaked state

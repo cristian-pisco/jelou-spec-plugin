@@ -1,0 +1,5 @@
+[
+  { "kind": "status_starts_with", "value": "flagged reason=same_hunk_twice" },
+  { "kind": "stdout_contains", "substring": "Settings.tsx" },
+  { "kind": "stdout_contains", "substring": "a1b2c3d4e5f6" }
+]

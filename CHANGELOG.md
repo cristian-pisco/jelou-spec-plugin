@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.62] — 2026-04-25
+
+### Added
+- integrate UI QA workflow with Playwright E2E and bounded auto-fix loop
+
 ## [0.3.61] — 2026-04-24
 
 ### Fixed

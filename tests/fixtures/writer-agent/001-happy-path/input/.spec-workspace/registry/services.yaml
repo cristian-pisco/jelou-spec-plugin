@@ -1,0 +1,41 @@
+services:
+  - id: service-postgres
+    path: ../service-postgres
+    stack: docker
+    docker:
+      service: postgres
+    dev:
+      launcher: docker
+      ready_signal:
+        type: port_open
+        port: 5432
+      ready_timeout_s: 30
+      ram_estimate_mb: 250
+      data_isolation: per-run
+
+  - id: service-billing
+    path: ../service-billing
+    stack: nestjs
+    docker:
+      service: billing-api
+    dev:
+      launcher: docker
+      health_url: http://localhost:4001/health
+      ready_timeout_s: 60
+      ram_estimate_mb: 350
+      data_isolation: per-run
+
+  - id: service-frontend
+    path: ../service-frontend
+    stack: nextjs
+    dev:
+      launcher: npm
+      command: npm run dev
+      teardown: pkill -f 'next dev'
+      ready_signal:
+        type: stdout_match
+        pattern: "✓ Ready in"
+        port: 3000
+      ready_timeout_s: 90
+      ram_estimate_mb: 600
+      data_isolation: none

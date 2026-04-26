@@ -31,6 +31,16 @@ The orchestrator invokes you after significant events:
 ## TASKS.md Structure
 
 ```markdown
+---
+affected_services:
+  - id: <service-id>
+    sub_state: planned        # planned | implementing | validating | done
+    branch: production/<task-slug>
+  - id: <service-id-2>
+    sub_state: planned
+    branch: production/<task-slug>
+---
+
 # Tasks — <Task Title>
 
 ## Status
@@ -120,16 +130,19 @@ If this task is resumed after interruption:
 
 8. **Branching section is semi-append-only**. The "Dual PR", "Primary branch", "Secondary branch", and "Mode" fields are set once (at task creation / mode selection) and do not change. The per-service "Sync markers" entries (`<service-id>: alpha=<sha>, production=<sha>`) are overwritten on each `/jlu-create-pr` dual-PR sync.
 
+9. **YAML frontmatter is the structured source of truth for `affected_services`.** The `---` block at the top of TASKS.md mirrors the per-service entries under `## Services`. When a service is added, removed, or its `sub_state` changes, update both the frontmatter and the body. Downstream consumers (e.g., `jelou-ui-qa`) read the frontmatter as the parseable source; the markdown body is for human reading. Legacy TASKS.md files without frontmatter remain valid (consumers fall back to parsing the markdown body).
+
 ## Initial Creation
 
 When creating TASKS.md for the first time (during `/jlu-execute-task` start):
 
 1. Read PROPOSAL.md for the phase structure and affected services
-2. Create the skeleton with all phases in `pending` status
-3. Set lifecycle to `implementing`
-4. Set mode to the chosen execution mode
-5. Initialize the timeline with "Execution started"
-6. Set recovery info to point at Phase 01
+2. Write the YAML frontmatter block FIRST (before the H1) with one entry per affected service (`id`, `sub_state: planned`, `branch: production/<task-slug>`)
+3. Create the skeleton with all phases in `pending` status
+4. Set lifecycle to `implementing`
+5. Set mode to the chosen execution mode
+6. Initialize the timeline with "Execution started"
+7. Set recovery info to point at Phase 01
 
 ## Rules
 

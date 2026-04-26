@@ -1,0 +1,6 @@
+[
+  { "kind": "status_starts_with", "value": "BLOCKED reason=backend_contract" },
+  { "kind": "stdout_contains", "substring": "/api/subscriptions/cancel" },
+  { "kind": "stdout_contains", "substring": "500" },
+  { "kind": "file_does_not_contain", "path": ".spec-workspace/specs/2026-04-25/sandbox-task/services/service-frontend/src/app/dashboard/page.tsx", "substring": "Your plan was downgraded" }
+]
