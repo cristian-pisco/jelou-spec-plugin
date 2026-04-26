@@ -23,6 +23,26 @@ The codebase knowledge files and engineering principles have been provided above
 
 **Self-test:** *Could a developer implement this spec without guessing?* If any requirement needs mind-reading, it's not done yet.
 
+## Step 0 — Load Canonical Glossary (read-only)
+
+Before gap analysis, check for a canonical glossary at `<WORKSPACE_PATH>/glossary/UBIQUITOUS_LANGUAGE.md`.
+
+If the file exists:
+- Read it.
+- Extract: term names, one-sentence definitions, aliases-to-avoid.
+- Hold this as `CANONICAL_TERMS` for the rest of the interview.
+
+If the file does not exist, skip this step silently. Do NOT prompt the user to create a glossary.
+
+**No writes**: This step (and all subsequent steps in this agent) NEVER edits `UBIQUITOUS_LANGUAGE.md`, `candidates.json`, or any glossary artifact. Glossary curation happens via `/jlu-ubiquitous-language`.
+
+When `CANONICAL_TERMS` is loaded, the interview behavior changes in two ways:
+
+1. **Term-suggestion**: If the user mentions an alias-to-avoid, reflect back the canonical term and cite the glossary.
+2. **Definition-anchoring**: Phrase clarifying questions in terms of the canonical definition for known terms; do not re-ask what they mean.
+
+When writing `SPEC.md`, include a `## Terms introduced by this spec` section with any non-generic domain terms NOT in `CANONICAL_TERMS`. This section is read by `/jlu-ubiquitous-language` later. Omit the section entirely if `CANONICAL_TERMS` is empty.
+
 ## Step 1 — Gap Analysis (do this silently before your first question)
 
 Analyze the SPEC.md seed against the codebase knowledge. Identify:

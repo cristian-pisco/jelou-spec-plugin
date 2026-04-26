@@ -11,6 +11,7 @@ Follows the conventions established by [OpenSpec](https://github.com/Fission-AI/
 - **Agent specialization**: The orchestrator never writes code. It delegates to purpose-built agents (spec-interviewer, proposal, test-writer, implementer, QA) and consolidates their output.
 - **Strict TDD**: Red → Green → Refactor enforced per phase. Separate test-writer and implementer agents ensure discipline.
 - **Integrations**: Git worktree management and PR coordination in Phase 1; ClickUp and Slack MCP integrations in Phase 2.
+- **Ubiquitous language**: `/jlu-ubiquitous-language` discovers and curates the workspace's domain glossary across services, anchoring each term to the services where it's implemented and referenced.
 
 ## Prerequisites
 
@@ -65,7 +66,7 @@ After that, start OpenCode in the target repo and run:
 opencode
 ```
 
-Use commands like `/jlu-new-task`, `/jlu-execute-task`, `/jlu-create-pr`.
+Use commands like `/jlu-new-task`, `/jlu-execute-task`, `/jlu-create-pr`, `/jlu-ubiquitous-language`.
 
 ### Update in Existing Project
 
@@ -116,6 +117,7 @@ OpenCode command definitions live in `.opencode/commands/`. All commands use the
 | Command | Purpose |
 |---------|---------|
 | `/jlu-map-codebase` | Analyze a service with 2 parallel agents, generate 6 codebase knowledge files |
+| `/jlu-ubiquitous-language [service-id]` | Curate the workspace's domain glossary; extract terms from code + spec/interview artifacts; review-then-save loop |
 | `/jlu-new-task` | Create a new task with spec, worktrees, and affected service detection |
 | `/jlu-refine-task` | Apply a targeted change to an approved spec via structured interview |
 | `/jlu-execute-task` | Run TDD implementation (autonomous or step-by-step mode) |

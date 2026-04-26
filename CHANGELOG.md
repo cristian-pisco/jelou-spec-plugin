@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.86] — 2026-04-26
+
+### Internal
+- mirror Phase 0 changes and mention command in README
+
 ## [0.3.85] — 2026-04-26
 
 ### Added
