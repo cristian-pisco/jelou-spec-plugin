@@ -223,7 +223,50 @@ After all docs are verified, write the analysis marker to `<OUTPUT_DIR>/.last-an
 
 ---
 
-## Step 8 — Report Summary
+## Step 8 — Glossary Candidate Extraction (background hook)
+
+> Fail-soft: if anything in this step errors, log a one-line warning and continue to Step 9. The 6 codebase docs are the primary deliverable; glossary candidates are a bonus.
+
+### Precondition
+
+If `WORKSPACE_PATH` is not resolved, skip this step entirely.
+
+Otherwise:
+- Create `<WORKSPACE_PATH>/glossary/` if missing.
+- Create `<WORKSPACE_PATH>/glossary/.tmp/` if missing.
+
+### Dispatch Extractor
+
+Spawn a SINGLE `jlu-glossary-extractor` agent (model: `sonnet`) for the just-mapped service.
+
+Prompt prefix:
+```
+service-id: <service-id>
+SOURCE_ROOT: <SOURCE_ROOT>
+OUTPUT_FRAGMENT: <WORKSPACE_PATH>/glossary/.tmp/<service-id>.candidates.json
+EXISTING_TERMS: <union of canonical term names from UBIQUITOUS_LANGUAGE.md (if exists) and candidate names from candidates.json (if exists)>
+MODE: hook
+```
+
+Followed by the full content of `<plugin-root>/agents/jlu-glossary-extractor.md`.
+
+### Merge Fragment
+
+After the extractor completes, run:
+
+```bash
+node <plugin-root>/bin/glossary-merge.mjs --glossary-dir <WORKSPACE_PATH>/glossary
+```
+
+If the merger fails, log a one-line warning ("Glossary merge skipped — <reason>") and continue.
+
+### On Failure
+
+If the extractor itself fails or never produces a fragment, log: "Glossary candidate extraction skipped — <reason>". Do NOT fail the map-codebase run.
+
+---
+
+## Step 9 — Report Summary
 
 Present a final summary to the user:
 
@@ -241,6 +284,10 @@ Present a final summary to the user:
 ### Consistency
 - Checked: <N> cross-references
 - Issues found and fixed: <N>
+
+### Glossary
+- New candidate terms: <count from Step 8 merger output, or "skipped" if Step 8 was skipped>
+- Run `/jlu-ubiquitous-language` to curate the workspace glossary.
 
 ### Notes
 - <any areas flagged for manual review>

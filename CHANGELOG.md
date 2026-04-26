@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.84] — 2026-04-26
+
+### Added
+- hook glossary candidate extraction after codebase docs
+
 ## [0.3.83] — 2026-04-26
 
 ### Added
