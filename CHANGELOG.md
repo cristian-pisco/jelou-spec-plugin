@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.80] — 2026-04-26
+
+### Added
+- add jlu-glossary-extractor agent
+
 ## [0.3.79] — 2026-04-26
 
 ### Added
