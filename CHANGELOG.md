@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.76] — 2026-04-26
+
+### Internal
+- exclusion-list behavior for dropped/promoted terms
+
 ## [0.3.75] — 2026-04-26
 
 ### Internal

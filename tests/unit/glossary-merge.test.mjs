@@ -98,3 +98,67 @@ describe('glossary-merge — multi-service union', () => {
     assert.equal(datum.heuristic_confidence, 'high', 'highest confidence wins');
   });
 });
+
+describe('glossary-merge — exclusion lists', () => {
+  test('terms in dropped[] are not re-added even if extractor proposes them', () => {
+    const { glossary, tmp } = setupWorkspace();
+
+    // Pre-existing candidates.json with a dropped term.
+    writeFileSync(join(glossary, 'candidates.json'), JSON.stringify({
+      version: 1,
+      updated_at: '2026-04-26T10:00:00Z',
+      candidates: [],
+      promoted: [],
+      dropped: [{ term: 'Helper', dropped_at: '2026-04-26T10:00:00Z', reason: 'too generic' }]
+    }));
+
+    writeFileSync(join(tmp, 'svc.candidates.json'), JSON.stringify({
+      service_id: 'svc',
+      scanned_commit: 'aaa',
+      candidates: [{
+        term: 'Helper',
+        evidence: [{ path: 'src/helper.ts', line: 1, kind: 'class-declaration' }],
+        location_role: 'definition',
+        heuristic_confidence: 'medium'
+      }],
+      location_updates: []
+    }));
+
+    const result = runMerger(['--glossary-dir', glossary]);
+    assert.equal(result.status, 0);
+
+    const merged = JSON.parse(readFileSync(join(glossary, 'candidates.json'), 'utf8'));
+    assert.equal(merged.candidates.length, 0, 'dropped term must not be re-added');
+    assert.equal(merged.dropped.length, 1, 'dropped entry preserved');
+  });
+
+  test('terms in promoted[] are not re-added (already canonical)', () => {
+    const { glossary, tmp } = setupWorkspace();
+
+    writeFileSync(join(glossary, 'candidates.json'), JSON.stringify({
+      version: 1,
+      updated_at: '2026-04-26T10:00:00Z',
+      candidates: [],
+      promoted: [{ term: 'Workflow', promoted_at: '2026-04-26T10:00:00Z' }],
+      dropped: []
+    }));
+
+    writeFileSync(join(tmp, 'svc.candidates.json'), JSON.stringify({
+      service_id: 'svc',
+      scanned_commit: 'bbb',
+      candidates: [{
+        term: 'Workflow',
+        evidence: [{ path: 'src/workflow.entity.ts', line: 1, kind: 'entity-class' }],
+        location_role: 'definition',
+        heuristic_confidence: 'high'
+      }],
+      location_updates: []
+    }));
+
+    const result = runMerger(['--glossary-dir', glossary]);
+    assert.equal(result.status, 0);
+
+    const merged = JSON.parse(readFileSync(join(glossary, 'candidates.json'), 'utf8'));
+    assert.equal(merged.candidates.length, 0, 'promoted term must not be re-added as candidate');
+  });
+});
