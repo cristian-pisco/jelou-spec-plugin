@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.102] — 2026-04-26
+
+### Added
+- add SKILL.md launcher
+
 ## [0.3.101] — 2026-04-26
 
 ### Added
