@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.82] — 2026-04-26
+
+### Added
+- add /jlu-ubiquitous-language orchestrator workflow
+
 ## [0.3.81] — 2026-04-26
 
 ### Added
