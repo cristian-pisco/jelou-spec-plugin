@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.74] — 2026-04-26
+
+### Added
+- green — merge fragments into candidates.json
+
 ## [0.3.73] — 2026-04-26
 
 ### Internal
