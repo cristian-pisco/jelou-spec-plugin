@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.89] — 2026-04-26
+
+### Internal
+- add architecture-review implementation plan
+
 ## [0.3.88] — 2026-04-26
 
 ### Changed
