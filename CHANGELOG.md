@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.65] — 2026-04-25
+
+### Internal
+- Add jelou/references/parallel-dispatch.md adapted from superpowers:dispatching-parallel-agents for multi-service fan-out at per-phase steps (test-writer, implementer, qa-agent, build-validator). Documents the single-orchestrator-message pattern, scope-isolation rules, and post-return conflict detection via artifacts comparison.
+- Cite from jelou/workflows/execute-task.md at 7d (TDD Red — Spawn Test Writer) and 7e (TDD Green — Spawn Implementer) so the orchestrator fans out per service when the phase affects multiple services without cross-service dependencies. Step 4f proposal-agent dispatch is already parallel by precedent.
+
 ## [0.3.64] — 2026-04-25
 
 ### Internal

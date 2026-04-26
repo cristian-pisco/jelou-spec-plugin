@@ -264,6 +264,8 @@ Read the phases from PROPOSAL.md in dependency order. For each phase:
 
 ### 7d. TDD Red — Spawn Test Writer
 
+When the phase affects multiple services with no cross-service contract being defined this phase, dispatch one `jlu-test-writer` per service **in a single orchestrator message** rather than sequentially. See `jelou/references/parallel-dispatch.md` for the pattern, scope-isolation rules, and conflict-detection on return.
+
 Spawn `jlu-test-writer` agent with model: **MODEL_CONFIG.code** (default: sonnet):
 - **Input**:
   - Phase requirements (from the phase file's immutable section)
@@ -295,6 +297,8 @@ Spawn `jlu-test-writer` agent with model: **MODEL_CONFIG.code** (default: sonnet
    - If test is incorrect: rewrite and re-verify Red state.
 
 ### 7e. TDD Green — Spawn Implementer
+
+When the phase affects multiple services with no shared file edits, dispatch one `jlu-implementer` per service **in a single orchestrator message** rather than sequentially. See `jelou/references/parallel-dispatch.md`. After all implementers return, compare `artifacts` arrays to detect any unintended overlap before running per-phase QA.
 
 Spawn `jlu-implementer` agent with model: **MODEL_CONFIG.code** (default: sonnet):
 - **Input**:
