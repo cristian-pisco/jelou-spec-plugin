@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.106] — 2026-04-26
+
+### Internal
+- expand architecture-review coverage
+
 ## [0.3.105] — 2026-04-26
 
 ### Fixed

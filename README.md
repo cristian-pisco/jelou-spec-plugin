@@ -12,6 +12,7 @@ Follows the conventions established by [OpenSpec](https://github.com/Fission-AI/
 - **Strict TDD**: Red → Green → Refactor enforced per phase. Separate test-writer and implementer agents ensure discipline.
 - **Integrations**: Git worktree management and PR coordination in Phase 1; ClickUp and Slack MCP integrations in Phase 2.
 - **Ubiquitous language**: `/jlu-ubiquitous-language` discovers and curates the workspace's domain glossary across services, anchoring each term to the services where it's implemented and referenced.
+- **Architecture review**: `/jlu-architecture-review` surfaces deepening opportunities (single-service or cross-service) — refactors that turn shallow modules into deep ones — runs an interactive grilling loop on a chosen candidate, and lazily records ADRs when candidates are rejected with load-bearing reasons.
 
 ## Prerequisites
 
@@ -179,6 +180,25 @@ Each E2E-targeted service must declare a `dev` block in `services.yaml` (launche
 
 Trace summaries (`trace-summary.json` + screenshots) are committed; raw `trace.zip` is gitignored.
 
+## Architecture Review — Deepening Opportunities
+
+`/jlu-architecture-review` is a standalone exploration tool that surfaces refactor candidates in a service or across services. It does not write code; it produces refactor *briefs* that feed `/jlu-new-task` and *ADRs* that prevent the same candidate from being re-suggested on the next run.
+
+| Mode | Command | What happens |
+|---|---|---|
+| **Single service** | `/jlu-architecture-review <service-id>` | Reads the 6 codebase knowledge files, the canonical glossary (read-only), and any existing ADRs scoped to that service. Walks the source via `Explore` sub-agents. Emits up to 7 numbered candidates. |
+| **Cross-service** | `/jlu-architecture-review --cross-service [<service-id>]` | Same shape, but joins multiple services and prioritizes friction at integration points (the "Remote but owned" / Ports & Adapters case). |
+
+After the candidate list is rendered, the orchestrator hands the selected candidate to a grilling agent (Opus) that walks the design tree with the user — bounded to ~6 questions — and produces one of three outcomes per candidate:
+
+- **Survives** → refined brief appended to the report; copy-paste ready for `/jlu-new-task`.
+- **Rejected with load-bearing reason** → ADR written to `<workspace>/decisions/ADR-NNNN-<slug>.md`.
+- **Rejected casually** → one-line note in the report.
+
+Two key vocabularies stay distinct. **Architecture vocabulary** (Module, Interface, Seam, Adapter, Depth, Leverage, Locality — see [`jelou/references/architecture-language.md`](./jelou/references/architecture-language.md)) is enforced in candidate text and ADRs. **Domain vocabulary** comes from `<workspace>/glossary/UBIQUITOUS_LANGUAGE.md` (read-only); candidates name the concept (e.g. "the Order intake module"), never invented terms like "OrderHandler". If a concept isn't yet in the glossary, the candidate carries `missing_domain_term` and the final summary recommends running `/jlu-ubiquitous-language`.
+
+The skill is purely standalone — no auto-hooks into other workflows. The grilling loop is too conversational to bolt onto a batch command. Output: a transient report at `<workspace>/services/<id>/codebase/ARCHITECTURE_REVIEW.md` (overwritten on each run) and append-only ADRs at `<workspace>/decisions/`.
+
 ## Workspace Structure
 
 The plugin uses `.spec-workspace/` in the parent directory of your services as the canonical root:
@@ -189,9 +209,15 @@ The plugin uses `.spec-workspace/` in the parent directory of your services as t
     services.yaml          # Service registry (id, path, stack, optional docker, optional dev)
   principles/
     ENGINEERING_PRINCIPLES.md
+  glossary/
+    UBIQUITOUS_LANGUAGE.md # Canonical domain glossary (curated by /jlu-ubiquitous-language)
+  decisions/
+    ADR-NNNN-<slug>.md     # Workspace-level ADRs (created lazily by /jlu-architecture-review)
   services/
     <service-id>/
       codebase/            # 6 knowledge files per service
+        ARCHITECTURE_REVIEW.md            # Latest single-service review (transient, overwritten)
+        ARCHITECTURE_REVIEW.cross-service.md  # Latest cross-service review (when --cross-service used)
   specs/
     <dd-mm-yyyy>/
       <task-slug>/         # All task artifacts
@@ -256,6 +282,9 @@ Per-service concrete rules in each service's `CONVENTIONS.md`.
 - **[Architecture Diagrams](./docs/architecture.excalidraw)** — Editable diagrams (open with [excalidraw.com](https://excalidraw.com))
 - **[`dev` Block Schema](./jelou/references/dev-block-schema.md)** — `services.yaml` extension for E2E orchestration (consumed by `/jlu-ui-qa-run`)
 - **[`services.yaml` Reference](./jelou/templates/services-yaml.md)** — Field-by-field schema documentation for the service registry
+- **[Architecture Review Design](./docs/superpowers/specs/2026-04-26-architecture-review-design.md)** — Spec for `/jlu-architecture-review`: candidate discovery, grilling loop, ADR lifecycle, vocabulary contract
+- **[Architecture Language](./jelou/references/architecture-language.md)** — Vocabulary contract (Module, Interface, Seam, Adapter, Depth, Leverage, Locality) used by the architecture-review agents
+- **[Ubiquitous Language Design](./docs/superpowers/specs/2026-04-26-ubiquitous-language-design.md)** — Spec for `/jlu-ubiquitous-language`: extractor + curator split, candidates sidecar, review-then-save loop
 
 ## How It Works (Simplified)
 
@@ -313,10 +342,13 @@ flowchart TB
         refine["/jlu-refine-task"]
         exec["/jlu-execute-task"]
         close["/jlu-close-task"]
+        ubiq["/jlu-ubiquitous-language"]
+        arch["/jlu-architecture-review"]
     end
 
     subgraph opus["Orchestrator Tier — Opus"]
         spec_int["spec-interviewer"]
+        grill["architecture-grill"]
     end
 
     subgraph sonnet["Research & Implementation Tier — Sonnet"]
@@ -331,6 +363,9 @@ flowchart TB
         tasks_ag["tasks-agent"]
         build["build-validator"]
         summary["summary-agent"]
+        gloss_x["glossary-extractor"]
+        gloss_c["glossary-curator"]
+        arch_x["architecture-explorer"]
     end
 
     subgraph haiku["Operations Tier — Haiku"]
@@ -343,6 +378,9 @@ flowchart TB
         phase_files["Phase files"]
         codebase["6 codebase files"]
         tasks_file["TASKS.md"]
+        gloss_file["UBIQUITOUS_LANGUAGE.md"]
+        review_file["ARCHITECTURE_REVIEW.md"]
+        adr_file["ADR-NNNN-*.md"]
     end
 
     map --> researchers --> codebase
@@ -353,6 +391,9 @@ flowchart TB
     qa --> tasks_ag --> tasks_file
     qa --> git
     close --> git
+    ubiq --> gloss_x --> gloss_c --> gloss_file
+    arch --> arch_x --> review_file
+    arch --> grill --> review_file & adr_file
 ```
 
 ## Full Specification
