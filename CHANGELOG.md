@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.93] — 2026-04-26
+
+### Internal
+- red — single-candidate happy path
+
 ## [0.3.92] — 2026-04-26
 
 ### Internal
