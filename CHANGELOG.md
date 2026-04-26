@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.83] — 2026-04-26
+
+### Added
+- add /jlu-ubiquitous-language SKILL launcher
+
 ## [0.3.82] — 2026-04-26
 
 ### Added
