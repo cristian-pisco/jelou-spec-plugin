@@ -181,3 +181,29 @@ describe('glossary-merge — fragment cleanup', () => {
     assert.equal(existsSync(fragPath), false, 'fragment should be deleted');
   });
 });
+
+describe('glossary-merge — atomicity', () => {
+  test('does not delete fragments if writing candidates.json fails', () => {
+    const { glossary, tmp } = setupWorkspace();
+    const fragPath = join(tmp, 'svc.candidates.json');
+
+    writeFileSync(fragPath, JSON.stringify({
+      service_id: 'svc',
+      scanned_commit: 'fff',
+      candidates: [{
+        term: 'Datum',
+        evidence: [{ path: 'src/datum.ts', line: 1, kind: 'entity-class' }],
+        location_role: 'definition',
+        heuristic_confidence: 'high'
+      }],
+      location_updates: []
+    }));
+
+    // Force the candidates.json write to fail by creating a directory at that path.
+    mkdirSync(join(glossary, 'candidates.json'));
+
+    const result = runMerger(['--glossary-dir', glossary]);
+    assert.notEqual(result.status, 0, 'merger should exit non-zero on write failure');
+    assert.equal(existsSync(fragPath), true, 'fragment must NOT be deleted when write fails');
+  });
+});

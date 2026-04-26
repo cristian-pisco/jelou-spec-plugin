@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.78] — 2026-04-26
+
+### Fixed
+- write candidates.json before deleting fragments
+
 ## [0.3.77] — 2026-04-26
 
 ### Internal

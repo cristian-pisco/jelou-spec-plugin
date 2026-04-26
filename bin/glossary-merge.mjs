@@ -28,7 +28,12 @@ function parseArgs(argv) {
 
 function readJsonOr(path, fallback) {
   if (!existsSync(path)) return fallback;
-  return JSON.parse(readFileSync(path, 'utf8'));
+  try {
+    return JSON.parse(readFileSync(path, 'utf8'));
+  } catch (e) {
+    console.error(`glossary-merge: cannot parse '${path}': ${e.message}`);
+    process.exit(1);
+  }
 }
 
 function emptyState() {
@@ -96,11 +101,19 @@ function main() {
   let updated = 0;
   let skipped = 0;
 
+  const fragmentsToDelete = [];
+
   if (existsSync(tmpDir)) {
     const fragments = readdirSync(tmpDir).filter(f => f.endsWith('.candidates.json'));
     for (const file of fragments) {
       const fragPath = join(tmpDir, file);
-      const frag = JSON.parse(readFileSync(fragPath, 'utf8'));
+      let frag;
+      try {
+        frag = JSON.parse(readFileSync(fragPath, 'utf8'));
+      } catch (e) {
+        console.error(`glossary-merge: cannot parse '${fragPath}': ${e.message}`);
+        process.exit(1);
+      }
       fragmentsRead++;
       for (const c of frag.candidates ?? []) {
         if (droppedTerms.has(c.term) || promotedTerms.has(c.term)) {
@@ -126,15 +139,20 @@ function main() {
           existing.discovered_in_services.push(frag.service_id);
         }
       }
+      fragmentsToDelete.push(file);
     }
-    // Cleanup: delete fragments only after all reads succeed.
-    for (const file of fragments) rmSync(join(tmpDir, file));
-    // Remove tmp dir if empty.
-    try { rmSync(tmpDir, { recursive: false }); } catch { /* not empty — leave alone */ }
   }
 
+  // Write FIRST; only delete fragments after a successful write.
   state.updated_at = new Date().toISOString();
   writeFileSync(candidatesPath, JSON.stringify(state, null, 2) + '\n');
+
+  // Cleanup: delete fragments now that the write succeeded.
+  for (const file of fragmentsToDelete) rmSync(join(tmpDir, file));
+  // Remove tmp dir if empty.
+  if (fragmentsToDelete.length > 0) {
+    try { rmSync(tmpDir, { recursive: false }); } catch { /* not empty — leave alone */ }
+  }
 
   console.log(`glossary-merge: fragments=${fragmentsRead} added=${added} updated=${updated} skipped=${skipped}`);
 }
