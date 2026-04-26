@@ -286,7 +286,8 @@ Present a final summary to the user:
 - Issues found and fixed: <N>
 
 ### Glossary
-- New candidate terms: <count from Step 8 merger output, or "skipped" if Step 8 was skipped>
+- New candidate terms: <added count from Step 8 merger output, or "skipped" if Step 8 was skipped>
+- Skipped: <skipped count from merger output> (already in promoted/dropped lists)
 - Run `/jlu-ubiquitous-language` to curate the workspace glossary.
 
 ### Notes

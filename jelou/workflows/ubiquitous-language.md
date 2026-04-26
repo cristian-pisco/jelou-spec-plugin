@@ -35,9 +35,10 @@
 ## Step 3 — Ensure Glossary Directory
 
 1. Create `<WORKSPACE_PATH>/glossary/` if missing.
-2. Read `<WORKSPACE_PATH>/glossary/UBIQUITOUS_LANGUAGE.md` if it exists → `EXISTING_GLOSSARY_CONTENT`.
-3. Read `<WORKSPACE_PATH>/glossary/candidates.json` if it exists → `ACCUMULATED_CANDIDATES`.
-4. Read `<WORKSPACE_PATH>/glossary/.last-curation.json` if it exists → `LAST_CURATION` (per-service commit map).
+2. Create `<WORKSPACE_PATH>/glossary/.tmp/` if missing (extractors in Step 5 write per-service fragments here).
+3. Read `<WORKSPACE_PATH>/glossary/UBIQUITOUS_LANGUAGE.md` if it exists → `EXISTING_GLOSSARY_CONTENT`.
+4. Read `<WORKSPACE_PATH>/glossary/candidates.json` if it exists → `ACCUMULATED_CANDIDATES`.
+5. Read `<WORKSPACE_PATH>/glossary/.last-curation.json` if it exists → `LAST_CURATION` (per-service commit map).
 
 **Store**: paths and contents above.
 
@@ -121,6 +122,7 @@ Pass file paths only — the curator reads each file as needed.
 Spawn ONE `jlu-glossary-curator` agent. Model: `sonnet`. Prompt prefix:
 
 ```
+PLUGIN_ROOT: <plugin-root>
 WORKSPACE_PATH: <WORKSPACE_PATH>
 EXISTING_GLOSSARY_PATH: <WORKSPACE_PATH>/glossary/UBIQUITOUS_LANGUAGE.md
 CANDIDATES_PATH: <WORKSPACE_PATH>/glossary/candidates.json

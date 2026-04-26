@@ -34,6 +34,7 @@ Take everything the orchestrator hands you (existing canonical glossary, accumul
 ## Inputs
 
 The orchestrator passes:
+- `PLUGIN_ROOT`: absolute path to the plugin install directory (used to resolve template references like `<PLUGIN_ROOT>/jelou/templates/ubiquitous-language.md`)
 - `WORKSPACE_PATH`: absolute path to `.spec-workspace/`
 - `EXISTING_GLOSSARY_PATH`: `.spec-workspace/glossary/UBIQUITOUS_LANGUAGE.md` (may not exist on first run)
 - `CANDIDATES_PATH`: `.spec-workspace/glossary/candidates.json`
@@ -140,7 +141,7 @@ At most ONE subdomain question per curation. If still ambiguous, default to `Mis
 
 ## Phase 5 — Draft
 
-Write `DRAFT_PATH` (`UBIQUITOUS_LANGUAGE.draft.md`) following the template at `jelou/templates/ubiquitous-language.md`. Include:
+Write `DRAFT_PATH` (`UBIQUITOUS_LANGUAGE.draft.md`) following the template at `<PLUGIN_ROOT>/jelou/templates/ubiquitous-language.md`. Include:
 
 - All `CANONICAL` terms (preserved, with location updates merged in)
 - All resolved candidates (with definitions + subdomains)

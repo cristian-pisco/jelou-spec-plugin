@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.88] — 2026-04-26
+
+### Changed
+- map-codebase Step 9 summary now reports both added and skipped counts
+- ubiquitous-language workflow Step 3 explicitly creates .tmp/
+- curator now receives PLUGIN_ROOT for template path resolution
+
 ## [0.3.87] — 2026-04-26
 
 ### Internal
