@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.104] — 2026-04-26
+
+### Internal
+- add /jlu-architecture-review to core commands
+
 ## [0.3.103] — 2026-04-26
 
 ### Added
