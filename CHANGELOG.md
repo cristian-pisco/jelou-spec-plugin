@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.72] — 2026-04-26
+
+### Internal
+- add ubiquitous-language implementation plan
+
 ## [0.3.71] — 2026-04-26
 
 ### Internal
