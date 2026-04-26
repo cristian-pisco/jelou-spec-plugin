@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.91] — 2026-04-26
+
+### Added
+- green — return next zero-padded ADR id
+
 ## [0.3.90] — 2026-04-26
 
 ### Internal
