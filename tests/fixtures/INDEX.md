@@ -2,6 +2,8 @@
 
 Per design Premise 9B, v0.1.0 ships 5 writer-agent fixtures + 7 fix-loop fixtures. Two of each are fully authored in this commit; the remaining are stubbed below with the same input/expected_behavior.md/assertions.json shape and need transcripts recorded once via `JLU_UI_QA_PRESSURE_MODE=live` against an actual subagent.
 
+For the TDD-for-skills methodology that governs new fixture authoring (RED-GREEN-REFACTOR for agent prompts, the CSO description rule, rationalization tables), see [`jelou/references/skill-development.md`](../../jelou/references/skill-development.md).
+
 ## writer-agent (5 fixtures)
 
 | # | Name | What it pressure-tests |

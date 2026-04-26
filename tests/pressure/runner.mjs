@@ -19,9 +19,14 @@
 //   4. Evaluates assertions.json against the captured outputs.
 //   5. Reports pass/fail per fixture, exits non-zero on any failure.
 //
-// IMPORTANT: this harness is NOT TDD. It's a regression suite for agent prompts.
-// Per design Premise 9B (the test-scope decision in /plan-eng-review): the writer
-// agent gets 5 fixtures, the fix-loop gets 7. CI runs all of them on every PR.
+// The harness defaults to regression mode: existing agents get fixtures, every
+// PR replays them, prompt regressions get caught. Per design Premise 9B (the
+// test-scope decision in /plan-eng-review): the writer agent gets 5 fixtures,
+// the fix-loop gets 7. CI runs all of them on every PR.
+//
+// For TDD mode (write a failing fixture FIRST, then edit the prompt to make it
+// pass) when adding a new agent or significantly editing an existing one, see
+// jelou/references/skill-development.md.
 //
 // Usage:
 //   node runner.mjs                              # all fixtures

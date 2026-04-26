@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.64] — 2026-04-25
+
+### Internal
+- Add jelou/references/skill-development.md adapted from superpowers:writing-skills, covering the TDD-for-skills cycle (RED-GREEN-REFACTOR for agent prompts), the CSO description rule (triggers only, never workflow summary), skill type taxonomy, token targets, anti-patterns, and rationalization-closure techniques.
+- Audit existing skill descriptions against the CSO rule (close-task, execute-task, new-task all violate it via post-em-dash workflow summaries) and document the compliant format. Cleanup of all 15 descriptions is left as a follow-up commit.
+- Update tests/pressure/runner.mjs header to clarify the two modes (regression default, TDD when adding/editing agents) and reference the new methodology doc.
+- Update tests/fixtures/INDEX.md with a link to the methodology.
+
 ## [0.3.63] — 2026-04-25
 
 ### Internal
