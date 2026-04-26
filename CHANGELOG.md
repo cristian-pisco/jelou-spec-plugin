@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.71] — 2026-04-26
+
+### Internal
+- correct Hook B target to new-task workflow
+
 ## [0.3.70] — 2026-04-26
 
 ### Internal

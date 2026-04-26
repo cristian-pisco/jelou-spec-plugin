@@ -32,11 +32,12 @@ jelou-spec-plugin/
 ├── agents/
 │   ├── jlu-glossary-extractor.md                 # NEW — code-only extraction (model: sonnet)
 │   ├── jlu-glossary-curator.md                   # NEW — interview + draft + review (model: sonnet)
-│   └── jlu-spec-interviewer.md                   # MODIFIED — adds Phase 0 read-only consult
+│   └── jlu-spec-interviewer.md                   # MODIFIED — canonical reference doc; mirror inlined Phase 0 changes
 └── jelou/
     ├── workflows/
     │   ├── ubiquitous-language.md                # NEW — orchestrator workflow
-    │   └── map-codebase.md                       # MODIFIED — adds Step 8 hook
+    │   ├── map-codebase.md                       # MODIFIED — adds Step 8 hook
+    │   └── new-task.md                           # MODIFIED — Step 14 reads canonical glossary (Hook B)
     └── templates/
         └── ubiquitous-language.md                # NEW — reference shape for the glossary
 ```
@@ -492,28 +493,34 @@ In the user-facing summary (renumbered Step 9), append:
 - Skipped: <count> (already canonical)
 ```
 
-### Hook B — `/jlu-new-task` spec-interviewer (read-only consultation)
+### Hook B — `/jlu-new-task` interview (read-only consultation)
 
-Modify `agents/jlu-spec-interviewer.md`. Add a Phase 0 before existing phases.
+> **Important context**: The `agents/jlu-spec-interviewer.md` agent is deprecated as a sub-agent (see deprecation notice in that file). Interview logic was inlined into `jelou/workflows/new-task.md` Step 14 to avoid 3-level agent nesting issues with `AskUserQuestion`. The runtime change therefore lives in the workflow file. The agent file is updated only to keep its canonical-reference documentation accurate.
+>
+> The companion workflow `jelou/workflows/refine-task.md` Step 8 (the refine interview) is **explicitly out of scope** for Hook B in v1 — refinement edits are narrower, and surfacing new terms there adds noise without much benefit.
+
+Modify `jelou/workflows/new-task.md`. The change inserts a glossary-load step before Step 14a (gap analysis) and augments Step 14b (interview) and Step 14c (write spec).
 
 ```
-## Phase 0 — Load Canonical Glossary (read-only)
+### 14.0 — Load Canonical Glossary (read-only)
 
-Before starting the interview, check for a canonical glossary:
+Before gap analysis (Step 14a), check for a canonical glossary:
   - Read <WORKSPACE_PATH>/glossary/UBIQUITOUS_LANGUAGE.md if it exists.
   - Extract: term names, one-sentence definitions, aliases-to-avoid.
-  - Hold this as CANONICAL_TERMS for the interview duration.
+  - Hold this as CANONICAL_TERMS for the rest of Step 14.
 
-If the glossary does not exist, skip Phase 0 silently. Do NOT prompt the user
+If the glossary does not exist, skip Step 14.0 silently. Do NOT prompt the user
 to create one.
 ```
 
-Interview behavior changes when `CANONICAL_TERMS` is loaded:
+Interview behavior changes when `CANONICAL_TERMS` is loaded (applied within Step 14a/14b/14c):
 
-1. **Term-suggestion**: If the user says an alias-to-avoid, reflect back the canonical term, citing the glossary.
-2. **Definition-anchoring**: Phrase clarifying questions in terms of the canonical definition.
-3. **No writes**: Interviewer NEVER edits `UBIQUITOUS_LANGUAGE.md`, `candidates.json`, or any glossary artifact.
-4. **Surface unknown terms**: If the spec or user mentions a non-generic term not in `CANONICAL_TERMS`, note it under a "Terms introduced by this spec" free-text section appended to whichever spec artifact the interviewer already produces (e.g., `SPEC.md` or the interview transcript). This list is read by the curator on the next standalone `/jlu-ubiquitous-language` run as part of `SPEC_FILES`/`INTERVIEW_FILES`. It does NOT auto-append to `candidates.json`. The exact target file is the spec-interviewer's existing primary output — the implementation plan should confirm this filename when modifying the interviewer agent.
+1. **Term-suggestion (Step 14b)**: If the user says an alias-to-avoid, reflect back the canonical term, citing the glossary.
+2. **Definition-anchoring (Step 14a/14b)**: Phrase clarifying questions in terms of the canonical definition.
+3. **No writes**: The workflow NEVER edits `UBIQUITOUS_LANGUAGE.md`, `candidates.json`, or any glossary artifact.
+4. **Surface unknown terms (Step 14c)**: If the spec or user mentions a non-generic term not in `CANONICAL_TERMS`, append it under a `## Terms introduced by this spec` section in the freshly-written `SPEC.md`. This section is read by the curator on the next standalone `/jlu-ubiquitous-language` run as part of `SPEC_FILES`. It does NOT auto-append to `candidates.json`.
+
+Mirror the same Phase 0 / behavior-changes content into `agents/jlu-spec-interviewer.md` (the canonical reference doc) so its description matches the inlined workflow. This is a documentation update only — that agent is not invoked at runtime.
 
 ### What does NOT change
 
@@ -544,7 +551,7 @@ The plan will define test phases. The design implies these test surfaces:
 - **Curator ambiguity-detection tests**: feed synthetic candidates with each ambiguity class; assert correct classification.
 - **Curator review-loop tests**: simulate approve, changes (with various free-text patterns), cancel; assert filesystem state after each.
 - **Hook A integration test**: run `/jlu-map-codebase` end-to-end against a fixture; assert `candidates.json` is appended; assert the run still succeeds when extractor errors.
-- **Hook B integration test**: run `/jlu-new-task` spec-interviewer with a populated canonical glossary; assert it never writes to glossary files; assert it surfaces alias-to-avoid corrections.
+- **Hook B integration test**: run `/jlu-new-task` Step 14 with a populated canonical glossary; assert it never writes to glossary files; assert the resulting `SPEC.md` contains a `## Terms introduced by this spec` section when the input mentions a non-canonical term; assert alias-to-avoid corrections appear in the interview reflection.
 
 ## Out of Scope (deferred)
 
