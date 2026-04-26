@@ -1,0 +1,20 @@
+{
+  "empty": false,
+  "test_title": "shows downgrade banner after cancel",
+  "test_file": "tests/e2e/settings.spec.ts",
+  "test_line": 47,
+  "failed_action": "expect",
+  "selector": "getByRole(status, name=Your plan was downgraded to Free)",
+  "expected": "visible",
+  "actual": "not found",
+  "error_message": "Timed out 5000ms waiting for expect(locator).toBeVisible()",
+  "error_stack": "at expect (tests/e2e/settings.spec.ts:47)",
+  "screenshot_path": "resources/def456-screenshot.png",
+  "network": {
+    "total_requests": 6,
+    "failed_requests": 0,
+    "last_failed": []
+  },
+  "console_errors": [],
+  "extractor_version": "0.1.0"
+}

@@ -1,0 +1,15 @@
+services:
+  - id: service-frontend
+    path: ../service-frontend
+    stack: nextjs
+    dev:
+      launcher: npm
+      command: npm run dev
+      teardown: pkill -f 'next dev'
+      ready_signal:
+        type: stdout_match
+        pattern: "✓ Ready in"
+        port: 3000
+      ready_timeout_s: 90
+      ram_estimate_mb: 600
+      data_isolation: none

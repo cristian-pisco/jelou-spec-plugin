@@ -1,0 +1,10 @@
+{
+  "FAILING_TEST_NAME": "settings page > shows downgrade banner after cancel",
+  "ATTEMPT_NUMBER": 3,
+  "PRIOR_EDITS": [
+    { "file": "src/components/Settings.tsx", "hunk_hash": "a1b2c3d4e5f6" },
+    { "file": "src/components/Settings.tsx", "hunk_hash": "a1b2c3d4e5f6" }
+  ],
+  "ALLOW_TEST_EDITS": false,
+  "UI_SERVICE_WORKTREE": ".spec-workspace/specs/2026-04-25/sandbox-task/services/service-frontend"
+}

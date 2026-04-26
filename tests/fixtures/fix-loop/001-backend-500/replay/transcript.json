@@ -1,0 +1,5 @@
+{
+  "stdout": "Trace summary: POST /api/subscriptions/cancel returned 500 (Internal Server Error).\nThe failing assertion expected the confirmation banner role=status to be visible, but the cancel API rejected the request, so the post-cancel state never rendered.\nRoot cause is a backend contract failure, not a UI bug. Refusing to mutate UI source under services/service-frontend/.\n",
+  "status_line": "BLOCKED reason=backend_contract details: POST /api/subscriptions/cancel → 500",
+  "operations": []
+}

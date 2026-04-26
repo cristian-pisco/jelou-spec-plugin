@@ -236,7 +236,7 @@ const ASSERTERS = {
   async file_compiles_ts(a, ctx) {
     const p = join(ctx.sandbox, a.path);
     return new Promise((res) => {
-      const child = spawn('npx', ['--yes', 'typescript@5', 'tsc', '--noEmit', '--target', 'es2022', '--moduleResolution', 'node', '--allowJs', '--esModuleInterop', p], {
+      const child = spawn('npx', ['--yes', '-p', 'typescript@5', 'tsc', '--noEmit', '--target', 'es2022', '--moduleResolution', 'node', '--allowJs', '--esModuleInterop', p], {
         cwd: ctx.sandbox, stdio: ['ignore', 'pipe', 'pipe'],
       });
       let err = '';

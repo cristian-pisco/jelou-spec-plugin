@@ -1,0 +1,5 @@
+{
+  "stdout": "Computed planned hunk_hash for Settings.tsx:42 → a1b2c3d4e5f6.\nPRIOR_EDITS contains two entries on this same FAILING_TEST_NAME with hash a1b2c3d4e5f6.\nThe planned third edit collides with both prior attempts. Refusing to apply — flagging the test instead.\n",
+  "status_line": "flagged reason=same_hunk_twice details: src/components/Settings.tsx hunk=a1b2c3d4e5f6",
+  "operations": []
+}

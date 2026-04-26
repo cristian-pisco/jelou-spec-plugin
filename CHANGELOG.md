@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.67] — 2026-04-26
+
+### Fixed
+- Author replay/transcript.json for the 4 v0.1.0 fixtures so the harness can run end-to-end (writer-agent/{001,002}, fix-loop/{001,002}).
+- Add the missing input/ payloads for 002-undeclared-testid (SPEC + services.yaml + TASKS.md) and 002-same-hunk-twice (dispatch payload + trace summary).
+- Use `npx --yes -p typescript@5 tsc` so the binary actually resolves — the previous form `npx --yes typescript@5 tsc` errored with "could not determine executable to run".
+
 ## [0.3.66] — 2026-04-25
 
 ### Added
