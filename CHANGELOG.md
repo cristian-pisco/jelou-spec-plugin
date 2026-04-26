@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.87] — 2026-04-26
+
+### Internal
+- add architecture-review skill design
+
 ## [0.3.86] — 2026-04-26
 
 ### Internal
