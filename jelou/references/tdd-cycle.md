@@ -68,6 +68,8 @@ When this happens:
    - **Revises the test**: Writes a corrected version that still verifies the spec requirement.
 5. The decision and reasoning are logged in the phase file under Deviations.
 
+**Distinction from systematic debugging:** Test dispute is for cases where the implementer believes a test asserts the wrong behavior. When the test is correct but the implementer cannot make it green after multiple attempts, that is not a dispute — apply `jelou/references/systematic-debugging.md` to trace the root cause before further fixes. The three-strike rule there governs when to escalate as `status: blocked` instead of attempting another fix.
+
 ## Coverage Requirements
 
 ### Per Service

@@ -61,6 +61,7 @@ Use `Bash` to run the tests. **If the orchestrator provided a `DOCKER_EXEC_PREFI
 1. Run ONLY the test files from this phase — use the exact file paths from the test-writer's report. Example: `jest path/to/phase-test.spec.ts` or `pytest path/to/test_phase.py`
 2. All phase tests must PASS (Green)
 3. If any test fails, analyze and fix your implementation (not the test)
+4. After 2 failed fix attempts on the same test, switch to systematic debugging — see `jelou/references/systematic-debugging.md`. Do not attempt fix #3 without completing Phase 1 (root cause investigation). After 3 failed fixes, follow the three-strike rule: report `status: blocked` with the architectural hypothesis instead of attempting fix #4.
 
 Do NOT run the full test suite. Regression checking happens once at final validation (Step 8). Running only phase tests keeps the TDD feedback loop fast and avoids booting heavy test infrastructure.
 

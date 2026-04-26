@@ -50,6 +50,10 @@ Execute this loop:
 ### Limits
 
 - Maximum **5 rounds**. If after 5 rounds the build still fails, report FAIL with the last error output and stop. The orchestrator will escalate to the user.
+- **Apply systematic debugging mid-loop** (`jelou/references/systematic-debugging.md`):
+  - Rounds 1–2 may apply direct fixes from the error output (missing imports, type annotations, export statements).
+  - Round 3 onwards: complete Phase 1 (root cause investigation) before each fix attempt — read the failing source, instrument boundaries if the error spans modules, trace bad values backward to their source.
+  - Round 5 FAIL must follow Phase 4.5 (three-strike rule): include the three hypotheses tried, evidence that disproved each, and the suspected architectural issue in the report.
 
 ## Output
 

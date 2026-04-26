@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.63] — 2026-04-25
+
+### Internal
+- Add jelou/references/systematic-debugging.md adapted from superpowers:systematic-debugging for the orchestrator/subagent execution model, with the three-strike rule mapped to existing implementer (2 attempts) and build-validator (5 rounds) loop limits.
+- Cite from agents/jlu-implementer.md (Step 4 Run Tests) and agents/jlu-build-validator.md (Limits) in both Claude and OpenCode mirrors.
+- Cross-link from jelou/references/tdd-cycle.md Test Dispute Mediation to distinguish dispute (test wrong) from stuck (test right, implementer cannot pass it).
+
 ## [0.3.62] — 2026-04-25
 
 ### Added
