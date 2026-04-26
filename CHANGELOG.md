@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.81] — 2026-04-26
+
+### Added
+- add jlu-glossary-curator agent
+
 ## [0.3.80] — 2026-04-26
 
 ### Added
