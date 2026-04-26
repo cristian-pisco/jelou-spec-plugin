@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.103] — 2026-04-26
+
+### Added
+- add OpenCode command
+
 ## [0.3.102] — 2026-04-26
 
 ### Added
