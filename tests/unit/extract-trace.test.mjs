@@ -212,6 +212,83 @@ describe('extract-trace.mjs', () => {
     assert.equal(summary.network.last_failed[0].status, 500);
   });
 
+  test('real Playwright layout (prefixed entries + resource-snapshot network) parses correctly', () => {
+    // Mirrors the on-disk shape produced by Playwright 1.49.x: multiple `*-trace.trace`
+    // streams, after-events carrying the error, before-events linked by callId/stepId,
+    // and HAR-shaped `resource-snapshot` network events.
+    const dir = mkdtempSync(join(tmpdir(), 'extract-test-'));
+    const zipPath = join(dir, 'real.zip');
+
+    const browserBefore = {
+      type: 'before',
+      callId: 'call@32',
+      stepId: 'expect@17',
+      apiName: 'expect.toHaveText',
+      class: 'Frame',
+      method: 'expect',
+      params: {
+        selector: 'internal:role=status',
+        expectedText: [{ string: 'Your plan was downgraded to Free.' }],
+        timeout: 5000,
+      },
+    };
+    const testBefore = {
+      type: 'before',
+      callId: 'expect@17',
+      class: 'Test',
+      method: 'step',
+      apiName: 'expect.toHaveText',
+      params: { expected: 'Your plan was downgraded to Free.' },
+    };
+    const testAfter = {
+      type: 'after',
+      callId: 'expect@17',
+      error: { name: '', message: 'Timed out 5000ms', stack: 'at expect (cancel.spec.ts:11:42)' },
+    };
+    const errorEvent = {
+      type: 'error',
+      message: 'Timed out 5000ms',
+      stack: [{ file: '/repo/cancel.spec.ts', line: 11, column: 42 }],
+    };
+    const contextOptions = {
+      version: 7,
+      type: 'context-options',
+      origin: 'library',
+      title: 'cancel.spec.ts:4 › cancel flow',
+    };
+
+    const networkSnapshot = (status, url, method) => ({
+      type: 'resource-snapshot',
+      snapshot: { request: { url, method }, response: { status } },
+    });
+
+    writeFileSync(zipPath, buildZip({
+      'test.trace': ndjson([contextOptions, testBefore, testAfter, errorEvent]),
+      '0-trace.trace': ndjson([{ type: 'context-options', origin: 'library' }]),
+      '1-trace.trace': ndjson([{ ...contextOptions, origin: 'library' }, browserBefore]),
+      '1-trace.network': ndjson([
+        networkSnapshot(200, 'http://localhost:4001/dashboard', 'GET'),
+        networkSnapshot(500, 'http://localhost:4001/api/subscriptions/cancel', 'POST'),
+      ]),
+    }));
+
+    const r = runExtractor(zipPath);
+    assert.equal(r.code, 0, `extractor failed: ${r.stderr}`);
+
+    const summary = JSON.parse(readFileSync(join(dir, 'real-summary.json'), 'utf8'));
+    assert.equal(summary.empty, false);
+    assert.equal(summary.selector, 'internal:role=status');
+    assert.equal(summary.expected, 'Your plan was downgraded to Free.');
+    assert.equal(summary.test_title, 'cancel.spec.ts:4 › cancel flow');
+    assert.equal(summary.test_file, '/repo/cancel.spec.ts');
+    assert.equal(summary.test_line, 11);
+    assert.equal(summary.network.total_requests, 2);
+    assert.equal(summary.network.failed_requests, 1);
+    assert.equal(summary.network.last_failed[0].url, 'http://localhost:4001/api/subscriptions/cancel');
+    assert.equal(summary.network.last_failed[0].status, 500);
+    assert.equal(summary.network.last_failed[0].method, 'POST');
+  });
+
   test('--version → exit 0 with version string', () => {
     const r = spawnSync('node', [EXTRACTOR, '--version'], { encoding: 'utf8' });
     assert.equal(r.status, 0);

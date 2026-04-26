@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.69] — 2026-04-26
+
+### Fixed
+- Concatenate every *.trace and *.network entry instead of looking up by fixed name. Same "missing required entry" error path preserved when no trace stream is present (keeps the existing unit test behavior).
+- Errors live on `after` events in real traces; their matching `before` (linked by callId or stepId) carries the params. Multiple `before`s exist per step (one per stream); prefer the candidate that has params.selector.
+- Network events use the HAR-shaped resource-snapshot format with nested request/response. Parse both that and the legacy flat shape.
+- Console errors use messageType: 'error' in real traces (not level/severity).
+- test_title / test_file / test_line fall back to the leading context-options.title and the standalone error event's stack[0].
+
 ## [0.3.68] — 2026-04-26
 
 ### Added

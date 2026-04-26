@@ -151,38 +151,63 @@ function parseNDJSON(buf) {
 // ────────────────────────────────────────────────────────────────────────────
 
 function extractSummary(entries) {
-  // Required entries (Playwright @1.49). If the schema changes upstream, the spike
-  // catches it and you switch to the reporter-API fallback.
-  const traceBuf = entries.get('trace.trace');
-  if (!traceBuf) {
+  // Playwright trace.zip layouts vary by version: legacy/synthetic builds use a flat
+  // `trace.trace` / `trace.network` pair; real Playwright (verified on 1.49.x) emits
+  // prefixed entries — `0-trace.trace`, `1-trace.trace`, `test.trace`, plus matching
+  // `*-trace.network`. We concatenate every `*.trace` and `*.network` entry so both
+  // shapes parse identically downstream.
+  const traceNames = [...entries.keys()].filter((k) => k.endsWith('.trace'));
+  if (traceNames.length === 0) {
     throw new Error("missing required entry 'trace.trace' — was this produced by Playwright?");
   }
-  const networkBuf = entries.get('trace.network');
-  if (!networkBuf) {
-    // Network stream is optional in some traces (e.g., when the browser made no requests)
-  }
+  const traceEvents = traceNames.flatMap((n) => parseNDJSON(entries.get(n)));
 
-  const traceEvents = parseNDJSON(traceBuf);
-  const networkEvents = networkBuf ? parseNDJSON(networkBuf) : [];
+  const networkNames = [...entries.keys()].filter((k) => k.endsWith('.network'));
+  const networkEvents = networkNames.flatMap((n) => parseNDJSON(entries.get(n)));
 
-  // Find the first 'before' event with type='action' that errored.
-  // Playwright trace events carry `class` (action|frame|...) and `error` when the action threw.
-  const errored = traceEvents.find(
-    (e) => e.type === 'before' && e.class === 'action' && (e.error || e.errorText),
+  // Errors live on `after` events in real traces; the matching `before` carries the
+  // params (selector, expected text, etc.). Real Playwright emits multiple `before`s
+  // for the same logical step (one per stream — test runner, browser context, etc.)
+  // and links them via `callId` and `stepId`. The richer one (with the selector)
+  // typically lives in a non-test-runner stream; prefer whichever has a selector.
+  // Synthetic test fixtures attach the error directly to a `before` event — handle both.
+  const failureAfter = traceEvents.find(
+    (e) => e.type === 'after' && (e.error || e.errorText),
   );
-
-  if (!errored) {
-    // Fall back: find any event with an 'error' field. If none, the trace has no failure.
-    const anyError = traceEvents.find((e) => e.error);
+  const failureBefore = traceEvents.find(
+    (e) => e.type === 'before' && (e.error || e.errorText),
+  );
+  if (!failureAfter && !failureBefore) {
+    const anyError = traceEvents.find((e) => e.error || e.errorText);
     if (!anyError) return { empty: true };
   }
 
-  const failure = errored ?? traceEvents.find((e) => e.error);
+  const failure = failureAfter ?? failureBefore ?? traceEvents.find((e) => e.error || e.errorText);
+  let paramsSource = failure;
+  if (failureAfter) {
+    const candidates = traceEvents.filter(
+      (e) => e.type === 'before'
+        && (e.callId === failureAfter.callId || e.stepId === failureAfter.callId
+          || e.callId === failureAfter.stepId),
+    );
+    paramsSource = candidates.find((e) => e.params?.selector) ?? candidates[0] ?? failure;
+  }
 
-  // Best-effort extraction of selector / expected / actual.
-  const selector = failure.params?.selector ?? failure.selector ?? null;
-  const expected = failure.params?.expected ?? failure.expected ?? null;
-  const actual = failure.params?.actual ?? failure.actual ?? null;
+  // Real traces put the test title on the leading context-options event of each stream;
+  // synthetic fixtures put it on `failure.metadata`.
+  const contextOptions = traceEvents.find((e) => e.type === 'context-options' && e.title);
+
+  const selector = paramsSource.params?.selector ?? paramsSource.selector ?? null;
+  const expected =
+    paramsSource.params?.expected
+    ?? paramsSource.params?.expectedText?.[0]?.string
+    ?? paramsSource.expected
+    ?? null;
+  const actual =
+    failure.result?.received?.s
+    ?? paramsSource.params?.actual
+    ?? paramsSource.actual
+    ?? null;
   const errorMessage = failure.error?.message ?? failure.errorText ?? 'unknown error';
   const errorStack = failure.error?.stack ?? null;
 
@@ -194,32 +219,54 @@ function extractSummary(entries) {
     .sort();
   const screenshotPath = screenshots[screenshots.length - 1] ?? null;
 
-  // Network delta: count failed requests + last 5 entries.
-  const failedRequests = networkEvents.filter(
-    (e) => e.type === 'response' && typeof e.status === 'number' && e.status >= 400,
+  // Network events come in two shapes:
+  //   legacy/synthetic: separate `request` / `response` events with top-level fields
+  //   real Playwright:  `resource-snapshot` events with nested `snapshot.request/response`
+  function networkResponse(e) {
+    if (e.type === 'response') {
+      return { url: e.url, status: e.status, method: e.method ?? null };
+    }
+    if (e.type === 'resource-snapshot' && e.snapshot?.response) {
+      return {
+        url: e.snapshot.request?.url ?? null,
+        status: e.snapshot.response.status,
+        method: e.snapshot.request?.method ?? null,
+      };
+    }
+    return null;
+  }
+  const networkResponses = networkEvents.map(networkResponse).filter((r) => r);
+  const failedResponses = networkResponses.filter(
+    (r) => typeof r.status === 'number' && r.status >= 400,
   );
+  const totalRequests =
+    networkEvents.filter((e) => e.type === 'request').length
+    + networkEvents.filter((e) => e.type === 'resource-snapshot').length;
   const networkSummary = {
-    total_requests: networkEvents.filter((e) => e.type === 'request').length,
-    failed_requests: failedRequests.length,
-    last_failed: failedRequests.slice(-5).map((e) => ({
-      url: e.url,
-      status: e.status,
-      method: e.method ?? null,
-    })),
+    total_requests: totalRequests,
+    failed_requests: failedResponses.length,
+    last_failed: failedResponses.slice(-5),
   };
 
-  // Console errors: trace.trace may interleave console events; collect them.
+  // Console errors: real traces use `messageType: 'error'`; older shapes use `level` or `severity`.
   const consoleErrors = traceEvents
-    .filter((e) => e.type === 'console' && (e.level === 'error' || e.severity === 'error'))
+    .filter(
+      (e) =>
+        e.type === 'console'
+        && (e.messageType === 'error' || e.level === 'error' || e.severity === 'error'),
+    )
     .slice(-10)
     .map((e) => e.text ?? e.message ?? '');
 
+  // Real traces emit a standalone `error` event with stack[0] pointing at the spec file/line.
+  const errorEventStackTop = traceEvents.find((e) => e.type === 'error' && Array.isArray(e.stack))?.stack?.[0];
+
   return {
     empty: false,
-    test_title: failure.metadata?.testTitle ?? null,
-    test_file: failure.metadata?.location?.file ?? null,
-    test_line: failure.metadata?.location?.line ?? null,
-    failed_action: failure.method ?? failure.apiName ?? null,
+    test_title: failure.metadata?.testTitle ?? contextOptions?.title ?? null,
+    test_file: failure.metadata?.location?.file ?? errorEventStackTop?.file ?? null,
+    test_line: failure.metadata?.location?.line ?? errorEventStackTop?.line ?? null,
+    failed_action: paramsSource.method ?? paramsSource.apiName ?? failure.method ?? failure.apiName ?? null,
     selector,
     expected,
     actual,
