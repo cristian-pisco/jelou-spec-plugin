@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.92] — 2026-04-26
+
+### Internal
+- cover gaps and non-ADR files
+
 ## [0.3.91] — 2026-04-26
 
 ### Added
