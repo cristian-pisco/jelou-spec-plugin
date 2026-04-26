@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.105] — 2026-04-26
+
+### Fixed
+- use @jelou shorthand in OpenCode + read fragment before delete
+
 ## [0.3.104] — 2026-04-26
 
 ### Internal

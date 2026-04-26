@@ -129,9 +129,9 @@ node <plugin-root>/bin/architecture-review-render.mjs \
   --mode cross
 ```
 
-Verify exit 0. Delete `<OUTPUT_FRAGMENT>` only after all renderer invocations succeed.
-
 Read the fragment back into memory (you'll need the candidate list for the prompt).
+
+Verify exit 0. Delete `<OUTPUT_FRAGMENT>` only after all renderer invocations succeed.
 
 Display via `AskUserQuestion`:
 
