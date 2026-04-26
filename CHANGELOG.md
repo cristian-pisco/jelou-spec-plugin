@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.95] — 2026-04-26
+
+### Internal
+- cover multi-candidate, flags, cross-service
+
 ## [0.3.94] — 2026-04-26
 
 ### Added

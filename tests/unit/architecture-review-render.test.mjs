@@ -69,3 +69,77 @@ describe('architecture-review-render — happy path', () => {
     assert.match(body, /\*\*Deletion test\*\*: Deleting intake\.ts/);
   });
 });
+
+describe('architecture-review-render — multiple candidates and flags', () => {
+  test('renders multiple candidates with section ordering preserved', () => {
+    const { fragmentPath, reportPath } = setupWorkspace();
+    writeFileSync(fragmentPath, JSON.stringify({
+      mode: 'single',
+      scope: ['svc-x'],
+      scanned_at: '2026-04-26T12:00:00Z',
+      service_id: 'svc-x',
+      candidates: [
+        { id: 1, title: 'A', files: ['a.ts'], problem: 'p1', solution: 's1',
+          benefits: { leverage: 'l', locality: 'lo', tests: 't' },
+          dependency_category: 'in-process', deletion_test: 'd', confidence: 'high' },
+        { id: 2, title: 'B', files: ['b.ts'], problem: 'p2', solution: 's2',
+          benefits: { leverage: 'l', locality: 'lo', tests: 't' },
+          dependency_category: 'in-process', deletion_test: 'd', confidence: 'medium' }
+      ]
+    }));
+
+    const result = runRenderer(['--fragment', fragmentPath, '--report', reportPath, '--service-id', 'svc-x']);
+    assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+    const body = readFileSync(reportPath, 'utf8');
+    const idxA = body.indexOf('### #1: A');
+    const idxB = body.indexOf('### #2: B');
+    const idxGrilled = body.indexOf('## Grilled candidates');
+    assert.ok(idxA > 0 && idxB > idxA && idxGrilled > idxB,
+      'expected order: #1 → #2 → Grilled candidates');
+    assert.match(body, /\*\*Problem\*\*: p1/);
+    assert.match(body, /\*\*Solution\*\*: s1/);
+    assert.match(body, /\*\*Leverage\*\*: l/);
+  });
+
+  test('emits optional flags when present', () => {
+    const { fragmentPath, reportPath } = setupWorkspace();
+    writeFileSync(fragmentPath, JSON.stringify({
+      mode: 'single',
+      scope: ['svc-x'],
+      scanned_at: '2026-04-26T12:00:00Z',
+      service_id: 'svc-x',
+      candidates: [
+        { id: 1, title: 'A', files: ['a.ts'], problem: 'p', solution: 's',
+          benefits: { leverage: 'l', locality: 'lo', tests: 't' },
+          dependency_category: 'remote-but-owned', deletion_test: 'd', confidence: 'low',
+          missing_domain_term: 'OrderIntake', contradicts_adr: 'ADR-0003' }
+      ]
+    }));
+
+    const result = runRenderer(['--fragment', fragmentPath, '--report', reportPath, '--service-id', 'svc-x']);
+    assert.equal(result.status, 0);
+    const body = readFileSync(reportPath, 'utf8');
+    assert.match(body, /missing_domain_term: OrderIntake/);
+    assert.match(body, /contradicts_adr: ADR-0003/);
+  });
+
+  test('renders a cross-service report header', () => {
+    const { fragmentPath, reportPath } = setupWorkspace();
+    writeFileSync(fragmentPath, JSON.stringify({
+      mode: 'cross',
+      scope: ['svc-a', 'svc-b'],
+      scanned_at: '2026-04-26T12:00:00Z',
+      candidates: [
+        { id: 1, title: 'Shared port', files: ['svc-a/port.ts', 'svc-b/port.ts'], problem: 'p', solution: 's',
+          benefits: { leverage: 'l', locality: 'lo', tests: 't' },
+          dependency_category: 'remote-but-owned', deletion_test: 'd', confidence: 'high' }
+      ]
+    }));
+
+    const result = runRenderer(['--fragment', fragmentPath, '--report', reportPath, '--mode', 'cross']);
+    assert.equal(result.status, 0);
+    const body = readFileSync(reportPath, 'utf8');
+    assert.match(body, /^# Architecture Review — cross-service \(svc-a, svc-b\)$/m);
+    assert.match(body, /Mode: cross/);
+  });
+});
