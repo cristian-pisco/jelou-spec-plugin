@@ -605,18 +605,24 @@ In worktree mode, skip steps 4 and 5 — the main repo's HEAD and working-tree s
 
 **If `SETUP_MODE = worktree`** (existing five-phase behavior):
 
-1. Create the worktree on the new branch:
+1. **Pre-flight: verify `.worktrees/` is git-ignored** in this service repo. Without this, worktree contents pollute the repo's tracked state and may be staged by accident.
+   ```bash
+   git -C <repo> check-ignore -q .worktrees
+   ```
+   If the command exits non-zero (`.worktrees/` is **not** ignored): abort this service and escalate to the user with: **"Service `<service-id>` does not git-ignore `.worktrees/`. Add `.worktrees/` to the service's `.gitignore` and commit it before re-running `/jlu-new-task`. The plugin will not auto-modify the service repo's `.gitignore`."**
+   If the command exits 0 (already ignored): proceed.
+2. Create the worktree on the new branch:
    ```bash
    git worktree add .worktrees/<TASK_SLUG> -b production/<TASK_SLUG> origin/$TRUNK
    ```
    If `production/<TASK_SLUG>` already exists locally, abort this service: **"Branch `production/<TASK_SLUG>` already exists locally for `<service-id>`. Delete it or use a different slug."**
-2. Copy untracked files from repo root to worktree:
+3. Copy untracked files from repo root to worktree:
    ```bash
    for file in .env .npmrc; do
      [ -f <repo>/$file ] && cp <repo>/$file <worktree>/$file
    done
    ```
-3. Run the Docker isolation phases per `jelou/references/docker-conventions.md`: port allocation, `docker-compose.override.yml` generation, inter-service URL wiring, and `docker compose up -d`. Wherever those phases would have referenced `spec/<TASK_SLUG>`, use `production/<TASK_SLUG>`.
+4. Run the Docker isolation phases per `jelou/references/docker-conventions.md`: port allocation, `docker-compose.override.yml` generation, inter-service URL wiring, and `docker compose up -d`. Wherever those phases would have referenced `spec/<TASK_SLUG>`, use `production/<TASK_SLUG>`.
 
 **If `SETUP_MODE = branch`** (new):
 

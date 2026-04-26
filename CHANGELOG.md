@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.66] — 2026-04-25
+
+### Added
+- Add a pre-flight check in new-task.md Branch Creation step (worktree mode) that runs git check-ignore -q .worktrees and aborts the service setup if .worktrees/ is not git-ignored. Prevents the latent class of bug where worktree contents pollute the service repo's tracked state.
+- Renumber the worktree-mode setup steps (was 1-3, now 1-4) to keep the pre-flight in front of git worktree add.
+- Document the precondition at the top of jelou/references/worktree-resolution.md, including the explicit choice not to auto-modify a service repo's .gitignore — that requires user consent.
+
 ## [0.3.65] — 2026-04-25
 
 ### Internal

@@ -2,6 +2,12 @@
 
 > Resolves the correct source path (worktree or main repo) for each affected service in a task. Used by any workflow or skill that needs to read or modify service code in the context of a task.
 
+## Precondition: `.worktrees/` Must Be Git-Ignored
+
+Before any `git worktree add` runs (in `/jlu-new-task` and downstream), the service repo's `.worktrees/` directory must be present in the repo's `.gitignore`. The new-task workflow enforces this with a `git check-ignore -q .worktrees` pre-flight and aborts setup if the directory is tracked. The plugin does **not** auto-modify the service repo's `.gitignore` — modifying a service's tracked configuration without explicit user consent is out of scope.
+
+If you encounter the abort, add `.worktrees/` to the service's `.gitignore`, commit, and re-run `/jlu-new-task`.
+
 ## Resolution Algorithm
 
 For each affected service:
