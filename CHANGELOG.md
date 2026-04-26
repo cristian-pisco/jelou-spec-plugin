@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.70] — 2026-04-26
+
+### Internal
+- add ubiquitous-language skill design
+
 ## [0.3.69] — 2026-04-26
 
 ### Fixed
