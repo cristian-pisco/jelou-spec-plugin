@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.90] — 2026-04-26
+
+### Internal
+- red — returns 0001 for missing decisions dir
+
 ## [0.3.89] — 2026-04-26
 
 ### Internal
