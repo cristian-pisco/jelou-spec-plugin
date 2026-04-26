@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.100] — 2026-04-26
+
+### Added
+- add grill agent (opus)
+
 ## [0.3.99] — 2026-04-26
 
 ### Added
