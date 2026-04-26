@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.77] — 2026-04-26
+
+### Internal
+- fragment cleanup after successful merge
+
 ## [0.3.76] — 2026-04-26
 
 ### Internal

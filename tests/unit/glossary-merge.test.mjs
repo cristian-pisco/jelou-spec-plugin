@@ -6,7 +6,7 @@
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, readFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, mkdirSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -160,5 +160,24 @@ describe('glossary-merge — exclusion lists', () => {
 
     const merged = JSON.parse(readFileSync(join(glossary, 'candidates.json'), 'utf8'));
     assert.equal(merged.candidates.length, 0, 'promoted term must not be re-added as candidate');
+  });
+});
+
+describe('glossary-merge — fragment cleanup', () => {
+  test('deletes fragments after successful merge', () => {
+    const { glossary, tmp } = setupWorkspace();
+    const fragPath = join(tmp, 'svc.candidates.json');
+
+    writeFileSync(fragPath, JSON.stringify({
+      service_id: 'svc',
+      scanned_commit: 'ccc',
+      candidates: [],
+      location_updates: []
+    }));
+
+    const result = runMerger(['--glossary-dir', glossary]);
+    assert.equal(result.status, 0);
+
+    assert.equal(existsSync(fragPath), false, 'fragment should be deleted');
   });
 });
