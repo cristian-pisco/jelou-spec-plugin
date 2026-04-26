@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.94] — 2026-04-26
+
+### Added
+- green — render single-candidate report
+
 ## [0.3.93] — 2026-04-26
 
 ### Internal
