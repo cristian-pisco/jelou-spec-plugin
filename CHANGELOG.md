@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.111] — 2026-04-26
+
+### Internal
+- keep workflow body untouched until Task 7 rewrite
+
 ## [0.3.110] — 2026-04-26
 
 ### Internal
