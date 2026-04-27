@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.129] — 2026-04-27
+
+### Internal
+- migrate version bump from claude pre-commit hook to tracked git commit-msg hook (atomic + idempotent, blocks on manifest drift)
+
 ## [0.3.128] — 2026-04-26
 
 ### Fixed

@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Bumps the patch version in all manifest files and prepends a CHANGELOG entry
+# from the commit subject. The script is atomic (aborts on drift) and
+# idempotent (skips if a bump is already staged).
+set -euo pipefail
+
+PROJECT_DIR="$(git rev-parse --show-toplevel)"
+exec python3 "$PROJECT_DIR/bin/changelog-entry.py" "$1"
