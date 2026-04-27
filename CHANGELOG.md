@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.125] — 2026-04-26
+
+### Internal
+- update jlu-daily-slack placeholder for sprint scope
+
 ## [0.3.124] — 2026-04-26
 
 ### Added
