@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.109] — 2026-04-26
+
+### Internal
+- add daily-slack sprint implementation plan + clarify FR-5 ownership
+
 ## [0.3.108] — 2026-04-26
 
 ### Internal

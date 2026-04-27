@@ -18,7 +18,7 @@ The current `/jlu-post-slack` command is date-scoped: it walks `<workspace>/spec
 3. **FR-3**: Resolve ClickUp user identity from `<workspace>/registry/clickup-user.json`. If missing or `user_id` is empty, prompt for email, call `clickup_get_workspace_members`, match case-insensitively, persist `{email, user_id, username}`. **The orchestrator MUST NOT use any value from prior conversations, memory, environment variables, or hardcoded constants for the email.**
 4. **FR-4**: Verify ClickUp MCP via `clickup_get_workspace_hierarchy` connectivity probe. On failure, abort with the same message text used by `/jlu-sync-clickup` Step 0.
 5. **FR-5**: Discover sprint tasks as the union of:
-   - **Plugin tasks**: walk `<workspace>/specs/*/CLICKUP_TASK.json`. Include if `sprint == <arg>` AND (`macroTask.assignees` contains user_id OR `macroTask.responsable == user_id`).
+   - **Plugin tasks**: walk `<workspace>/specs/*/CLICKUP_TASK.json`. Include if `sprint == <arg>` (string comparison). Ownership is trusted — plugin tasks were created by the local user via `/jlu-new-task`, and `CLICKUP_TASK.json` does not persist assignee data anyway.
    - **ClickUp-only tasks**: query ClickUp for tasks where `Sprint` custom field == `<arg>` AND (assignees contains user_id OR `Responsable` custom field == user_id). Add any not already present in the plugin set.
    - Deduplicate by ClickUp task ID. Try the bare sprint value against the `Sprint` custom field first; if zero matches, retry with `Sprint <arg>` as a string fallback.
 6. **FR-6**: Load channel template at `<workspace>/registry/slack/<channel>.md`. Abort with pointer to `jelou/templates/slack-channel.md` if missing.
