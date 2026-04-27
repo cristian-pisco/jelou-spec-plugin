@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.113] — 2026-04-26
+
+### Internal
+- cover normalization edge cases
+
 ## [0.3.112] — 2026-04-26
 
 ### Added

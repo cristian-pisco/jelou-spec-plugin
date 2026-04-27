@@ -47,3 +47,24 @@ describe('daily-slack-scan-urls — violation', () => {
     assert.match(r.stderr, /unknown clickup url: https:\/\/app\.clickup\.com\/t\/UNKNOWN/);
   });
 });
+
+describe('daily-slack-scan-urls — normalization', () => {
+  test('strips trailing punctuation before allowlist check', () => {
+    const body = 'See https://app.clickup.com/t/abc123).';
+    const r = run(setup(body, ['https://app.clickup.com/t/abc123']));
+    assert.equal(r.status, 0, `stderr: ${r.stderr}`);
+  });
+
+  test('strips query string before allowlist check', () => {
+    const body = 'See https://app.clickup.com/t/abc123?ref=email';
+    const r = run(setup(body, ['https://app.clickup.com/t/abc123']));
+    assert.equal(r.status, 0, `stderr: ${r.stderr}`);
+  });
+
+  test('catches URL among many valid ones', () => {
+    const body = 'A https://app.clickup.com/t/abc123 B https://app.clickup.com/t/EVIL C https://app.clickup.com/t/def456';
+    const r = run(setup(body, ['https://app.clickup.com/t/abc123', 'https://app.clickup.com/t/def456']));
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /unknown clickup url: https:\/\/app\.clickup\.com\/t\/EVIL/);
+  });
+});
