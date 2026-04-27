@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.119] — 2026-04-26
+
+### Added
+- green — render automated placeholders
+
 ## [0.3.118] — 2026-04-26
 
 ### Fixed
