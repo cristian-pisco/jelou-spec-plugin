@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.127] — 2026-04-26
+
+### Fixed
+- run ubiquitous-language and map-codebase workflows inline in their skills so curator and operational analyzer agents stay at L2 where AskUserQuestion works (was failing silently at L3)
+
 ## [0.3.126] — 2026-04-26
 
 ### Internal
