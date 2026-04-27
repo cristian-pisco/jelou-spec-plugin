@@ -119,3 +119,60 @@ describe('daily-slack-extract-reason — priority 4 (fallback)', () => {
     assert.equal(r.stdout.trim(), 'sin actualizaciones recientes — agregar razón manual');
   });
 });
+
+describe('daily-slack-extract-reason — robustness', () => {
+  test('truncate returns empty string for null comment text', () => {
+    const taskPath = setup({
+      cutoff: '2026-04-25T08:00:00Z',
+      comments: [{ date_iso: '2026-04-26T07:30:00Z', text: null }],
+      pr_states: {},
+    });
+    const r = run(taskPath);
+    assert.equal(r.status, 0, `stderr: ${r.stderr}`);
+    assert.equal(r.stdout.trim(), 'sin actualizaciones recientes — agregar razón manual');
+  });
+
+  test('strips newlines from multi-line comment text', () => {
+    const taskPath = setup({
+      cutoff: '2026-04-25T08:00:00Z',
+      comments: [{ date_iso: '2026-04-26T07:30:00Z', text: 'first line\nsecond line\r\nthird' }],
+      pr_states: {},
+    });
+    const r = run(taskPath);
+    assert.equal(r.stdout.trim(), 'first line second line third');
+  });
+
+  test('closed draft PR does NOT trigger aún en borrador', () => {
+    const taskPath = setup({
+      cutoff: '2026-04-25T08:00:00Z',
+      comments: [],
+      pr_states: { 'pr1': { state: 'CLOSED', isDraft: true, mergeable: false } },
+    });
+    const r = run(taskPath);
+    assert.equal(r.stdout.trim(), 'sin actualizaciones recientes — agregar razón manual');
+  });
+
+  test('open draft PR DOES trigger aún en borrador', () => {
+    const taskPath = setup({
+      cutoff: '2026-04-25T08:00:00Z',
+      comments: [],
+      pr_states: { 'pr1': { state: 'OPEN', isDraft: true, mergeable: true } },
+    });
+    const r = run(taskPath);
+    assert.equal(r.stdout.trim(), 'aún en borrador');
+  });
+
+  test('multiple post-cutoff comments → latest by date wins', () => {
+    const taskPath = setup({
+      cutoff: '2026-04-25T08:00:00Z',
+      comments: [
+        { date_iso: '2026-04-26T08:00:00Z', text: 'newer' },
+        { date_iso: '2026-04-25T20:00:00Z', text: 'older' },
+        { date_iso: '2026-04-26T07:30:00Z', text: 'middle' },
+      ],
+      pr_states: {},
+    });
+    const r = run(taskPath);
+    assert.equal(r.stdout.trim(), 'newer');
+  });
+});

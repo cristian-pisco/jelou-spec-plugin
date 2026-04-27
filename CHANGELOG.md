@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.118] — 2026-04-26
+
+### Fixed
+- null-safe truncate, strip newlines, gate PR state on OPEN
+
 ## [0.3.117] — 2026-04-26
 
 ### Internal

@@ -41,7 +41,9 @@ function parseJsonOrDie(raw, label) {
 const FALLBACK = 'sin actualizaciones recientes — agregar razón manual';
 
 function truncate(s) {
-  return s.length > 200 ? s.slice(0, 200) : s;
+  if (!s) return '';
+  const oneLine = String(s).replace(/[\r\n]+/g, ' ');
+  return oneLine.length > 200 ? oneLine.slice(0, 200) : oneLine;
 }
 
 function postCutoffComment(comments, cutoff) {
@@ -54,8 +56,8 @@ function postCutoffComment(comments, cutoff) {
 
 function prStateReason(pr_states) {
   const values = Object.values(pr_states || {});
-  if (values.some((p) => p.isDraft)) return 'aún en borrador';
-  if (values.some((p) => p.mergeable === false)) return 'con conflictos de merge';
+  if (values.some((p) => p.isDraft && p.state === 'OPEN')) return 'aún en borrador';
+  if (values.some((p) => p.mergeable === false && p.state === 'OPEN')) return 'con conflictos de merge';
   if (values.some((p) => p.state === 'OPEN' && p.checks === 'failing')) return 'CI fallando';
   if (values.some((p) => p.state === 'OPEN')) return 'esperando revisión';
   return null;
