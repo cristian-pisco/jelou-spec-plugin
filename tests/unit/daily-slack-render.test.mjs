@@ -100,3 +100,26 @@ describe('daily-slack-render — multi-task spacing', () => {
     assert.equal(out.achieved_goals, '[50%] A\nu1\n\n[100%] B\nu2');
   });
 });
+
+describe('daily-slack-render — IO and validation errors', () => {
+  test('exits 2 with usage message when no args', () => {
+    const r = spawnSync('node', [SCRIPT], { encoding: 'utf8' });
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /error: --data <path> is required/);
+  });
+
+  test('exits 2 when --data file is missing', () => {
+    const r = spawnSync('node', [SCRIPT, '--data', '/nonexistent/path.json'], { encoding: 'utf8' });
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /cannot read --data file/);
+  });
+
+  test('exits 2 when --data file is malformed JSON', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'daily-slack-render-'));
+    const dataPath = join(dir, 'data.json');
+    writeFileSync(dataPath, '{ this is not valid json');
+    const r = spawnSync('node', [SCRIPT, '--data', dataPath], { encoding: 'utf8' });
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /--data is not valid JSON/);
+  });
+});

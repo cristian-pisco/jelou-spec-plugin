@@ -6,7 +6,7 @@
 // Usage:
 //   node bin/daily-slack-extract-reason.mjs --task <path>
 
-import { readFileSync } from 'node:fs';
+import { readOrDie, parseJsonOrDie } from './lib/daily-slack-helpers.mjs';
 
 function parseArgs(argv) {
   const args = {};
@@ -18,24 +18,6 @@ function parseArgs(argv) {
     process.exit(2);
   }
   return args;
-}
-
-function readOrDie(path, label) {
-  try {
-    return readFileSync(path, 'utf8');
-  } catch (e) {
-    console.error(`error: cannot read ${label} file (${path}): ${e.message}`);
-    process.exit(2);
-  }
-}
-
-function parseJsonOrDie(raw, label) {
-  try {
-    return JSON.parse(raw);
-  } catch (e) {
-    console.error(`error: ${label} is not valid JSON: ${e.message}`);
-    process.exit(2);
-  }
 }
 
 const FALLBACK = 'sin actualizaciones recientes — agregar razón manual';

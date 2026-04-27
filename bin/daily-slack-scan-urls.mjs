@@ -8,7 +8,7 @@
 // Usage:
 //   node bin/daily-slack-scan-urls.mjs --body <path> --allowlist <path>
 
-import { readFileSync } from 'node:fs';
+import { readOrDie } from './lib/daily-slack-helpers.mjs';
 
 function parseArgs(argv) {
   const args = {};
@@ -30,15 +30,6 @@ function normalize(url) {
     .replace(/^http:\/\//, 'https://')
     .replace(/[.,);\]}]+$/, '')
     .replace(/[?#].*$/, '');
-}
-
-function readOrDie(path, label) {
-  try {
-    return readFileSync(path, 'utf8');
-  } catch (e) {
-    console.error(`error: cannot read ${label} file (${path}): ${e.message}`);
-    process.exit(2);
-  }
 }
 
 function main() {

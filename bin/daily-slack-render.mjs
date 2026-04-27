@@ -8,7 +8,7 @@
 // Usage:
 //   node bin/daily-slack-render.mjs --data <path>
 
-import { readFileSync } from 'node:fs';
+import { readOrDie, parseJsonOrDie } from './lib/daily-slack-helpers.mjs';
 
 function parseArgs(argv) {
   const args = {};
@@ -20,24 +20,6 @@ function parseArgs(argv) {
     process.exit(2);
   }
   return args;
-}
-
-function readOrDie(path, label) {
-  try {
-    return readFileSync(path, 'utf8');
-  } catch (e) {
-    console.error(`error: cannot read ${label} file (${path}): ${e.message}`);
-    process.exit(2);
-  }
-}
-
-function parseJsonOrDie(raw, label) {
-  try {
-    return JSON.parse(raw);
-  } catch (e) {
-    console.error(`error: ${label} is not valid JSON: ${e.message}`);
-    process.exit(2);
-  }
 }
 
 const FIRST_RUN_BANNER = '_Primer reporte del sprint — sin línea base para comparar._';
@@ -61,7 +43,7 @@ function isoDate(s) {
 
 function renderShortTerm(short_term) {
   const withDates = short_term.filter((t) => t.due_date);
-  withDates.sort((a, b) => (a.due_date < b.due_date ? -1 : 1));
+  withDates.sort((a, b) => (a.due_date < b.due_date ? -1 : a.due_date > b.due_date ? 1 : 0));
   return withDates.map((t) => `[${isoDate(t.due_date)}] ${t.name} ${t.url}`).join('\n');
 }
 

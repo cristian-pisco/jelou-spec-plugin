@@ -8,7 +8,8 @@
 // Usage:
 //   node bin/daily-slack-bucket.mjs --current <path> [--snapshot <path>]
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
+import { readOrDie, parseJsonOrDie } from './lib/daily-slack-helpers.mjs';
 
 function parseArgs(argv) {
   const args = {};
@@ -21,24 +22,6 @@ function parseArgs(argv) {
     process.exit(2);
   }
   return args;
-}
-
-function readOrDie(path, label) {
-  try {
-    return readFileSync(path, 'utf8');
-  } catch (err) {
-    console.error(`error: could not read ${label} file "${path}": ${err.message}`);
-    process.exit(2);
-  }
-}
-
-function parseJsonOrDie(raw, label) {
-  try {
-    return JSON.parse(raw);
-  } catch (e) {
-    console.error(`error: ${label} is not valid JSON: ${e.message}`);
-    process.exit(2);
-  }
 }
 
 function snapshotEntry(t) {

@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.122] — 2026-04-26
+
+### Internal
+- extract shared file/json helpers, fix render sort comparator
+
 ## [0.3.121] — 2026-04-26
 
 ### Fixed
