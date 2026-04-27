@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.116] — 2026-04-26
+
+### Added
+- green — priority-1 post-cutoff comment
+
 ## [0.3.115] — 2026-04-26
 
 ### Fixed
