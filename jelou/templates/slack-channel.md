@@ -10,43 +10,62 @@ The file has two parts:
 1. **YAML frontmatter** — defines channel name, manual fields, and their prompts
 2. **Body** — the message structure with `{{placeholder}}` syntax
 
+The published draft also stores `task_snapshots` in its frontmatter; that field
+is managed automatically by the workflow — do not edit it by hand.
+
 ## Placeholders
 
-### Automated (filled from task data)
-- `{{completed_goals}}` — task progress: `[percentage%] task-name\nclickup-url`
-- `{{short_term_goals}}` — task deadlines: `[deadline] task-name clickup-url`
+### Automated (filled from sprint task data)
+- `{{achieved_goals}}` — tasks whose percentage rose since the last published draft. Format per task: `[<%>] <name>\n<url>`
+- `{{not_achieved_goals}}` — tasks whose percentage did not advance. Format per task: `<name> — <auto-extracted reason>\n<url>`
+- `{{short_term_goals}}` — sprint tasks with a due date. Format: `[<YYYY-MM-DD>] <name> <url>`
+
+On the very first run for a channel (no prior published draft), `{{achieved_goals}}`
+renders the first-run banner instead of an empty string.
 
 ### Manual (user is prompted)
-- Any placeholder listed in `manual_fields` triggers an interactive prompt
+- Any placeholder listed in `manual_fields` triggers an interactive prompt via `question`
 - The prompt text comes from `manual_prompts`
 - User responses are inserted as-is with no formatting
 
-## Example
+## Example: dailies (Spanish dailyBrain)
 
 ```yaml
 ---
-channel: "#channel-name"
+channel: "#dailies"
 manual_fields:
-  - field_one
-  - field_two
+  - energy
+  - meetings
+  - planned_achievements
 manual_prompts:
-  field_one: "Prompt shown to the user for field one?"
-  field_two: "Prompt shown to the user for field two?"
+  energy: "How's your energy today? (red / yellow / green emoji)"
+  meetings: "Any meetings to mention? (e.g., Daily, 1:1, planning)"
+  planned_achievements: "What do you plan to achieve before the next daily?"
 ---
 ```
 
 ```
-Section header
+#dailyBrain
+¿Cómo está tu energía hoy? :large_red_square::large_yellow_square::large_green_square:
+{{energy}}
 
-{{field_one}}
+¿Qué objetivos has logrado desde tu última actualización?
 
-Another section
+{{achieved_goals}}
 
-{{completed_goals}}
+Reuniones
 
-{{field_two}}
+{{meetings}}
 
-Goals section
+¿Qué objetivos no has logrado desde tu última actualización? ¿Y por qué?
+
+{{not_achieved_goals}}
+
+¿Qué logros importantes tienes planeados para hoy y para la próxima actualización diaria?
+
+{{planned_achievements}}
+
+¿Cuáles son tus metas a corto plazo (y ETA)?
 
 {{short_term_goals}}
 ```

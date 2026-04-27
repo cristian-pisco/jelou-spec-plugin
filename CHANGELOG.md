@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.123] — 2026-04-26
+
+### Internal
+- document new placeholders + Spanish dailyBrain example
+
 ## [0.3.122] — 2026-04-26
 
 ### Internal
