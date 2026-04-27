@@ -1,165 +1,188 @@
 # Workflow: daily-slack
 
-> Orchestrator workflow for `/jlu-daily-slack [date] #channel`
-> Generate and post daily summary to Slack.
+> Orchestrator workflow for `/jlu-daily-slack <sprint> #channel`
+> Generate and post a sprint-scoped daily summary to Slack.
 
 > **Tool requirement**: All prompts, questions, and confirmations to the user in this workflow MUST use `question`. Never output questions as plain text.
 
 ---
 
-You are the orchestrator for the `/jlu-daily-slack` command. You generate a Slack message from task data and channel templates, then post it after user approval.
+You are the orchestrator for the `/jlu-daily-slack` command. You generate a Slack message from sprint task data and a channel template, then post it after user approval.
 
 ## Step 1 — Parse Arguments
 
-1. Parse the date and channel from arguments: `[date] #channel`.
-2. Date is optional — default to today in `dd-mm-yyyy` format.
-3. Channel is mandatory — must start with `#`. If missing, ask the user: "Which channel should I post to? (e.g., #dailies)"
+1. Parse `<sprint> #channel` from arguments.
+2. Sprint is required. If missing, ask via `question`: "Which sprint number should I report on?"
+3. Channel is required and must start with `#`. If missing, ask: "Which channel should I post to? (e.g., #dailies)"
 4. Strip the `#` prefix for file lookups (e.g., `#dailies` → `dailies`).
 
 ## Step 2 — Resolve Workspace
 
-1. Starting from the current working directory, search for `.spec-workspace.json` in the current directory and up to 5 parent directories.
-2. Read the file and extract the `workspace` field.
-3. Resolve it to an absolute path.
-4. If `.spec-workspace.json` is not found, stop with: "No workspace found. Run /jlu-new-task first to initialize one."
+1. Search for `.spec-workspace.json` in cwd and up to 5 parent directories.
+2. Read the file and extract the `workspace` field. Resolve to an absolute path.
+3. If not found, stop with: "No workspace found. Run /jlu-new-task first to initialize one."
 
 ## Step 3 — Load Channel Template
 
-1. Read the channel template from `<workspace>/registry/slack/<channel>.md` (using the channel name without `#`).
-2. Parse the YAML frontmatter to extract:
-   - `manual_fields` — list of placeholder names that require user input
-   - `manual_prompts` — map of field name → prompt text shown to the user
-3. Parse the body (everything after the second `---`) as the message template.
-4. If the template file does not exist, stop with: "No template found for #<channel>. Create one at `<workspace>/registry/slack/<channel>.md`. See `jelou/templates/slack-channel.md` for the format."
+1. Read `<workspace>/registry/slack/<channel>.md`.
+2. Parse YAML frontmatter for `manual_fields` and `manual_prompts`. Parse the body as the message template.
+3. If missing, stop with: "No template found for #<channel>. Create one at `<workspace>/registry/slack/<channel>.md`. See `jelou/templates/slack-channel.md` for the format."
 
-## Step 4 — Check for Existing Draft
+## Step 4 — Resolve User Identity
 
-1. Check for an existing draft at `<workspace>/drafts/slack/<date>-<channel>.md`.
-2. If a draft exists, read its YAML frontmatter `status` field:
-   - `draft` → Ask the user: "A draft already exists for #<channel> on <date>. Resume editing it, or regenerate from scratch?" If resume, load the draft content and skip to Step 9 (present for review). If regenerate, continue to Step 5.
-   - `published` → Ask the user: "This message was already posted to #<channel> on <date>. Do you want to re-post it?" If yes, skip to Step 10 (publish). If no, stop.
-3. If no draft exists, continue to Step 5.
-
-## Step 5 — Gather Task Data
-
-For each task folder in `<workspace>/specs/<date>/`:
-
-### 5a. Read task title
-- Read `SPEC.md` and extract the first `#` heading as the task name.
-
-### 5b. Read ClickUp data
-- Read `CLICKUP_TASK.json` and extract:
-  - `macroTask.url` — the ClickUp link for the task. If `macroTask.url` is null or missing, warn the user: "⚠ No ClickUp link for task <slug> — please add manually." Leave the link blank in the rendered output.
-  - `macroTask.id` — needed to query ClickUp for due date.
-  - `subtasks` — map of story slugs to ClickUp info. If this is an empty array `[]` (initial template state) or empty object `{}`, treat as no ClickUp subtasks.
-  - `pr` — map of service-id → PR URL.
-
-### 5c. Calculate completion percentage
-
-**If ClickUp subtasks exist** (subtasks is a non-empty object):
-1. For each `(slug, info)` in `subtasks`, call `clickup_get_task` with `info.id`.
-2. If any `clickup_get_task` call fails (error response, timeout, or MCP server unavailable), fall back to the TASKS.md phase-based calculation for this task and warn the user: "⚠ ClickUp query failed for <slug> — using phase progress as fallback."
-3. A subtask is "closed" when its `status.type == "closed"` (this handles custom status names).
-4. `percentage = round((closed_count / total_count) × 90)`
-
-**If no ClickUp subtasks** (empty or array):
-1. Read `TASKS.md` and parse the "Phase Progress" table.
-2. Count phases with status `done` vs total phases.
-3. `percentage = round((done_count / total_count) × 90)`
-
-**PR merge upgrade** (only when percentage == 90):
-1. Read PR URLs from `CLICKUP_TASK.json.pr` or the "External Links" table in `TASKS.md`.
-2. For each PR URL, run: `gh pr view <url> --json state`
-3. If ALL PRs have `state: "MERGED"`, set `percentage = 100`.
-4. If any PR is not merged, keep at 90%.
-5. If `gh` is unavailable or errors, keep at 90%.
-
-### 5d. Get due date
-- If `macroTask.id` exists, call `clickup_get_task` with the macro task ID and read the `due_date` field.
-- If no due date is set, record as null (omit date prefix in short_term_goals rendering).
-
-Collect all task data into a list:
-- `name` — task title from SPEC.md
-- `slug` — folder name
-- `percentage` — calculated above
-- `clickup_url` — macroTask.url or blank
-- `due_date` — from ClickUp or null
-
-## Step 6 — Render Automated Placeholders
-
-**Formatting rule (NFR-3):** All rendered text must use Slack-compatible mrkdwn. Use `*bold*` (single asterisk), never `**bold**`. Do not use `#` markdown headers — use bold text for section labels instead. Do not use markdown links `[text](url)` — paste URLs directly.
-
-### `{{completed_goals}}`
-
-For each task, render one block:
-```
-[<percentage>%] <task-name>
-<clickup-url>
-```
-
-If the task has no ClickUp URL, render only:
-```
-[<percentage>%] <task-name>
-```
-
-Separate multiple tasks with a blank line.
-
-### `{{short_term_goals}}`
-
-For each task, render one line:
-- With due date: `[<due-date>] <task-name> <clickup-url>`
-- Without due date: `<task-name> <clickup-url>`
-- Without ClickUp URL: `[<due-date>] <task-name>` or just `<task-name>`
-
-One task per line.
-
-## Step 7 — Prompt Manual Fields
-
-For each field name in the template's `manual_fields` list (in order):
-
-1. Read the prompt text from `manual_prompts.<field-name>`.
-2. Ask the user using question with the prompt text.
-3. Store the user's response as the value for `{{<field-name>}}`.
-
-Manual field values are inserted as-is into the template with no additional formatting (NFR-4).
-
-## Step 8 — Compose and Save Draft
-
-1. Take the template body and replace every `{{placeholder}}` with its rendered value (both automated and manual).
-2. Create the directory `<workspace>/drafts/slack/` if it does not exist:
-   ```bash
-   mkdir -p <workspace>/drafts/slack
+1. Read `<workspace>/registry/clickup-user.json`. If it exists with a non-empty `user_id`, skip to Step 5.
+2. Otherwise, ask via `question`: "What's your ClickUp email?". Do NOT pre-fill, do NOT default. Do NOT use any value from prior conversations, memory, or environment.
+3. Call `clickup_get_workspace_members` and case-insensitively match the email.
+4. If zero matches, stop with: "No ClickUp member found for `<email>`. Check the address and try again."
+5. Write `<workspace>/registry/clickup-user.json`:
+   ```json
+   { "email": "<email>", "user_id": "<id>", "username": "<name>" }
    ```
-3. Write the draft file to `<workspace>/drafts/slack/<date>-<channel>.md`:
-   ```markdown
+
+## Step 5 — Verify ClickUp MCP
+
+Call `clickup_get_workspace_hierarchy` as a connectivity probe. On any failure, stop with the same message used by `/jlu-sync-clickup` Step 0.
+
+## Step 6 — Discover Sprint Tasks
+
+### 6a. Plugin tasks (sprint-filtered, ownership trusted)
+Walk `<workspace>/specs/*/CLICKUP_TASK.json`. Include a task if `sprint == <sprint-arg>` (string comparison). Ownership is trusted: plugin tasks in a sprint folder were created by you via `/jlu-new-task`, so they're inherently yours.
+
+For each included task, record `clickup_id` (= `macroTask.id`), `source: "plugin"`, `slug` (folder name), `clickup_url` (= `macroTask.url`), and `pr_urls` (= values of the `pr` map).
+
+### 6b. ClickUp gap-fill
+Query ClickUp for tasks where the `Sprint` custom field == `<sprint-arg>` AND (assignees contains user_id from Step 4 OR `Responsable` custom field == user_id).
+
+If zero matches, retry with `Sprint <sprint-arg>` as the custom-field value.
+
+For each ClickUp task whose `id` is not already in the plugin set, add an entry with `source: "clickup-only"`, `slug: null`, `pr_urls: []`.
+
+### 6c. Per-task data fetch
+For every task in the union, call `clickup_get_task` to get:
+- `name` (from ClickUp; for plugin tasks, override with the SPEC.md first heading if available)
+- `status.type`
+- `due_date`
+- `subtasks` (for percentage calculation)
+
+Calculate `percentage`:
+- Plugin tasks: `(closed_subtasks / total_subtasks) × 90`. If exactly 90, run `gh pr view <url> --json state` for each PR URL; if all merged, upgrade to 100.
+- ClickUp-only tasks: `(closed_subtasks / total_subtasks) × 90`; no PR upgrade. If no subtasks, 0.
+
+Build `<workspace>/.cache/current-tasks.json`: an array of `{clickup_id, name, url, percentage, status_type, due_date, source, slug, pr_urls}`.
+
+## Step 7 — Resolve Cutoff and Snapshot
+
+1. Glob `<workspace>/drafts/slack/*-<channel>.md`.
+2. For each file, read frontmatter; filter by `status: published`.
+3. Pick the entry with the latest `published_at`.
+4. If found, write its `task_snapshots` map to `<workspace>/.cache/snapshot-<sprint>-<channel>.json`. Cutoff timestamp = `published_at`.
+5. If none found, no snapshot file is created. Cutoff = null (first-run).
+
+## Step 8 — Bucket via `bin/daily-slack-bucket.mjs`
+
+```bash
+node <plugin-root>/bin/daily-slack-bucket.mjs \
+  --current <workspace>/.cache/current-tasks.json \
+  --snapshot <workspace>/.cache/snapshot-<sprint>-<channel>.json
+```
+
+Capture stdout JSON: `{achieved, not_achieved, new_snapshot, first_run}`.
+
+## Step 9 — Fetch Reasons for Stuck Tasks
+
+For each task in `not_achieved`:
+1. Call `clickup_get_task_comments(task_id)`. Extract latest 1-2 with `date_iso > cutoff`. If none after cutoff, take the most recent overall.
+2. For plugin tasks with PR URLs: run `gh pr view <url> --json state,isDraft,mergeable,statusCheckRollup`. Map `statusCheckRollup` to `checks: "failing"` if any check failed.
+3. Write `<workspace>/.cache/task-<clickup_id>.json`:
+   ```json
+   { "cutoff": "<iso-or-null>", "comments": [{"date_iso": "...", "text": "..."}], "pr_states": {"<url>": {"state": "...", "isDraft": <bool>, "mergeable": <bool>, "checks": "..."}} }
+   ```
+4. Run:
+   ```bash
+   node <plugin-root>/bin/daily-slack-extract-reason.mjs --task <workspace>/.cache/task-<clickup_id>.json
+   ```
+   Capture stdout as `reason` for that task.
+
+Attach `reason` to each task in `not_achieved`.
+
+## Step 10 — Render Automated Placeholders
+
+Build `<workspace>/.cache/render-data.json`:
+```json
+{
+  "first_run": <bool>,
+  "achieved": [{"name": "...", "url": "...", "percentage": <int>}, ...],
+  "not_achieved": [{"name": "...", "url": "...", "reason": "..."}, ...],
+  "short_term": [{"name": "...", "url": "...", "due_date": "<iso-or-null>"}, ...]
+}
+```
+
+`short_term` is built from the union task set (any task with a `due_date`).
+
+```bash
+node <plugin-root>/bin/daily-slack-render.mjs --data <workspace>/.cache/render-data.json
+```
+
+Capture stdout JSON: `{achieved_goals, not_achieved_goals, short_term_goals}`.
+
+## Step 11 — Check Existing Draft
+
+Look for `<workspace>/drafts/slack/<sprint>-<channel>.md`:
+- `status: draft` → ask via `question`: "A draft exists for sprint <sprint> on #<channel>. Resume editing it, or regenerate?". On resume, load the body and skip to Step 14.
+- `status: published` → ask: "This sprint already has a published report on #<channel>. Re-post it, or regenerate?". On re-post, skip to Step 15. On regenerate, continue to Step 12.
+
+## Step 12 — Prompt Manual Fields
+
+For each field in `manual_fields` (in order):
+1. Read prompt from `manual_prompts.<field>`.
+2. For `planned_achievements`, append helper context to the prompt: a comma-separated list of stuck task names from Step 8. Example: `(in progress: Migration, API node)`.
+3. Ask via `question` and store the response.
+
+## Step 13 — Compose, Save, and Scan
+
+1. Substitute every `{{placeholder}}` in the template body with the rendered value (automated from Step 10, manual from Step 12). Use plain string replacement; do not LLM-rewrite the result.
+2. Build the allowlist file `<workspace>/.cache/url-allowlist.txt`: one URL per line for every `clickup_url` in the union task set, plus every URL value read from the involved `CLICKUP_TASK.json` files this run.
+3. Write the composed body to `<workspace>/.cache/composed-body.md`.
+4. Run the URL safety scan:
+   ```bash
+   node <plugin-root>/bin/daily-slack-scan-urls.mjs \
+     --body <workspace>/.cache/composed-body.md \
+     --allowlist <workspace>/.cache/url-allowlist.txt
+   ```
+5. If exit code is 1, abort with: `Link safety check failed: rendered output contains unknown ClickUp URL. Aborting to prevent invented links.` plus the script's stderr message. DO NOT save the draft. The user must investigate the unknown URL and re-run.
+6. On exit 0, save the draft to `<workspace>/drafts/slack/<sprint>-<channel>.md`:
+   ```yaml
    ---
    channel: "#<channel>"
-   date: <date>
+   sprint: <sprint>
    status: draft
    published_at:
+   task_snapshots:
+     <id>:
+       name: "..."
+       url: "..."
+       percentage: <int>
+       status_type: "..."
    ---
-
-   <composed message content>
+   <body>
    ```
+   The `task_snapshots` map is `new_snapshot` from Step 8.
 
-## Step 9 — Present for Review
+## Step 14 — Present for Review
 
-1. Display the composed message to the user (the content after the YAML frontmatter).
-2. Ask: "Here's the draft for #<channel>. Ready to post, or do you want to edit anything?"
-3. If the user requests edits:
-   - Apply their changes to the draft content.
-   - Re-save the draft file with the updated content.
-   - Re-present for review.
-4. If the user approves, continue to Step 10.
+1. Display the composed body to the user.
+2. Ask via `question`: "Here's the draft for #<channel> (sprint <sprint>). Ready to post, or do you want to edit anything?"
+3. If edits requested:
+   - Apply changes to the body.
+   - Re-run the URL safety scan from Step 13. Abort if it fires.
+   - Re-save the draft.
+   - Re-present.
+4. On approval, continue to Step 15.
 
-## Step 10 — Publish to Slack
+## Step 15 — Publish to Slack
 
-1. Post the message using `mcp__claude_ai_Slack__slack_send_message` to the `#<channel>` channel.
-   - If the `claude_ai_Slack` server is unavailable, try `mcp__plugin_slack_slack__slack_send_message` as fallback.
-   - If both are unavailable, inform the user: "Slack MCP is not available. The draft has been saved at `<path>` — you can post it manually."
-2. On successful post:
-   - Update the draft file: set `status: published` and `published_at: <ISO-8601 timestamp>`.
-   - Report: "Message posted to #<channel>."
-3. On failure:
-   - Report the error to the user.
-   - Keep the draft as `status: draft` so they can retry.
+1. Post via `mcp__claude_ai_Slack__slack_send_message` to `#<channel>`.
+   - On unavailable, fall back to `mcp__plugin_slack_slack__slack_send_message`.
+   - On both unavailable, tell the user: "Slack MCP is not available. The draft has been saved at `<path>` — you can post it manually."
+2. On success: update the draft frontmatter to `status: published` and `published_at: <ISO-8601>`. The snapshot remains in frontmatter and rolls forward to the next run.
+3. On failure: report the error, keep `status: draft`.

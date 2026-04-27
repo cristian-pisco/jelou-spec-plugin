@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.124] — 2026-04-26
+
+### Added
+- rewrite for sprint-scoped flow with bin scripts
+
 ## [0.3.123] — 2026-04-26
 
 ### Internal
