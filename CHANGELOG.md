@@ -1,9 +1,9 @@
 # Changelog
 
-## [0.3.120] — 2026-04-26
+## [0.3.121] — 2026-04-26
 
-### Internal
-- rename sync-clickup to task-clickup
+### Fixed
+- remove duplicate 0.3.120 entry
 
 ## [0.3.120] — 2026-04-26
 
