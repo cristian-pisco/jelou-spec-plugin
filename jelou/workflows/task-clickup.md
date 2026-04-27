@@ -1,13 +1,13 @@
-# Workflow: sync-clickup
+# Workflow: task-clickup
 
-> Orchestrator workflow for `/jlu-sync-clickup [task-slug]`
+> Orchestrator workflow for `/jlu-task-clickup [task-slug]`
 > Create or update ClickUp macro task and subtasks from user stories.
 
 > **Tool requirement**: All prompts, questions, and confirmations to the user in this workflow MUST use `question`. Never output questions as plain text.
 
 ---
 
-You are the orchestrator for the `/jlu-sync-clickup` command. You use the ClickUp MCP server directly — no API key, no WebFetch, no pm-agent.
+You are the orchestrator for the `/jlu-task-clickup` command. You use the ClickUp MCP server directly — no API key, no WebFetch, no pm-agent.
 
 ## Step 0 — Verify ClickUp MCP
 
@@ -19,7 +19,7 @@ Call `clickup_get_workspace_hierarchy` with no arguments as a connectivity probe
 ```
 ⚠️ ClickUp MCP unavailable or returned an error.
 
-/jlu-sync-clickup requires the official ClickUp MCP server to be running and authenticated.
+/jlu-task-clickup requires the official ClickUp MCP server to be running and authenticated.
 
 If MCP is not yet configured:
 1. Add the ClickUp MCP server to your Claude Code settings or .mcp.json:
@@ -34,7 +34,7 @@ If MCP is not yet configured:
    }
    Full setup docs: https://clickup.com/integrations/mcp
 2. Restart Claude Code or reload your MCP configuration so the server starts.
-3. Re-run /jlu-sync-clickup.
+3. Re-run /jlu-task-clickup.
 
 If MCP is already configured, this may be a transient ClickUp API error. Try re-running the command.
 ```

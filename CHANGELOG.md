@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.3.120] — 2026-04-26
+
+### Internal
+- rename sync-clickup to task-clickup
+
+## [0.3.120] — 2026-04-26
+
+### Internal
+- rename sync-clickup to task-clickup
+
 ## [0.3.119] — 2026-04-26
 
 ### Added

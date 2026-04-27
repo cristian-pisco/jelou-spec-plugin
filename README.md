@@ -123,7 +123,7 @@ OpenCode command definitions live in `.opencode/commands/`. All commands use the
 | `/jlu-refine-task` | Apply a targeted change to an approved spec via structured interview |
 | `/jlu-execute-task` | Run TDD implementation (autonomous or step-by-step mode) |
 | `/jlu-extend-phase` | Add scope to an in-progress task via focused mini-interview |
-| `/jlu-sync-clickup` | (Phase 2) Create/update ClickUp macro task and subtasks via MCP |
+| `/jlu-task-clickup` | (Phase 2) Create/update ClickUp macro task and subtasks via MCP |
 | `/jlu-report-task` | Executive summary with progress, blockers, and stale worktree detection |
 | `/jlu-load-context` | Load task context into a fresh session for Q&A |
 | `/jlu-create-pr [task-slug]` | Stage, commit, push, and create pull requests for all affected services |
@@ -262,7 +262,7 @@ A per-service `dev` block declares how to boot the service for E2E orchestration
 
 ### ClickUp
 
-Phase 2. ClickUp integration uses the ClickUp MCP server (no API key needed). On first run of `/jlu-sync-clickup`, you'll be prompted to select a target list. Field mappings are auto-discovered and persisted in `CLICKUP_TASK.json` per task.
+Phase 2. ClickUp integration uses the ClickUp MCP server (no API key needed). On first run of `/jlu-task-clickup`, you'll be prompted to select a target list. Field mappings are auto-discovered and persisted in `CLICKUP_TASK.json` per task.
 
 ### Slack
 
