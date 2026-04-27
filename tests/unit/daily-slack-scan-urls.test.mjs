@@ -68,3 +68,34 @@ describe('daily-slack-scan-urls — normalization', () => {
     assert.match(r.stderr, /unknown clickup url: https:\/\/app\.clickup\.com\/t\/EVIL/);
   });
 });
+
+describe('daily-slack-scan-urls — protocol + fragment normalization', () => {
+  test('http body URL matches https allowlist entry', () => {
+    const body = 'See http://app.clickup.com/t/abc123';
+    const r = run(setup(body, ['https://app.clickup.com/t/abc123']));
+    assert.equal(r.status, 0, `stderr: ${r.stderr}`);
+  });
+
+  test('fragment-bearing URL matches plain allowlist entry', () => {
+    const body = 'See https://app.clickup.com/t/abc123#comment-7';
+    const r = run(setup(body, ['https://app.clickup.com/t/abc123']));
+    assert.equal(r.status, 0, `stderr: ${r.stderr}`);
+  });
+});
+
+describe('daily-slack-scan-urls — IO and usage errors', () => {
+  test('exits 2 with usage message when no args', () => {
+    const r = spawnSync('node', [SCRIPT], { encoding: 'utf8' });
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /error: --body <path> and --allowlist <path> are required/);
+  });
+
+  test('exits 2 with cannot-read message when body file is missing', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'daily-slack-scan-'));
+    const allowPath = join(dir, 'allow.txt');
+    writeFileSync(allowPath, '');
+    const r = spawnSync('node', [SCRIPT, '--body', join(dir, 'nonexistent.md'), '--allowlist', allowPath], { encoding: 'utf8' });
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /cannot read body file/);
+  });
+});

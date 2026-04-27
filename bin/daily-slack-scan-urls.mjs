@@ -26,14 +26,26 @@ function parseArgs(argv) {
 const URL_RE = /https?:\/\/app\.clickup\.com\/t\/[^\s)]+/g;
 
 function normalize(url) {
-  return url.replace(/[.,);\]}]+$/, '').replace(/\?.*$/, '');
+  return url
+    .replace(/^http:\/\//, 'https://')
+    .replace(/[.,);\]}]+$/, '')
+    .replace(/[?#].*$/, '');
+}
+
+function readOrDie(path, label) {
+  try {
+    return readFileSync(path, 'utf8');
+  } catch (e) {
+    console.error(`error: cannot read ${label} file (${path}): ${e.message}`);
+    process.exit(2);
+  }
 }
 
 function main() {
   const { body, allowlist } = parseArgs(process.argv);
-  const text = readFileSync(body, 'utf8');
+  const text = readOrDie(body, 'body');
   const allowed = new Set(
-    readFileSync(allowlist, 'utf8')
+    readOrDie(allowlist, 'allowlist')
       .split('\n')
       .map((s) => s.trim())
       .filter(Boolean)

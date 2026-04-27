@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.114] — 2026-04-26
+
+### Fixed
+- handle URL fragments, http/https, and IO errors
+
 ## [0.3.113] — 2026-04-26
 
 ### Internal
