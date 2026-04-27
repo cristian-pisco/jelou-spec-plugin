@@ -109,3 +109,27 @@ describe('daily-slack-bucket — delta', () => {
     assert.ok(!out.new_snapshot.gone);
   });
 });
+
+describe('daily-slack-bucket — IO and validation errors', () => {
+  test('exits 2 with usage message when no args', () => {
+    const r = spawnSync('node', [SCRIPT], { encoding: 'utf8' });
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /error: --current <path> is required/);
+  });
+
+  test('exits 2 with malformed JSON message when current is not valid JSON', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'daily-slack-bucket-'));
+    const currentPath = join(dir, 'current.json');
+    writeFileSync(currentPath, '{ this is not json');
+    const r = spawnSync('node', [SCRIPT, '--current', currentPath], { encoding: 'utf8' });
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /--current is not valid JSON/);
+  });
+
+  test('exits 2 when a task is missing clickup_id', () => {
+    const current = [{ name: 'No ID', url: 'u', percentage: 0, status_type: 'open' }];
+    const r = run(setup(current, null));
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /task missing clickup_id/);
+  });
+});

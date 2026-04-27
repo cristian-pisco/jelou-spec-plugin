@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.115] — 2026-04-26
+
+### Fixed
+- clean errors for malformed JSON and missing clickup_id
+
 ## [0.3.114] — 2026-04-26
 
 ### Fixed

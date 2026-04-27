@@ -32,6 +32,15 @@ function readOrDie(path, label) {
   }
 }
 
+function parseJsonOrDie(raw, label) {
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    console.error(`error: ${label} is not valid JSON: ${e.message}`);
+    process.exit(2);
+  }
+}
+
 function snapshotEntry(t) {
   return { name: t.name, url: t.url, percentage: t.percentage, status_type: t.status_type };
 }
@@ -41,6 +50,10 @@ function bucket(current, prior) {
   const not_achieved = [];
   const new_snapshot = {};
   for (const t of current) {
+    if (!t.clickup_id) {
+      console.error(`error: task missing clickup_id: ${JSON.stringify(t)}`);
+      process.exit(2);
+    }
     new_snapshot[t.clickup_id] = snapshotEntry(t);
     const p = prior ? prior[t.clickup_id] : undefined;
     if (!prior) {
@@ -62,10 +75,10 @@ function bucket(current, prior) {
 
 function main() {
   const { current, snapshot } = parseArgs(process.argv);
-  const cur = JSON.parse(readOrDie(current, '--current'));
+  const cur = parseJsonOrDie(readOrDie(current, '--current'), '--current');
   let prior = null;
   if (snapshot && existsSync(snapshot)) {
-    prior = JSON.parse(readOrDie(snapshot, '--snapshot'));
+    prior = parseJsonOrDie(readOrDie(snapshot, '--snapshot'), '--snapshot');
   }
   process.stdout.write(JSON.stringify(bucket(cur, prior)) + '\n');
 }
