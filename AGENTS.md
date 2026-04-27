@@ -17,7 +17,7 @@ This repository provides a spec-driven orchestration workflow for OpenCode.
 
 ## Phase 1 Scope
 
-- Core workflows are in scope: map-codebase, new-task, refine-task, execute-task, extend-phase, create-pr, report-task, load-context, close-task, rollback-phase, refresh-skills.
+- Core workflows are in scope: map-codebase, new-task, refine-task, execute-task, extend-phase, create-pr, report-task, load-context, close-task, rollback-phase.
 - External integrations are deferred to Phase 2:
   - `jlu-sync-clickup`
   - `jlu-post-slack`

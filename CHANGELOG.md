@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.107] — 2026-04-26
+
+### Internal
+- skills/refresh-skills/SKILL.md
+- jelou/workflows/refresh-skills.md
+- .opencode/commands/jlu-refresh-skills.md
+- README.md Core Commands row
+- AGENTS.md Phase 1 scope reference
+- new-task.md staleness check (dead consumer)
+- bin/install.sh post-install help line
+
 ## [0.3.106] — 2026-04-26
 
 ### Internal

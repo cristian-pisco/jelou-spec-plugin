@@ -130,7 +130,6 @@ OpenCode command definitions live in `.opencode/commands/`. All commands use the
 | `/jlu-post-slack [date] #channel` | (Phase 2) Generate and post daily summary to Slack |
 | `/jlu-close-task` | Close task after PR merge — updates ClickUp, cleans worktrees |
 | `/jlu-rollback-phase` | Reset service worktrees to the last known-good phase state |
-| `/jlu-refresh-skills` | Refresh the skill registry |
 | `/jlu-architecture-review [<service-id>] [--cross-service]` | Surface deepening opportunities (single-service or cross-service); interactive grilling loop; lazy ADRs |
 | `/jlu-ui-qa-run [task-slug]` | Boot affected services and run the Playwright E2E suite with bounded auto-fix loop |
 | `/jlu-ui-qa-cleanup [task-slug]` | Recover from leaked dev servers, stale containers, or held lock files |

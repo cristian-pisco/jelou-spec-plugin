@@ -376,10 +376,6 @@ Track which files exist and which are missing.
    - If user chooses to map: pause this workflow, instruct user to run `/jlu-map-codebase`, then re-run `/jlu-new-task`.
    - If user chooses to continue: proceed with whatever context is available.
 
-2. Check `.opencode/skill-registry.json` (if it exists):
-   - Compare its modification time with the skill files in the plugin directory.
-   - If stale: warn "Skill registry appears stale. Run `/jlu-refresh-skills` to update?"
-
 ---
 
 ## Step 13 — Review Loaded Context
