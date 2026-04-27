@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.108] — 2026-04-26
+
+### Internal
+- add 2026-04-26 daily-slack sprint redesign spec
+
 ## [0.3.107] — 2026-04-26
 
 ### Internal
