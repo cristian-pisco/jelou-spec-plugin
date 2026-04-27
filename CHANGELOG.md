@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.112] — 2026-04-26
+
+### Added
+- green — verify clickup URLs against allowlist
+
 ## [0.3.111] — 2026-04-26
 
 ### Internal
