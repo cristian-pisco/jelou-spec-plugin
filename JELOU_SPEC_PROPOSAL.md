@@ -307,7 +307,7 @@ Captures which skills were selected for a task.
 - `/jlu:extend-phase`
 - `/jlu:refresh-skills`
 - `/jlu:report-task`
-- `/jlu:post-slack [date] #channel`
+- `/jlu:daily-slack <sprint> #channel`
 - `/jlu:close-task`
 - `/jlu:setup-clickup` *(new — Decision #41)*
 
@@ -848,8 +848,7 @@ Indefinite in v1.
 
 ### 20.1 Commands
 
-- `/jlu:post-slack #channel`
-- `/jlu:post-slack <dd-mm-yyyy> #channel`
+- `/jlu:daily-slack <sprint> #channel`
 
 ### 20.2 Rules
 
@@ -1059,7 +1058,7 @@ No additional confirmation required if the PR is already merged.
   - Macro task + subtasks
   - PR update when it exists
   - Blocking on missing field
-- Validate `/jlu:post-slack` with persisted drafts and confirmed publication.
+- Validate `/jlu:daily-slack` with persisted drafts and confirmed publication.
 - Validate `/jlu:close-task` with merged PR and final ClickUp closure.
 - Validate `/jlu:report-task` with JSONL events and consolidated summary.
 - Validate session recovery (resume, re-validate, start over).

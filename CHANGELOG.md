@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.126] — 2026-04-26
+
+### Internal
+- rename jlu-post-slack references to jlu-daily-slack
+
 ## [0.3.125] — 2026-04-26
 
 ### Internal

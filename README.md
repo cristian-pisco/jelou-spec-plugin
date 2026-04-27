@@ -127,7 +127,7 @@ OpenCode command definitions live in `.opencode/commands/`. All commands use the
 | `/jlu-report-task` | Executive summary with progress, blockers, and stale worktree detection |
 | `/jlu-load-context` | Load task context into a fresh session for Q&A |
 | `/jlu-create-pr [task-slug]` | Stage, commit, push, and create pull requests for all affected services |
-| `/jlu-post-slack [date] #channel` | (Phase 2) Generate and post daily summary to Slack |
+| `/jlu-daily-slack <sprint> #channel` | Generate and post a sprint-scoped daily summary to a Slack channel |
 | `/jlu-close-task` | Close task after PR merge — updates ClickUp, cleans worktrees |
 | `/jlu-rollback-phase` | Reset service worktrees to the last known-good phase state |
 | `/jlu-architecture-review [<service-id>] [--cross-service]` | Surface deepening opportunities (single-service or cross-service); interactive grilling loop; lazy ADRs |
