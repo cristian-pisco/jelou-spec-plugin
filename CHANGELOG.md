@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.117] — 2026-04-26
+
+### Internal
+- cover PR-state priority and fallback
+
 ## [0.3.116] — 2026-04-26
 
 ### Added

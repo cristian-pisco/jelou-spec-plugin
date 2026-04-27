@@ -48,3 +48,74 @@ describe('daily-slack-extract-reason — priority 1', () => {
     assert.equal(r.stdout.trim().length, 200);
   });
 });
+
+describe('daily-slack-extract-reason — priority 2 (PR state)', () => {
+  test('falls to PR state when no post-cutoff comment', () => {
+    const taskPath = setup({
+      cutoff: '2026-04-25T08:00:00Z',
+      comments: [],
+      pr_states: { 'pr1': { state: 'OPEN', isDraft: true, mergeable: true } },
+    });
+    const r = run(taskPath);
+    assert.equal(r.stdout.trim(), 'aún en borrador');
+  });
+
+  test('merge conflicts beats CI failing', () => {
+    const taskPath = setup({
+      cutoff: '2026-04-25T08:00:00Z',
+      comments: [],
+      pr_states: {
+        'pr1': { state: 'OPEN', isDraft: false, mergeable: false },
+        'pr2': { state: 'OPEN', isDraft: false, mergeable: true, checks: 'failing' },
+      },
+    });
+    const r = run(taskPath);
+    assert.equal(r.stdout.trim(), 'con conflictos de merge');
+  });
+
+  test('CI failing beats plain awaiting review', () => {
+    const taskPath = setup({
+      cutoff: '2026-04-25T08:00:00Z',
+      comments: [],
+      pr_states: { 'pr1': { state: 'OPEN', isDraft: false, mergeable: true, checks: 'failing' } },
+    });
+    const r = run(taskPath);
+    assert.equal(r.stdout.trim(), 'CI fallando');
+  });
+
+  test('plain open PR → esperando revisión', () => {
+    const taskPath = setup({
+      cutoff: '2026-04-25T08:00:00Z',
+      comments: [],
+      pr_states: { 'pr1': { state: 'OPEN', isDraft: false, mergeable: true } },
+    });
+    const r = run(taskPath);
+    assert.equal(r.stdout.trim(), 'esperando revisión');
+  });
+});
+
+describe('daily-slack-extract-reason — priority 3 (older comment)', () => {
+  test('falls to most recent comment when no PR state', () => {
+    const taskPath = setup({
+      cutoff: '2026-04-25T08:00:00Z',
+      comments: [{ date_iso: '2026-04-20T08:00:00Z', text: 'Bloqueado por dependencia X.' }],
+      pr_states: {},
+    });
+    const r = run(taskPath);
+    assert.equal(r.stdout.trim(), 'Bloqueado por dependencia X.');
+  });
+});
+
+describe('daily-slack-extract-reason — priority 4 (fallback)', () => {
+  test('uses Spanish fallback when no comments and no PRs', () => {
+    const taskPath = setup({ cutoff: '2026-04-25T08:00:00Z', comments: [], pr_states: {} });
+    const r = run(taskPath);
+    assert.equal(r.stdout.trim(), 'sin actualizaciones recientes — agregar razón manual');
+  });
+
+  test('uses fallback when cutoff is null and there are no comments', () => {
+    const taskPath = setup({ cutoff: null, comments: [], pr_states: {} });
+    const r = run(taskPath);
+    assert.equal(r.stdout.trim(), 'sin actualizaciones recientes — agregar razón manual');
+  });
+});
