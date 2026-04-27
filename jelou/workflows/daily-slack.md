@@ -1,13 +1,13 @@
-# Workflow: post-slack
+# Workflow: daily-slack
 
-> Orchestrator workflow for `/jlu-post-slack [date] #channel`
-> Generate and post daily summary to Slack.
+> Orchestrator workflow for `/jlu-daily-slack <sprint> #channel`
+> Generate and post sprint-scoped daily summary to Slack.
 
 > **Tool requirement**: All prompts, questions, and confirmations to the user in this workflow MUST use `question`. Never output questions as plain text.
 
 ---
 
-You are the orchestrator for the `/jlu-post-slack` command. You generate a Slack message from task data and channel templates, then post it after user approval.
+You are the orchestrator for the `/jlu-daily-slack` command. You generate a Slack message from task data and channel templates, then post it after user approval.
 
 ## Step 1 — Parse Arguments
 

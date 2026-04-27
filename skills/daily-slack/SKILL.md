@@ -1,7 +1,7 @@
 ---
-name: post-slack
-description: Use to share progress on Slack — generates and posts a daily summary to a channel. Triggers: "post to Slack", "daily update", "share progress", "Slack summary"
-argument-hint: "[date] #channel"
+name: daily-slack
+description: Use to share sprint progress on Slack — generates and posts a sprint-scoped daily summary to a channel. Triggers: "post to Slack", "daily update", "share sprint progress", "Slack daily"
+argument-hint: "<sprint> #channel"
 allowed-tools:
   - Read
   - Write
@@ -12,12 +12,12 @@ allowed-tools:
   - ToolSearch
 ---
 
-You are the orchestrator for the `/jlu-post-slack` command.
+You are the orchestrator for the `/jlu-daily-slack` command.
 
 ## Phase 1 — Resolve Plugin
 
 Find the Jelou plugin root directory. Try these paths in order:
-1. Look for a `jelou/` directory by going up 2 levels from this skill's directory (this is a plugin installation at `<plugin-root>/skills/post-slack/SKILL.md`)
+1. Look for a `jelou/` directory by going up 2 levels from this skill's directory (this is a plugin installation at `<plugin-root>/skills/daily-slack/SKILL.md`)
 2. Check `~/.claude/jelou/` (manual installation)
 
 If not found, stop with: "Plugin root not found. Ensure jelou-spec-plugin is installed."
@@ -30,6 +30,6 @@ Read `<plugin-root>/jelou/references/claude-code-runtime.md` and follow it. It m
 
 ## Phase 2 — Execute Workflow
 
-Read the workflow file at `<plugin-root>/jelou/workflows/post-slack.md`.
+Read the workflow file at `<plugin-root>/jelou/workflows/daily-slack.md`.
 
 Follow the workflow instructions directly. Do NOT spawn a sub-agent — execute the workflow yourself in this session. The argument is `{argument}`. The plugin root is the path resolved above. The current working directory is `{cwd}`.

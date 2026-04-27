@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.110] — 2026-04-26
+
+### Internal
+- rename post-slack to daily-slack
+
 ## [0.3.109] — 2026-04-26
 
 ### Internal
