@@ -67,6 +67,9 @@ function main() {
   let prior = null;
   if (snapshot && existsSync(snapshot)) {
     prior = parseJsonOrDie(readOrDie(snapshot, '--snapshot'), '--snapshot');
+    for (const id of Object.keys(prior)) {
+      prior[id].percentage = normalizePercentage(prior[id]);
+    }
   }
   process.stdout.write(JSON.stringify(bucket(cur, prior)) + '\n');
 }

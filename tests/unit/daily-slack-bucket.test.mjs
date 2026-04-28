@@ -144,4 +144,14 @@ describe('daily-slack-bucket — closed → 100% normalization', () => {
     assert.equal(out.achieved[0].percentage, 100);
     assert.equal(out.new_snapshot.a.percentage, 100);
   });
+
+  test('legacy closed snapshot at 0 does not produce false-positive achieved', () => {
+    const current = [{ clickup_id: 'a', name: 'A', url: 'u', percentage: 0, status_type: 'closed' }];
+    const snap = { a: { name: 'A', url: 'u', percentage: 0, status_type: 'closed' } };
+    const r = run(setup(current, snap));
+    const out = JSON.parse(r.stdout);
+    assert.equal(out.achieved.length, 0);
+    assert.equal(out.not_achieved.length, 1);
+    assert.equal(out.new_snapshot.a.percentage, 100);
+  });
 });
