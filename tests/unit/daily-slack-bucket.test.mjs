@@ -154,4 +154,31 @@ describe('daily-slack-bucket — closed → 100% normalization', () => {
     assert.equal(out.not_achieved.length, 1);
     assert.equal(out.new_snapshot.a.percentage, 100);
   });
+
+  test('non-closed task at 0 is left untouched', () => {
+    const current = [{ clickup_id: 'a', name: 'A', url: 'u', percentage: 0, status_type: 'open' }];
+    const snap = { a: { name: 'A', url: 'u', percentage: 0, status_type: 'open' } };
+    const r = run(setup(current, snap));
+    const out = JSON.parse(r.stdout);
+    assert.equal(out.not_achieved[0].percentage, 0);
+    assert.equal(out.new_snapshot.a.percentage, 0);
+  });
+
+  test('new closed task (no prior entry) lands in achieved', () => {
+    const current = [{ clickup_id: 'a', name: 'A', url: 'u', percentage: 0, status_type: 'closed' }];
+    const snap = {};
+    const r = run(setup(current, snap));
+    const out = JSON.parse(r.stdout);
+    assert.equal(out.achieved.length, 1);
+    assert.equal(out.achieved[0].percentage, 100);
+  });
+
+  test('first run with closed task still goes to not_achieved (rule unchanged)', () => {
+    const current = [{ clickup_id: 'a', name: 'A', url: 'u', percentage: 0, status_type: 'closed' }];
+    const r = run(setup(current, null));
+    const out = JSON.parse(r.stdout);
+    assert.equal(out.first_run, true);
+    assert.equal(out.not_achieved.length, 1);
+    assert.equal(out.not_achieved[0].percentage, 100);
+  });
 });
