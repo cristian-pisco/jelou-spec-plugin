@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.130] — 2026-04-28
+
+### Fixed
+- daily-slack bucketer normalizes closed tasks to 100% regardless of subtask count, so closed tasks without subtasks no longer render as 0% in the Slack message
+
 ## [0.3.129] — 2026-04-27
 
 ### Internal
