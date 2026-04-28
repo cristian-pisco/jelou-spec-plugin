@@ -133,3 +133,15 @@ describe('daily-slack-bucket — IO and validation errors', () => {
     assert.match(r.stderr, /task missing clickup_id/);
   });
 });
+
+describe('daily-slack-bucket — closed → 100% normalization', () => {
+  test('closed task without subtasks normalizes to 100 in achieved', () => {
+    const current = [{ clickup_id: 'a', name: 'A', url: 'u', percentage: 0, status_type: 'closed' }];
+    const snap = { a: { name: 'A', url: 'u', percentage: 50, status_type: 'in_progress' } };
+    const r = run(setup(current, snap));
+    const out = JSON.parse(r.stdout);
+    assert.equal(out.achieved.length, 1);
+    assert.equal(out.achieved[0].percentage, 100);
+    assert.equal(out.new_snapshot.a.percentage, 100);
+  });
+});

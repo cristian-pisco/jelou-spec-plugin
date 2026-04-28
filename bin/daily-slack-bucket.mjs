@@ -28,6 +28,10 @@ function snapshotEntry(t) {
   return { name: t.name, url: t.url, percentage: t.percentage, status_type: t.status_type };
 }
 
+function normalizePercentage(entry) {
+  return entry.status_type === 'closed' ? 100 : entry.percentage;
+}
+
 function bucket(current, prior) {
   const achieved = [];
   const not_achieved = [];
@@ -37,6 +41,7 @@ function bucket(current, prior) {
       console.error(`error: task missing clickup_id: ${JSON.stringify(t)}`);
       process.exit(2);
     }
+    t.percentage = normalizePercentage(t);
     new_snapshot[t.clickup_id] = snapshotEntry(t);
     const p = prior ? prior[t.clickup_id] : undefined;
     if (!prior) {
