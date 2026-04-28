@@ -160,6 +160,7 @@ describe('daily-slack-bucket — closed → 100% normalization', () => {
     const snap = { a: { name: 'A', url: 'u', percentage: 0, status_type: 'open' } };
     const r = run(setup(current, snap));
     const out = JSON.parse(r.stdout);
+    assert.equal(out.not_achieved.length, 1);
     assert.equal(out.not_achieved[0].percentage, 0);
     assert.equal(out.new_snapshot.a.percentage, 0);
   });
@@ -171,6 +172,7 @@ describe('daily-slack-bucket — closed → 100% normalization', () => {
     const out = JSON.parse(r.stdout);
     assert.equal(out.achieved.length, 1);
     assert.equal(out.achieved[0].percentage, 100);
+    assert.equal(out.new_snapshot.a.percentage, 100);
   });
 
   test('first run with closed task still goes to not_achieved (rule unchanged)', () => {
