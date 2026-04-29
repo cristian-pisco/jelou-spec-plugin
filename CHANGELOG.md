@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.3.134] — 2026-04-29
+
+### Added
+- close-task posts a natural-language English closure comment driven by a new `closure-comment.md` template; bans PR URLs (already attached by /jlu-task-clickup), signature lines, ISO timestamps, test/phase counts, and internal slugs
+
+## [0.3.133] — 2026-04-29
+
+### Fixed
+- daily-slack Step 6b ClickUp gap-fill is now executable: explicit list/field resolution, paginated `clickup_get_tasks`, and a new `bin/daily-slack-discover.mjs` post-filter that handles five known shapes of the Responsable custom-field value
+
 ## [0.3.132] — 2026-04-29
 
 ### Added
