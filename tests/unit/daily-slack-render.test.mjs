@@ -33,9 +33,9 @@ describe('daily-slack-render — happy path', () => {
     const r = run(setup(data));
     assert.equal(r.status, 0, `stderr: ${r.stderr}`);
     const out = JSON.parse(r.stdout);
-    assert.equal(out.achieved_goals, '[90%] API node\nhttps://app.clickup.com/t/abc');
+    assert.equal(out.achieved_goals, '`[90%]` <https://app.clickup.com/t/abc|API node>');
     assert.equal(out.not_achieved_goals, 'Migration — esperando revisión\nhttps://app.clickup.com/t/def');
-    assert.equal(out.short_term_goals, '[2026-04-30] API node https://app.clickup.com/t/abc');
+    assert.equal(out.short_term_goals, '`[2026-04-30]` <https://app.clickup.com/t/abc|API node>');
   });
 });
 
@@ -74,7 +74,7 @@ describe('daily-slack-render — short_term sorting + filtering', () => {
     const out = JSON.parse(run(setup(data)).stdout);
     assert.equal(
       out.short_term_goals,
-      '[2026-04-30] Early u1\n[2026-05-10] Late u3'
+      '`[2026-04-30]` <u1|Early>\n`[2026-05-10]` <u3|Late>'
     );
   });
 
@@ -85,8 +85,53 @@ describe('daily-slack-render — short_term sorting + filtering', () => {
   });
 });
 
+describe('daily-slack-render — short_term closed strikethrough', () => {
+  test('applies strikethrough to link for closed tasks', () => {
+    const data = {
+      first_run: false,
+      achieved: [],
+      not_achieved: [],
+      short_term: [
+        { name: 'Done task', url: 'u1', due_date: '2026-04-30T00:00:00Z', status_type: 'closed' },
+      ],
+    };
+    const out = JSON.parse(run(setup(data)).stdout);
+    assert.equal(out.short_term_goals, '`[2026-04-30]` ~<u1|Done task>~');
+  });
+
+  test('does not apply strikethrough for open tasks', () => {
+    const data = {
+      first_run: false,
+      achieved: [],
+      not_achieved: [],
+      short_term: [
+        { name: 'Open task', url: 'u1', due_date: '2026-04-30T00:00:00Z', status_type: 'open' },
+      ],
+    };
+    const out = JSON.parse(run(setup(data)).stdout);
+    assert.equal(out.short_term_goals, '`[2026-04-30]` <u1|Open task>');
+  });
+
+  test('mixed open and closed render with per-task strikethrough', () => {
+    const data = {
+      first_run: false,
+      achieved: [],
+      not_achieved: [],
+      short_term: [
+        { name: 'Open', url: 'u1', due_date: '2026-04-30T00:00:00Z', status_type: 'open' },
+        { name: 'Done', url: 'u2', due_date: '2026-05-01T00:00:00Z', status_type: 'closed' },
+      ],
+    };
+    const out = JSON.parse(run(setup(data)).stdout);
+    assert.equal(
+      out.short_term_goals,
+      '`[2026-04-30]` <u1|Open>\n`[2026-05-01]` ~<u2|Done>~'
+    );
+  });
+});
+
 describe('daily-slack-render — multi-task spacing', () => {
-  test('separates multiple achieved blocks with blank line', () => {
+  test('separates multiple achieved items with single newline', () => {
     const data = {
       first_run: false,
       achieved: [
@@ -97,7 +142,7 @@ describe('daily-slack-render — multi-task spacing', () => {
       short_term: [],
     };
     const out = JSON.parse(run(setup(data)).stdout);
-    assert.equal(out.achieved_goals, '[50%] A\nu1\n\n[100%] B\nu2');
+    assert.equal(out.achieved_goals, '`[50%]` <u1|A>\n`[100%]` <u2|B>');
   });
 });
 

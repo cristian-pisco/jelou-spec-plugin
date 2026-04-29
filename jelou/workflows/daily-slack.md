@@ -115,11 +115,11 @@ Build `<workspace>/.cache/render-data.json`:
   "first_run": <bool>,
   "achieved": [{"name": "...", "url": "...", "percentage": <int>}, ...],
   "not_achieved": [{"name": "...", "url": "...", "reason": "..."}, ...],
-  "short_term": [{"name": "...", "url": "...", "due_date": "<iso-or-null>"}, ...]
+  "short_term": [{"name": "...", "url": "...", "due_date": "<iso-or-null>", "status_type": "<closed|open|...>"}, ...]
 }
 ```
 
-`short_term` is built from the union task set (any task with a `due_date`).
+`short_term` is built from the union task set (any task with a `due_date`). Pass through `status_type` from `current-tasks.json` so the renderer can apply strikethrough to closed tasks.
 
 ```bash
 node <plugin-root>/bin/daily-slack-render.mjs --data <workspace>/.cache/render-data.json

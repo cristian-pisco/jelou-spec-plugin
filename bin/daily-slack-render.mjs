@@ -26,10 +26,16 @@ const FIRST_RUN_BANNER = '_Primer reporte del sprint — sin línea base para co
 const ACHIEVED_EMPTY = '_Sin avances desde la última actualización._';
 const NOT_ACHIEVED_EMPTY = '_Todas las tareas avanzaron._';
 
+function slackLink(url, text) {
+  return `<${url}|${text}>`;
+}
+
 function renderAchieved(achieved, firstRun) {
   if (firstRun) return FIRST_RUN_BANNER;
   if (!achieved.length) return ACHIEVED_EMPTY;
-  return achieved.map((t) => `[${t.percentage}%] ${t.name}\n${t.url}`).join('\n\n');
+  return achieved
+    .map((t) => `\`[${t.percentage}%]\` ${slackLink(t.url, t.name)}`)
+    .join('\n');
 }
 
 function renderNotAchieved(not_achieved) {
@@ -44,7 +50,13 @@ function isoDate(s) {
 function renderShortTerm(short_term) {
   const withDates = short_term.filter((t) => t.due_date);
   withDates.sort((a, b) => (a.due_date < b.due_date ? -1 : a.due_date > b.due_date ? 1 : 0));
-  return withDates.map((t) => `[${isoDate(t.due_date)}] ${t.name} ${t.url}`).join('\n');
+  return withDates
+    .map((t) => {
+      const date = `\`[${isoDate(t.due_date)}]\``;
+      const link = slackLink(t.url, t.name);
+      return t.status_type === 'closed' ? `${date} ~${link}~` : `${date} ${link}`;
+    })
+    .join('\n');
 }
 
 function main() {

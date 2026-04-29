@@ -13,12 +13,30 @@ The file has two parts:
 The published draft also stores `task_snapshots` in its frontmatter; that field
 is managed automatically by the workflow — do not edit it by hand.
 
+## Spacing convention
+
+For Slack readability, leave a blank line BEFORE and AFTER each question heading
+in the body. Slack mrkdwn collapses adjacent blank lines, but the structure makes
+the rendered message easier to scan and prevents adjacent placeholders from
+visually running together.
+
+```
+*Question one?*
+
+{{value_one}}
+
+
+*Question two?*
+
+{{value_two}}
+```
+
 ## Placeholders
 
 ### Automated (filled from sprint task data)
-- `{{achieved_goals}}` — tasks whose percentage rose since the last published draft. Format per task: `[<%>] <name>\n<url>`
+- `{{achieved_goals}}` — tasks whose percentage rose since the last published draft. Format per task: `` `[<%>]` <url|name> `` (Slack hyperlink)
 - `{{not_achieved_goals}}` — tasks whose percentage did not advance. Format per task: `<name> — <auto-extracted reason>\n<url>`
-- `{{short_term_goals}}` — sprint tasks with a due date. Format: `[<YYYY-MM-DD>] <name> <url>`
+- `{{short_term_goals}}` — sprint tasks with a due date. Format per task: `` `[<YYYY-MM-DD>]` <url|name> ``. Closed tasks render as `` `[<YYYY-MM-DD>]` ~<url|name>~ `` (strikethrough)
 
 On the very first run for a channel (no prior published draft), `{{achieved_goals}}`
 renders the first-run banner instead of an empty string.
@@ -45,27 +63,34 @@ manual_prompts:
 ```
 
 ```
-#dailyBrain
-¿Cómo está tu energía hoy? :large_red_square::large_yellow_square::large_green_square:
+*#dailyBrain*
+
+*¿Cómo está tu energía hoy?* :large_red_square::large_yellow_square::large_green_square:
+
 {{energy}}
 
-¿Qué objetivos has logrado desde tu última actualización?
+
+*¿Qué objetivos has logrado desde tu última actualización?*
 
 {{achieved_goals}}
 
-Reuniones
+
+*Reuniones*
 
 {{meetings}}
 
-¿Qué objetivos no has logrado desde tu última actualización? ¿Y por qué?
+
+*¿Qué objetivos no has logrado desde tu última actualización? ¿Y por qué?*
 
 {{not_achieved_goals}}
 
-¿Qué logros importantes tienes planeados para hoy y para la próxima actualización diaria?
+
+*¿Qué logros importantes tienes planeados para hoy y para la próxima actualización diaria?*
 
 {{planned_achievements}}
 
-¿Cuáles son tus metas a corto plazo (y ETA)?
+
+*¿Cuáles son tus metas a corto plazo (y ETA)?*
 
 {{short_term_goals}}
 ```
