@@ -51,11 +51,34 @@ Walk `<workspace>/specs/*/CLICKUP_TASK.json`. Include a task if `sprint == <spri
 For each included task, record `clickup_id` (= `macroTask.id`), `source: "plugin"`, `slug` (folder name), `clickup_url` (= `macroTask.url`), and `pr_urls` (= values of the `pr` map).
 
 ### 6b. ClickUp gap-fill
-Query ClickUp for tasks where the `Sprint` custom field == `<sprint-arg>` AND (assignees contains user_id from Step 4 OR `Responsable` custom field == user_id).
 
-If zero matches, retry with `Sprint <sprint-arg>` as the custom-field value.
+The available ClickUp MCP exposes only `clickup_get_tasks(listId|listName, ...)` — there is no workspace-wide filter and no native `assignees` / `custom_fields` filter on this tool. The OR over (assignees, Responsable) MUST therefore be enforced after fetching the full sprint list and post-filtering.
 
-For each ClickUp task whose `id` is not already in the plugin set, add an entry with `source: "clickup-only"`, `slug: null`, `pr_urls: []`.
+**6b.1 — Resolve the sprint list ID.**
+- First, scan the plugin tasks collected in 6a: take the `list_id` from any one of their `CLICKUP_TASK.json` files. All tasks in the same sprint share the same list, so the first hit is sufficient.
+- If 6a produced no plugin tasks, call `clickup_get_workspace_hierarchy` and find the list whose name matches `^Sprint <sprint-arg>\b` (case-insensitive). If exactly one match, use its id. If zero or multiple, ask via `question`: "Which ClickUp list is sprint `<sprint-arg>`? Paste the list ID or full name." and resolve from the response.
+
+**6b.2 — Resolve the `Responsable` custom-field UUID.**
+- From the same `CLICKUP_TASK.json` used in 6b.1, read `field_mappings.Responsable`.
+- If unavailable (no plugin task), call `clickup_get_list(listId=<sprint-list-id>)` and find the custom field whose `name == "Responsable"`; use its `id`.
+
+**6b.3 — Page through the sprint list.**
+Call `clickup_get_tasks(listId=<sprint-list-id>, subtasks=false, page=<n>)` starting at `page: 0`. Concatenate the results from each page into a single array. Stop when a page returns fewer items than the previous page or returns an empty array. Do **not** pass a `statuses` filter — we want both open and closed tasks.
+
+Write the concatenated array to `<workspace>/.cache/sprint-list-tasks.json`.
+
+**6b.4 — Post-filter via the discover script.**
+Build `<workspace>/.cache/plugin-task-ids.json`: a JSON array of every `clickup_id` collected in 6a.
+
+```bash
+node <plugin-root>/bin/daily-slack-discover.mjs \
+  --tasks <workspace>/.cache/sprint-list-tasks.json \
+  --user-id <user_id-from-step-4> \
+  --responsable-field-id <responsable-field-uuid-from-6b.2> \
+  --plugin-ids <workspace>/.cache/plugin-task-ids.json
+```
+
+The script returns a JSON array of clickup-only stubs (`{clickup_id, name, url, source: "clickup-only", slug: null, pr_urls: []}`) for tasks where `assignees` contains `user_id` OR the Responsable custom field references `user_id`, with plugin IDs already excluded. Append these stubs to the union task set.
 
 ### 6c. Per-task data fetch
 For every task in the union, call `clickup_get_task` to get:

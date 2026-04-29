@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.131] — 2026-04-29
+
+### Added
+- polish Slack mrkdwn formatting
+
 ## [0.3.130] — 2026-04-28
 
 ### Fixed
