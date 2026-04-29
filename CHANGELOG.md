@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.132] — 2026-04-29
+
+### Added
+- OKR mapping, CUE story points, time_estimate verification
+
 ## [0.3.131] — 2026-04-29
 
 ### Added

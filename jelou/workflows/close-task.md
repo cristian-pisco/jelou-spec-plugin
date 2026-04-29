@@ -79,7 +79,30 @@ If all preconditions pass (or user overrides), proceed with closure.
    a. Read the file to get the ClickUp macro task ID, subtask IDs, and current state.
    b. Use `clickup_update_task` to set the macro task status to `closed`.
    c. For each subtask in CLICKUP_TASK.json: use `clickup_update_task` to set status to `closed`.
-   d. Use `clickup_create_task_comment` on the macro task with closure details (PR URL, merge timestamp).
+   d. **Compose and post the closure comment** on the macro task. Read
+      `<plugin-root>/jelou/templates/closure-comment.md` and follow it
+      strictly. Source material:
+      - `<TASK_DIR>/SPEC.md` (Problem Statement, FRs)
+      - `<TASK_DIR>/PROPOSAL.md` (Strategy section)
+      - `<TASK_DIR>/TASKS.md` (phase outcomes, deferred items for the
+        optional follow-up paragraph)
+
+      Hard rules (non-negotiable, the template enforces them too):
+      - Language: **English**, always.
+      - Style: natural prose, no Markdown formatting beyond paragraph
+        breaks, no headers, no bullets, no code fences.
+      - Structure: 1 paragraph summary (2–5 sentences) + optional 1
+        paragraph future improvements (only when there's concrete
+        evidence — never invented).
+      - **Do NOT include**: PR URLs (already posted by `/jlu-task-clickup`
+        Step 6), signature lines, ISO timestamps, test counts, phase
+        counts, internal slugs / IDs / file paths / branch names, or
+        service IDs in code form.
+
+      Then post via `clickup_create_task_comment(task_id=<macro-id>,
+      comment_text=<composed body>)`. Do not also post the PR list — that
+      is `/jlu-task-clickup`'s responsibility and is already attached as a
+      separate comment.
    e. Record the closure in `CLICKUP_TASK.json`:
       ```json
       {
