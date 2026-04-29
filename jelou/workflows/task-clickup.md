@@ -82,22 +82,76 @@ If MCP is already configured, this may be a transient ClickUp API error. Try re-
 
 ## Step 4 — Infer Fields
 
-Infer these fields inline (no pm-agent):
+Infer these fields inline (no pm-agent). Steps 4a–4c MUST run in order; later
+steps depend on earlier ones (Story Points calibrates the time_estimate, OKR
+selection feeds the description).
 
-### time_estimate (REQUIRED)
+### Step 4a — Select OKR
 
-- Per phase: ~2h for simple (1 service, few requirements), ~4h for medium, ~8h for complex
-- Total task = sum of phase estimates
-- Subtask estimate = proportional to requirements covered
-- The ClickUp API expects `time_estimate` in **milliseconds** (integer). Convert hours → ms: `hours × 3,600,000` (e.g., 2h = `7200000`, 4h = `14400000`, 8h = `28800000`)
-- Display to user as natural language (e.g., "1h 30m")
+Read `<plugin-root>/jelou/references/okr-mapping.md`. Pick exactly one Key
+Result based on the task's primary intent (use the "Selección rápida por tipo
+de tarea" table). If two KRs both fit, pick the one closer to the task's
+primary user-visible outcome.
 
-### Other Fields
+Persist the choice in memory for Step 5 — it will be appended to the macro
+task's `markdown_description` as:
+
+```markdown
+## OKR
+
+**KR <number>** — <KR description>
+```
+
+### Step 4b — Story Points / Talla / Sprint Points (CUE + AI-first)
+
+Read `<plugin-root>/jelou/references/story-points-estimation.md` and apply the
+**CUE framework with the AI-first adjustment**:
+
+1. Score the task across **C** (complexity — capas/servicios), **U**
+   (uncertidumbre — claridad del scope), and **E** (esfuerzo humano que la IA
+   no hace sola — coordinación, validación manual, deploys, decisiones).
+2. **Do not let N (file/PR/repo count) inflate SP.** With Claude Code, N is
+   irrelevant unless it implies coordinated deploys across services or
+   teams. If the only growth axis is "more files" but scope is clear, the
+   task is XS (1 SP).
+3. Pick the SP value from the reference's escala (1, 2, 3, 5, 8). 13/21 means
+   **DIVIDIR before syncing** — abort and tell the user the task must be
+   split.
+4. Add QA-modifier: +1 for QA de seguridad; +1–2 for QA cross-equipo. Other
+   QA flavors do not move the SP.
+5. **Talla** is the size column from the same table (XS, S, M, L, XL).
+6. **Sprint Points = Story Points** (always equal). Both fields take the same
+   integer.
+
+### Step 4c — time_estimate (REQUIRED)
+
+Calibrated from Step 4b's Story Points using the SP→ms table in
+`story-points-estimation.md`:
+
+| SP  | hours | ms             |
+|-----|-------|----------------|
+| 1   | 8     | 28,800,000     |
+| 2   | 16    | 57,600,000     |
+| 3   | 24    | 86,400,000     |
+| 5   | 40    | 144,000,000    |
+| 8   | 64    | 230,400,000    |
+
+Override only when there is **specific evidence** the task will take less time
+than its SP suggests (e.g., a fix that's 15 min of coding plus a half-day of
+manual validation should still be SP 2 / 16h, not 1h). Document the override
+reason in `syncHistory.details`.
+
+For subtasks: divide the macro `time_estimate` proportionally to the
+requirement coverage. Round to the nearest 3,600,000 ms (1 hour). Never set a
+subtask below 3,600,000 ms (1 hour).
+
+`time_estimate` is in **milliseconds**. Display to the user as natural
+language (e.g., "1d 4h").
+
+### Step 4d — Other fields
 
 | Field | Inference Logic |
 |-------|----------------|
-| **Story Points / Talla** | From number of phases, services, requirements, codebase complexity |
-| **Sprint Points** | Same value as Story Points — must always be equal |
 | **Priority / Riesgo** | From urgency, impact, cross-service dependencies |
 | **Tipo proyecto** | From task intent: new feature, enhancement, bugfix, refactor |
 | **Front** | "Reliability" for Issues, else "Enhancement" or "AI" |
@@ -107,27 +161,72 @@ Infer these fields inline (no pm-agent):
 
 ## Step 5 — Create or Update Macro Task
 
-### Create (no existing macro task in CLICKUP_TASK.json)
+### 5a. Build markdown_description
 
-1. Use `clickup_create_task` with:
-   - `name`: Task title from SPEC.md
-   - `description`: Problem statement + strategy summary
-   - `assignees`: From config defaults
-   - `priority`: Inferred priority (1=urgent, 2=high, 3=normal, 4=low)
-   - `custom_fields`: ALL mapped fields from Step 3-4
-2. **Immediately after create**: Use `clickup_update_task` to set `time_estimate` (not available on create):
-   ```
-   clickup_update_task(task_id: "<new-task-id>", time_estimate: "<milliseconds>")
-   ```
-   Example: `clickup_update_task(task_id: "86e0r6mek", time_estimate: "7200000")` for 2h.
+Compose the description from the artifacts in this order:
 
-### Update (existing macro task)
+1. Problem statement (SPEC.md "Problem Statement").
+2. Strategy summary (PROPOSAL.md "Strategy" section, condensed).
+3. Acceptance criteria checklist (from FRs in SPEC.md).
+4. References block (PR URLs from TASKS.md, parent task if applicable).
+5. **OKR block from Step 4a** — append at the end as:
+   ```markdown
+   ## OKR
 
-1. Use `clickup_update_task` with changed fields + `time_estimate` + status mapping:
+   **KR <number>** — <KR description>
    ```
-   clickup_update_task(task_id: "<macro-task-id>", time_estimate: "<milliseconds>", status: "<mapped-status>")
-   ```
-   Example: `clickup_update_task(task_id: "86e0r6mek", time_estimate: "14400000")` for 4h.
+
+### 5b. Create (no existing macro task in CLICKUP_TASK.json)
+
+Pass `time_estimate` **directly in the create call** — the official ClickUp
+MCP `clickup_create_task` accepts `time_estimate` (milliseconds) as an
+optional parameter. Do NOT use a follow-up `clickup_update_task` only to set
+the estimate; it has historically been a source of "1m" defaults when the
+follow-up was skipped.
+
+```
+clickup_create_task(
+  list_id: "<list-id>",
+  name: "<task title>",
+  markdown_description: "<from 5a>",
+  assignees: ["<user-id>"],
+  priority: <1-4>,
+  task_type: "<inferred type>",
+  time_estimate: <milliseconds-from-step-4c>,
+  custom_fields: [<all mapped fields from Step 3-4>]
+)
+```
+
+### 5c. Update (existing macro task)
+
+```
+clickup_update_task(
+  task_id: "<macro-task-id>",
+  time_estimate: <milliseconds-from-step-4c>,
+  status: "<mapped-status>",
+  ...other changed fields
+)
+```
+
+### 5d. Verify time_estimate landed
+
+Immediately after create or update, call `clickup_get_task(task_id=<id>)` and
+read the returned `time_estimate` field.
+
+- If `returned.time_estimate == sent.time_estimate` → continue.
+- If `returned.time_estimate == 60000` (the ClickUp "1m" default) or `null`
+  or differs from `sent.time_estimate` by more than 1000 ms → call
+  `clickup_update_task(task_id=<id>, time_estimate=<sent>)` once as a
+  fallback, then re-fetch and re-verify.
+- If still mismatched after the fallback → record the mismatch in
+  `syncHistory.details` ("time_estimate verification failed: sent=<x> got=<y>")
+  and surface a warning in the Step 9 summary. Do **not** abort the rest of
+  the sync — partial fields are better than nothing.
+
+Persist `time_estimate_ms` in `CLICKUP_TASK.json` only after verification
+passes; do not write the persisted value if the verification step ended in
+warning state (use the actual `returned.time_estimate` instead, so future
+runs reflect reality, not intent).
 
 ### Status Mapping
 
@@ -174,13 +273,24 @@ For each user story file in `uh/`:
 
 1. Match existing subtasks by slug via CLICKUP_TASK.json.
 2. **Create new**: Use `clickup_create_task` with `parent` = macro task ID.
+   Pass `time_estimate` **in the same create call** (do not split into
+   create + update — the same "1m" default risk applies to subtasks).
+   ```
+   clickup_create_task(
+     list_id: "<list-id>",
+     parent: "<macro-task-id>",
+     name: "<subtask name>",
+     markdown_description: "<story body>",
+     time_estimate: <subtask-ms-from-step-4c>,
+     custom_fields: [<inherited fields>]
+   )
+   ```
 3. **Subtasks inherit ALL parent custom fields**: Riesgo, Equipo, Tipo proyecto, Solicitante, Front, Talla, Responsable, Sprint, Story Points, Sprint Points, Necesita Diseno.
-4. **Update existing**: Use `clickup_update_task`.
-5. Set `time_estimate` on each subtask (proportional to phase scope) — use `clickup_update_task` after create:
-   ```
-   clickup_update_task(task_id: "<subtask-id>", time_estimate: "<milliseconds>")
-   ```
-   Example: `clickup_update_task(task_id: "86e0r6mek", time_estimate: "3600000")` for 1h.
+4. **Update existing**: Use `clickup_update_task` with `time_estimate` and any changed fields in a single call.
+5. **Verify** `time_estimate` on every subtask using the same protocol as
+   Step 5d (call `clickup_get_task`, fall back to `clickup_update_task` once,
+   record mismatches). Subtasks must never end the sync at the ClickUp "1m"
+   default.
 6. **Never delete subtasks** (Decision #27).
 
 ## Step 8 — Persist to CLICKUP_TASK.json
@@ -247,13 +357,16 @@ Present the sync results to the user:
 ### Macro Task
 - Action: created / updated
 - URL: <clickup-url>
-- Time Estimate: <human-readable>
+- Story Points: <SP> (Talla: <talla>)
+- OKR: KR <n.n> — <description>
+- Time Estimate: <human-readable> (sent: <ms>, verified: <ms>)
 - Status: <clickup-status>
 
 ### Subtasks
 - Created: <N>
 - Updated: <N>
 - Unchanged: <N>
+- Time-estimate mismatches: <N> (see Warnings if non-zero)
 
 ### PR Comments
 - <Attached / No PRs found>
@@ -262,7 +375,7 @@ Present the sync results to the user:
 - <list of fields that were successfully mapped and set>
 
 ### Warnings
-- <any unmapped fields or errors>
+- <any unmapped fields or time_estimate verification failures>
 ```
 
 ## Rules
@@ -270,6 +383,17 @@ Present the sync results to the user:
 - Sync is **idempotent** — running it multiple times produces the same result.
 - Never delete ClickUp tasks or subtasks. Only create and update.
 - `time_estimate` is **REQUIRED** on every task and subtask. Never skip it.
+  Pass it directly in the create/update call (Step 5b/5c/7b), never as a
+  trailing-only update — the trailing-only pattern has historically left
+  tasks at the ClickUp "1m" default when the trailing call was skipped.
+- **Verify time_estimate** after every create or update via Step 5d. Persist
+  the verified value (not the intended value) to `CLICKUP_TASK.json`.
+- **OKR is mandatory** in the macro task description. Pick exactly one KR
+  from `jelou/references/okr-mapping.md` per Step 4a. Subtasks do not repeat
+  the OKR block.
+- **Story Points / Talla** must follow the CUE + AI-first framework in
+  `jelou/references/story-points-estimation.md`. N (files / PRs / repos)
+  does not inflate SP. SP ≥ 13 means **DIVIDIR before syncing**.
 - All user interaction MUST use `question`. Never output questions as plain text.
 - If a ClickUp MCP tool returns an error, report it clearly. Do not retry silently.
 - If there's a duplicate custom field name, ask for resolution once via question and persist the choice.
