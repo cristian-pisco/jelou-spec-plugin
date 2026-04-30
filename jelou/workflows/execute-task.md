@@ -165,18 +165,21 @@ If `TASK_IS_TRIVIAL` is false: continue with Step 4a (full proposal-agent flow).
 
 **Store**: `TASK_IS_TRIVIAL`
 
-### 4a. Load Context
+### 4a. Load Context (parallel reads)
 
-Read and assemble:
+Issue ALL of the following Reads in a **single orchestrator message** (parallel reads, not sequential). For a 5-service task this collapses 32 sequential Reads into one fan-out, saving 3-15 s of accumulated I/O round-trips.
+
 - `<TASK_DIR>/SPEC.md` (required)
-- For each affected service:
+- `<WORKSPACE_PATH>/principles/ENGINEERING_PRINCIPLES.md`
+- For each affected service, the 6 codebase files:
   - `<WORKSPACE_PATH>/services/<service-id>/codebase/ARCHITECTURE.md`
   - `<WORKSPACE_PATH>/services/<service-id>/codebase/STACK.md`
   - `<WORKSPACE_PATH>/services/<service-id>/codebase/CONVENTIONS.md`
   - `<WORKSPACE_PATH>/services/<service-id>/codebase/INTEGRATIONS.md`
   - `<WORKSPACE_PATH>/services/<service-id>/codebase/STRUCTURE.md`
   - `<WORKSPACE_PATH>/services/<service-id>/codebase/CONCERNS.md`
-- `<WORKSPACE_PATH>/principles/ENGINEERING_PRINCIPLES.md`
+
+Files that don't exist for a service are tolerable — the proposal-agent receives whatever is available; no abort.
 
 ### 4b. Global Strategy Pass (Decision #21)
 
@@ -253,15 +256,28 @@ Skip proposal generation. Read the existing PROPOSAL.md and phase files to resum
    - Status: `implementing`
    - Add timestamp: `- Implementing: <current-datetime-ISO>`
 
-2. For each affected service, record the current worktree HEAD as the pre-execution baseline:
-   ```bash
-   cd <SERVICE_SOURCE_PATH> && git rev-parse --short HEAD
-   ```
-   Record in TASKS.md under a new `## Commit Tracking` section:
+2. **Per-service setup (once per task — not per phase).** For each affected service, perform the per-service work that does NOT change between phases. Resolving paths and starting Docker once at task start (instead of in Step 7c per phase) saves 5-30 s × N phases for Docker services:
+
+   a. Resolve `SERVICE_SOURCE_PATH[service-id]` via the worktree resolution algorithm in `references/worktree-resolution.md` (worktree if `<service-repo>/.worktrees/<TASK_SLUG>` exists, else service main repo from `services.yaml`).
+   b. Read the service's `docker` config from `services.yaml`.
+   c. **Docker-enabled services**: 
+      - Check container status: `cd <SERVICE_SOURCE_PATH> && docker compose ps --format '{{.State}}'`
+      - If not running: `cd <SERVICE_SOURCE_PATH> && docker compose up -d`
+      - Compute `DOCKER_EXEC_PREFIX[service-id]` = `cd <SERVICE_SOURCE_PATH> && docker compose exec <docker.service>`
+      - Set `IS_DOCKER_SERVICE[service-id]` = `true`
+   d. **Non-Docker services**: 
+      - `DOCKER_EXEC_PREFIX[service-id]` = empty
+      - `IS_DOCKER_SERVICE[service-id]` = `false`
+   e. Record current HEAD as the pre-execution baseline: `cd <SERVICE_SOURCE_PATH[service-id]> && git rev-parse --short HEAD`. Per-service `git rev-parse` calls can run in parallel (single orchestrator message) when 2+ services.
+
+3. Update TASKS.md with the per-service baselines:
    ```markdown
    ## Commit Tracking
-   - Pre-execution commit: <sha>
+   - <service-id-1> pre-execution commit: <sha>
+   - <service-id-2> pre-execution commit: <sha>
    ```
+
+**Store** (per-service maps): `SERVICE_SOURCE_PATH`, `DOCKER_EXEC_PREFIX`, `IS_DOCKER_SERVICE`.
 
 ---
 
@@ -275,24 +291,15 @@ Read the phases from PROPOSAL.md in dependency order. For each phase:
 2. Update TASKS.md with phase start timestamp.
 3. Output milestone to terminal: "Starting Phase <NN>: <Phase Name> for <service-id>"
 
-### 7c. Resolve Service Source Path and Docker Context
+### 7c. Resolve Service Source Path and Docker Context (cached lookup)
 
-1. Apply the worktree resolution algorithm from `references/worktree-resolution.md` for the current service:
-   - Look up the service entry in `services.yaml`.
-   - Check if `<service-repo>/.worktrees/<TASK_SLUG>` exists.
-   - If yes: use the worktree as `SERVICE_SOURCE_PATH`.
-   - If no: fall back to the service's main repo path from `services.yaml`.
-2. **Docker context resolution** — Read the service's `docker` config from `services.yaml`:
-   a. If the service has a `docker` block:
-      1. Check container status: `cd <SERVICE_SOURCE_PATH> && docker compose ps --format '{{.State}}'`
-      2. If not running, restart: `cd <SERVICE_SOURCE_PATH> && docker compose up -d`
-      3. Compute `DOCKER_EXEC_PREFIX` = `cd <SERVICE_SOURCE_PATH> && docker compose exec <docker.service>`
-      4. Set `IS_DOCKER_SERVICE` = `true`
-   b. If no `docker` block:
-      1. Set `DOCKER_EXEC_PREFIX` = empty
-      2. Set `IS_DOCKER_SERVICE` = `false`
+Per-service setup ran once at task start in Step 6.2. Look up the precomputed values for the current service:
 
-**Store**: `SERVICE_SOURCE_PATH`, `DOCKER_EXEC_PREFIX`, `IS_DOCKER_SERVICE`
+- `SERVICE_SOURCE_PATH = SERVICE_SOURCE_PATH[service-id]`
+- `DOCKER_EXEC_PREFIX = DOCKER_EXEC_PREFIX[service-id]`
+- `IS_DOCKER_SERVICE = IS_DOCKER_SERVICE[service-id]`
+
+Do NOT re-run `docker compose ps` or `docker compose up -d` here. Those ran once in Step 6 — repeating them per phase wastes 5-30 s × N phases. If a Docker container died mid-task (rare), the failure surfaces in the next test command's exit code; handle it as a regular phase failure rather than pre-emptively re-checking every phase.
 
 ### 7d. TDD Red — Spawn Test Writer
 
@@ -527,11 +534,7 @@ Otherwise, spawn `jlu-build-validator` agent with model: **MODEL_CONFIG.code** (
    - Commit: <sha>
    - Completed: <ISO datetime>
    ```
-4. **Container cleanup** (Docker-enabled services only):
-   ```bash
-   docker container prune -f 2>/dev/null || true
-   ```
-   Remove any orphaned containers from interrupted test runs to prevent memory accumulation across phases.
+4. **No per-phase container cleanup.** Container pruning runs ONCE before Step 8b (full suite, clean slate) and ONCE at Step 8d (post-validation). Pruning between phases costs 1-5 s per phase and risks killing warm Testcontainers that the next phase would otherwise reuse.
 
 ---
 
@@ -561,11 +564,12 @@ This is the only time the full test suite runs during the entire task execution.
    docker container prune -f 2>/dev/null || true
    ```
 
-2. Run the complete test suite for each affected service:
-   - Use the full test command from CONVENTIONS.md (e.g., `npm test`, `pytest`, `go test ./...`)
-   - If Docker-enabled: `<DOCKER_EXEC_PREFIX> <full test command>`
+2. Run the complete test suite for each affected service. **Dispatch in parallel** when there are 2+ services: emit a single orchestrator message with one `Bash` call per service. Service test suites are independent (different repos, different processes); waiting for them serially can take N × suite-time when the same work runs in max(suite-time):
+   - Per service, use the full test command from CONVENTIONS.md (e.g., `npm test`, `pytest`, `go test ./...`)
+   - If Docker-enabled: `<DOCKER_EXEC_PREFIX[service-id]> <full test command>`
    - This includes ALL tests: unit, integration, Testcontainer-based, e2e
-   
+   - Aggregate pass/fail counts across services after all return; pass the consolidated results to Step 8c.
+
 3. If tests fail:
    - Analyze failures: are they Tier 1 tests (regression) or Tier 2 tests (new integration tests)?
    - Spawn `jlu-implementer` to fix. Retry up to 5 times.

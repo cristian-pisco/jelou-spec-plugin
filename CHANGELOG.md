@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.137] — 2026-04-29
+
+### Internal
+- Step 7d Red verification: trust the test-writer's report Status: RED + Command fields instead of re-running the same tests in the orchestrator session
+- Step 7e Green verification: trust the implementer's report Status: GREEN + Command fields instead of re-running phase tests
+- Step 7j: replace jlu-git-agent dispatch with inline Bash; pre-flight branch check + scope check (declared agent artifacts + known auto-staged manifests like package.json)
+- Step 7k: build-fix commit also inline (was re-spawning git-agent)
+- Step 8a: explicit gate that skips entire Tier 2 step when no phase reported deferred Tier 2 requirements
+- Step 4.0 (new): task triviality classification — single-service + ≤150-line SPEC + simple-change pattern → synthesize PROPOSAL.md inline from template, skip jlu-proposal-agent dispatch
+- Net effect: ~30-60s saved per phase from removed test-rerun + ~5-15s from inline git + ~1-2 min for trivial tasks from skipped proposal-agent
+
 ## [0.3.136] — 2026-04-29
 
 ### Internal
