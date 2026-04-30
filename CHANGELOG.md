@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.135] — 2026-04-29
+
+### Fixed
+- run new-task and execute-task workflows inline to keep AskUserQuestion at L2
+
 ## [0.3.134] — 2026-04-29
 
 ### Added
