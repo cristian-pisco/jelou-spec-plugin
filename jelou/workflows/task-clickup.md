@@ -145,8 +145,15 @@ For subtasks: divide the macro `time_estimate` proportionally to the
 requirement coverage. Round to the nearest 3,600,000 ms (1 hour). Never set a
 subtask below 3,600,000 ms (1 hour).
 
-`time_estimate` is in **milliseconds**. Display to the user as natural
-language (e.g., "1d 4h").
+`time_estimate` is in **milliseconds** and must be passed as a JSON
+**integer**, not a string. Per the ClickUp API
+([`/reference/createtask`](https://developer.clickup.com/reference/createtask),
+[`/reference/updatetask`](https://developer.clickup.com/reference/updatetask)),
+the field is typed `integer`; `"120"` (string) and `120` (integer minutes)
+both end up stored as `120` ms — effectively zero. The value sent to the MCP
+must be the same number that lives under `time_estimate_ms` in
+`CLICKUP_TASK.json` (no minute conversion, no string wrapping). Display to
+the user as natural language (e.g., "1d 4h").
 
 ### Step 4d — Other fields
 
@@ -213,9 +220,12 @@ clickup_update_task(
 Immediately after create or update, call `clickup_get_task(task_id=<id>)` and
 read the returned `time_estimate` field.
 
-- If `returned.time_estimate == sent.time_estimate` → continue.
-- If `returned.time_estimate == 60000` (the ClickUp "1m" default) or `null`
-  or differs from `sent.time_estimate` by more than 1000 ms → call
+- If `returned.time_estimate == sent.time_estimate` **and**
+  `returned.time_estimate >= 3,600,000` (≥ 1 h) → continue.
+- If `returned.time_estimate == 60000` (the ClickUp "1m" default), `null`,
+  `< 3,600,000` ms (smells like wrong-unit conversion: e.g., 120 ms means
+  someone sent `"120"` thinking minutes), or differs from
+  `sent.time_estimate` by more than 1000 ms → call
   `clickup_update_task(task_id=<id>, time_estimate=<sent>)` once as a
   fallback, then re-fetch and re-verify.
 - If still mismatched after the fallback → record the mismatch in
