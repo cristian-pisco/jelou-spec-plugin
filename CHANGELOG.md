@@ -1,14 +1,13 @@
 # Changelog
 
-## [0.3.139] — 2026-04-30
+## [0.3.140] — 2026-04-30
 
 ### Fixed
-- assignees dual-write and {add, rem} shape on Update
-
-## [0.3.138] — 2026-04-30
-
-### Fixed
-- time_estimate must be integer ms, not string or minutes
+- task-clickup: time_estimate must be integer milliseconds (not string, not minutes); harden Step 5d to flag values < 3,600,000 ms as wrong-unit conversions
+- task-clickup: Sprint Points / Story Points use the top-level `points` parameter documented in /reference/createtask and /reference/updatetask, not a custom field; drop the dead "Sprint points"/"Story points" rows from the custom-field mapping table
+- task-clickup: Responsable is a dual write — top-level `assignees` (flat array on Create, `{add, rem}` on Update per /reference/updatetask) AND the `Responsable` custom field of type `users` using the documented `{value: {add, rem}}` shape from /docs/customfields
+- task-clickup: `custom_fields` is not a valid Update Task body parameter; document the dedicated /reference/setcustomfieldvalue endpoint plus per-type value shapes (users add/rem, drop_down UUID, labels UUID array, date ms)
+- close-task: post the closure comment even when CLICKUP_TASK.json is absent — run /jlu-task-clickup inline first instead of skipping with "No ClickUp task associated"
 
 ## [0.3.137] — 2026-04-29
 
