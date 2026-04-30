@@ -170,7 +170,8 @@ the user as natural language (e.g., "1d 4h").
 | **Tipo proyecto** | From task intent: new feature, enhancement, bugfix, refactor |
 | **Front** | "Reliability" for Issues, else "Enhancement" or "AI" |
 | **Necesita Diseno** | "Si" for frontend tasks, "No" for backend |
-| **Equipo, Responsable, Solicitante** | From config defaults — ask user on first run via question, persist in CLICKUP_TASK.json |
+| **Equipo, Solicitante** | From config defaults — ask user on first run via question, persist in CLICKUP_TASK.json |
+| **Responsable** | From config defaults. **Dual destination**: write the user ID to (a) the top-level `assignees` field on Create Task / Update Task, and (b) the `Responsable` custom field (type `users`) using the documented `{add, rem}` shape. See Step 5b/5c — skipping (a) leaves `assignees: []` on the task, which is what hides it from boards and "assigned to me" filters. |
 | **Sprint** | From TASKS.md sprint number |
 
 ## Step 5 — Create or Update Macro Task
@@ -203,7 +204,7 @@ clickup_create_task(
   list_id: "<list-id>",
   name: "<task title>",
   markdown_description: "<from 5a>",
-  assignees: ["<user-id>"],
+  assignees: [<user-id-int>],          # top-level, flat array of integers
   priority: <1-4>,
   task_type: "<inferred type>",
   time_estimate: <milliseconds-from-step-4c>,
@@ -216,7 +217,27 @@ clickup_create_task(
 (see Step 3 note 5). Same numeric value used for both — do not duplicate it
 into `custom_fields`.
 
+`assignees` on **Create Task** is a flat array of integer user IDs per
+[`/reference/createtask`](https://developer.clickup.com/reference/createtask).
+The Responsable custom field (type `users`) is set in the same call inside
+`custom_fields` using the documented `{add, rem}` shape — see
+[`/docs/customfields`](https://developer.clickup.com/docs/customfields):
+
+```
+{ "id": "<responsable-field-id>",
+  "value": { "add": ["<user-id-str>"], "rem": [] } }
+```
+
+Both writes are mandatory. Skipping the top-level `assignees` is what
+produced `"assignees": []` on the task even though the custom field looked
+set.
+
 ### 5c. Update (existing macro task)
+
+On **Update Task**, the `assignees`, `watchers`, and `group_assignees`
+shapes change to `{add, rem}` per
+[`/reference/updatetask`](https://developer.clickup.com/reference/updatetask)
+— this is documented as different from Create:
 
 ```
 clickup_update_task(
@@ -224,6 +245,7 @@ clickup_update_task(
   time_estimate: <milliseconds-from-step-4c>,
   points: <story-points-from-step-4b>,
   status: "<mapped-status>",
+  assignees: { "add": [<user-id-int>], "rem": [] },   # NOT a flat array on Update
   ...other changed fields
 )
 ```
@@ -304,10 +326,14 @@ For each user story file in `uh/`:
      parent: "<macro-task-id>",
      name: "<subtask name>",
      markdown_description: "<story body>",
+     assignees: [<user-id-int>],
      time_estimate: <subtask-ms-from-step-4c>,
-     custom_fields: [<inherited fields>]
+     points: <subtask-points-from-step-4b>,
+     custom_fields: [<inherited fields, including Responsable {add, rem}>]
    )
    ```
+   Same dual-write contract as 5b: top-level `assignees` flat array AND
+   the Responsable custom field with `{add, rem}` shape.
 3. **Subtasks inherit ALL parent custom fields**: Riesgo, Equipo, Tipo
    proyecto, Solicitante, Front, Talla, Responsable, Sprint, Necesita
    Diseno. Sprint / Story Points are passed via the top-level `points`
