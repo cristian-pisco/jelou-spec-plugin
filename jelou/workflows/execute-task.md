@@ -327,6 +327,30 @@ After the implementer finishes and tests are green, run lint and format inside t
    - Retry up to 5 times total.
    - If still failing after 5 attempts: pause and notify user (see Escalation Format below).
 
+### 7e.1 — Phase Triviality Classification
+
+After Green is verified, classify the phase to gate downstream agents (refactor, per-phase QA, build-validator).
+
+1. Capture the phase diff:
+   ```bash
+   cd <SERVICE_SOURCE_PATH> && git diff --shortstat HEAD
+   cd <SERVICE_SOURCE_PATH> && git diff --name-only HEAD
+   ```
+2. Set `PHASE_IS_TRIVIAL = true` if **all** of the following hold:
+   - Total lines changed (insertions + deletions) ≤ 20
+   - Files changed ≤ 3
+   - The diff contains none of: `package.json`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `tsconfig*.json`, `*.d.ts`, files under any `migrations/` directory
+   - The implementer did not report new exported symbols, new module imports, or new TypeScript interfaces/types
+   - Single service is affected by this phase
+
+   Otherwise: `PHASE_IS_TRIVIAL = false`.
+
+3. Log to terminal:
+   - If trivial: `Phase <NN> classified as trivial — skipping refactor (7g), per-phase QA (7h), and build-validator (7k).`
+   - If not trivial: `Phase <NN> non-trivial — running full per-phase pipeline.`
+
+**Store**: `PHASE_IS_TRIVIAL`
+
 ### 7f. Test Dispute Resolution (Decision #5)
 
 If the implementer flags that a test is incorrect:
@@ -342,7 +366,9 @@ If the implementer flags that a test is incorrect:
 
 ### 7g. Refactor Pass (Optional)
 
-After Green:
+**Skip this step entirely if `PHASE_IS_TRIVIAL` is true.** Trivial phases by construction have no duplicated code, no naming hot-spots, and no functions exceeding 100 lines.
+
+Otherwise:
 1. Review implementation for code quality:
    - Duplicated code that can be extracted
    - Naming improvements
@@ -352,7 +378,9 @@ After Green:
 
 ### 7h. Per-Phase QA (Decision #13)
 
-Spawn `jlu-qa-agent` with model: **MODEL_CONFIG.code** (default: sonnet) for a static per-phase review:
+**Skip this step entirely if `PHASE_IS_TRIVIAL` is true.** Per-phase static review on a 1-3 file, ≤20-line change yields no signal worth the agent dispatch. Comprehensive QA still runs once at Step 8c against the full task scope.
+
+Otherwise, spawn `jlu-qa-agent` with model: **MODEL_CONFIG.code** (default: sonnet) for a static per-phase review:
 - Phase file with requirements
 - List of files created/modified in this phase
 - `<WORKSPACE_PATH>/services/<service-id>/codebase/CONVENTIONS.md`
@@ -367,12 +395,17 @@ If QA finds code quality issues (convention violations, function length, test ti
 - Retry up to 5 times total.
 - If still failing after 5 attempts: pause and notify user (see Escalation Format below).
 
-### 7i. Update TASKS.md
+### 7i. Update TASKS.md (inline)
 
-Spawn `jlu-tasks-agent` with model: **MODEL_CONFIG.operational** (default: haiku) (or update directly):
-- Update phase status in TASKS.md
-- Record: test results, artifacts created, any deviations
-- Record agent summaries from this phase
+The orchestrator updates TASKS.md directly via `Edit` — no agent dispatch. All required data is already in context from prior steps in this phase:
+
+1. Locate the phase entry in `<TASK_DIR>/TASKS.md`.
+2. Update via `Edit`:
+   - Status: `pending` → `done`
+   - Add: test pass/fail counts (from the Green verification step), artifacts list (file paths from test-writer + implementer reports), and any deviations noted by the implementer.
+3. The commit SHA is appended in Step 7l after `jlu-git-agent` reports the commit; do not record it here.
+
+Rationale: this step is pure file editing. Spawning a subagent for a string-substitution task is wasted overhead.
 
 ### 7j. Git Commit
 
@@ -384,7 +417,9 @@ Spawn `jlu-git-agent` with model: **MODEL_CONFIG.operational** (default: haiku):
 
 ### 7k. Build Validation
 
-Spawn `jlu-build-validator` agent with model: **MODEL_CONFIG.code** (default: sonnet):
+**Skip this step entirely if `PHASE_IS_TRIVIAL` is true.** Trivial phases by construction have no edits to manifests, lockfiles, tsconfigs, type declaration files, or migrations — the categories that justify a separate build pass on top of the in-phase tsc/lint that already ran. Tier 2 build/regression checking still runs once at Step 8b across the full task scope.
+
+Otherwise, spawn `jlu-build-validator` agent with model: **MODEL_CONFIG.code** (default: sonnet):
 - **Input**:
   - Service source path (worktree or repo)
   - `<WORKSPACE_PATH>/services/<service-id>/codebase/CONVENTIONS.md`
@@ -459,18 +494,20 @@ This is the only time the full test suite runs during the entire task execution.
    - Spawn `jlu-implementer` to fix. Retry up to 5 times.
    - If still failing after 5 attempts: pause and notify user.
 
-### 8c. Comprehensive QA
+### 8c. Comprehensive QA (static only)
 
-Spawn `jlu-qa-agent` with model: **MODEL_CONFIG.code** (default: sonnet) for comprehensive final validation:
+Spawn `jlu-qa-agent` with model: **MODEL_CONFIG.code** (default: sonnet) for **static** comprehensive review. The QA agent **must NOT run the test suite** — Step 8b is the only sanctioned full test run, and re-running here is duplicate work that the trace shows costing 1-3 min per task.
+
+Pass the QA agent the captured Step 8b results (test counts, failing test list if any) so it has the verdict without re-executing:
+
+- **Step 8b results**: PASS/FAIL counts per service, list of any failing tests
 - **Docker context** (only if `IS_DOCKER_SERVICE` is true): Include the `## Execution Environment` block. Omit for non-Docker services.
-- **Full coverage analysis**: Are all requirements from SPEC.md covered by tests?
+- **Full coverage analysis**: Are all requirements from SPEC.md covered by tests? (read SPEC.md and test files; do not run them)
 - **Edge case review**: Were edge cases from the spec addressed?
 - **Cross-service contract verification** (if multi-service): Do the services communicate correctly? Are contracts honored?
 - **Convention compliance**: Final check against CONVENTIONS.md
 - **Code smell detection**: Full structural review
 - **Over-engineering detection**: Verify minimum viable implementation
-
-The QA agent MAY run the test suite during final validation — this is the sanctioned full run.
 
 Log the validation results to terminal:
 ```
@@ -507,10 +544,34 @@ If all validation passes:
    - Status: `validating` → `ready_to_publish`
    - Add completion timestamp
    - Record final test counts
-2. Dispatch `jlu-summary-agent` with model: **MODEL_CONFIG.operational** (default: sonnet):
-   - Pass `TASK_DIR` (the resolved task directory path)
-   - Pass `CONTEXT_HINT` = `post-execution`
-   - Print the agent's output verbatim — do not add to or reformat it.
+2. Print the final summary directly to terminal — no agent dispatch. The orchestrator already has every field from earlier steps in this run (TASKS.md just updated, git commit SHAs from Step 7j per phase, test counts from Step 8b, artifact paths from test-writer + implementer reports). Format:
+
+   ```
+   ## Execution Complete — <TASK_SLUG>
+
+   Status: ready_to_publish · <N> phase(s) · <C> commit(s) on production/<TASK_SLUG>
+
+   ### Phases
+   | NN | Name | Service | Tests | Commit |
+   |----|------|---------|-------|--------|
+   | 01 | <name> | <service-id> | <pass>/<total> | <sha> |
+   | ...
+
+   ### Verification
+   - Tier 1 tests: <count> passing
+   - Tier 2 tests: <count> passing (or "none — no deferred requirements")
+   - Build: <pass | skipped (all phases trivial) | n/a>
+   - QA findings: <count>
+
+   ### Files Changed
+   <total: +<insertions> / -<deletions> across <N> files>
+
+   ### Next Steps
+   - Run `/jlu-create-pr` to open the pull request.
+   - After merge, run `/jlu-close-task`.
+   ```
+
+   Rationale: this step is fixed-format rendering of data already in context. Dispatching a subagent for string interpolation is wasted overhead.
 
 ---
 

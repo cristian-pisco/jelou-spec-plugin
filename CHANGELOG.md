@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.136] — 2026-04-29
+
+### Internal
+- Inline update-check.md and claude-code-runtime.md into each SKILL.md so the agent no longer Reads 2 separate reference files on every /jlu-* invocation
+- Drop the redundant "Confirm workflow file exists" ls step
+- Run bootstrap (check-update.sh + workflow Read + AskUserQuestion ToolSearch preload) in a single parallel pass instead of serially
+- Applied to all 16 jlu skills
+
 ## [0.3.135] — 2026-04-29
 
 ### Fixed
