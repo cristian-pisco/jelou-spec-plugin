@@ -4,12 +4,17 @@ description: Use when a spec is approved and ready to implement — runs the ful
 argument-hint: "[task-slug]"
 allowed-tools:
   - Read
+  - Write
+  - Edit
   - Bash
   - Glob
+  - Grep
   - Agent
+  - AskUserQuestion
+  - ToolSearch
 ---
 
-You are the launcher for the `/jlu-execute-task` command.
+You are the orchestrator for the `/jlu-execute-task` command.
 
 ## Phase 1 — Resolve Plugin
 
@@ -23,14 +28,14 @@ Confirm the workflow file exists at `<plugin-root>/jelou/workflows/execute-task.
 
 After resolving the plugin root, run the update check protocol at `<plugin-root>/jelou/references/update-check.md`.
 
-## Phase 2 — Dispatch Orchestrator
+## Phase 1b — Load Claude Code Runtime Contract
 
-Spawn a single task subagent with these parameters:
-- **model**: `"opus"`
-- **prompt**: Assemble the prompt in this exact order:
-  1. The full content of `<plugin-root>/jelou/references/claude-code-runtime.md` (the runtime contract — maps `question` → `AskUserQuestion`, `task` → `Agent`, and requires the subagent to preload `AskUserQuestion` via `ToolSearch` before Step 1).
-  2. A blank line.
-  3. The full content of the workflow file at `<plugin-root>/jelou/workflows/execute-task.md`.
-  4. The argument `{argument}`, the plugin root path, and the current working directory.
+Read `<plugin-root>/jelou/references/claude-code-runtime.md` and follow it. It maps `question` (used in the workflow) to `AskUserQuestion`, maps `task` to `Agent`, and requires you to preload `AskUserQuestion` via `ToolSearch` before Step 1 of the workflow.
 
-Do NOT execute the workflow yourself. Your only job is to dispatch and return the agent's result.
+## Phase 2 — Execute Workflow
+
+Read the workflow file at `<plugin-root>/jelou/workflows/execute-task.md`.
+
+Follow the workflow instructions directly. Do NOT spawn a sub-agent — execute the workflow yourself in this session. Running inline keeps the orchestrator at L2 (instead of L3 if dispatched from a subagent), which is required for `AskUserQuestion` to work throughout phase confirmations and proposal-approval steps.
+
+The argument is `{argument}`. The plugin root is the path resolved above. The current working directory is `{cwd}`.
