@@ -72,47 +72,62 @@ If all preconditions pass (or user overrides), proceed with closure.
 > ```
 > Store the output as `CLOSE_TIMESTAMP`. Use this value everywhere a closure timestamp is needed below.
 
-### 3a. Update ClickUp (if synced)
+### 3a. Update ClickUp
 
 1. Check if `<TASK_DIR>/CLICKUP_TASK.json` exists.
-2. If it exists:
-   a. Read the file to get the ClickUp macro task ID, subtask IDs, and current state.
-   b. Use `clickup_update_task` to set the macro task status to `closed`.
-   c. For each subtask in CLICKUP_TASK.json: use `clickup_update_task` to set status to `closed`.
-   d. **Compose and post the closure comment** on the macro task. Read
-      `<plugin-root>/jelou/templates/closure-comment.md` and follow it
-      strictly. Source material:
-      - `<TASK_DIR>/SPEC.md` (Problem Statement, FRs)
-      - `<TASK_DIR>/PROPOSAL.md` (Strategy section)
-      - `<TASK_DIR>/TASKS.md` (phase outcomes, deferred items for the
-        optional follow-up paragraph)
+2. **If it does NOT exist**: the task was never synced. Run the
+   `/jlu-task-clickup` workflow inline against this task directory before
+   continuing. This creates the macro + subtasks (mapped to ClickUp status
+   per the Status Mapping in `task-clickup.md` Step 5) and writes
+   `CLICKUP_TASK.json`. Do **not** skip with "No ClickUp task associated"
+   — that path silently drops the closure comment when the user runs
+   close-task on a never-synced task. After the inline sync completes,
+   continue to step 3 below.
+3. Read `CLICKUP_TASK.json` to get the ClickUp macro task ID, subtask
+   IDs, and current state.
+4. If the macro task is not already at status `closed` in ClickUp, use
+   `clickup_update_task` to set the macro task status to `closed`. For
+   each subtask in `CLICKUP_TASK.json` not already `closed`, do the same.
+   (When step 2 just created the tasks, status may already be `closed`
+   via the mapping; do not redundantly re-update.)
+5. **Compose and post the closure comment** on the macro task. This step
+   runs unconditionally — whether `CLICKUP_TASK.json` was pre-existing
+   or just created in step 2. Read
+   `<plugin-root>/jelou/templates/closure-comment.md` and follow it
+   strictly. Source material:
+   - `<TASK_DIR>/SPEC.md` (Problem Statement, FRs)
+   - `<TASK_DIR>/PROPOSAL.md` (Strategy section)
+   - `<TASK_DIR>/TASKS.md` (phase outcomes, deferred items for the
+     optional follow-up paragraph)
 
-      Hard rules (non-negotiable, the template enforces them too):
-      - Language: **English**, always.
-      - Style: natural prose, no Markdown formatting beyond paragraph
-        breaks, no headers, no bullets, no code fences.
-      - Structure: 1 paragraph summary (2–5 sentences) + optional 1
-        paragraph future improvements (only when there's concrete
-        evidence — never invented).
-      - **Do NOT include**: PR URLs (already posted by `/jlu-task-clickup`
-        Step 6), signature lines, ISO timestamps, test counts, phase
-        counts, internal slugs / IDs / file paths / branch names, or
-        service IDs in code form.
+   Hard rules (non-negotiable, the template enforces them too):
+   - Language: **English**, always.
+   - Style: natural prose, no Markdown formatting beyond paragraph
+     breaks, no headers, no bullets, no code fences.
+   - Structure: 1 paragraph summary (2–5 sentences) + optional 1
+     paragraph future improvements (only when there's concrete
+     evidence — never invented).
+   - **Do NOT include**: PR URLs (already posted by `/jlu-task-clickup`
+     Step 6), signature lines, ISO timestamps, test counts, phase
+     counts, internal slugs / IDs / file paths / branch names, or
+     service IDs in code form.
 
-      Then post via `clickup_create_task_comment(task_id=<macro-id>,
-      comment_text=<composed body>)`. Do not also post the PR list — that
-      is `/jlu-task-clickup`'s responsibility and is already attached as a
-      separate comment.
-   e. Record the closure in `CLICKUP_TASK.json`:
-      ```json
-      {
-        "closedAt": "<CLOSE_TIMESTAMP>",
-        "closedBy": "jlu:close-task",
-        "previousStatus": "<previous-status>"
-      }
-      ```
-   f. If any ClickUp MCP call fails: report the error but continue with remaining closure steps.
-3. If `CLICKUP_TASK.json` does not exist: skip with note "No ClickUp task associated."
+   Then post via `clickup_create_task_comment(task_id=<macro-id>,
+   comment_text=<composed body>)`. Do not also post the PR list — that
+   is `/jlu-task-clickup`'s responsibility and is already attached as a
+   separate comment.
+6. Record the closure in `CLICKUP_TASK.json`:
+   ```json
+   {
+     "closedAt": "<CLOSE_TIMESTAMP>",
+     "closedBy": "jlu:close-task",
+     "previousStatus": "<previous-status>"
+   }
+   ```
+7. If any ClickUp MCP call fails: report the error but continue with
+   remaining closure steps. Failure of step 2's inline sync surfaces a
+   warning but still proceeds to TASKS.md update — the local artifacts
+   should reflect "closed" even when ClickUp is unreachable.
 
 ### 3b. Update TASKS.md
 
