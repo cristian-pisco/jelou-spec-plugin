@@ -68,8 +68,6 @@ If MCP is already configured, this may be a transient ClickUp API error. Try re-
 | Team | Equipo |
 | Responsible | Responsable |
 | Requester | Solicitante |
-| Story Points | Story points |
-| Sprint Points | Sprint points |
 | Size | Talla |
 | Risk | Riesgo |
 | Project Type | Tipo proyecto |
@@ -79,6 +77,15 @@ If MCP is already configured, this may be a transient ClickUp API error. Try re-
 
 3. Persist discovered field IDs in `CLICKUP_TASK.json` under `field_mappings` for future runs.
 4. If a required field is not found, warn and continue — do not block the entire sync.
+5. **Sprint Points / Story Points are NOT custom fields.** Per the ClickUp
+   REST API v2
+   ([`/reference/createtask`](https://developer.clickup.com/reference/createtask),
+   [`/reference/updatetask`](https://developer.clickup.com/reference/updatetask)),
+   they are exposed as a top-level `points` (number) parameter on both
+   create and update bodies. The Sprint Points ClickApp must be enabled in
+   the workspace ([help.clickup.com — Use Sprint Points](https://help.clickup.com/hc/en-us/articles/6303883602327-Use-Sprint-Points)).
+   Do not search the list's custom fields for "Sprint points" / "Story
+   points" — they will not be there.
 
 ## Step 4 — Infer Fields
 
@@ -200,9 +207,14 @@ clickup_create_task(
   priority: <1-4>,
   task_type: "<inferred type>",
   time_estimate: <milliseconds-from-step-4c>,
+  points: <story-points-from-step-4b>,
   custom_fields: [<all mapped fields from Step 3-4>]
 )
 ```
+
+`points` is the documented top-level Sprint Points / Story Points field
+(see Step 3 note 5). Same numeric value used for both — do not duplicate it
+into `custom_fields`.
 
 ### 5c. Update (existing macro task)
 
@@ -210,6 +222,7 @@ clickup_create_task(
 clickup_update_task(
   task_id: "<macro-task-id>",
   time_estimate: <milliseconds-from-step-4c>,
+  points: <story-points-from-step-4b>,
   status: "<mapped-status>",
   ...other changed fields
 )
@@ -295,7 +308,11 @@ For each user story file in `uh/`:
      custom_fields: [<inherited fields>]
    )
    ```
-3. **Subtasks inherit ALL parent custom fields**: Riesgo, Equipo, Tipo proyecto, Solicitante, Front, Talla, Responsable, Sprint, Story Points, Sprint Points, Necesita Diseno.
+3. **Subtasks inherit ALL parent custom fields**: Riesgo, Equipo, Tipo
+   proyecto, Solicitante, Front, Talla, Responsable, Sprint, Necesita
+   Diseno. Sprint / Story Points are passed via the top-level `points`
+   parameter, not as a custom field — same value as the parent (or a
+   proportional fraction for subtasks).
 4. **Update existing**: Use `clickup_update_task` with `time_estimate` and any changed fields in a single call.
 5. **Verify** `time_estimate` on every subtask using the same protocol as
    Step 5d (call `clickup_get_task`, fall back to `clickup_update_task` once,
@@ -314,14 +331,12 @@ Write the updated sync state:
     "Equipo": "<field-id>",
     "Responsable": "<field-id>",
     "Solicitante": "<field-id>",
-    "Story points": "<field-id>",
     "Talla": "<field-id>",
     "Riesgo": "<field-id>",
     "Tipo proyecto": "<field-id>",
     "Front": "<field-id>",
     "Necesita Diseno": "<field-id>",
-    "Sprint": "<field-id>",
-    "Sprint points": "<field-id>"
+    "Sprint": "<field-id>"
   },
   "defaults": {
     "equipo": "<value>",

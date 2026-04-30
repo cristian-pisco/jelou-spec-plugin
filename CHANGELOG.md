@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.138] — 2026-04-30
+
+### Fixed
+- time_estimate must be integer ms, not string or minutes
+
 ## [0.3.137] — 2026-04-29
 
 ### Internal
