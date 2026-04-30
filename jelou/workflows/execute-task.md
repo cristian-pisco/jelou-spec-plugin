@@ -133,6 +133,38 @@ Continue to Step 4.
 
 If `<TASK_DIR>/PROPOSAL.md` does NOT exist:
 
+### 4.0 — Task Triviality Classification
+
+Before invoking `jlu-proposal-agent`, classify the task to decide whether to synthesize PROPOSAL.md inline or run the full two-pass agent flow.
+
+Set `TASK_IS_TRIVIAL = true` if **all** of the following hold:
+- Single service in `AFFECTED_SERVICES`
+- SPEC.md is ≤ 150 lines
+- The task description (or SPEC.md `## Problem Statement`) matches one of the trivial patterns:
+  - Rename / refactor (e.g., "rename X to Y")
+  - Literal swap (e.g., "change `/brain/` to `/studio/`", "update copy")
+  - Single-function fix or single-bug fix
+  - Documentation-only update
+  - Constant / config value change
+- SPEC.md mentions none of: "endpoint", "event", "schema", "contract", "migration", "API", "publish", "subscribe" (heuristic for new public surfaces)
+
+Otherwise: `TASK_IS_TRIVIAL = false`.
+
+If `TASK_IS_TRIVIAL`:
+1. Synthesize `<TASK_DIR>/PROPOSAL.md` inline using the proposal template at `<plugin-root>/jelou/templates/proposal.md`:
+   - **Strategy**: copy the SPEC.md `## Problem Statement` verbatim
+   - **Affected Services**: single row from `services.yaml`
+   - **Phases**: a single phase named `01-<task-slug>` with the SPEC.md `## Requirements > Functional` list copied as the phase's immutable requirements
+   - **Testing Strategy**: `Tier 1: cover each FR with a behavior test in the existing test convention. No deferred Tier 2.`
+   - **Risks**: `None identified — trivial scope.`
+2. Generate the single phase file at `<TASK_DIR>/services/<service-id>/phases/01-<phase-slug>.md` from `<plugin-root>/jelou/templates/phase.md`, populating Requirements from SPEC.md FR list.
+3. Log: `Task classified as trivial — PROPOSAL.md and phase file synthesized inline (no proposal-agent dispatch). Saves ~1-2 min.`
+4. Skip Steps 4a-4f and continue to Step 6 (Transition to Implementing).
+
+If `TASK_IS_TRIVIAL` is false: continue with Step 4a (full proposal-agent flow).
+
+**Store**: `TASK_IS_TRIVIAL`
+
 ### 4a. Load Context
 
 Read and assemble:
@@ -285,12 +317,14 @@ Spawn `jlu-test-writer` agent with model: **MODEL_CONFIG.code** (default: sonnet
 - **Task**: Write failing tests that cover the phase requirements.
 - **Output**: Test file paths and a summary of what was tested.
 
-**Red verification**:
-1. Run ONLY the new test files produced by the test-writer (use exact file paths from the agent's report).
-   - Example: `<DOCKER_EXEC_PREFIX> jest path/to/new-test.spec.ts` or `<DOCKER_EXEC_PREFIX> pytest path/to/new_test.py`
-   - Do NOT run the full test suite.
-2. Confirm the new tests FAIL (Red state).
-3. If any new tests PASS unexpectedly:
+**Red verification (trust-the-report)**:
+
+The test-writer agent ran the new test files in its own session as Step 4 of `agents/jlu-test-writer.md` ("Verify Tests Fail") and reported `Test Run Result > Status` and `Command`. Do not re-run the same tests in the orchestrator session — that duplicates 30-60 s per phase with no added signal.
+
+1. Parse the test-writer's report.
+2. If the report includes `Status: RED` AND a `Command:` line with the exact test runner invocation: trust the result. Continue to Step 7e.
+3. If the report is missing either field, or the report explicitly notes any unexpected pass: re-run the new test files locally (`<DOCKER_EXEC_PREFIX> <command>`) and validate.
+4. If a test passes unexpectedly (either flagged in the report or surfaced by the local re-run):
    - Log to terminal: "Test `<test-name>` passes without implementation — auto-investigating."
    - Spawn a fresh `jlu-test-writer` with model: **MODEL_CONFIG.code** (default: sonnet) to evaluate whether the test is correct or the requirement is already implemented.
    - If already implemented: mark requirement as covered, skip to next.
@@ -316,12 +350,14 @@ After the implementer finishes and tests are green, run lint and format inside t
 2. Run: `<DOCKER_EXEC_PREFIX> npx eslint --fix . && <DOCKER_EXEC_PREFIX> npx prettier --write .`
 3. Re-run ONLY the phase test files to confirm Green is maintained after formatting changes.
 
-**Green verification**:
-1. Run ONLY the phase test files (use the exact file paths from the test-writer's report).
-   - Example: `<DOCKER_EXEC_PREFIX> jest path/to/phase-test.spec.ts` or `<DOCKER_EXEC_PREFIX> pytest path/to/test_phase.py`
-   - Do NOT run the full test suite. Regression checking happens once at Step 8.
-2. Confirm all phase tests PASS (Green state).
-3. If tests still fail after implementation:
+**Green verification (trust-the-report)**:
+
+The implementer agent ran the phase test files in its own session as Step 4 of `agents/jlu-implementer.md` ("Run Tests") and reported `Test Results > Status` and `Command`. Do not re-run the same tests in the orchestrator session — that duplicates 30-60 s per phase with no added signal.
+
+1. Parse the implementer's report.
+2. If the report includes `Status: GREEN` AND a `Command:` line with the exact test runner invocation: trust the result. Continue to Step 7e.1.
+3. If the report is missing either field, OR the post-Green lint/format step modified files (and the implementer didn't re-verify), OR `PHASE_IS_TRIVIAL` cannot yet be classified due to missing diff data: re-run the phase test files locally (`<DOCKER_EXEC_PREFIX> <command>`) and confirm Green.
+4. If verification fails (either the trusted report turns out wrong on a sanity spot-check, or the orchestrator's re-run fails):
    - Log failures to terminal.
    - Spawn a fresh `jlu-implementer` with model: **MODEL_CONFIG.code** (default: sonnet) and accumulated failure context (Decision #1).
    - Retry up to 5 times total.
@@ -403,17 +439,56 @@ The orchestrator updates TASKS.md directly via `Edit` — no agent dispatch. All
 2. Update via `Edit`:
    - Status: `pending` → `done`
    - Add: test pass/fail counts (from the Green verification step), artifacts list (file paths from test-writer + implementer reports), and any deviations noted by the implementer.
-3. The commit SHA is appended in Step 7l after `jlu-git-agent` reports the commit; do not record it here.
+3. The commit SHA is appended in Step 7l after the inline commit in Step 7j; do not record it here.
 
 Rationale: this step is pure file editing. Spawning a subagent for a string-substitution task is wasted overhead.
 
-### 7j. Git Commit
+### 7j. Git Commit (inline)
 
-Spawn `jlu-git-agent` with model: **MODEL_CONFIG.operational** (default: haiku):
-- Stage all changes from this phase (in the task worktree only)
-- Commit with a conventional commit message referencing the phase
-- **Restrictions**: Only commit to `production/<TASK_SLUG>` branch. Never to main/master/alpha.
-- If unexpected or unrelated changes are detected in the worktree: block and escalate to user.
+The orchestrator stages and commits directly via `Bash` — no agent dispatch. Stage and commit are deterministic operations; the prior `jlu-git-agent` (haiku) added 5-15 s of LLM round-trip per phase with zero decision value.
+
+**Pre-flight (mandatory)**:
+
+```bash
+cd <SERVICE_SOURCE_PATH>
+CURR=$(git branch --show-current)
+[ "$CURR" = "production/<TASK_SLUG>" ] || abort "Expected branch production/<TASK_SLUG>, got $CURR"
+git diff --name-only HEAD
+```
+
+**Scope check**: every file in the diff output must be one of:
+- Declared in the test-writer's `Tests Written` artifacts for this phase, OR
+- Declared in the implementer's `Files Modified` artifacts for this phase, OR
+- A known auto-staged manifest from project pre-commit hooks: `package.json`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `composer.lock`, `poetry.lock`, `Cargo.lock`, `go.sum`.
+
+If any other file appears in the diff, abort with:
+
+> "Unexpected changes detected in `<SERVICE_SOURCE_PATH>` after phase <NN>: `<file-list>`. These were not produced by any agent in this phase. Manual intervention needed."
+
+**Stage and commit**:
+
+```bash
+git add <declared-files-and-known-manifests>
+
+git commit -m "$(cat <<'EOF'
+<type>(<service-id>): <phase title>
+
+Phase <NN> of production/<TASK_SLUG>
+EOF
+)"
+```
+
+`<type>` selection: `feat` for new functionality, `fix` for bug fixes, `test` for test-only phases, `refactor` for refactoring without behavior change, `docs` for documentation-only.
+
+**Forbidden operations** (orchestrator must NEVER invoke, even via Bash):
+- `git push --force` / `git push -f`
+- `git reset --hard`
+- `git rebase` (any flavor)
+- `git checkout main`, `git checkout master`, `git checkout alpha`
+- `git branch -D`
+- `git commit --no-verify` (always run hooks; if a hook fails, fix the underlying issue and re-commit)
+
+If a commit fails due to a hook (lint, commitlint, etc.): parse the hook output, dispatch a `jlu-implementer` with the failure context to fix, then re-stage and retry. Never bypass with `--no-verify`.
 
 ### 7k. Build Validation
 
@@ -428,7 +503,7 @@ Otherwise, spawn `jlu-build-validator` agent with model: **MODEL_CONFIG.code** (
 - **Task**: Run the project build command and fix any compilation failures. Do NOT run the test suite.
 
 **If the agent reports PASS** (with or without fixes):
-- If fixes were applied: re-run ONLY the phase test files to confirm Green is maintained. Then re-spawn `jlu-git-agent` with model: **MODEL_CONFIG.operational** (default: haiku) to commit the build fixes (message: `fix(<service>): resolve build errors from phase <NN>`).
+- If fixes were applied: re-run ONLY the phase test files to confirm Green is maintained. Then commit the build fixes inline using the same procedure as Step 7j (with message `fix(<service-id>): resolve build errors from phase <NN>`).
 - If no fixes needed: continue to 7l.
 
 **If the agent reports SKIP** (no build command detected):
@@ -441,7 +516,7 @@ Otherwise, spawn `jlu-build-validator` agent with model: **MODEL_CONFIG.code** (
 
 1. Update phase file status to `done`.
 2. Output milestone to terminal: "Phase <NN> complete. Tests: <pass-count>/<total-count> passing."
-3. Record the phase's commit SHA in TASKS.md. After the git-agent commits (Step 7j), capture the commit:
+3. Record the phase's commit SHA in TASKS.md. After the inline commit in Step 7j, capture the commit SHA:
    ```bash
    cd <SERVICE_SOURCE_PATH> && git rev-parse --short HEAD
    ```
@@ -464,10 +539,12 @@ Otherwise, spawn `jlu-build-validator` agent with model: **MODEL_CONFIG.code** (
 
 After all phases are complete, this is the SINGLE full test suite run for the entire task.
 
-### 8a. Write Tier 2 Integration Tests
+### 8a. Write Tier 2 Integration Tests (gated)
 
-For each service that has Tier 2 deferred requirements (from test-writer reports across phases):
-1. Collect all deferred requirements from phase files.
+**Aggregate first**: collect all `Tier 2 Deferred` entries reported by every test-writer dispatch across all phases. If the aggregated list is **empty**, skip this entire step and continue to Step 8b. Log: `Tier 2 step skipped — no deferred integration requirements across <N> phases.`
+
+Otherwise, for each service that has Tier 2 deferred requirements:
+1. Collect all deferred requirements from that service's phase files.
 2. Spawn `jlu-test-writer` with model: **MODEL_CONFIG.code** (default: sonnet):
    - **Input**: Deferred requirements list, CONVENTIONS.md, service source path
    - **TEST_TIER: 2** (integration tests — Testcontainers and real infrastructure allowed)
