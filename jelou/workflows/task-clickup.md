@@ -237,7 +237,11 @@ set.
 On **Update Task**, the `assignees`, `watchers`, and `group_assignees`
 shapes change to `{add, rem}` per
 [`/reference/updatetask`](https://developer.clickup.com/reference/updatetask)
-— this is documented as different from Create:
+— this is documented as different from Create. **`custom_fields` is NOT a
+valid parameter of the Update Task body** — the docs explicitly direct
+custom-field writes to a separate endpoint
+([`/reference/setcustomfieldvalue`](https://developer.clickup.com/reference/setcustomfieldvalue),
+`POST /api/v2/task/{task_id}/field/{field_id}`).
 
 ```
 clickup_update_task(
@@ -246,9 +250,42 @@ clickup_update_task(
   points: <story-points-from-step-4b>,
   status: "<mapped-status>",
   assignees: { "add": [<user-id-int>], "rem": [] },   # NOT a flat array on Update
-  ...other changed fields
+  ...other changed fields                              # NO custom_fields here
 )
 ```
+
+For each custom field that changed, issue a separate call:
+
+```
+clickup_set_task_custom_field_value(
+  task_id: "<macro-task-id>",
+  field_id: "<custom-field-uuid>",
+  value: <type-specific value, see Step 5e>
+)
+```
+
+### 5e. Custom-field value shapes (per `/docs/customfields`)
+
+When passing custom fields via `custom_fields` on Create Task or via the
+dedicated Set Custom Field Value endpoint on Update Task, the `value` shape
+depends on the field type. Use the documented shapes literally:
+
+| Type | `value` shape |
+|------|---------------|
+| `text`, `short_text`, `email`, `phone`, `url`, `location` | string |
+| `number`, `currency`, `rating`, `manual_progress` | number |
+| `checkbox` | boolean |
+| `date` | integer Unix ms, or `{ "date": <ms>, "time": true/false }` |
+| `drop_down` | string — the option **UUID** (`type_config.options[].id`), not the index |
+| `labels` | array of strings (option UUIDs) — overwrites |
+| `users` | `{ "add": ["<user-id-str>"], "rem": ["<user-id-str>"] }` |
+| `tasks` | `{ "add": ["<task-id>"], "rem": ["<task-id>"] }` |
+| `formula`, `automatic_progress` | read-only — do not attempt to set |
+
+The Responsable custom field is type `users`; the Equipo and OKR (Tech)
+fields are `labels`; Talla, Riesgo, Tipo proyecto, Front, Necesita Diseno,
+Solicitante are `drop_down`; Sprint is `number`. Use the right shape for
+each.
 
 ### 5d. Verify time_estimate landed
 

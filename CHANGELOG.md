@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.139] — 2026-04-30
+
+### Fixed
+- assignees dual-write and {add, rem} shape on Update
+
 ## [0.3.138] — 2026-04-30
 
 ### Fixed
