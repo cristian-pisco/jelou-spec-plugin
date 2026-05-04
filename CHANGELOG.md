@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.142] — 2026-05-04
+
+### Added
+- Collapse refine-task workflow from 9+2b+9b steps to 6 by removing redundant snapshot capture, context review no-op, interactive map-codebase prompt, and unconditional principles read
+- Trim default context load to ARCHITECTURE/CONVENTIONS/INTEGRATIONS per service; STACK/STRUCTURE/CONCERNS load lazily on keyword match in the change request
+- Load engineering principles only when the change request mentions architectural keywords (architecture, security, performance, scalability, auth, schema, contract, event, migration)
+- Add Step 6b: propagate the SPEC.md delta into PROPOSAL.md and phase files so /jlu-execute-task only re-runs affected phases — Changed reqs trigger Modification blocks and reset done phases to pending; Added reqs extend the latest pending phase or create a new phase file; Removed reqs append a Removed note (immutable baseline preserved)
+- Append a Refinement Log entry to PROPOSAL.md documenting modified/reset/extended/added phases per refinement
+- Transition task status to implementing in Step 6c when phases are reset or added so execute-task can pick the work up
+- Add Edit to refine-task SKILL.md allowed-tools for in-place phase file edits
+
 ## [0.3.141] — 2026-05-04
 
 ### Added
