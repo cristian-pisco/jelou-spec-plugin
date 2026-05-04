@@ -5,6 +5,7 @@ argument-hint: "[change description]"
 allowed-tools:
   - Read
   - Write
+  - Edit
   - Bash
   - Glob
   - Grep
