@@ -123,9 +123,52 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
       On timeout: abort with STATUS: BLOCKED, reason: ready_timeout for <service>.
     ```
 
-15. **Run Playwright** in the UI service's worktree.
+15. **Run Playwright** in the UI service's worktree. Source the UI service's `.env` (and optional `.env.e2e` overlay) so Playwright sees the same configuration the dev server is using; refuse to start if any env var declared in `user-flow.md` `Env Vars` is missing, and HEAD-check each URL whose source points outside `Service Boot Order`. See `jelou/references/e2e-environment.md` for the contract.
+
     ```bash
     cd "$UI_WORKTREE"
+
+    # Load .env (per docker-conventions.md it was copied into the worktree at task creation)
+    # and the optional .env.e2e overlay. set -a exports every assignment to child processes.
+    set -a
+    [ -f .env ]     && . ./.env
+    [ -f .env.e2e ] && . ./.env.e2e
+    set +a
+
+    # Mandatory: baseURL must come from env, not be hard-coded in playwright.config.ts.
+    : "${E2E_BASE_URL:?missing E2E_BASE_URL — set it in .env or .env.e2e (see references/e2e-environment.md)}"
+
+    # Per-flow vars from user-flow.md Env Vars section. The writer agent persists this list to
+    # $TASK_DIR/services/$UI_SERVICE/e2e/required-env.txt (one VAR_NAME per line); the orchestrator
+    # validates each. Missing → fail-fast with the variable name.
+    if [ -f "$TASK_DIR/services/$UI_SERVICE/e2e/required-env.txt" ]; then
+      MISSING=()
+      while IFS= read -r VAR; do
+        [ -z "$VAR" ] && continue
+        eval "VAL=\${$VAR-__UNSET__}"
+        [ "$VAL" = "__UNSET__" ] && MISSING+=("$VAR")
+      done < "$TASK_DIR/services/$UI_SERVICE/e2e/required-env.txt"
+      if [ "${#MISSING[@]}" -gt 0 ]; then
+        echo "ERROR: required env vars missing for $UI_SERVICE: ${MISSING[*]}"
+        echo "  Declare values in .env or .env.e2e per references/e2e-environment.md."
+        exit 2
+      fi
+    fi
+
+    # External endpoints (declared in user-flow.md "External Endpoints" — vars whose source is
+    # outside Service Boot Order). HEAD-check each once; refuse to start if unreachable.
+    if [ -f "$TASK_DIR/services/$UI_SERVICE/e2e/external-endpoints.txt" ]; then
+      while IFS= read -r VAR; do
+        [ -z "$VAR" ] && continue
+        eval "URL=\${$VAR-}"
+        [ -z "$URL" ] && continue
+        if ! curl -fsS -o /dev/null --max-time 5 -I "$URL"; then
+          echo "ERROR: external dependency unreachable: $VAR=$URL"
+          exit 2
+        fi
+      done < "$TASK_DIR/services/$UI_SERVICE/e2e/external-endpoints.txt"
+    fi
+
     npx playwright test \
       --workers=${WORKERS:-1} \
       --reporter=json \
@@ -190,6 +233,8 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
 | Docker daemon down | 2 | "docker info failed; start Docker Desktop / dockerd" |
 | Service ready_timeout | 2 | "<service> didn't reach ready in <X>s; check launch log" |
 | Mid-suite service crash | 2 | "service_crashed:<id>; last 50 lines of launch log" |
+| Required env var unset | 2 | "required env vars missing: <list>" + reference to e2e-environment.md |
+| External dependency unreachable | 2 | "external dependency unreachable: <VAR>=<URL>" (HEAD-check failed pre-flight) |
 | All tests green | 0 | clean summary |
 | Some failing or flagged | 1 | summary with file:line per failure |
 
@@ -198,7 +243,9 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
 - `jelou/references/loading-context.md` — how the dispatched fix-loop loads its context
 - `jelou/references/dev-server-readiness.md` — per-stack ready signal cookbook
 - `jelou/references/auth-fixtures.md` — credential security contract
-- `jelou/references/dev-block-schema.md` — `services.yaml` `dev` block reference
+- `jelou/references/dev-block-schema.md` — `services.yaml` `dev` block reference (incl. `env_files` for non-Docker dev servers)
+- `jelou/references/e2e-environment.md` — `.env` loading contract for the Playwright runner; required vars; boot-vs-point-at decision; what may be intercepted
+- `jelou/references/e2e-anti-patterns.md` — #11 forbids `page.route().fulfill()` of business endpoints
 - `bin/extract-trace.mjs` — trace.zip → trace-summary.json
 - `agents/jlu-ui-fix-loop.md` — fix-loop agent
 - `jelou/workflows/ui-qa-cleanup.md` — recover from leaked state

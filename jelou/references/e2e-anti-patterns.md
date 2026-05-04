@@ -175,6 +175,45 @@ test.beforeEach(async ({ page }) => {
 
 The fix-loop reads console errors from the trace. Tests that allow uncaught errors to slide produce traces the fix-loop can't act on.
 
+## 11. Mocking business endpoints with `page.route().fulfill()`
+
+Playwright lets you intercept any request and return a fabricated response:
+
+```ts
+// ❌
+await page.route('**/api/orders', route =>
+  route.fulfill({ status: 200, body: JSON.stringify({ id: 1, total: 99 }) }),
+);
+await page.goto('/orders');
+await expect(page.getByText('99')).toBeVisible();
+```
+
+This proves the UI can render whatever the test made up — not what the real backend returns. The first time the API contract drifts (a renamed field, a new error case, a changed status code, a missing `Set-Cookie`), the test stays green and prod breaks.
+
+For business endpoints — anything the user-facing flow exercises — the test must hit the real service. Either boot the upstream via `Service Boot Order` or point at a real sandbox via `.env`. See `e2e-environment.md`.
+
+```ts
+// ✅ — hit the real service booted in Service Boot Order
+await page.goto('/orders');
+await expect(page.getByRole('list', { name: 'Your orders' })).toBeVisible();
+```
+
+### Narrow exception: non-product traffic
+
+`page.route()` is allowed only for analytics beacons, telemetry pixels, and marketing widgets that aren't part of the flow under test. Even then, prefer `route.abort()` over `route.fulfill()` — the goal is to keep the noise out of the network log, not to fabricate a response:
+
+```ts
+// ✅ — drop analytics so it doesn't pollute the network log
+await page.route('**/segment.io/**', route => route.abort());
+await page.route('**/google-analytics.com/**', route => route.abort());
+```
+
+Each intercepted URL must be listed in the flow's `Out of Scope` section in `user-flow.md` so reviewers see the exception at spec time, not at test-review time.
+
+### Why this is its own anti-pattern
+
+The first ten anti-patterns target test code that's wrong about the UI. This one targets test code that hides whether the backend is wrong about the UI — a strictly worse failure mode, because the suite goes green during exactly the kind of contract drift it was supposed to catch.
+
 ## When the fix-loop sees these patterns
 
-If the fix-loop encounters a test that violates one of these patterns (an arbitrary sleep, a CSS selector, a direct DB query), it treats the test itself as suspect. Per Premise 5, after one fix attempt that doesn't change the failure, the loop flags the test as "may be wrong" and stops. The user clears the flag manually after deciding whether the test or the code is broken.
+If the fix-loop encounters a test that violates one of these patterns (an arbitrary sleep, a CSS selector, a direct DB query, a `page.route().fulfill()` of a business endpoint), it treats the test itself as suspect. Per Premise 5, after one fix attempt that doesn't change the failure, the loop flags the test as "may be wrong" and stops. The user clears the flag manually after deciding whether the test or the code is broken.

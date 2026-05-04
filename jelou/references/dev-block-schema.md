@@ -28,6 +28,7 @@ The block is intentionally narrow. It does not describe how the service builds, 
     launcher: docker | npm | make | shell    # required
     command: <boot command>                  # required when launcher != docker
     teardown: <shutdown command>             # required when launcher != docker
+    env_files: [.env, .env.e2e]              # optional; non-Docker launchers only
     health_url: http://localhost:4001/health # OR ready_signal below
     ready_signal:
       type: stdout_match | port_open | http_200
@@ -59,6 +60,16 @@ Exactly one of `health_url` or `ready_signal` is required.
 - **`ready_signal.type: http_200`** — like `health_url` but takes a port + optional path instead of a full URL.
 
 If readiness is not signaled within `ready_timeout_s` seconds, the orchestrator aborts the run with `STATUS: BLOCKED, reason: ready_timeout`.
+
+## `env_files`
+
+Optional list of env files (relative to the worktree) the orchestrator sources before executing `command`. Files are loaded in order; later files override earlier ones. Missing files are skipped silently — the field declares intent, not a hard requirement.
+
+- **Default:** `[.env, .env.e2e]` for `launcher: npm | make | shell`. Docker launchers ignore this field — they source env via Compose's `env_file` directive at the service level.
+- **Loaded as:** `set -a; . ./<file>; set +a` (POSIX export-all-assignments). Bash-only syntax in the file (e.g., heredocs, `$()`) is the consumer's responsibility.
+- **Why exist:** Next.js, Vite, and similar dev servers auto-load `.env`, but raw shell or `make` launchers do not. Without this field the spawned dev server starts with an empty environment, which then breaks both the dev server and downstream Playwright vars that resolve through it.
+
+The Playwright runner itself separately sources `.env` / `.env.e2e` from the **UI service's** worktree before launching — see `jelou/references/e2e-environment.md` and `jelou/workflows/ui-qa-run.md` Phase 3 step 15. `env_files` here is about boot-time environment for non-Docker dev servers, not test-time environment for Playwright.
 
 ## `ram_estimate_mb`
 
@@ -93,3 +104,4 @@ The `dev` block is **strictly additive**. Existing `services.yaml` files without
 - `jelou/templates/services-yaml.md` — full schema for the registry, including the `dev` block field-by-field reference.
 - `jelou/references/docker-conventions.md` — Docker-specific conventions for the sibling `docker` block.
 - `jelou/references/worktree-resolution.md` — how to map a service id to its active source path during a task. the UI QA workflow uses this resolver, not `services.yaml[*].path` directly.
+- `jelou/references/e2e-environment.md` — how `.env` flows into the Playwright runner; complements `env_files` (which targets the dev server) for the test runtime side.

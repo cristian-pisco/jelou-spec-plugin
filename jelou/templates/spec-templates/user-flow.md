@@ -66,8 +66,22 @@ For a single component with no routing or fixture concerns, `ui-component.md` al
 3. service-billing
 4. service-frontend
 
+### Env Vars
+<!-- FILL: Every env var the test reads at runtime. The orchestrator validates each is set in the loaded .env (per references/e2e-environment.md) before launching Playwright; missing vars fail-fast with the variable name, not a cryptic 404 mid-run. List a "purpose" so reviewers can spot a fake value in code review. -->
+
+| Variable | Purpose | Source |
+|----------|---------|--------|
+| `E2E_BASE_URL` | Playwright baseURL — points at the booted UI service | `.env` |
+| `BILLING_API_URL` | URL the UI calls for subscription mutations; declared because billing is NOT in affected_services | `.env.e2e` (sandbox) |
+| `TEST_PRO_USER_EMAIL` | Seeded user with active pro subscription | `.env` |
+
+### External Endpoints (HEAD-checked at pre-flight)
+<!-- FILL: Each row that points at a non-booted service ("Source: .env" + service NOT in Service Boot Order). The orchestrator HEAD-checks each URL once during pre-flight; unreachable → exit 2 with reason: external_dependency_unreachable. Skip if no external endpoints (the flow boots everything locally). -->
+
+- `BILLING_API_URL` — billing sandbox
+
 ### Out of Scope
-<!-- FILL: What this flow intentionally does NOT cover. Helpful for the test reviewer. Example: "Email content rendering — covered in a separate flow." -->
+<!-- FILL: What this flow intentionally does NOT cover. Also list every URL pattern intercepted with `page.route()` (per anti-pattern #11): each must be non-product traffic (analytics, telemetry, marketing widgets) and aborted, never fulfilled. Example: "`**/segment.io/**` aborted to keep the network log clean." -->
 
 ## Interview Hints
 
@@ -83,3 +97,6 @@ For a single component with no routing or fixture concerns, `ui-component.md` al
 - Each test file imports `@playwright/test` and runs (will fail RED) under `npx playwright test`.
 - Tests use role-based locators (`getByRole`, `getByLabel`, `getByText`) by default; `data-testid` only when declared in `selectors.md`.
 - Tests do not reach into the database directly; side-effect assertions go through the service's read API.
+- Tests do not mock business endpoints with `page.route().fulfill()` (anti-pattern #11). Every backend the flow touches is either booted via `Service Boot Order` or pointed at a real endpoint declared in `Env Vars`.
+- Every env var the test reads is declared in `Env Vars`; the orchestrator validates each is set before launching Playwright.
+- Each `page.route()` call in the test code corresponds to a URL pattern listed in `Out of Scope` and uses `route.abort()`, not `route.fulfill()`.
