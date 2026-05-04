@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.3.141] — 2026-05-04
+
+### Added
+- New jelou/references/e2e-environment.md codifying .env loading order, required env vars (E2E_BASE_URL), the boot-vs-point-at-real decision, and what may be intercepted
+- e2e-anti-patterns.md #11: forbid page.route().fulfill() of business endpoints; route.abort() allowed only for non-product traffic listed in Out of Scope
+- dev block gains optional env_files field for non-Docker launchers (default [.env, .env.e2e])
+- user-flow.md template adds required Env Vars and External Endpoints sections plus Acceptance Criteria for the no-mock + env-declared rules
+- /jlu-ui-qa-run step 15 sources .env and .env.e2e before launching Playwright, fails fast on missing E2E_BASE_URL or flow-declared vars, and HEAD-checks every external endpoint
+- jlu-ui-e2e-writer refuses hard-coded baseURL, refuses undeclared env vars, refuses business-endpoint mocks, and emits required-env.txt + external-endpoints.txt for the orchestrator to read
+
 ## [0.3.140] — 2026-04-30
 
 ### Fixed
