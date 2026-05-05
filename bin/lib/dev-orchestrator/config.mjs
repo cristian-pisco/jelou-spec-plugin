@@ -8,6 +8,33 @@ import { dirname } from 'node:path';
 
 const NAME_RE = /^[a-z0-9][a-z0-9-]*$/;
 
+// ---------------------------------------------------------------------------
+// Validation helpers
+// ---------------------------------------------------------------------------
+
+function assertInt(errors, ctx, key, val, { min, max } = {}) {
+  if (val === undefined) return;
+  if (!Number.isInteger(val)) {
+    errors.push(`${ctx}.${key} must be an integer (got ${JSON.stringify(val)})`);
+    return;
+  }
+  if (min !== undefined && val < min) errors.push(`${ctx}.${key} must be >= ${min} (got ${val})`);
+  if (max !== undefined && val > max) errors.push(`${ctx}.${key} must be <= ${max} (got ${val})`);
+}
+
+function assertAllowedKeys(errors, ctx, obj, allowed) {
+  for (const k of Object.keys(obj || {})) {
+    if (!allowed.has(k)) errors.push(`${ctx} has unknown key: ${JSON.stringify(k)}`);
+  }
+}
+
+const ALLOWED_SERVICE_KEYS = new Set(['name', 'path', 'command', 'env_file', 'depends_on', 'readiness', 'runtime', 'log_failure_patterns', 'panel']);
+const ALLOWED_DEFAULTS_KEYS = new Set(['log_failure_patterns', 'readiness_timeout_seconds', 'log_capture_lines', 'poll_interval_ms', 'notification_cooldown_seconds', 'window_prefix']);
+const ALLOWED_PANEL_KEYS = new Set(['title', 'color']);
+const ALLOWED_RUNTIME_KEYS = new Set(['type', 'compose_file', 'compose_service', 'exec_template']);
+const ALLOWED_READINESS_HTTP_KEYS = new Set(['type', 'url', 'expect_status', 'timeout_seconds']);
+const ALLOWED_READINESS_TCP_KEYS = new Set(['type', 'host', 'port', 'timeout_seconds']);
+
 export const DEFAULTS = Object.freeze({
   log_failure_patterns: [
     'EADDRINUSE',
@@ -48,6 +75,7 @@ export function validateConfig(cfg) {
       errors.push(`${ctx} must be an object`);
       return;
     }
+    assertAllowedKeys(errors, ctx, svc, ALLOWED_SERVICE_KEYS);
     if (typeof svc.name !== 'string' || !NAME_RE.test(svc.name)) {
       errors.push(`${ctx}.name must match /^[a-z0-9][a-z0-9-]*$/ (got ${JSON.stringify(svc.name)})`);
     } else if (seen.has(svc.name)) {
@@ -73,8 +101,12 @@ export function validateConfig(cfg) {
         });
       }
     }
+    if (svc.panel) {
+      assertAllowedKeys(errors, `${ctx}.panel`, svc.panel, ALLOWED_PANEL_KEYS);
+    }
     if (svc.runtime) {
       const r = svc.runtime;
+      assertAllowedKeys(errors, `${ctx}.runtime`, r, ALLOWED_RUNTIME_KEYS);
       if (r.type !== 'host' && r.type !== 'docker-compose') {
         errors.push(`${ctx}.runtime.type must be "host" or "docker-compose"`);
       }
@@ -85,22 +117,40 @@ export function validateConfig(cfg) {
     }
     if (svc.readiness) {
       const r = svc.readiness;
+      assertInt(errors, `${ctx}.readiness`, 'timeout_seconds', r.timeout_seconds, { min: 1 });
       if (r.type === 'http') {
+        assertAllowedKeys(errors, `${ctx}.readiness`, r, ALLOWED_READINESS_HTTP_KEYS);
         if (typeof r.url !== 'string') errors.push(`${ctx}.readiness.url required for http`);
+        assertInt(errors, `${ctx}.readiness`, 'expect_status', r.expect_status);
       } else if (r.type === 'tcp') {
+        assertAllowedKeys(errors, `${ctx}.readiness`, r, ALLOWED_READINESS_TCP_KEYS);
         if (typeof r.host !== 'string') errors.push(`${ctx}.readiness.host required for tcp`);
-        if (!Number.isInteger(r.port)) errors.push(`${ctx}.readiness.port required for tcp`);
+        if (!Number.isInteger(r.port)) {
+          errors.push(`${ctx}.readiness.port required for tcp`);
+        } else {
+          assertInt(errors, `${ctx}.readiness`, 'port', r.port, { min: 1, max: 65535 });
+        }
       } else {
         errors.push(`${ctx}.readiness.type must be "http" or "tcp"`);
       }
     }
   });
 
-  if (cfg.defaults && cfg.defaults.log_failure_patterns) {
-    cfg.defaults.log_failure_patterns.forEach((p, i) => {
-      try { new RegExp(p, 'i'); }
-      catch (e) { errors.push(`defaults.log_failure_patterns[${i}] invalid regex: ${e.message}`); }
-    });
+  if (cfg.defaults) {
+    assertAllowedKeys(errors, 'defaults', cfg.defaults, ALLOWED_DEFAULTS_KEYS);
+    assertInt(errors, 'defaults', 'poll_interval_ms', cfg.defaults.poll_interval_ms, { min: 250 });
+    assertInt(errors, 'defaults', 'readiness_timeout_seconds', cfg.defaults.readiness_timeout_seconds, { min: 1 });
+    assertInt(errors, 'defaults', 'log_capture_lines', cfg.defaults.log_capture_lines, { min: 1 });
+    assertInt(errors, 'defaults', 'notification_cooldown_seconds', cfg.defaults.notification_cooldown_seconds, { min: 0 });
+    if (cfg.defaults.window_prefix !== undefined && typeof cfg.defaults.window_prefix !== 'string') {
+      errors.push(`defaults.window_prefix must be a string (got ${JSON.stringify(cfg.defaults.window_prefix)})`);
+    }
+    if (cfg.defaults.log_failure_patterns) {
+      cfg.defaults.log_failure_patterns.forEach((p, i) => {
+        try { new RegExp(p, 'i'); }
+        catch (e) { errors.push(`defaults.log_failure_patterns[${i}] invalid regex: ${e.message}`); }
+      });
+    }
   }
 
   return { valid: errors.length === 0, errors };

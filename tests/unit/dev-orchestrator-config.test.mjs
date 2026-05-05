@@ -4,10 +4,11 @@
 
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdtempSync, existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { validateConfig } from '../../bin/lib/dev-orchestrator/config.mjs';
+import { validateConfig, writeConfigAtomic } from '../../bin/lib/dev-orchestrator/config.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fixtures = join(here, '..', 'fixtures', 'dev-orchestrator', 'configs');
@@ -68,5 +69,83 @@ describe('validateConfig — invalid configs', () => {
     });
     assert.equal(result.valid, false);
     assert.ok(result.errors.some(e => e.includes('name')), `errors: ${result.errors.join(', ')}`);
+  });
+});
+
+describe('validateConfig — numeric and additionalProperties checks', () => {
+  test('rejects defaults.poll_interval_ms below 250', () => {
+    const result = validateConfig({ version: 1, services: [], defaults: { poll_interval_ms: 100 } });
+    assert.equal(result.valid, false);
+    assert.ok(
+      result.errors.some(e => e.includes('poll_interval_ms') && e.includes('>=')),
+      `errors: ${result.errors.join(', ')}`
+    );
+  });
+
+  test('rejects unknown key on a service', () => {
+    const result = validateConfig({
+      version: 1,
+      services: [{ name: 'a', path: '.', command: 'x', foo: 'bar' }]
+    });
+    assert.equal(result.valid, false);
+    assert.ok(
+      result.errors.some(e => e.includes('unknown key') && e.includes('foo')),
+      `errors: ${result.errors.join(', ')}`
+    );
+  });
+
+  test('rejects unknown key on defaults', () => {
+    const result = validateConfig({ version: 1, services: [], defaults: { not_a_real_key: true } });
+    assert.equal(result.valid, false);
+    assert.ok(
+      result.errors.some(e => e.includes('unknown key')),
+      `errors: ${result.errors.join(', ')}`
+    );
+  });
+
+  test('rejects http expect_status that is not an integer', () => {
+    const result = validateConfig({
+      version: 1,
+      services: [{
+        name: 'svc',
+        path: '.',
+        command: 'x',
+        readiness: { type: 'http', url: 'http://x', expect_status: 'two-hundred' }
+      }]
+    });
+    assert.equal(result.valid, false);
+    assert.ok(
+      result.errors.some(e => e.includes('expect_status')),
+      `errors: ${result.errors.join(', ')}`
+    );
+  });
+
+  test('rejects tcp port out of range', () => {
+    const result = validateConfig({
+      version: 1,
+      services: [{
+        name: 'svc',
+        path: '.',
+        command: 'x',
+        readiness: { type: 'tcp', host: 'x', port: 70000 }
+      }]
+    });
+    assert.equal(result.valid, false);
+    assert.ok(
+      result.errors.some(e => e.includes('port') && e.includes('<=')),
+      `errors: ${result.errors.join(', ')}`
+    );
+  });
+});
+
+describe('writeConfigAtomic — refuses invalid', () => {
+  test('rejects invalid config without writing the target file', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'jlu-cfg-'));
+    const target = join(dir, 'jlu-services.json');
+    assert.throws(
+      () => writeConfigAtomic(target, { version: 2, services: [] }),
+      err => err && err.code === 'INVALID_CONFIG'
+    );
+    assert.equal(existsSync(target), false);
   });
 });
