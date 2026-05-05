@@ -51,6 +51,10 @@ export function parseDiagnoseOutput(raw) {
 
 export function substituteFix({ service, fix }) {
   if (!fix) return null;
+  const isContainerized = service && service.runtime && service.runtime.type === 'docker-compose';
+  // Inconsistency guard: refuse host commands for containerized services. The
+  // diagnoser agent is expected to always set runs_in: 'container' for these.
+  if (isContainerized && fix.runs_in !== 'container') return null;
   if (fix.runs_in !== 'container') return fix.command;
   const r = service.runtime || {};
   const tmpl = r.exec_template || DEFAULT_TEMPLATE;

@@ -131,4 +131,42 @@ describe('substituteFix', () => {
     });
     assert.equal(out, 'docker compose -f ./docker-compose.yml exec api npm install');
   });
+
+  test('refuses host fix for docker-compose service (returns null)', () => {
+    const out = substituteFix({
+      service: {
+        name: 'api',
+        runtime: {
+          type: 'docker-compose',
+          compose_file: './docker-compose.yml',
+          compose_service: 'api'
+        }
+      },
+      fix: { command: 'npm install', runs_in: 'host', rationale: 'r' }
+    });
+    assert.equal(out, null);
+  });
+
+  test('refuses fix with missing runs_in for docker-compose service', () => {
+    const out = substituteFix({
+      service: {
+        name: 'api',
+        runtime: {
+          type: 'docker-compose',
+          compose_file: './docker-compose.yml',
+          compose_service: 'api'
+        }
+      },
+      fix: { command: 'npm install', rationale: 'r' }
+    });
+    assert.equal(out, null);
+  });
+
+  test('host fix on a host service (no runtime block) returns command as-is', () => {
+    const out = substituteFix({
+      service: { name: 'api' },
+      fix: { command: 'npm install', runs_in: 'host', rationale: 'r' }
+    });
+    assert.equal(out, 'npm install');
+  });
 });
