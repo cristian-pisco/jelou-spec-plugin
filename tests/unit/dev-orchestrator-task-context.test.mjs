@@ -3,7 +3,7 @@ import { strict as assert } from 'node:assert';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { resolveTaskSlug } from '../../bin/lib/dev-orchestrator/task-context.mjs';
+import { resolveTaskSlug, getCurrentBranch } from '../../bin/lib/dev-orchestrator/task-context.mjs';
 
 function mkws() {
   const root = mkdtempSync(join(tmpdir(), 'jlu-tc-'));
@@ -44,6 +44,21 @@ describe('resolveTaskSlug — branch-name detection', () => {
     writeFileSync(join(root, 'tasks', 'foo', 'TASKS.md'), '# State: planned');
     const slug = resolveTaskSlug({ workspaceRoot: root, cwd: root, branch: 'spec/foo' });
     assert.equal(slug, 'foo');
+  });
+
+  test('matches bare <slug> branch when tasks/<slug>/TASKS.md exists', () => {
+    const root = mkws();
+    mkdirSync(join(root, 'tasks', 'foo'));
+    writeFileSync(join(root, 'tasks', 'foo', 'TASKS.md'), '# State: planned');
+    const slug = resolveTaskSlug({ workspaceRoot: root, cwd: root, branch: 'foo' });
+    assert.equal(slug, 'foo');
+  });
+});
+
+describe('getCurrentBranch', () => {
+  test('returns null outside a git repo', () => {
+    const root = mkws();
+    assert.equal(getCurrentBranch(root), null);
   });
 });
 
