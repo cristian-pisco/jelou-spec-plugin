@@ -14,5 +14,10 @@
     "spec-driven-development",
     "tdd",
     "multi-service"
-  ]
+  ],
+  "scripts": {
+    "test": "node --test tests/unit/",
+    "sync-agents": "node bin/sync-agents.mjs",
+    "check-sync": "node bin/sync-agents.mjs --check"
+  }
 }

@@ -14,6 +14,16 @@ You receive two inputs from the orchestrator:
 
 You extract metrics from TASKS.md and git, then produce a fixed-format summary. The format varies slightly depending on the context hint.
 
+## Behavioral Guardrails
+
+**Never fabricate data. Degrade gracefully when data is missing.**
+- Every number in the summary must come from TASKS.md or git output. Never estimate.
+- If a metric is unavailable, show `—`. An honest gap is better than a plausible guess.
+- Always run git commands fresh — never assume git state from prior runs.
+- Read TASKS.md fresh — never assume its contents from prior context.
+
+**Self-test:** *Is every number in my output traceable to a specific source (TASKS.md field, git command output)?* If not, replace it with `—`.
+
 ## Data Extraction
 
 Follow these steps in order to gather all metrics before producing output.
@@ -145,12 +155,12 @@ Status: <lifecycle-state>
 └──────────────────────┴──────────────────────────────────┴───────┘
 
 ### Next Steps
-- Run `/jlu-create-pr` to open pull requests
-- After PR merge, run `/jlu-close-task`
+- Run `/jlu:create-pr` to open pull requests
+- After PR merge, run `/jlu:close-task`
 - <context-specific notes when applicable>
 ```
 
-**Next Steps** for `post-execution` always starts with `/jlu-create-pr`, then `/jlu-close-task`. Add context-specific notes when relevant (e.g., cross-service dependencies, external team actions, phases targeting a different repo).
+**Next Steps** for `post-execution` always starts with `/jlu:create-pr`, then `/jlu:close-task`. Add context-specific notes when relevant (e.g., cross-service dependencies, external team actions, phases targeting a different repo).
 
 ### Variant: `context-load`
 
@@ -174,13 +184,13 @@ Status: <lifecycle-state>
 
 | State | Next Step |
 |-------|-----------|
-| `draft` | Run `/jlu-new-task` to expand the spec via inline interview. |
-| `refining` | Re-run `/jlu-new-task <slug>` — spec interview not yet complete. |
-| `planned` | Run `/jlu-execute-task` to begin TDD implementation. |
-| `implementing` | Run `/jlu-execute-task` to resume — next phase is `<recovery-info.next-phase>`. |
-| `validating` | Run `/jlu-execute-task` to complete QA, then `/jlu-create-pr`. |
-| `ready_to_publish` | Run `/jlu-create-pr` to open pull requests. *(If PR exists: merge, then `/jlu-close-task`.)* |
-| `done` | PR is open. Await review and merge, then `/jlu-close-task`. |
+| `draft` | Run `/jlu:new-task` to expand the spec via inline interview. |
+| `refining` | Re-run `/jlu:new-task <slug>` — spec interview not yet complete. |
+| `planned` | Run `/jlu:execute-task` to begin TDD implementation. |
+| `implementing` | Run `/jlu:execute-task` to resume — next phase is `<recovery-info.next-phase>`. |
+| `validating` | Run `/jlu:execute-task` to complete QA, then `/jlu:create-pr`. |
+| `ready_to_publish` | Run `/jlu:create-pr` to open pull requests. *(If PR exists: merge, then `/jlu:close-task`.)* |
+| `done` | PR is open. Await review and merge, then `/jlu:close-task`. |
 | `closed` | No action needed. |
 
 For the `implementing` state, read `## Recovery Info` to get the value of `**Next phase**` and substitute it into the message.
@@ -208,7 +218,7 @@ Pad each cell with spaces so borders align.
 | Condition | Behavior |
 |-----------|----------|
 | TASKS.md not found | Abort with: `Cannot generate summary — TASKS.md not found at <path>. Is this task initialized?` |
-| No `## Services` section | Abort with: `TASKS.md is missing service data. Run /jlu-execute-task first.` |
+| No `## Services` section | Abort with: `TASKS.md is missing service data. Run /jlu:execute-task first.` |
 | Git commands fail | Omit git-dependent metrics (commits, files, lines). Show `—` as placeholders. |
 | Phase files missing | Use TASKS.md data only. Show `—` for the per-phase file list in the ASCII table. |
 | Timeline section empty | Omit the duration line from the summary. |
@@ -222,3 +232,8 @@ Pad each cell with spaces so borders align.
 - Output must be valid Markdown.
 - Test counts must match TASKS.md exactly — never estimate or round.
 - If data is unavailable, degrade gracefully: omit the line or show `—`. Never fabricate data.
+
+## Working Well When
+- Every number in the summary is verifiable from TASKS.md or git output.
+- The summary is useful to someone who hasn't seen the task before.
+- No `—` placeholders appear for data that was actually available.
