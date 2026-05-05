@@ -98,8 +98,8 @@ Use `question` (multi-choice). Choices = existing service names from the loaded 
 Use `question` (single-choice):
 
 - `none`
-- `http: <url>` — follow-up free-text for the URL (default `http://localhost:3000/health`).
-- `tcp: <host>:<port>` — follow-up free-text for `host:port` (default `localhost:3000`).
+- `http: <url>` — follow-up free-text for the URL. Default = `inferDefaults.suggestedReadinessUrl` if non-null (port detected from `.env`, `package.json` scripts, or `.listen()` calls), otherwise `http://localhost:3000/health`.
+- `tcp: <host>:<port>` — follow-up free-text for `host:port`. Default = `localhost:<inferDefaults.detectedPort>` if non-null, otherwise `localhost:3000`.
 
 ## Step 11 — Ask for log_failure_patterns
 
