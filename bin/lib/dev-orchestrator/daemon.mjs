@@ -60,7 +60,7 @@ async function tick(ctx) {
   const wins = listWindows(tmuxRunner);
   const win = wins.find(w => w.name === windowName);
   if (!win) {
-    emit(logPath, { type: 'daemon_stopping', slug: opts.slug, reason: 'window-gone' });
+    ctx.stopReason = 'window-gone';
     return { stop: true };
   }
 
@@ -180,6 +180,12 @@ async function main() {
   };
 
   let stop = false;
+  let wakeSleep = null;
+  const requestStop = (reason) => {
+    stop = true;
+    if (!ctx.stopReason) ctx.stopReason = reason;
+    if (wakeSleep) wakeSleep();
+  };
   process.on('SIGHUP', () => {
     try {
       cfg = readConfig(opts.configPath);
@@ -189,8 +195,8 @@ async function main() {
       process.stderr.write(`daemon: SIGHUP reload failed: ${e.message}\n`);
     }
   });
-  process.on('SIGTERM', () => { stop = true; });
-  process.on('SIGINT', () => { stop = true; });
+  process.on('SIGTERM', () => requestStop('sigterm'));
+  process.on('SIGINT', () => requestStop('sigint'));
 
   while (!stop) {
     try {
@@ -200,11 +206,17 @@ async function main() {
       process.stderr.write(`daemon: tick error: ${e.stack || e.message}\n`);
     }
     if (stop) break;
-    await new Promise(r => setTimeout(r, effectiveDefaults(cfg).poll_interval_ms));
+    await new Promise(resolve => {
+      const timer = setTimeout(resolve, effectiveDefaults(cfg).poll_interval_ms);
+      wakeSleep = () => { clearTimeout(timer); resolve(); };
+    });
+    wakeSleep = null;
   }
 
   releaseLock(opts);
-  emit(logPath, { type: 'daemon_stopping', slug: opts.slug });
+  const stopEvt = { type: 'daemon_stopping', slug: opts.slug };
+  if (ctx.stopReason) stopEvt.reason = ctx.stopReason;
+  emit(logPath, stopEvt);
   process.exit(0);
 }
 
