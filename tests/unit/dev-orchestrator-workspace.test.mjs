@@ -39,6 +39,24 @@ describe('resolveWorkspace — canonical workspace structure', () => {
   });
 });
 
+describe('resolveWorkspace — fallback throws NO_WORKSPACE', () => {
+  test('throws Error with code NO_WORKSPACE when no marker and no git repo', () => {
+    const root = mktree();
+    // GIT_CEILING_DIRECTORIES guards against tmpdir() being inside a git repo.
+    const prev = process.env.GIT_CEILING_DIRECTORIES;
+    process.env.GIT_CEILING_DIRECTORIES = root;
+    try {
+      assert.throws(
+        () => resolveWorkspace(root),
+        err => err && err.code === 'NO_WORKSPACE'
+      );
+    } finally {
+      if (prev === undefined) delete process.env.GIT_CEILING_DIRECTORIES;
+      else process.env.GIT_CEILING_DIRECTORIES = prev;
+    }
+  });
+});
+
 describe('computeWorkspaceId', () => {
   test('returns first 12 chars of sha256 of absolute path', () => {
     const id = computeWorkspaceId('/abs/path');

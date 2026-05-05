@@ -7,7 +7,7 @@
 // Returns { root, configPath, workspaceId }.
 // All child-process calls use spawnSync with array args (no shell).
 
-import { existsSync, statSync } from 'node:fs';
+import { statSync } from 'node:fs';
 import { join, dirname, isAbsolute, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
