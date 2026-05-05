@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jelou.github.io/jlu-services.schema.json",
+  "title": "jlu-services.json",
+  "type": "object",
+  "required": ["version", "services"],
+  "properties": {
+    "version": { "const": 1 },
+    "defaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "log_failure_patterns": { "type": "array", "items": { "type": "string" } },
+        "readiness_timeout_seconds": { "type": "integer", "minimum": 1 },
+        "log_capture_lines": { "type": "integer", "minimum": 1 },
+        "poll_interval_ms": { "type": "integer", "minimum": 250 },
+        "notification_cooldown_seconds": { "type": "integer", "minimum": 0 },
+        "window_prefix": { "type": "string" }
+      }
+    },
+    "services": { "type": "array", "items": { "$ref": "#/$defs/service" } }
+  },
+  "$defs": {
+    "service": {
+      "type": "object",
+      "required": ["name", "path", "command"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+        "path": { "type": "string", "minLength": 1 },
+        "command": { "type": "string", "minLength": 1 },
+        "env_file": { "type": ["string", "null"] },
+        "depends_on": { "type": "array", "items": { "type": "string" } },
+        "readiness": {
+          "oneOf": [
+            { "type": "object", "required": ["type", "url"], "properties": {
+              "type": { "const": "http" },
+              "url": { "type": "string", "format": "uri" },
+              "expect_status": { "type": "integer" },
+              "timeout_seconds": { "type": "integer", "minimum": 1 }
+            }},
+            { "type": "object", "required": ["type", "host", "port"], "properties": {
+              "type": { "const": "tcp" },
+              "host": { "type": "string" },
+              "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+              "timeout_seconds": { "type": "integer", "minimum": 1 }
+            }}
+          ]
+        },
+        "runtime": {
+          "type": "object",
+          "required": ["type"],
+          "properties": {
+            "type": { "enum": ["host", "docker-compose"] },
+            "compose_file": { "type": "string" },
+            "compose_service": { "type": "string" },
+            "exec_template": { "type": "string" }
+          },
+          "if": { "properties": { "type": { "const": "docker-compose" } } },
+          "then": { "required": ["compose_file", "compose_service"] }
+        },
+        "log_failure_patterns": { "type": "array", "items": { "type": "string" } },
+        "panel": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "title": { "type": "string" },
+            "color": { "type": "string" },
+            "layout": { "enum": ["tiled", "even-horizontal", "even-vertical", "main-horizontal", "main-vertical", "single-pane"] }
+          }
+        }
+      }
+    }
+  }
+}

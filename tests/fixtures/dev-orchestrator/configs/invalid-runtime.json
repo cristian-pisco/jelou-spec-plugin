@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "services": [
+    {
+      "name": "api",
+      "path": "./api",
+      "command": "x",
+      "runtime": { "type": "docker-compose", "compose_file": "./docker-compose.yml" }
+    }
+  ]
+}

@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.3.143] — 2026-05-04
+
+### Added
+- Foundations for the JLU Dev Orchestrator (Phase 1 of a multi-phase TMUX-based dev environment plugin)
+- `/jlu:register-service` (Claude Code) and `/jlu-register-service` (OpenCode) — interactive command to register or update a service in `jlu-services.json` with smart inference (lockfile detection for pnpm/yarn/bun/npm, `.env` files, docker-compose service detection)
+- `bin/lib/dev-orchestrator/config.mjs` — JSON Schema validator + atomic write + defaults merge
+- `bin/lib/dev-orchestrator/workspace.mjs` — workspace root resolver (walk-up + git fallback) + 12-char workspace-id (sha256)
+- `bin/lib/dev-orchestrator/task-context.mjs` — 5-layer task slug resolver (override → worktree path → branch → TASKS.md scan → `_global`)
+- `bin/lib/dev-orchestrator/state.mjs` — state directory primitives at `~/.jlu/workspaces/<id>/<slug>/`
+- `bin/lib/dev-orchestrator/register.mjs` — pure helpers used by the workflow: `loadOrInitConfig`, `addOrUpdateService`, `inferDefaults`, `inferComposeServices`
+- `jelou/references/jlu-services.schema.json` — JSON Schema Draft 2020-12 reference document for `jlu-services.json`
+- 49 new unit tests across five suites covering schema validation, workspace + task-slug resolution, state primitives, and register helpers (full repo suite at 196/196)
+
+### Internal
+- Spec + Phase 1 plan documents under `docs/superpowers/specs/` and `docs/superpowers/plans/`
+- Phase 2 (TMUX wrapper + minimal start-dev/stop-dev), Phase 3 (daemon + readiness probes + notifications), Phase 4 (diagnose + add-service + logs), and Phase 5 (polish + parity audit) deferred to subsequent plans
+
 ## [0.3.142] — 2026-05-04
 
 ### Added
