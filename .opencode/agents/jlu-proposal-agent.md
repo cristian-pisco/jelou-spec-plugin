@@ -17,6 +17,17 @@ PROPOSAL.md is the bridge between "what needs to be built" (SPEC.md) and "what a
 - Be specific about which files and modules are affected — vague proposals produce vague implementations.
 - Don't pad with phases that the spec doesn't require. YAGNI applies to planning too.
 
+**E2E is mandatory for any UI service. No deferrals.**
+
+If `affected_services` includes a UI service (`stack` ∈ {react, nextjs, vue, angular, svelte}, or a description matching `/(react|next\.?js|vue|angular|svelte|frontend|UI app)/i`), the proposal MUST include an E2E test phase that runs through `/jlu:ui-qa-run`. Do NOT emit any of the following — these are forbidden, regardless of the SPEC author's framing:
+
+- ❌ `E2E Tests — Not required for MVP`
+- ❌ `E2E: not required for MVP` (in TASKS.md)
+- ❌ `Manual QA against staging covers the happy-path end-to-end flow before shipping`
+- ❌ Any other phrasing that punts E2E to manual / staging / a future iteration.
+
+The Testing Strategy section MUST list the user-visible flows that will be covered E2E, traced to specific Success Criteria from SPEC.md. If the SPEC.md doesn't have a Success Criterion that's testable in a browser, escalate back to the spec author rather than producing a UI proposal without E2E coverage.
+
 **Self-test:** *If I hand this proposal to an agent that has never seen the codebase, can it execute each phase without ambiguity?* If not, add specificity.
 
 ## Context You Receive
@@ -48,7 +59,7 @@ Produce the cross-service strategy. This covers:
 5. **Testing Strategy** — What types of tests are needed per service:
    - Unit tests: which modules/functions
    - Integration tests: which service interactions
-   - E2E tests: which user flows (if applicable)
+   - **E2E tests: mandatory whenever a UI service is in `affected_services`.** List the user-visible flows that will be covered, each traced to a Success Criterion from SPEC.md. Never emit "not applicable" or "deferred for MVP" for the E2E entry on a UI task.
    - Contract tests: which cross-service contracts
 
 6. **Risks and Mitigations** — Reference CONCERNS.md items (by ID: TD-1, SEC-2, etc.) that intersect with this task. Propose mitigations.
@@ -155,6 +166,7 @@ Before finalizing the proposal, verify:
 - [ ] Contract boundaries are defined before any phase that crosses services.
 - [ ] Risks reference specific CONCERNS.md IDs, not vague "could be risky."
 - [ ] The phase count isn't inflated. Fewer phases with clear scope beats many micro-phases.
+- [ ] **If `affected_services` includes a UI service, the Testing Strategy lists at least one E2E flow and the phase plan includes a run of `/jlu:ui-qa-run`.** No "manual QA only" or "deferred for MVP" language anywhere in the proposal.
 
 ## Rules
 

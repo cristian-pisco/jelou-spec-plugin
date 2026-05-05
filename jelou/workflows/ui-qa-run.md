@@ -48,9 +48,24 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
 
 5. **Read TASKS.md frontmatter** for `affected_services`. Frontmatter is the structured source. Fallback to `## Services` markdown headings for legacy tasks (note in report).
 
-6. **Read services.yaml** for each affected service. Filter to those with a `dev` block (others are skipped with one-line note).
+6. **Read services.yaml** for each affected service.
 
-7. **Read each user-flow.md** in SPEC.md for `Service Boot Order`. Compute the union of declared boot orders across all UI-targeted flows. If two flows disagree on order, refuse: "conflicting boot order across flows: <flow-a> says <X>; <flow-b> says <Y>. Reconcile in the spec."
+   - **Non-UI services** without a `dev` block: skip with one-line note.
+   - **UI services** (detected per Step 11) without a `dev` block: this is a hard error, not a skip. E2E is mandatory for any frontend change regardless of MVP/scope status. Refuse with:
+     > "UI service `<id>` is missing a `dev` block in services.yaml. E2E is mandatory for frontend changes. Add `stack: <react|nextjs|vue|angular|svelte>` and a `dev` block (command, health_url or ready_signal, ready_timeout_s) per `jelou/references/dev-block-schema.md`, then re-run."
+
+7. **Resolve user-flow.md per UI service.** For each UI service in `affected_services`:
+
+   a. Look for `services/<UI_SERVICE_ID>/user-flow.md` files inside the task directory.
+
+   b. **If at least one user-flow.md exists**, read them for `Service Boot Order`. Compute the union of declared boot orders across all UI-targeted flows. If two flows disagree on order, refuse: "conflicting boot order across flows: `<flow-a>` says `<X>`; `<flow-b>` says `<Y>`. Reconcile in the spec."
+
+   c. **If no user-flow.md exists**, do NOT exit. The spec is the source of truth — the workflow must derive scenarios from it regardless of whether `/jlu:refine-task` was previously invoked. Dispatch `jlu-ui-e2e-writer` once with `MODE=derive-from-spec` to:
+      - Read `<TASK_DIR>/SPEC.md` (Acceptance Criteria, Success Criteria, Functional Requirements that mention UI behavior).
+      - Generate `<TASK_DIR>/services/<UI_SERVICE_ID>/user-flow.md` with the standard sections (Problem Statement, Affected UI Service, Routes, Steps, Service Boot Order, Env Vars, Auth Precondition).
+      - The agent infers `Service Boot Order` from the union of `affected_services` plus any external endpoints mentioned in the spec; flags ambiguities for human review instead of guessing.
+      - The agent infers `Env Vars` from references in the spec to env-controlled URLs/keys; flags missing inferences as `STATUS: NEEDS_CONTEXT`.
+      Then return to step 7a and re-read the generated files. The orchestrator commits the generated `user-flow.md` to the task directory before proceeding so the artifact survives across runs.
 
 8. **Pre-flight resource check** (inline; no separate `bin/` script).
    ```bash
@@ -102,7 +117,16 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
 
 ### Phase 2 — Resolve UI services and worktrees
 
-11. **Identify UI services** in `affected_services`. Heuristic: `services.yaml[id].stack` ∈ {`react`, `nextjs`, `vue`, `angular`, `svelte`}. If none, exit 0 with note "no UI service in affected_services — nothing to do."
+11. **Identify UI services** in `affected_services`. A service is UI if ANY of:
+
+    - `services.yaml[id].stack` ∈ {`react`, `nextjs`, `vue`, `angular`, `svelte`}.
+    - `services.yaml[id].description` matches `/(react|next\.?js|vue|angular|svelte|frontend|UI app|operator app)/i` AND the service is listed in `affected_services` (description-based fallback for services that omit `stack` — common on legacy registrations).
+
+    If a service is detected as UI by description but lacks an explicit `stack` field, emit a one-line warning recommending the registration be tightened (`Run /jlu:refine-task or edit services.yaml to set stack: <framework>`) and continue.
+
+    If a UI service is detected but its `dev` block is missing (Step 6 deferred this to here), refuse with the Step 6 error message — do NOT exit 0.
+
+    If no UI service is detected anywhere in `affected_services`, exit 0 with note "no UI service in affected_services — nothing to do."
 
 12. **Resolve each UI service's active worktree** by calling the algorithm in `jelou/references/worktree-resolution.md`. Pass the resolved path forward; do NOT use `services.yaml[*].path` directly.
 
@@ -233,6 +257,7 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
 | Docker daemon down | 2 | "docker info failed; start Docker Desktop / dockerd" |
 | Service ready_timeout | 2 | "<service> didn't reach ready in <X>s; check launch log" |
 | Mid-suite service crash | 2 | "service_crashed:<id>; last 50 lines of launch log" |
+| UI service missing `dev` block | 2 | "UI service `<id>` is missing a `dev` block" — E2E mandatory for frontend changes; add `stack` + `dev` to services.yaml |
 | Required env var unset | 2 | "required env vars missing: <list>" + reference to e2e-environment.md |
 | External dependency unreachable | 2 | "external dependency unreachable: <VAR>=<URL>" (HEAD-check failed pre-flight) |
 | All tests green | 0 | clean summary |
