@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.3.144] — 2026-05-05
+
+### Added
+- daily-slack: new `bin/daily-slack-compose.mjs` performs deterministic placeholder substitution preserving Slack mrkdwn (`` `[N%]` ``, `` `[YYYY-MM-DD]` ``, `<url|text>`, `~strike~`) literally, replacing the prior LLM-driven substitution that silently rewrote those tokens out of the body
+- daily-slack: channel template frontmatter accepts `closed_like_statuses` (case-insensitive name list) so ClickUp custom statuses like "pending to production" or "in review" are treated as 100%-done in `bin/daily-slack-bucket.mjs` (achieved bucket + percentage normalization + snapshot transition) and struck through in `{{short_term_goals}}` by `bin/daily-slack-render.mjs`
+- daily-slack: channel template frontmatter accepts `preview_channel`; when set, Step 14b posts the composed body to that target with a `*[PREVIEW — sprint <N> for #<channel>]*` banner and asks the user to verify the live Slack rendering before publishing to the real channel
+- daily-slack: shared `bin/lib/daily-slack-status.mjs` helper (`isClosedLike`, `loadClosedLikeStatuses`) used by both bucket and render so the closed-like rule has one source of truth
+
+### Changed
+- daily-slack: workflow Step 6c now captures `status.status` as `status_name` (in addition to `status.type`) and Step 6c also instructs the orchestrator to fan all per-task `clickup_get_task` calls in parallel from a single multi-tool message
+- daily-slack: workflow Step 9 splits comments and PR-state fetches into two parallel batches (single multi-tool message for `clickup_get_task_comments`; `xargs -P` / background `&`+`wait` for `gh pr view`), targeting a 10-min → ~2-min wall-clock cut on full sprints
+- daily-slack: workflow Step 13 runs `bin/daily-slack-compose.mjs` against `template-body.md` + `render-output.json` + `manual-fields.json` instead of in-line LLM substitution
+
 ## [0.3.143] — 2026-05-04
 
 ### Added

@@ -69,6 +69,27 @@ describe('daily-slack-scan-urls — normalization', () => {
   });
 });
 
+describe('daily-slack-scan-urls — Slack hyperlink format', () => {
+  test('exits 0 when URL is wrapped in <url|text> (Slack mrkdwn-flavored hyperlink)', () => {
+    const body = '`[100%]` <https://app.clickup.com/t/abc123|Marketplace - HTTP 500 (TypeORM CASE WHEN alias)>';
+    const r = run(setup(body, ['https://app.clickup.com/t/abc123']));
+    assert.equal(r.status, 0, `stderr: ${r.stderr}`);
+  });
+
+  test('exits 0 when URL is wrapped in ~~<url|text>~~ (full-line strikethrough)', () => {
+    const body = '~~`[2026-04-27]` <https://app.clickup.com/t/abc123|Done thing>~~';
+    const r = run(setup(body, ['https://app.clickup.com/t/abc123']));
+    assert.equal(r.status, 0, `stderr: ${r.stderr}`);
+  });
+
+  test('catches an unknown URL inside <url|text>', () => {
+    const body = 'See <https://app.clickup.com/t/EVIL|some name>';
+    const r = run(setup(body, ['https://app.clickup.com/t/abc123']));
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /unknown clickup url: https:\/\/app\.clickup\.com\/t\/EVIL/);
+  });
+});
+
 describe('daily-slack-scan-urls — protocol + fragment normalization', () => {
   test('http body URL matches https allowlist entry', () => {
     const body = 'See http://app.clickup.com/t/abc123';

@@ -5,15 +5,28 @@
 // a JSON input file. Outputs {achieved_goals, not_achieved_goals,
 // short_term_goals} as JSON on stdout.
 //
+// Output uses *standard markdown* (not Slack mrkdwn) so the resulting body
+// renders correctly through `mcp__plugin_slack_slack__slack_send_message`,
+// which expects standard markdown. Concretely:
+//   - bold:           **text**     (single `*text*` would render as italic)
+//   - strikethrough:  ~~text~~     (single `~text~` would render as plain)
+//   - italic:         _text_       (works in both standard markdown and mrkdwn)
+//   - link:           <url|name>   (Slack-flavored hyperlink, preserved verbatim)
+//
+// Channel templates (`registry/slack/<channel>.md`) MUST also use `**bold**`
+// — see jelou/templates/slack-channel.md for the canonical format.
+//
 // Usage:
-//   node bin/daily-slack-render.mjs --data <path>
+//   node bin/daily-slack-render.mjs --data <path> [--closed-like-statuses <path>]
 
 import { readOrDie, parseJsonOrDie } from './lib/daily-slack-helpers.mjs';
+import { isClosedLike, loadClosedLikeStatuses } from './lib/daily-slack-status.mjs';
 
 function parseArgs(argv) {
   const args = {};
   for (let i = 2; i < argv.length; i++) {
     if (argv[i] === '--data') args.data = argv[++i];
+    else if (argv[i] === '--closed-like-statuses') args.closedLike = argv[++i];
   }
   if (!args.data) {
     console.error('error: --data <path> is required');
@@ -47,25 +60,36 @@ function isoDate(s) {
   return s.slice(0, 10);
 }
 
-function renderShortTerm(short_term) {
+// Closed-like items wrap the ENTIRE line (date + link) in `~~...~~` so the
+// strikethrough visually covers the date too — readers expect `[2026-04-27]
+// done thing` to be one struck unit, not just the link.
+//
+// Open items optionally append ` — _<status_note>_` so the daily reader can
+// see at a glance why the item is still on the radar (pending prod, on hold,
+// in QA). The note must be set by the orchestrator from ClickUp status +
+// recent comments; the renderer just italicizes it verbatim.
+function renderShortTerm(short_term, closedLike) {
   const withDates = short_term.filter((t) => t.due_date);
   withDates.sort((a, b) => (a.due_date < b.due_date ? -1 : a.due_date > b.due_date ? 1 : 0));
   return withDates
     .map((t) => {
       const date = `\`[${isoDate(t.due_date)}]\``;
       const link = slackLink(t.url, t.name);
-      return t.status_type === 'closed' ? `${date} ~${link}~` : `${date} ${link}`;
+      if (isClosedLike(t, closedLike)) return `~~${date} ${link}~~`;
+      const note = typeof t.status_note === 'string' && t.status_note.trim() ? t.status_note.trim() : '';
+      return note ? `${date} ${link} — _${note}_` : `${date} ${link}`;
     })
     .join('\n');
 }
 
 function main() {
-  const { data } = parseArgs(process.argv);
+  const { data, closedLike } = parseArgs(process.argv);
   const d = parseJsonOrDie(readOrDie(data, '--data'), '--data');
+  const closedLikeStatuses = loadClosedLikeStatuses(closedLike);
   const out = {
     achieved_goals: renderAchieved(d.achieved || [], !!d.first_run),
     not_achieved_goals: renderNotAchieved(d.not_achieved || []),
-    short_term_goals: renderShortTerm(d.short_term || []),
+    short_term_goals: renderShortTerm(d.short_term || [], closedLikeStatuses),
   };
   process.stdout.write(JSON.stringify(out) + '\n');
 }
