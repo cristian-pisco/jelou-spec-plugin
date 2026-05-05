@@ -2,7 +2,9 @@
 
 A spec-driven workflow plugin that runs on Claude Code and OpenCode with specialized agents, strict TDD, multi-service orchestration, and a shared workspace as the single source of documentary truth.
 
-Follows the conventions established by [OpenSpec](https://github.com/Fission-AI/OpenSpec) (`/opsx:`) and [Get Shit Done](https://github.com/gsd-build/get-shit-done) (`/gsd:`), with the **`/jlu-`** command namespace.
+Follows the conventions established by [OpenSpec](https://github.com/Fission-AI/OpenSpec) (`/opsx:`) and [Get Shit Done](https://github.com/gsd-build/get-shit-done) (`/gsd:`), with the **`/jlu:`** namespace on Claude Code and **`/jlu-`** on OpenCode.
+
+> Invocation reference: see [INVOCATION.md](./INVOCATION.md) for the full command list across both runtimes.
 
 ## What It Does
 
