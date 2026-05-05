@@ -5,8 +5,19 @@
 // a JSON input file. Outputs {achieved_goals, not_achieved_goals,
 // short_term_goals} as JSON on stdout.
 //
+// Output uses *standard markdown* (not Slack mrkdwn) so the resulting body
+// renders correctly through `mcp__plugin_slack_slack__slack_send_message`,
+// which expects standard markdown. Concretely:
+//   - bold:           **text**     (single `*text*` would render as italic)
+//   - strikethrough:  ~~text~~     (single `~text~` would render as plain)
+//   - italic:         _text_       (works in both standard markdown and mrkdwn)
+//   - link:           <url|name>   (Slack-flavored hyperlink, preserved verbatim)
+//
+// Channel templates (`registry/slack/<channel>.md`) MUST also use `**bold**`
+// — see jelou/templates/slack-channel.md for the canonical format.
+//
 // Usage:
-//   node bin/daily-slack-render.mjs --data <path>
+//   node bin/daily-slack-render.mjs --data <path> [--closed-like-statuses <path>]
 
 import { readOrDie, parseJsonOrDie } from './lib/daily-slack-helpers.mjs';
 import { isClosedLike, loadClosedLikeStatuses } from './lib/daily-slack-status.mjs';
@@ -49,6 +60,14 @@ function isoDate(s) {
   return s.slice(0, 10);
 }
 
+// Closed-like items wrap the ENTIRE line (date + link) in `~~...~~` so the
+// strikethrough visually covers the date too — readers expect `[2026-04-27]
+// done thing` to be one struck unit, not just the link.
+//
+// Open items optionally append ` — _<status_note>_` so the daily reader can
+// see at a glance why the item is still on the radar (pending prod, on hold,
+// in QA). The note must be set by the orchestrator from ClickUp status +
+// recent comments; the renderer just italicizes it verbatim.
 function renderShortTerm(short_term, closedLike) {
   const withDates = short_term.filter((t) => t.due_date);
   withDates.sort((a, b) => (a.due_date < b.due_date ? -1 : a.due_date > b.due_date ? 1 : 0));
@@ -56,7 +75,9 @@ function renderShortTerm(short_term, closedLike) {
     .map((t) => {
       const date = `\`[${isoDate(t.due_date)}]\``;
       const link = slackLink(t.url, t.name);
-      return isClosedLike(t, closedLike) ? `${date} ~${link}~` : `${date} ${link}`;
+      if (isClosedLike(t, closedLike)) return `~~${date} ${link}~~`;
+      const note = typeof t.status_note === 'string' && t.status_note.trim() ? t.status_note.trim() : '';
+      return note ? `${date} ${link} — _${note}_` : `${date} ${link}`;
     })
     .join('\n');
 }

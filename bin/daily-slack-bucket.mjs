@@ -7,10 +7,29 @@
 //
 // Usage:
 //   node bin/daily-slack-bucket.mjs --current <path> [--snapshot <path>]
+//     [--closed-like-statuses <path>] [--status-percentages <path>]
+//     [--cutoff-ms <epoch-ms>]
+//
+// Bucketing rules (top to bottom; first match wins):
+//   1. Task became closed-like since prior snapshot → achieved.
+//   2. Task percentage advanced vs prior snapshot → achieved.
+//   3. Task has `date_closed >= cutoff` (when --cutoff-ms is set) → achieved.
+//   4. New task (no prior entry) at percentage > 0 → achieved.
+//   5. Otherwise → not_achieved.
+//
+// Percentage normalization (applied before bucketing):
+//   - Closed-like (status_type === 'closed' OR status_name ∈ closed-like list) → 100.
+//   - status_name ∈ status_percentages map → mapped value (e.g. "pending to production" → 90).
+//   - Else: the entry's existing percentage.
 
 import { existsSync } from 'node:fs';
 import { readOrDie, parseJsonOrDie } from './lib/daily-slack-helpers.mjs';
-import { isClosedLike, loadClosedLikeStatuses } from './lib/daily-slack-status.mjs';
+import {
+  isClosedLike,
+  loadClosedLikeStatuses,
+  loadStatusPercentages,
+  statusToPercentage,
+} from './lib/daily-slack-status.mjs';
 
 function parseArgs(argv) {
   const args = {};
@@ -18,6 +37,8 @@ function parseArgs(argv) {
     if (argv[i] === '--current') args.current = argv[++i];
     else if (argv[i] === '--snapshot') args.snapshot = argv[++i];
     else if (argv[i] === '--closed-like-statuses') args.closedLike = argv[++i];
+    else if (argv[i] === '--status-percentages') args.statusPercentages = argv[++i];
+    else if (argv[i] === '--cutoff-ms') args.cutoffMs = argv[++i];
   }
   if (!args.current) {
     console.error('error: --current <path> is required');
@@ -36,11 +57,11 @@ function snapshotEntry(t) {
   };
 }
 
-function normalizePercentage(entry, closedLike) {
-  return isClosedLike(entry, closedLike) ? 100 : entry.percentage;
+function normalizePercentage(entry, closedLike, statusPercentages) {
+  return statusToPercentage(entry, closedLike, statusPercentages);
 }
 
-function bucket(current, prior, closedLike) {
+function bucket(current, prior, closedLike, statusPercentages, cutoffMs) {
   const achieved = [];
   const not_achieved = [];
   const new_snapshot = {};
@@ -49,38 +70,51 @@ function bucket(current, prior, closedLike) {
       console.error(`error: task missing clickup_id: ${JSON.stringify(t)}`);
       process.exit(2);
     }
-    t.percentage = normalizePercentage(t, closedLike);
+    t.percentage = normalizePercentage(t, closedLike, statusPercentages);
     new_snapshot[t.clickup_id] = snapshotEntry(t);
     const p = prior ? prior[t.clickup_id] : undefined;
+    const closedSinceCutoff =
+      cutoffMs != null &&
+      t.date_closed != null &&
+      Number(t.date_closed) >= cutoffMs;
     if (!prior) {
-      not_achieved.push(t);
+      if (closedSinceCutoff) achieved.push(t);
+      else not_achieved.push(t);
       continue;
     }
     if (p === undefined) {
-      if (t.percentage > 0) achieved.push(t);
+      if (t.percentage > 0 || closedSinceCutoff) achieved.push(t);
       else not_achieved.push(t);
       continue;
     }
     const becameClosed = !isClosedLike(p, closedLike) && isClosedLike(t, closedLike);
     const advanced = t.percentage > p.percentage;
-    if (becameClosed || advanced) achieved.push(t);
+    if (becameClosed || advanced || closedSinceCutoff) achieved.push(t);
     else not_achieved.push(t);
   }
   return { achieved, not_achieved, new_snapshot, first_run: !prior };
 }
 
 function main() {
-  const { current, snapshot, closedLike } = parseArgs(process.argv);
-  const cur = parseJsonOrDie(readOrDie(current, '--current'), '--current');
-  const closedLikeStatuses = loadClosedLikeStatuses(closedLike);
+  const args = parseArgs(process.argv);
+  const cur = parseJsonOrDie(readOrDie(args.current, '--current'), '--current');
+  const closedLikeStatuses = loadClosedLikeStatuses(args.closedLike);
+  const statusPercentages = loadStatusPercentages(args.statusPercentages);
+  const cutoffMs = args.cutoffMs == null ? null : Number(args.cutoffMs);
+  if (cutoffMs != null && !Number.isFinite(cutoffMs)) {
+    console.error('error: --cutoff-ms must be a number (epoch milliseconds)');
+    process.exit(2);
+  }
   let prior = null;
-  if (snapshot && existsSync(snapshot)) {
-    prior = parseJsonOrDie(readOrDie(snapshot, '--snapshot'), '--snapshot');
+  if (args.snapshot && existsSync(args.snapshot)) {
+    prior = parseJsonOrDie(readOrDie(args.snapshot, '--snapshot'), '--snapshot');
     for (const id of Object.keys(prior)) {
-      prior[id].percentage = normalizePercentage(prior[id], closedLikeStatuses);
+      prior[id].percentage = normalizePercentage(prior[id], closedLikeStatuses, statusPercentages);
     }
   }
-  process.stdout.write(JSON.stringify(bucket(cur, prior, closedLikeStatuses)) + '\n');
+  process.stdout.write(
+    JSON.stringify(bucket(cur, prior, closedLikeStatuses, statusPercentages, cutoffMs)) + '\n'
+  );
 }
 
 main();

@@ -13,20 +13,34 @@ The file has two parts:
 The published draft also stores `task_snapshots` in its frontmatter; that field
 is managed automatically by the workflow — do not edit it by hand.
 
+## Markdown convention (IMPORTANT)
+
+The daily-slack pipeline posts via `mcp__plugin_slack_slack__slack_send_message`,
+which uses **standard markdown** (not Slack mrkdwn). So the template body MUST
+use:
+
+- `**bold**` for headings (single `*text*` renders as italic in this tool)
+- `~~strike~~` for strikethrough (the renderer emits this for closed items)
+- `_italic_` for italic (works in both formats)
+
+The renderer (`bin/daily-slack-render.mjs`) emits `**bold**` and `~~strike~~`
+verbatim; the compose script preserves the template body literally; the URL
+allowlist scan handles the `<url|name>` Slack hyperlink form.
+
 ## Spacing convention
 
 For Slack readability, leave a blank line BEFORE and AFTER each question heading
-in the body. Slack mrkdwn collapses adjacent blank lines, but the structure makes
-the rendered message easier to scan and prevents adjacent placeholders from
-visually running together.
+in the body. Slack collapses adjacent blank lines, but the structure makes the
+rendered message easier to scan and prevents adjacent placeholders from visually
+running together.
 
 ```
-*Question one?*
+**Question one?**
 
 {{value_one}}
 
 
-*Question two?*
+**Question two?**
 
 {{value_two}}
 ```
@@ -34,9 +48,9 @@ visually running together.
 ## Placeholders
 
 ### Automated (filled from sprint task data)
-- `{{achieved_goals}}` — tasks whose percentage rose since the last published draft. Format per task: `` `[<%>]` <url|name> `` (Slack hyperlink)
+- `{{achieved_goals}}` — tasks whose percentage rose since the last published draft, OR whose `date_closed` falls within the cutoff window. Format per task: `` `[<%>]` <url|name> ``. The percentage is **always numeric** — never a status string. Mapping rules: closed → 100, anything in `status_percentages` (e.g. "pending to production" → 90, "in qa" → 80) → mapped value, in-progress → subtask ratio.
 - `{{not_achieved_goals}}` — tasks whose percentage did not advance. Format per task: `<name> — <auto-extracted reason>\n<url>`
-- `{{short_term_goals}}` — sprint tasks with a due date. Format per task: `` `[<YYYY-MM-DD>]` <url|name> ``. Closed tasks render as `` `[<YYYY-MM-DD>]` ~<url|name>~ `` (strikethrough)
+- `{{short_term_goals}}` — sprint tasks with a due date. Format per task: `` `[<YYYY-MM-DD>]` <url|name> ``. Closed-like tasks render with the **entire line** wrapped in `~~...~~` (date and link together). Open tasks may include a status note: `` `[<YYYY-MM-DD>]` <url|name> — _<status note>_ `` (e.g., "pendiente a producción · PR repo#123 abierto").
 
 On the very first run for a channel (no prior published draft), `{{achieved_goals}}`
 renders the first-run banner instead of an empty string.
@@ -56,8 +70,26 @@ Some teams use ClickUp custom statuses ("pending to production", "in review",
 and the workflow will treat any task in one of them as 100% complete:
 - `bin/daily-slack-bucket.mjs` normalizes `percentage` to 100 and counts
   transitions into the list as `achieved`.
-- `bin/daily-slack-render.mjs` strikes through the link in
-  `{{short_term_goals}}`.
+- `bin/daily-slack-render.mjs` strikes through the entire line (date + link)
+  in `{{short_term_goals}}`.
+
+### `status_percentages` (object: status name → 0-100)
+
+For statuses that are *progressing* but not yet done, declare a target
+percentage so `{{achieved_goals}}` always shows a number rather than a status
+string. Example: `"pending to production": 90`, `"in qa": 80`. Status names
+match case-insensitively. Closed-like statuses (above) take precedence and
+always evaluate to 100.
+
+### `cutoff_hours` (number, default 24)
+
+How far back to look when surfacing tasks for `{{achieved_goals}}` based on
+`date_closed`. The workflow computes `cutoff_ms = now − cutoff_hours·3600000`
+and passes it to the bucketer; any task with `date_closed >= cutoff_ms` is
+included in `achieved` even when the prior snapshot already had it at 100%.
+This is what makes "achieved since yesterday" robust to multiple daily
+updates per calendar day. Set to a smaller value (e.g. `12`) for teams that
+publish a midday and an EOD daily.
 
 ### `preview_channel` (string)
 
@@ -75,50 +107,55 @@ channel. Leave the field unset to skip the preview round-trip.
 ---
 channel: "#dailies"
 preview_channel: "@cristian.pisco"
+cutoff_hours: 24
 closed_like_statuses:
-  - "pending to production"
-  - "in review"
-  - "ready to merge"
+  - "pending to production por feature flag"
+status_percentages:
+  "pending to production": 90
+  "in qa": 80
+  "qa review": 80
 manual_fields:
   - energy
   - meetings
-  - planned_achievements
+  - uncompleted_goals
+  - planned_goals
 manual_prompts:
   energy: "How's your energy today? (red / yellow / green emoji)"
   meetings: "Any meetings to mention? (e.g., Daily, 1:1, planning)"
-  planned_achievements: "What do you plan to achieve before the next daily?"
+  uncompleted_goals: "What didn't you finish since the last update? Why?"
+  planned_goals: "What do you plan to achieve before the next daily?"
 ---
 ```
 
 ```
-*#dailyBrain*
+**#dailyBrain**
 
-*¿Cómo está tu energía hoy?* :large_red_square::large_yellow_square::large_green_square:
+**¿Cómo está tu energía hoy?** :large_red_square::large_yellow_square::large_green_square:
 
 {{energy}}
 
 
-*¿Qué objetivos has logrado desde tu última actualización?*
+**¿Qué objetivos has logrado desde tu última actualización?**
 
 {{achieved_goals}}
 
 
-*Reuniones*
+**Reuniones**
 
 {{meetings}}
 
 
-*¿Qué objetivos no has logrado desde tu última actualización? ¿Y por qué?*
+**¿Qué objetivos no has logrado desde tu última actualización? ¿Y por qué?**
 
-{{not_achieved_goals}}
-
-
-*¿Qué logros importantes tienes planeados para hoy y para la próxima actualización diaria?*
-
-{{planned_achievements}}
+{{uncompleted_goals}}
 
 
-*¿Cuáles son tus metas a corto plazo (y ETA)?*
+**¿Qué logros importantes tienes planeados para hoy y para la próxima actualización diaria?**
+
+{{planned_goals}}
+
+
+**¿Cuáles son tus metas a corto plazo (y ETA)?**
 
 {{short_term_goals}}
 ```

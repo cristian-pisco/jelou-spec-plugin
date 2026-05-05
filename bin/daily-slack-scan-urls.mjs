@@ -23,7 +23,9 @@ function parseArgs(argv) {
   return args;
 }
 
-const URL_RE = /https?:\/\/app\.clickup\.com\/t\/[^\s)]+/g;
+// Stop at whitespace, `)`, `|` (Slack `<url|text>`), and `>` (Slack `<url>` or `<url|text>`).
+// Without `|` and `>` the regex would swallow the link's display text and `>` terminator.
+const URL_RE = /https?:\/\/app\.clickup\.com\/t\/[^\s)|>]+/g;
 
 function normalize(url) {
   return url

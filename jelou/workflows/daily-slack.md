@@ -25,9 +25,20 @@ You are the orchestrator for the `/jlu-daily-slack` command. You generate a Slac
 ## Step 3 — Load Channel Template
 
 1. Read `<workspace>/registry/slack/<channel>.md`.
-2. Parse YAML frontmatter for `manual_fields`, `manual_prompts`, and the optional `closed_like_statuses` (array of ClickUp status names treated as done) and `preview_channel` (Slack channel or DM target like `#preview-dailies` or `@username`). Parse the body as the message template.
+2. Parse YAML frontmatter for:
+   - `manual_fields` and `manual_prompts` (required for the user-prompted sections)
+   - `closed_like_statuses` (optional array of ClickUp status names treated as done)
+   - `status_percentages` (optional object mapping status name → 0-100 percentage; e.g. `"pending to production": 90`, `"in qa": 80`)
+   - `cutoff_hours` (optional number, default `24`) — how far back to look for tasks closed within the recent window when surfacing `achieved`
+   - `preview_channel` (optional Slack channel or DM target like `#preview-dailies` or `@username`)
+
+   Parse the body as the message template.
 3. If missing, stop with: "No template found for #<channel>. Create one at `<workspace>/registry/slack/<channel>.md`. See `jelou/templates/slack-channel.md` for the format."
-4. Write `<workspace>/.cache/closed-like-statuses.json` as a JSON array containing the values of `closed_like_statuses` (use `[]` if the key is absent). Bucket and render scripts will read this file in later steps.
+4. Write three cache files for downstream scripts:
+   - `<workspace>/.cache/closed-like-statuses.json` — JSON array of `closed_like_statuses` values (use `[]` if the key is absent).
+   - `<workspace>/.cache/status-percentages.json` — JSON object of `status_percentages` (use `{}` if absent).
+   - `<workspace>/.cache/cutoff-ms.txt` — single-line file with the epoch-ms cutoff = `Date.now() − cutoff_hours·3600000`.
+5. **Markdown sanity check.** The body MUST use standard markdown (`**bold**`, `~~strike~~`, `_italic_`) — the plugin Slack tool renders single-asterisk as italic, not bold. If the body still uses single-asterisk headings (`*Question?*`), warn the user via `question`: "The template uses Slack mrkdwn (`*bold*`) which renders italic via the plugin Slack tool. Convert to standard markdown (`**bold**`)?". On confirm, rewrite the file in-place; on decline, continue.
 
 ## Step 4 — Resolve User Identity
 
@@ -85,17 +96,19 @@ The script returns a JSON array of clickup-only stubs (`{clickup_id, name, url, 
 Fire one `clickup_get_task` per task in the union **in parallel** — issue all calls in a single multi-tool message rather than awaiting each before sending the next. From each response, extract:
 - `name` (from ClickUp; for plugin tasks, override with the SPEC.md first heading if available)
 - `status.type` (record as `status_type`)
-- `status.status` (record as `status_name` — the human-readable status string used by `closed_like_statuses`)
+- `status.status` (record as `status_name` — the human-readable status string used by `closed_like_statuses` and `status_percentages`)
 - `due_date`
+- `date_closed` (epoch ms; `null` for non-closed tasks) — used by the bucketer's cutoff logic
+- `date_updated` (epoch ms) — useful for status-transition heuristics
 - `subtasks` (for percentage calculation)
 
-Calculate `percentage`:
-- Plugin tasks: `(closed_subtasks / total_subtasks) × 90`. If exactly 90, run `gh pr view <url> --json state` for each PR URL; if all merged, upgrade to 100. Issue every `gh pr view` invocation in parallel — fan all of them out from a single Bash command using `xargs -P` (or `&`/`wait`), never one PR at a time.
-- ClickUp-only tasks: `(closed_subtasks / total_subtasks) × 90`; no PR upgrade. If no subtasks, 0.
+Calculate `percentage` (in-progress fallback only — `bin/daily-slack-bucket.mjs` re-normalizes against `closed_like_statuses` and `status_percentages` downstream, so the order is: closed-like → 100, mapped-status → mapped value, else this fallback):
+- Plugin tasks: `(closed_subtasks / total_subtasks) × 100`. If `gh pr view <url> --json state` reports all PRs merged, the bucketer's status mapping for the resulting "closed" status will land at 100 anyway. Issue every `gh pr view` invocation in parallel — fan all of them out from a single Bash command using `xargs -P` (or `&`/`wait`), never one PR at a time.
+- ClickUp-only tasks: `(closed_subtasks / total_subtasks) × 100`; no PR upgrade. If no subtasks, 0.
 
-Note: tasks with `status_type === 'closed'` (and any `status_name` listed in `closed_like_statuses`) are normalized to `percentage: 100` downstream by `bin/daily-slack-bucket.mjs`, regardless of subtask count. The orchestrator's calculation here can be left as-is; the bucketer enforces the closed-as-done invariant.
+Note: closed-like tasks (`status_type === 'closed'` OR `status_name` listed in `closed_like_statuses`) are normalized to `percentage: 100` downstream. Tasks whose `status_name` matches a key in `status_percentages` are normalized to the mapped value (e.g. "pending to production" → 90, "in qa" → 80). The orchestrator's per-task calculation here is the in-progress fallback; the bucketer enforces the status-driven invariants.
 
-Build `<workspace>/.cache/current-tasks.json`: an array of `{clickup_id, name, url, percentage, status_type, status_name, due_date, source, slug, pr_urls}`.
+Build `<workspace>/.cache/current-tasks.json`: an array of `{clickup_id, name, url, percentage, status_type, status_name, due_date, date_closed, date_updated, source, slug, pr_urls}`.
 
 ## Step 7 — Resolve Cutoff and Snapshot
 
@@ -111,28 +124,51 @@ Build `<workspace>/.cache/current-tasks.json`: an array of `{clickup_id, name, u
 node <plugin-root>/bin/daily-slack-bucket.mjs \
   --current <workspace>/.cache/current-tasks.json \
   --snapshot <workspace>/.cache/snapshot-<sprint>-<channel>.json \
-  --closed-like-statuses <workspace>/.cache/closed-like-statuses.json
+  --closed-like-statuses <workspace>/.cache/closed-like-statuses.json \
+  --status-percentages <workspace>/.cache/status-percentages.json \
+  --cutoff-ms "$(cat <workspace>/.cache/cutoff-ms.txt)"
 ```
 
-Capture stdout JSON: `{achieved, not_achieved, new_snapshot, first_run}`. The `--closed-like-statuses` flag teaches the bucketer to treat the channel's custom-statuses (e.g., "pending to production") as 100%-done in addition to `status_type === 'closed'`.
+Capture stdout JSON: `{achieved, not_achieved, new_snapshot, first_run}`.
 
-## Step 9 — Fetch Reasons for Stuck Tasks
+The flags:
+- `--closed-like-statuses` — treat the listed status names as 100%-done in addition to `status_type === 'closed'`.
+- `--status-percentages` — map non-closed statuses to a target percentage (e.g. "pending to production" → 90, "in qa" → 80). Ensures `{{achieved_goals}}` always shows a numeric `[N%]`, never a status string.
+- `--cutoff-ms` — surface tasks closed within the recent window (default last 24h) as `achieved` even when the prior snapshot already had them at 100%. This makes "achieved since yesterday" robust to multiple daily updates per calendar day.
+
+## Step 9 — Fetch Reasons + Short-Term Status Notes
 
 Per-task work fans out, so issue all calls in parallel — never one-task-at-a-time. The wall-clock saving compounds with Step 6c.
 
-1. **Parallel batch A — comments.** Issue every `clickup_get_task_comments(task_id)` for every task in `not_achieved` in a single multi-tool message. From each response, extract the latest 1-2 comments with `date_iso > cutoff`. If none after cutoff, take the most recent overall.
-2. **Parallel batch B — PR states.** For plugin tasks with PR URLs, issue every `gh pr view <url> --json state,isDraft,mergeable,statusCheckRollup` in parallel via Bash (use `&` and `wait`, or `xargs -P`). Map `statusCheckRollup` to `checks: "failing"` if any check failed.
-3. Write `<workspace>/.cache/task-<clickup_id>.json` per task:
+1. **Identify the comment-needing set.** Union of:
+   - Every task in `not_achieved` (so we can populate `reason` for `{{not_achieved_goals}}`).
+   - Every **non-closed-like** task with a `due_date` (so we can populate `status_note` for `{{short_term_goals}}` — the daily reader needs to see *why* an item is still on the radar: pending prod, on hold, in QA).
+
+2. **Parallel batch A — comments.** Issue every `clickup_get_task_comments(task_id)` for the union in a single multi-tool message. From each response, extract the latest 1-2 comments with `date_iso > cutoff`. If none after cutoff, take the most recent overall.
+
+3. **Parallel batch B — PR states.** For plugin tasks with PR URLs, issue every `gh pr view <url> --json state,isDraft,mergeable,statusCheckRollup` in parallel via Bash (use `&` and `wait`, or `xargs -P`). Map `statusCheckRollup` to `checks: "failing"` if any check failed.
+
+4. Write `<workspace>/.cache/task-<clickup_id>.json` per task:
    ```json
    { "cutoff": "<iso-or-null>", "comments": [{"date_iso": "...", "text": "..."}], "pr_states": {"<url>": {"state": "...", "isDraft": <bool>, "mergeable": <bool>, "checks": "..."}} }
    ```
-4. Run reason extraction for every `not_achieved` task (independent CLI invocations, safe to run sequentially since each is sub-second):
+
+5. Run reason extraction for every `not_achieved` task (independent CLI invocations, safe to run sequentially since each is sub-second):
    ```bash
    node <plugin-root>/bin/daily-slack-extract-reason.mjs --task <workspace>/.cache/task-<clickup_id>.json
    ```
    Capture stdout as `reason` for that task.
 
-Attach `reason` to each task in `not_achieved`.
+6. **Build `status_note` for each non-closed-like short-term task.** Reason from status + comments. Suggested patterns:
+   - Status `pending to production` (or variant) → `pendiente a producción · PR <repo>#<n> abierto` (cite the PR URL the task references).
+   - Status `on hold` / `paused` / `blocked` → read the comments for the blocker reason; emit a one-line summary like `on hold · esperando respuesta de cliente X` or `blocked · waiting on infra ticket DEVOPS-42`.
+   - QA-related status (`in qa`, `qa review`, `qa approved`) → `en QA` (with PR if relevant).
+   - `in progress` with subtask progress → `<closed>/<total> subtareas listas`.
+   - Other → italicized status name as fallback.
+
+   Keep notes short (≤80 chars). Don't fabricate — if comments don't reveal a reason for `on hold`, fall back to `_on hold_` rather than guessing.
+
+Attach `reason` to each task in `not_achieved`. Attach `status_note` to each non-closed short-term task.
 
 ## Step 10 — Render Automated Placeholders
 
@@ -142,11 +178,13 @@ Build `<workspace>/.cache/render-data.json`:
   "first_run": <bool>,
   "achieved": [{"name": "...", "url": "...", "percentage": <int>}, ...],
   "not_achieved": [{"name": "...", "url": "...", "reason": "..."}, ...],
-  "short_term": [{"name": "...", "url": "...", "due_date": "<iso-or-null>", "status_type": "<closed|open|custom|...>", "status_name": "<human status string>"}, ...]
+  "short_term": [{"name": "...", "url": "...", "due_date": "<iso-or-null>", "status_type": "<closed|open|custom|...>", "status_name": "<human status string>", "status_note": "<short note for non-closed items>"}, ...]
 }
 ```
 
-`short_term` is built from the union task set (any task with a `due_date`). Pass through both `status_type` and `status_name` from `current-tasks.json` so the renderer can strike through closed tasks AND any custom status listed in `closed_like_statuses`.
+`short_term` is built from the union task set (any task with a `due_date`). Pass through:
+- `status_type` and `status_name` so the renderer can strike through closed tasks AND any custom status listed in `closed_like_statuses` (the strikethrough wraps the **entire line** — date and link together).
+- `status_note` (only for non-closed items) so the renderer appends ` — _<note>_` to give the reader context (pending prod, on hold reason, in QA, etc.). Closed-like items ignore `status_note`.
 
 ```bash
 node <plugin-root>/bin/daily-slack-render.mjs \
@@ -176,7 +214,7 @@ For each field in `manual_fields` (in order):
    - `<workspace>/.cache/render-output.json` — the `{achieved_goals, not_achieved_goals, short_term_goals}` JSON captured from Step 10.
    - `<workspace>/.cache/manual-fields.json` — a flat `{<field>: "<user-response>"}` object built from Step 12 answers.
 
-2. Run the deterministic compose script. Do NOT substitute placeholders by LLM rewriting — the script preserves Slack mrkdwn (backticks around `[N%]` / `[YYYY-MM-DD]`, `<url|text>` hyperlinks, `~strike~`) literally:
+2. Run the deterministic compose script. Do NOT substitute placeholders by LLM rewriting — the script preserves the rendered standard markdown (`**bold**` headers, `~~strike~~`, backticks around `[N%]` / `[YYYY-MM-DD]`, `<url|text>` hyperlinks, italic `_text_`) literally:
    ```bash
    node <plugin-root>/bin/daily-slack-compose.mjs \
      --template <workspace>/.cache/template-body.md \

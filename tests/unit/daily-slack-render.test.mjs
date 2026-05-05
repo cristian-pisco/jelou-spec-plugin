@@ -28,7 +28,7 @@ function run(dataPathOrObj) {
   const { dataPath, closedPath } = dataPathOrObj;
   return spawnSync(
     'node',
-    ['--', SCRIPT, '--data', dataPath, '--closed-like-statuses', closedPath].slice(1),
+    [SCRIPT, '--data', dataPath, '--closed-like-statuses', closedPath],
     { encoding: 'utf8' }
   );
 }
@@ -96,8 +96,8 @@ describe('daily-slack-render — short_term sorting + filtering', () => {
   });
 });
 
-describe('daily-slack-render — short_term closed strikethrough', () => {
-  test('applies strikethrough to link for closed tasks', () => {
+describe('daily-slack-render — short_term closed full-line strikethrough', () => {
+  test('wraps entire line (date + link) in ~~ for closed tasks', () => {
     const data = {
       first_run: false,
       achieved: [],
@@ -107,7 +107,7 @@ describe('daily-slack-render — short_term closed strikethrough', () => {
       ],
     };
     const out = JSON.parse(run(setup(data)).stdout);
-    assert.equal(out.short_term_goals, '`[2026-04-30]` ~<u1|Done task>~');
+    assert.equal(out.short_term_goals, '~~`[2026-04-30]` <u1|Done task>~~');
   });
 
   test('does not apply strikethrough for open tasks', () => {
@@ -123,7 +123,7 @@ describe('daily-slack-render — short_term closed strikethrough', () => {
     assert.equal(out.short_term_goals, '`[2026-04-30]` <u1|Open task>');
   });
 
-  test('mixed open and closed render with per-task strikethrough', () => {
+  test('mixed open and closed render with per-task formatting', () => {
     const data = {
       first_run: false,
       achieved: [],
@@ -136,8 +136,69 @@ describe('daily-slack-render — short_term closed strikethrough', () => {
     const out = JSON.parse(run(setup(data)).stdout);
     assert.equal(
       out.short_term_goals,
-      '`[2026-04-30]` <u1|Open>\n`[2026-05-01]` ~<u2|Done>~'
+      '`[2026-04-30]` <u1|Open>\n~~`[2026-05-01]` <u2|Done>~~'
     );
+  });
+});
+
+describe('daily-slack-render — short_term status_note for open tasks', () => {
+  test('appends italicized status_note when present and task is open', () => {
+    const data = {
+      first_run: false,
+      achieved: [],
+      not_achieved: [],
+      short_term: [
+        {
+          name: 'Probar bulk',
+          url: 'u1',
+          due_date: '2026-05-07T00:00:00Z',
+          status_type: 'custom',
+          status_name: 'pending to production',
+          status_note: 'pendiente a producción · PR jelou-apps#5582 abierto',
+        },
+      ],
+    };
+    const out = JSON.parse(run(setup(data)).stdout);
+    assert.equal(
+      out.short_term_goals,
+      '`[2026-05-07]` <u1|Probar bulk> — _pendiente a producción · PR jelou-apps#5582 abierto_'
+    );
+  });
+
+  test('omits the dash separator when status_note is empty or whitespace', () => {
+    const data = {
+      first_run: false,
+      achieved: [],
+      not_achieved: [],
+      short_term: [
+        { name: 'A', url: 'u1', due_date: '2026-04-30T00:00:00Z', status_type: 'open', status_note: '' },
+        { name: 'B', url: 'u2', due_date: '2026-05-01T00:00:00Z', status_type: 'open', status_note: '   ' },
+      ],
+    };
+    const out = JSON.parse(run(setup(data)).stdout);
+    assert.equal(
+      out.short_term_goals,
+      '`[2026-04-30]` <u1|A>\n`[2026-05-01]` <u2|B>'
+    );
+  });
+
+  test('ignores status_note for closed-like items (strikethrough overrides)', () => {
+    const data = {
+      first_run: false,
+      achieved: [],
+      not_achieved: [],
+      short_term: [
+        {
+          name: 'Done',
+          url: 'u1',
+          due_date: '2026-04-30T00:00:00Z',
+          status_type: 'closed',
+          status_note: 'irrelevant for closed',
+        },
+      ],
+    };
+    const out = JSON.parse(run(setup(data)).stdout);
+    assert.equal(out.short_term_goals, '~~`[2026-04-30]` <u1|Done>~~');
   });
 });
 
@@ -158,7 +219,7 @@ describe('daily-slack-render — multi-task spacing', () => {
 });
 
 describe('daily-slack-render — closed-like custom statuses (status_name)', () => {
-  test('treats a status_name in --closed-like-statuses as closed (strikethrough), even when status_type is not "closed"', () => {
+  test('treats a status_name in --closed-like-statuses as closed (full-line strike), even when status_type is not "closed"', () => {
     const data = {
       first_run: false,
       achieved: [],
@@ -171,7 +232,7 @@ describe('daily-slack-render — closed-like custom statuses (status_name)', () 
     const out = JSON.parse(run(setup(data, ['pending to production', 'in review'])).stdout);
     assert.equal(
       out.short_term_goals,
-      '`[2026-04-30]` ~<u1|A>~\n`[2026-05-01]` <u2|B>'
+      '~~`[2026-04-30]` <u1|A>~~\n`[2026-05-01]` <u2|B>'
     );
   });
 
@@ -185,7 +246,7 @@ describe('daily-slack-render — closed-like custom statuses (status_name)', () 
       ],
     };
     const out = JSON.parse(run(setup(data, ['pending to production'])).stdout);
-    assert.equal(out.short_term_goals, '`[2026-04-30]` ~<u1|A>~');
+    assert.equal(out.short_term_goals, '~~`[2026-04-30]` <u1|A>~~');
   });
 
   test('still applies strikethrough when status_type is "closed" regardless of --closed-like-statuses', () => {
@@ -198,7 +259,7 @@ describe('daily-slack-render — closed-like custom statuses (status_name)', () 
       ],
     };
     const out = JSON.parse(run(setup(data, [])).stdout);
-    assert.equal(out.short_term_goals, '`[2026-04-30]` ~<u1|A>~');
+    assert.equal(out.short_term_goals, '~~`[2026-04-30]` <u1|A>~~');
   });
 
   test('absence of --closed-like-statuses preserves backwards-compatible behavior (only status_type=closed strikes)', () => {
