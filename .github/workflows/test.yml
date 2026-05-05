@@ -19,6 +19,8 @@ jobs:
           node-version: '20'
       - name: Smoke-test the trace extractor
         run: node bin/extract-trace.mjs --version
+      - name: Verify .opencode/agents is in sync with agents/
+        run: node bin/sync-agents.mjs --check
       - name: Run unit suite
         run: node --test tests/unit/*.test.mjs
 

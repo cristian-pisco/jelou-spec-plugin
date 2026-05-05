@@ -34,6 +34,14 @@ if [ -d "$PLUGIN_DIR/agents" ]; then
   echo "  Installed $(find "$PLUGIN_DIR/agents" -name "*.md" | wc -l) agents"
 fi
 
+# Sync .opencode/agents from agents/ (canonical) so OpenCode users get the
+# same content. Non-fatal: install never breaks if Node is missing.
+if command -v node >/dev/null 2>&1 && [ -f "$PLUGIN_DIR/bin/sync-agents.mjs" ]; then
+  echo "Syncing .opencode/agents from agents/..."
+  (cd "$PLUGIN_DIR" && node bin/sync-agents.mjs >/dev/null) \
+    || echo "  sync-agents skipped (non-fatal)"
+fi
+
 # Copy update check script
 if [ -f "$PLUGIN_DIR/bin/check-update.sh" ]; then
   echo "Installing update check..."

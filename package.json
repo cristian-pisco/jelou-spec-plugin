@@ -16,7 +16,7 @@
     "multi-service"
   ],
   "scripts": {
-    "test": "node --test tests/unit/",
+    "test": "node --test tests/unit/*.test.mjs",
     "sync-agents": "node bin/sync-agents.mjs",
     "check-sync": "node bin/sync-agents.mjs --check"
   }
