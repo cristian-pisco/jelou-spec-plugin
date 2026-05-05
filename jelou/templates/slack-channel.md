@@ -46,11 +46,39 @@ renders the first-run banner instead of an empty string.
 - The prompt text comes from `manual_prompts`
 - User responses are inserted as-is with no formatting
 
+## Optional frontmatter fields
+
+### `closed_like_statuses` (array of strings)
+
+Some teams use ClickUp custom statuses ("pending to production", "in review",
+"ready to merge") that mean "done" even though the API reports
+`status_type === "custom"`. Declare those status names here (case-insensitive)
+and the workflow will treat any task in one of them as 100% complete:
+- `bin/daily-slack-bucket.mjs` normalizes `percentage` to 100 and counts
+  transitions into the list as `achieved`.
+- `bin/daily-slack-render.mjs` strikes through the link in
+  `{{short_term_goals}}`.
+
+### `preview_channel` (string)
+
+Where the workflow posts a *preview* of the composed body before publishing
+to the real channel. Accepts any Slack target the chat-post tool can address
+(e.g., `#preview-dailies`, `@username` for a DM, or a channel ID). When set,
+Step 14 of the workflow posts the rendered body there with a banner like
+`*[PREVIEW — sprint <N> for #<channel>]*`, asks the user to confirm the
+formatting renders correctly in Slack, and only then publishes to the real
+channel. Leave the field unset to skip the preview round-trip.
+
 ## Example: dailies (Spanish dailyBrain)
 
 ```yaml
 ---
 channel: "#dailies"
+preview_channel: "@cristian.pisco"
+closed_like_statuses:
+  - "pending to production"
+  - "in review"
+  - "ready to merge"
 manual_fields:
   - energy
   - meetings

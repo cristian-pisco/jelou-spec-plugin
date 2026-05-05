@@ -11,15 +11,26 @@ import { join } from 'node:path';
 
 const SCRIPT = new URL('../../bin/daily-slack-render.mjs', import.meta.url).pathname;
 
-function setup(data) {
+function setup(data, closedLike) {
   const dir = mkdtempSync(join(tmpdir(), 'daily-slack-render-'));
   const dataPath = join(dir, 'data.json');
   writeFileSync(dataPath, JSON.stringify(data));
-  return dataPath;
+  if (closedLike === undefined) return dataPath;
+  const closedPath = join(dir, 'closed-like.json');
+  writeFileSync(closedPath, JSON.stringify(closedLike));
+  return { dataPath, closedPath };
 }
 
-function run(dataPath) {
-  return spawnSync('node', [SCRIPT, '--data', dataPath], { encoding: 'utf8' });
+function run(dataPathOrObj) {
+  if (typeof dataPathOrObj === 'string') {
+    return spawnSync('node', [SCRIPT, '--data', dataPathOrObj], { encoding: 'utf8' });
+  }
+  const { dataPath, closedPath } = dataPathOrObj;
+  return spawnSync(
+    'node',
+    ['--', SCRIPT, '--data', dataPath, '--closed-like-statuses', closedPath].slice(1),
+    { encoding: 'utf8' }
+  );
 }
 
 describe('daily-slack-render — happy path', () => {
@@ -143,6 +154,64 @@ describe('daily-slack-render — multi-task spacing', () => {
     };
     const out = JSON.parse(run(setup(data)).stdout);
     assert.equal(out.achieved_goals, '`[50%]` <u1|A>\n`[100%]` <u2|B>');
+  });
+});
+
+describe('daily-slack-render — closed-like custom statuses (status_name)', () => {
+  test('treats a status_name in --closed-like-statuses as closed (strikethrough), even when status_type is not "closed"', () => {
+    const data = {
+      first_run: false,
+      achieved: [],
+      not_achieved: [],
+      short_term: [
+        { name: 'A', url: 'u1', due_date: '2026-04-30T00:00:00Z', status_type: 'custom', status_name: 'pending to production' },
+        { name: 'B', url: 'u2', due_date: '2026-05-01T00:00:00Z', status_type: 'open', status_name: 'in progress' },
+      ],
+    };
+    const out = JSON.parse(run(setup(data, ['pending to production', 'in review'])).stdout);
+    assert.equal(
+      out.short_term_goals,
+      '`[2026-04-30]` ~<u1|A>~\n`[2026-05-01]` <u2|B>'
+    );
+  });
+
+  test('matches status_name case-insensitively', () => {
+    const data = {
+      first_run: false,
+      achieved: [],
+      not_achieved: [],
+      short_term: [
+        { name: 'A', url: 'u1', due_date: '2026-04-30T00:00:00Z', status_type: 'custom', status_name: 'Pending To Production' },
+      ],
+    };
+    const out = JSON.parse(run(setup(data, ['pending to production'])).stdout);
+    assert.equal(out.short_term_goals, '`[2026-04-30]` ~<u1|A>~');
+  });
+
+  test('still applies strikethrough when status_type is "closed" regardless of --closed-like-statuses', () => {
+    const data = {
+      first_run: false,
+      achieved: [],
+      not_achieved: [],
+      short_term: [
+        { name: 'A', url: 'u1', due_date: '2026-04-30T00:00:00Z', status_type: 'closed', status_name: 'closed' },
+      ],
+    };
+    const out = JSON.parse(run(setup(data, [])).stdout);
+    assert.equal(out.short_term_goals, '`[2026-04-30]` ~<u1|A>~');
+  });
+
+  test('absence of --closed-like-statuses preserves backwards-compatible behavior (only status_type=closed strikes)', () => {
+    const data = {
+      first_run: false,
+      achieved: [],
+      not_achieved: [],
+      short_term: [
+        { name: 'A', url: 'u1', due_date: '2026-04-30T00:00:00Z', status_type: 'custom', status_name: 'pending to production' },
+      ],
+    };
+    const out = JSON.parse(run(setup(data)).stdout);
+    assert.equal(out.short_term_goals, '`[2026-04-30]` <u1|A>');
   });
 });
 

@@ -9,11 +9,13 @@
 //   node bin/daily-slack-render.mjs --data <path>
 
 import { readOrDie, parseJsonOrDie } from './lib/daily-slack-helpers.mjs';
+import { isClosedLike, loadClosedLikeStatuses } from './lib/daily-slack-status.mjs';
 
 function parseArgs(argv) {
   const args = {};
   for (let i = 2; i < argv.length; i++) {
     if (argv[i] === '--data') args.data = argv[++i];
+    else if (argv[i] === '--closed-like-statuses') args.closedLike = argv[++i];
   }
   if (!args.data) {
     console.error('error: --data <path> is required');
@@ -47,25 +49,26 @@ function isoDate(s) {
   return s.slice(0, 10);
 }
 
-function renderShortTerm(short_term) {
+function renderShortTerm(short_term, closedLike) {
   const withDates = short_term.filter((t) => t.due_date);
   withDates.sort((a, b) => (a.due_date < b.due_date ? -1 : a.due_date > b.due_date ? 1 : 0));
   return withDates
     .map((t) => {
       const date = `\`[${isoDate(t.due_date)}]\``;
       const link = slackLink(t.url, t.name);
-      return t.status_type === 'closed' ? `${date} ~${link}~` : `${date} ${link}`;
+      return isClosedLike(t, closedLike) ? `${date} ~${link}~` : `${date} ${link}`;
     })
     .join('\n');
 }
 
 function main() {
-  const { data } = parseArgs(process.argv);
+  const { data, closedLike } = parseArgs(process.argv);
   const d = parseJsonOrDie(readOrDie(data, '--data'), '--data');
+  const closedLikeStatuses = loadClosedLikeStatuses(closedLike);
   const out = {
     achieved_goals: renderAchieved(d.achieved || [], !!d.first_run),
     not_achieved_goals: renderNotAchieved(d.not_achieved || []),
-    short_term_goals: renderShortTerm(d.short_term || []),
+    short_term_goals: renderShortTerm(d.short_term || [], closedLikeStatuses),
   };
   process.stdout.write(JSON.stringify(out) + '\n');
 }

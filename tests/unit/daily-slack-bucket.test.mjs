@@ -11,7 +11,7 @@ import { join } from 'node:path';
 
 const SCRIPT = new URL('../../bin/daily-slack-bucket.mjs', import.meta.url).pathname;
 
-function setup(current, snapshot) {
+function setup(current, snapshot, closedLike) {
   const dir = mkdtempSync(join(tmpdir(), 'daily-slack-bucket-'));
   const currentPath = join(dir, 'current.json');
   writeFileSync(currentPath, JSON.stringify(current));
@@ -20,12 +20,18 @@ function setup(current, snapshot) {
     snapshotPath = join(dir, 'snapshot.json');
     writeFileSync(snapshotPath, JSON.stringify(snapshot));
   }
-  return { currentPath, snapshotPath };
+  let closedPath = '';
+  if (closedLike !== undefined) {
+    closedPath = join(dir, 'closed-like.json');
+    writeFileSync(closedPath, JSON.stringify(closedLike));
+  }
+  return { currentPath, snapshotPath, closedPath };
 }
 
-function run({ currentPath, snapshotPath }) {
+function run({ currentPath, snapshotPath, closedPath }) {
   const args = [SCRIPT, '--current', currentPath];
   if (snapshotPath) args.push('--snapshot', snapshotPath);
+  if (closedPath) args.push('--closed-like-statuses', closedPath);
   return spawnSync('node', args, { encoding: 'utf8' });
 }
 
@@ -182,5 +188,47 @@ describe('daily-slack-bucket — closed → 100% normalization', () => {
     assert.equal(out.first_run, true);
     assert.equal(out.not_achieved.length, 1);
     assert.equal(out.not_achieved[0].percentage, 100);
+  });
+});
+
+describe('daily-slack-bucket — closed-like custom statuses (status_name)', () => {
+  test('status_name in closed-like list normalizes percentage to 100 and lands in achieved on transition', () => {
+    const current = [{ clickup_id: 'a', name: 'A', url: 'u', percentage: 30, status_type: 'custom', status_name: 'pending to production' }];
+    const snap = { a: { name: 'A', url: 'u', percentage: 30, status_type: 'in_progress', status_name: 'in progress' } };
+    const r = run(setup(current, snap, ['pending to production']));
+    const out = JSON.parse(r.stdout);
+    assert.equal(out.achieved.length, 1);
+    assert.equal(out.achieved[0].percentage, 100);
+    assert.equal(out.new_snapshot.a.percentage, 100);
+    assert.equal(out.new_snapshot.a.status_name, 'pending to production');
+  });
+
+  test('case-insensitive match against closed-like list', () => {
+    const current = [{ clickup_id: 'a', name: 'A', url: 'u', percentage: 0, status_type: 'custom', status_name: 'Pending To Production' }];
+    const snap = {};
+    const r = run(setup(current, snap, ['pending to production']));
+    const out = JSON.parse(r.stdout);
+    assert.equal(out.achieved.length, 1);
+    assert.equal(out.achieved[0].percentage, 100);
+  });
+
+  test('snapshot status_name in closed-like list does not retrigger achieved on rerun', () => {
+    const current = [{ clickup_id: 'a', name: 'A', url: 'u', percentage: 0, status_type: 'custom', status_name: 'pending to production' }];
+    const snap = { a: { name: 'A', url: 'u', percentage: 0, status_type: 'custom', status_name: 'pending to production' } };
+    const r = run(setup(current, snap, ['pending to production']));
+    const out = JSON.parse(r.stdout);
+    assert.equal(out.achieved.length, 0);
+    assert.equal(out.not_achieved.length, 1);
+    assert.equal(out.not_achieved[0].percentage, 100);
+  });
+
+  test('absence of --closed-like-statuses preserves backwards-compatible behavior', () => {
+    const current = [{ clickup_id: 'a', name: 'A', url: 'u', percentage: 30, status_type: 'custom', status_name: 'pending to production' }];
+    const snap = { a: { name: 'A', url: 'u', percentage: 30, status_type: 'in_progress', status_name: 'in progress' } };
+    const r = run(setup(current, snap));
+    const out = JSON.parse(r.stdout);
+    assert.equal(out.achieved.length, 0);
+    assert.equal(out.not_achieved.length, 1);
+    assert.equal(out.not_achieved[0].percentage, 30);
   });
 });

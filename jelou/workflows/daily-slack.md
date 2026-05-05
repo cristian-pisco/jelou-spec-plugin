@@ -25,8 +25,9 @@ You are the orchestrator for the `/jlu-daily-slack` command. You generate a Slac
 ## Step 3 — Load Channel Template
 
 1. Read `<workspace>/registry/slack/<channel>.md`.
-2. Parse YAML frontmatter for `manual_fields` and `manual_prompts`. Parse the body as the message template.
+2. Parse YAML frontmatter for `manual_fields`, `manual_prompts`, and the optional `closed_like_statuses` (array of ClickUp status names treated as done) and `preview_channel` (Slack channel or DM target like `#preview-dailies` or `@username`). Parse the body as the message template.
 3. If missing, stop with: "No template found for #<channel>. Create one at `<workspace>/registry/slack/<channel>.md`. See `jelou/templates/slack-channel.md` for the format."
+4. Write `<workspace>/.cache/closed-like-statuses.json` as a JSON array containing the values of `closed_like_statuses` (use `[]` if the key is absent). Bucket and render scripts will read this file in later steps.
 
 ## Step 4 — Resolve User Identity
 
@@ -81,19 +82,20 @@ node <plugin-root>/bin/daily-slack-discover.mjs \
 The script returns a JSON array of clickup-only stubs (`{clickup_id, name, url, source: "clickup-only", slug: null, pr_urls: []}`) for tasks where `assignees` contains `user_id` OR the Responsable custom field references `user_id`, with plugin IDs already excluded. Append these stubs to the union task set.
 
 ### 6c. Per-task data fetch
-For every task in the union, call `clickup_get_task` to get:
+Fire one `clickup_get_task` per task in the union **in parallel** — issue all calls in a single multi-tool message rather than awaiting each before sending the next. From each response, extract:
 - `name` (from ClickUp; for plugin tasks, override with the SPEC.md first heading if available)
-- `status.type`
+- `status.type` (record as `status_type`)
+- `status.status` (record as `status_name` — the human-readable status string used by `closed_like_statuses`)
 - `due_date`
 - `subtasks` (for percentage calculation)
 
 Calculate `percentage`:
-- Plugin tasks: `(closed_subtasks / total_subtasks) × 90`. If exactly 90, run `gh pr view <url> --json state` for each PR URL; if all merged, upgrade to 100.
+- Plugin tasks: `(closed_subtasks / total_subtasks) × 90`. If exactly 90, run `gh pr view <url> --json state` for each PR URL; if all merged, upgrade to 100. Issue every `gh pr view` invocation in parallel — fan all of them out from a single Bash command using `xargs -P` (or `&`/`wait`), never one PR at a time.
 - ClickUp-only tasks: `(closed_subtasks / total_subtasks) × 90`; no PR upgrade. If no subtasks, 0.
 
-Note: tasks with `status_type === 'closed'` are normalized to `percentage: 100` downstream by `bin/daily-slack-bucket.mjs`, regardless of subtask count. The orchestrator's calculation here can be left as-is; the bucketer enforces the closed-as-done invariant.
+Note: tasks with `status_type === 'closed'` (and any `status_name` listed in `closed_like_statuses`) are normalized to `percentage: 100` downstream by `bin/daily-slack-bucket.mjs`, regardless of subtask count. The orchestrator's calculation here can be left as-is; the bucketer enforces the closed-as-done invariant.
 
-Build `<workspace>/.cache/current-tasks.json`: an array of `{clickup_id, name, url, percentage, status_type, due_date, source, slug, pr_urls}`.
+Build `<workspace>/.cache/current-tasks.json`: an array of `{clickup_id, name, url, percentage, status_type, status_name, due_date, source, slug, pr_urls}`.
 
 ## Step 7 — Resolve Cutoff and Snapshot
 
@@ -108,21 +110,23 @@ Build `<workspace>/.cache/current-tasks.json`: an array of `{clickup_id, name, u
 ```bash
 node <plugin-root>/bin/daily-slack-bucket.mjs \
   --current <workspace>/.cache/current-tasks.json \
-  --snapshot <workspace>/.cache/snapshot-<sprint>-<channel>.json
+  --snapshot <workspace>/.cache/snapshot-<sprint>-<channel>.json \
+  --closed-like-statuses <workspace>/.cache/closed-like-statuses.json
 ```
 
-Capture stdout JSON: `{achieved, not_achieved, new_snapshot, first_run}`.
+Capture stdout JSON: `{achieved, not_achieved, new_snapshot, first_run}`. The `--closed-like-statuses` flag teaches the bucketer to treat the channel's custom-statuses (e.g., "pending to production") as 100%-done in addition to `status_type === 'closed'`.
 
 ## Step 9 — Fetch Reasons for Stuck Tasks
 
-For each task in `not_achieved`:
-1. Call `clickup_get_task_comments(task_id)`. Extract latest 1-2 with `date_iso > cutoff`. If none after cutoff, take the most recent overall.
-2. For plugin tasks with PR URLs: run `gh pr view <url> --json state,isDraft,mergeable,statusCheckRollup`. Map `statusCheckRollup` to `checks: "failing"` if any check failed.
-3. Write `<workspace>/.cache/task-<clickup_id>.json`:
+Per-task work fans out, so issue all calls in parallel — never one-task-at-a-time. The wall-clock saving compounds with Step 6c.
+
+1. **Parallel batch A — comments.** Issue every `clickup_get_task_comments(task_id)` for every task in `not_achieved` in a single multi-tool message. From each response, extract the latest 1-2 comments with `date_iso > cutoff`. If none after cutoff, take the most recent overall.
+2. **Parallel batch B — PR states.** For plugin tasks with PR URLs, issue every `gh pr view <url> --json state,isDraft,mergeable,statusCheckRollup` in parallel via Bash (use `&` and `wait`, or `xargs -P`). Map `statusCheckRollup` to `checks: "failing"` if any check failed.
+3. Write `<workspace>/.cache/task-<clickup_id>.json` per task:
    ```json
    { "cutoff": "<iso-or-null>", "comments": [{"date_iso": "...", "text": "..."}], "pr_states": {"<url>": {"state": "...", "isDraft": <bool>, "mergeable": <bool>, "checks": "..."}} }
    ```
-4. Run:
+4. Run reason extraction for every `not_achieved` task (independent CLI invocations, safe to run sequentially since each is sub-second):
    ```bash
    node <plugin-root>/bin/daily-slack-extract-reason.mjs --task <workspace>/.cache/task-<clickup_id>.json
    ```
@@ -138,14 +142,16 @@ Build `<workspace>/.cache/render-data.json`:
   "first_run": <bool>,
   "achieved": [{"name": "...", "url": "...", "percentage": <int>}, ...],
   "not_achieved": [{"name": "...", "url": "...", "reason": "..."}, ...],
-  "short_term": [{"name": "...", "url": "...", "due_date": "<iso-or-null>", "status_type": "<closed|open|...>"}, ...]
+  "short_term": [{"name": "...", "url": "...", "due_date": "<iso-or-null>", "status_type": "<closed|open|custom|...>", "status_name": "<human status string>"}, ...]
 }
 ```
 
-`short_term` is built from the union task set (any task with a `due_date`). Pass through `status_type` from `current-tasks.json` so the renderer can apply strikethrough to closed tasks.
+`short_term` is built from the union task set (any task with a `due_date`). Pass through both `status_type` and `status_name` from `current-tasks.json` so the renderer can strike through closed tasks AND any custom status listed in `closed_like_statuses`.
 
 ```bash
-node <plugin-root>/bin/daily-slack-render.mjs --data <workspace>/.cache/render-data.json
+node <plugin-root>/bin/daily-slack-render.mjs \
+  --data <workspace>/.cache/render-data.json \
+  --closed-like-statuses <workspace>/.cache/closed-like-statuses.json
 ```
 
 Capture stdout JSON: `{achieved_goals, not_achieved_goals, short_term_goals}`.
@@ -165,9 +171,23 @@ For each field in `manual_fields` (in order):
 
 ## Step 13 — Compose, Save, and Scan
 
-1. Substitute every `{{placeholder}}` in the template body with the rendered value (automated from Step 10, manual from Step 12). Use plain string replacement; do not LLM-rewrite the result.
-2. Build the allowlist file `<workspace>/.cache/url-allowlist.txt`: one URL per line for every `clickup_url` in the union task set, plus every URL value read from the involved `CLICKUP_TASK.json` files this run.
-3. Write the composed body to `<workspace>/.cache/composed-body.md`.
+1. Write the compose inputs to disk so the script can read them deterministically:
+   - `<workspace>/.cache/template-body.md` — the template body parsed in Step 3 (no frontmatter).
+   - `<workspace>/.cache/render-output.json` — the `{achieved_goals, not_achieved_goals, short_term_goals}` JSON captured from Step 10.
+   - `<workspace>/.cache/manual-fields.json` — a flat `{<field>: "<user-response>"}` object built from Step 12 answers.
+
+2. Run the deterministic compose script. Do NOT substitute placeholders by LLM rewriting — the script preserves Slack mrkdwn (backticks around `[N%]` / `[YYYY-MM-DD]`, `<url|text>` hyperlinks, `~strike~`) literally:
+   ```bash
+   node <plugin-root>/bin/daily-slack-compose.mjs \
+     --template <workspace>/.cache/template-body.md \
+     --render <workspace>/.cache/render-output.json \
+     --manual <workspace>/.cache/manual-fields.json \
+     > <workspace>/.cache/composed-body.md
+   ```
+   Do NOT post-process the composed file. Read it as-is for the next steps.
+
+3. Build the allowlist file `<workspace>/.cache/url-allowlist.txt`: one URL per line for every `clickup_url` in the union task set, plus every URL value read from the involved `CLICKUP_TASK.json` files this run.
+
 4. Run the URL safety scan:
    ```bash
    node <plugin-root>/bin/daily-slack-scan-urls.mjs \
@@ -202,7 +222,24 @@ For each field in `manual_fields` (in order):
    - Re-run the URL safety scan from Step 13. Abort if it fires.
    - Re-save the draft.
    - Re-present.
-4. On approval, continue to Step 15.
+4. On approval, continue to Step 14b.
+
+## Step 14b — Preview Round-Trip (when `preview_channel` is set)
+
+If the channel template's frontmatter declares `preview_channel`, post the body to that target first so the user can verify the live Slack rendering before the real publish. Skip this step entirely when `preview_channel` is absent or empty.
+
+1. Compose the preview payload as the body prefixed with a single banner line and a blank line:
+   ```
+   *[PREVIEW — sprint <sprint> for #<channel>]*
+
+   <composed body>
+   ```
+2. Post via `mcp__claude_ai_Slack__slack_send_message` to `<preview_channel>`.
+   - On unavailable, fall back to `mcp__plugin_slack_slack__slack_send_message`.
+   - On both unavailable, ask via `question`: "Slack MCP is not available. Skip preview and publish directly, or abort? [skip-preview / abort]". On `abort`, stop and keep `status: draft`.
+3. Ask via `question`: "Posted preview to `<preview_channel>`. Verify the formatting in Slack — does it render correctly? [yes / edit]".
+4. On `edit`, return to Step 14 (the user provides feedback; we re-compose and re-preview). On `yes`, continue to Step 15.
+5. Do NOT mutate the draft frontmatter for the preview post. The `published_at` and `status: published` transition belongs only to the real channel.
 
 ## Step 15 — Publish to Slack
 

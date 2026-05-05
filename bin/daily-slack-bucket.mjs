@@ -10,12 +10,14 @@
 
 import { existsSync } from 'node:fs';
 import { readOrDie, parseJsonOrDie } from './lib/daily-slack-helpers.mjs';
+import { isClosedLike, loadClosedLikeStatuses } from './lib/daily-slack-status.mjs';
 
 function parseArgs(argv) {
   const args = {};
   for (let i = 2; i < argv.length; i++) {
     if (argv[i] === '--current') args.current = argv[++i];
     else if (argv[i] === '--snapshot') args.snapshot = argv[++i];
+    else if (argv[i] === '--closed-like-statuses') args.closedLike = argv[++i];
   }
   if (!args.current) {
     console.error('error: --current <path> is required');
@@ -25,14 +27,20 @@ function parseArgs(argv) {
 }
 
 function snapshotEntry(t) {
-  return { name: t.name, url: t.url, percentage: t.percentage, status_type: t.status_type };
+  return {
+    name: t.name,
+    url: t.url,
+    percentage: t.percentage,
+    status_type: t.status_type,
+    status_name: t.status_name,
+  };
 }
 
-function normalizePercentage(entry) {
-  return entry.status_type === 'closed' ? 100 : entry.percentage;
+function normalizePercentage(entry, closedLike) {
+  return isClosedLike(entry, closedLike) ? 100 : entry.percentage;
 }
 
-function bucket(current, prior) {
+function bucket(current, prior, closedLike) {
   const achieved = [];
   const not_achieved = [];
   const new_snapshot = {};
@@ -41,7 +49,7 @@ function bucket(current, prior) {
       console.error(`error: task missing clickup_id: ${JSON.stringify(t)}`);
       process.exit(2);
     }
-    t.percentage = normalizePercentage(t);
+    t.percentage = normalizePercentage(t, closedLike);
     new_snapshot[t.clickup_id] = snapshotEntry(t);
     const p = prior ? prior[t.clickup_id] : undefined;
     if (!prior) {
@@ -53,7 +61,7 @@ function bucket(current, prior) {
       else not_achieved.push(t);
       continue;
     }
-    const becameClosed = p.status_type !== 'closed' && t.status_type === 'closed';
+    const becameClosed = !isClosedLike(p, closedLike) && isClosedLike(t, closedLike);
     const advanced = t.percentage > p.percentage;
     if (becameClosed || advanced) achieved.push(t);
     else not_achieved.push(t);
@@ -62,16 +70,17 @@ function bucket(current, prior) {
 }
 
 function main() {
-  const { current, snapshot } = parseArgs(process.argv);
+  const { current, snapshot, closedLike } = parseArgs(process.argv);
   const cur = parseJsonOrDie(readOrDie(current, '--current'), '--current');
+  const closedLikeStatuses = loadClosedLikeStatuses(closedLike);
   let prior = null;
   if (snapshot && existsSync(snapshot)) {
     prior = parseJsonOrDie(readOrDie(snapshot, '--snapshot'), '--snapshot');
     for (const id of Object.keys(prior)) {
-      prior[id].percentage = normalizePercentage(prior[id]);
+      prior[id].percentage = normalizePercentage(prior[id], closedLikeStatuses);
     }
   }
-  process.stdout.write(JSON.stringify(bucket(cur, prior)) + '\n');
+  process.stdout.write(JSON.stringify(bucket(cur, prior, closedLikeStatuses)) + '\n');
 }
 
 main();
