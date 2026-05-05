@@ -1,5 +1,7 @@
 # Spec-Driven Multi-Service Plugin — Consolidated Specification
 
+> **Archived 2026-05-04.** Historical design memo from initial plugin design. Source of truth for the live system is `AGENTS.md`, `INVOCATION.md`, `skills/*/SKILL.md`, and `jelou/workflows/*.md`. Kept for context, not for guidance.
+
 > Consolidated from the original spec plus all 46 design decisions from 14 interview rounds (32 core questions + 2 follow-up rounds).
 
 ---
