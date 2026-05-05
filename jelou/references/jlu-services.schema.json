@@ -65,7 +65,8 @@
           "additionalProperties": false,
           "properties": {
             "title": { "type": "string" },
-            "color": { "type": "string" }
+            "color": { "type": "string" },
+            "layout": { "enum": ["tiled", "even-horizontal", "even-vertical", "main-horizontal", "main-vertical", "single-pane"] }
           }
         }
       }

@@ -12,11 +12,18 @@ import {
   selectWindow, sendKeys
 } from './tmux.mjs';
 import { daemonSpawn as realDaemonSpawn } from './daemon-spawn.mjs';
+import { effectiveDefaults } from './config.mjs';
 
 export function chooseLayout(n) {
   if (n <= 1) return 'single-pane';
   if (n <= 3) return 'even-horizontal';
   return 'tiled';
+}
+
+function pickLayout(services, n) {
+  const overridden = services.find(s => s.panel && s.panel.layout);
+  if (overridden) return overridden.panel.layout;
+  return chooseLayout(n);
 }
 
 export function buildPaneCommand({ service, paneCwd }) {
@@ -64,7 +71,7 @@ export function planStart({ config, workspaceRoot, slug, windowName }) {
   }
   return {
     windowName: windowName || windowNameFor(slug),
-    layout: chooseLayout(panes.length),
+    layout: pickLayout(services, panes.length),
     panes,
     skipped
   };
@@ -86,7 +93,8 @@ export function startDev({
 
   ensureTmuxRunning({ env, runner });
 
-  const windowName = windowNameFor(slug);
+  const prefix = effectiveDefaults(config).window_prefix || '';
+  const windowName = windowNameFor(slug, prefix);
   const existing = findWindow(windowName, runner);
   if (existing) {
     return { status: 'exists', windowName, session: existing.session };

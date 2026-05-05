@@ -146,4 +146,51 @@ describe('startDev — happy path inside tmux', () => {
     });
     assert.equal(result.status, 'tmux-missing');
   });
+
+  test('window_prefix prepends to window name', () => {
+    const runner = fakeRunner({
+      'list-windows': () => ({ status: 0, stdout: '', stderr: '' }),
+      '-V': () => ({ status: 0, stdout: 'tmux 3.5\n', stderr: '' })
+    });
+    const cfg = {
+      version: 1,
+      defaults: { window_prefix: 'foo-' },
+      services: [{ name: 'a', path: './a', command: 'x' }]
+    };
+    const result = startDev({
+      config: cfg, workspaceRoot: '/work', slug: 'bar',
+      env: { TMUX: '/tmp/x,1,2' }, runner, daemonSpawn: () => ({ pid: 0 })
+    });
+    assert.equal(result.windowName, 'foo-jlu-dev-bar');
+  });
+});
+
+describe('planStart — panel.layout override', () => {
+  test('panel.layout on first service overrides chosen layout', () => {
+    const cfg = {
+      version: 1,
+      services: [
+        { name: 'a', path: './a', command: 'x', panel: { layout: 'main-horizontal' } },
+        { name: 'b', path: './b', command: 'y' }
+      ]
+    };
+    const plan = planStart({
+      config: cfg, workspaceRoot: '/work', slug: '_global', windowName: 'jlu-dev-_global'
+    });
+    assert.equal(plan.layout, 'main-horizontal');
+  });
+
+  test('panel.layout on a later service still wins over default', () => {
+    const cfg = {
+      version: 1,
+      services: [
+        { name: 'a', path: './a', command: 'x' },
+        { name: 'b', path: './b', command: 'y', panel: { layout: 'even-vertical' } }
+      ]
+    };
+    const plan = planStart({
+      config: cfg, workspaceRoot: '/work', slug: '_global', windowName: 'jlu-dev-_global'
+    });
+    assert.equal(plan.layout, 'even-vertical');
+  });
 });

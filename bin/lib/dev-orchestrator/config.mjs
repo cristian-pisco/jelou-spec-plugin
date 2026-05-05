@@ -30,7 +30,8 @@ function assertAllowedKeys(errors, ctx, obj, allowed) {
 
 const ALLOWED_SERVICE_KEYS = new Set(['name', 'path', 'command', 'env_file', 'depends_on', 'readiness', 'runtime', 'log_failure_patterns', 'panel']);
 const ALLOWED_DEFAULTS_KEYS = new Set(['log_failure_patterns', 'readiness_timeout_seconds', 'log_capture_lines', 'poll_interval_ms', 'notification_cooldown_seconds', 'window_prefix']);
-const ALLOWED_PANEL_KEYS = new Set(['title', 'color']);
+const ALLOWED_PANEL_KEYS = new Set(['title', 'color', 'layout']);
+const ALLOWED_LAYOUTS = new Set(['tiled', 'even-horizontal', 'even-vertical', 'main-horizontal', 'main-vertical', 'single-pane']);
 const ALLOWED_RUNTIME_KEYS = new Set(['type', 'compose_file', 'compose_service', 'exec_template']);
 const ALLOWED_READINESS_HTTP_KEYS = new Set(['type', 'url', 'expect_status', 'timeout_seconds']);
 const ALLOWED_READINESS_TCP_KEYS = new Set(['type', 'host', 'port', 'timeout_seconds']);
@@ -103,6 +104,11 @@ export function validateConfig(cfg) {
     }
     if (svc.panel) {
       assertAllowedKeys(errors, `${ctx}.panel`, svc.panel, ALLOWED_PANEL_KEYS);
+      if (svc.panel.layout !== undefined) {
+        if (typeof svc.panel.layout !== 'string' || !ALLOWED_LAYOUTS.has(svc.panel.layout)) {
+          errors.push(`${ctx}.panel.layout must be one of: ${[...ALLOWED_LAYOUTS].join(', ')}`);
+        }
+      }
     }
     if (svc.runtime) {
       const r = svc.runtime;

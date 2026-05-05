@@ -138,6 +138,25 @@ describe('validateConfig — numeric and additionalProperties checks', () => {
   });
 });
 
+describe('validateConfig — panel.layout', () => {
+  test('rejects unknown panel.layout', () => {
+    const result = validateConfig({
+      version: 1,
+      services: [{ name: 'a', path: '.', command: 'x', panel: { layout: 'nope' } }]
+    });
+    assert.equal(result.valid, false);
+    assert.ok(result.errors.some(e => e.includes('layout')), `errors: ${result.errors.join(', ')}`);
+  });
+
+  test('accepts known panel.layout', () => {
+    const result = validateConfig({
+      version: 1,
+      services: [{ name: 'a', path: '.', command: 'x', panel: { layout: 'main-horizontal' } }]
+    });
+    assert.equal(result.valid, true, JSON.stringify(result.errors));
+  });
+});
+
 describe('writeConfigAtomic — refuses invalid', () => {
   test('rejects invalid config without writing the target file', () => {
     const dir = mkdtempSync(join(tmpdir(), 'jlu-cfg-'));
