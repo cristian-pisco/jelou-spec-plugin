@@ -200,6 +200,74 @@ Two key vocabularies stay distinct. **Architecture vocabulary** (Module, Interfa
 
 The skill is purely standalone — no auto-hooks into other workflows. The grilling loop is too conversational to bolt onto a batch command. Output: a transient report at `<workspace>/services/<id>/codebase/ARCHITECTURE_REVIEW.md` (overwritten on each run) and append-only ADRs at `<workspace>/decisions/`.
 
+## Dev Environment Orchestrator (TMUX)
+
+Spin up a multi-service dev environment in TMUX with one command, monitor for failures, and diagnose with structured fix proposals. Configure once via `jlu-services.json` at the workspace root.
+
+### Quickstart
+
+1. Register your services interactively:
+   ```bash
+   /jlu-register-service api
+   /jlu-register-service web
+   ```
+2. Launch them:
+   ```bash
+   /jlu-start-dev
+   ```
+   Creates a TMUX window `jlu-dev-<task-slug>` (or `jlu-dev-_global` if no task is active), splits it into one pane per service, runs each command, and spawns a background daemon that monitors pane death + log patterns + readiness probes.
+3. When a service fails, diagnose:
+   ```bash
+   /jlu-diagnose api
+   ```
+   Claude reads the recent events + a 100-line pane capture, returns a structured fix proposal (host or container) you can confirm to run.
+4. Add a service mid-session:
+   ```bash
+   /jlu-add-service worker
+   ```
+5. Inspect logs anytime:
+   ```bash
+   /jlu-logs api --lines 50
+   ```
+6. Tear down:
+   ```bash
+   /jlu-stop-dev --kill-services
+   ```
+
+### Commands
+
+| Command | Purpose |
+|---|---|
+| `/jlu-register-service [name]` | Interactive registration with smart inference |
+| `/jlu-start-dev` | Boot all registered services in a TMUX window |
+| `/jlu-stop-dev [--kill-services]` | Stop daemon; optionally kill window |
+| `/jlu-add-service [name]` | Add a pane to a running window |
+| `/jlu-logs [name] [--lines N]` | Print recent pane output, read-only |
+| `/jlu-diagnose [name]` | Analyze a failing service and propose a fix |
+| `/jlu-add-failure-pattern <service> <pattern>` | Append a regex; daemon hot-reloads via SIGHUP |
+
+### Docker Compose support
+
+For services running inside containers, declare a `runtime` block:
+
+```json
+{
+  "name": "api",
+  "runtime": {
+    "type": "docker-compose",
+    "compose_file": "./docker-compose.yml",
+    "compose_service": "api"
+  },
+  "command": "docker compose up -d && docker compose -f ./docker-compose.yml exec api npm run start:dev"
+}
+```
+
+The diagnoser will automatically run proposed fixes inside the container instead of on the host.
+
+### Reference
+
+See [`jelou/references/dev-orchestrator.md`](./jelou/references/dev-orchestrator.md) for full configuration schema, troubleshooting, and design rationale.
+
 ## Workspace Structure
 
 The plugin uses `.spec-workspace/` in the parent directory of your services as the canonical root:
