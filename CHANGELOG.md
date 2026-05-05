@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.143] — 2026-05-04
+
+### Internal
+- spec + Phase 1 plan
+
 ## [0.3.142] — 2026-05-04
 
 ### Added
