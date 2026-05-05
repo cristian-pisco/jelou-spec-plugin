@@ -2,7 +2,9 @@
 
 A spec-driven workflow plugin that runs on Claude Code and OpenCode with specialized agents, strict TDD, multi-service orchestration, and a shared workspace as the single source of documentary truth.
 
-Follows the conventions established by [OpenSpec](https://github.com/Fission-AI/OpenSpec) (`/opsx:`) and [Get Shit Done](https://github.com/gsd-build/get-shit-done) (`/gsd:`), with the **`/jlu-`** command namespace.
+Follows the conventions established by [OpenSpec](https://github.com/Fission-AI/OpenSpec) (`/opsx:`) and [Get Shit Done](https://github.com/gsd-build/get-shit-done) (`/gsd:`), with the **`/jlu:`** namespace on Claude Code and **`/jlu-`** on OpenCode.
+
+> Invocation reference: see [INVOCATION.md](./INVOCATION.md) for the full command list across both runtimes.
 
 ## What It Does
 
@@ -277,7 +279,7 @@ Per-service concrete rules in each service's `CONVENTIONS.md`.
 
 ## Documentation
 
-- **[Full Specification](./JELOU_SPEC_PROPOSAL.md)** — Complete design decisions, artifact schemas, and interview transcript
+- **[Full Specification](./docs/archive/JELOU_SPEC_PROPOSAL.md)** — Archived historical design memo: 46 design decisions, artifact schemas, and interview transcript from initial design
 - **[Architecture Diagrams](./docs/architecture.excalidraw)** — Editable diagrams (open with [excalidraw.com](https://excalidraw.com))
 - **[`dev` Block Schema](./jelou/references/dev-block-schema.md)** — `services.yaml` extension for E2E orchestration (consumed by `/jlu-ui-qa-run`)
 - **[`services.yaml` Reference](./jelou/templates/services-yaml.md)** — Field-by-field schema documentation for the service registry
@@ -397,4 +399,4 @@ flowchart TB
 
 ## Full Specification
 
-See [JELOU_SPEC_PROPOSAL.md](./JELOU_SPEC_PROPOSAL.md) for the complete, implementation-ready specification including all design decisions, artifact schemas, and the full interview transcript.
+See [docs/archive/JELOU_SPEC_PROPOSAL.md](./docs/archive/JELOU_SPEC_PROPOSAL.md) for the archived historical design memo (46 decisions, full interview transcript). Live source of truth lives in `AGENTS.md`, `INVOCATION.md`, `skills/*/SKILL.md`, and `jelou/workflows/*.md`.

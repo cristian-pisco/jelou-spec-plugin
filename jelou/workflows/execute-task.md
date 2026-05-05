@@ -3,7 +3,7 @@
 > Orchestrator workflow for `/jlu-execute-task [task-slug]`
 > Runs TDD implementation with proposal generation, phase-by-phase execution, and QA validation.
 
-> **Autonomy mode**: This workflow runs fully autonomous. The ONLY case where execution pauses for user input is after 5 failed retry attempts on a phase or build step. All other decisions are auto-resolved.
+> **Execution policy**: This workflow runs fully autonomous. The ONLY case where execution pauses for user input is after 5 failed retry attempts on a phase or build step. All other decisions are auto-resolved.
 
 > **SQL Safety Gate — inject into every agent prompt that has Bash access (test-writer, implementer, qa-agent, build-validator):**
 > ```

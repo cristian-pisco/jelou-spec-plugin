@@ -4,8 +4,11 @@ This repository provides a spec-driven orchestration workflow for OpenCode.
 
 ## Command Namespace
 
-- Use only `jlu-*` command names.
-- Never suggest or execute legacy `jlu:*` names.
+This file documents the **OpenCode** invocation contract. For Claude Code, see [INVOCATION.md](./INVOCATION.md).
+
+In OpenCode:
+- Use only `jlu-*` command names (e.g., `/jlu-new-task`).
+- Never invent `jlu:*` names — that prefix belongs to Claude Code only.
 
 ## OpenCode Runtime Contract
 
