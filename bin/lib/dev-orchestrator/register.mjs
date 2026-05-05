@@ -79,15 +79,71 @@ function findComposeFile(absDir) {
   return null;
 }
 
+const PORT_RE_DOTENV = /^PORT\s*=\s*(\d{2,5})\s*$/m;
+const PORT_RE_LISTEN = /\.listen\s*\(\s*(\d{2,5})/;
+const PORT_RE_SCRIPT = /PORT\s*=\s*(\d{2,5})/;
+
+function safeRead(path) {
+  try {
+    const stat = statSync(path);
+    if (!stat.isFile() || stat.size > 64 * 1024) return null;
+    return readFileSync(path, 'utf8');
+  } catch { return null; }
+}
+
+export function inferPortFromSource(absDir) {
+  if (!existsSync(absDir)) return null;
+  let entries;
+  try {
+    entries = readdirSync(absDir, { withFileTypes: true });
+  } catch { return null; }
+
+  // .env first (highest priority).
+  for (const e of entries) {
+    if (e.isFile() && (e.name === '.env' || e.name.startsWith('.env.'))) {
+      const body = safeRead(join(absDir, e.name));
+      const m = body && body.match(PORT_RE_DOTENV);
+      if (m) return parseInt(m[1], 10);
+    }
+  }
+
+  // package.json scripts (next priority).
+  const pkg = safeRead(join(absDir, 'package.json'));
+  if (pkg) {
+    try {
+      const parsed = JSON.parse(pkg);
+      const scripts = (parsed && parsed.scripts) || {};
+      for (const v of Object.values(scripts)) {
+        const m = String(v).match(PORT_RE_SCRIPT);
+        if (m) return parseInt(m[1], 10);
+      }
+    } catch { /* skip */ }
+  }
+
+  // Top-level JS/TS files.
+  for (const e of entries) {
+    if (!e.isFile()) continue;
+    if (!/\.(js|mjs|cjs|ts|tsx)$/.test(e.name)) continue;
+    const body = safeRead(join(absDir, e.name));
+    const m = body && body.match(PORT_RE_LISTEN);
+    if (m) return parseInt(m[1], 10);
+  }
+
+  return null;
+}
+
 export function inferDefaults(absDir) {
   const pm = detectPackageManager(absDir);
   const compose = findComposeFile(absDir);
+  const port = inferPortFromSource(absDir);
   return {
     directoryName: basename(absDir),
     packageManager: pm,
     suggestedCommand: suggestedCommandFor(pm),
     dotEnvFiles: listDotEnvFiles(absDir),
     composeFile: compose,
-    composeServices: compose ? inferComposeServices(compose) : []
+    composeServices: compose ? inferComposeServices(compose) : [],
+    detectedPort: port,
+    suggestedReadinessUrl: port ? `http://localhost:${port}/health` : null
   };
 }
