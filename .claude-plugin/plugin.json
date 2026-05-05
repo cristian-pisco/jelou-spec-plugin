@@ -5,5 +5,9 @@
   "author": { "name": "Jelou" },
   "repository": "https://github.com/cristian-pisco/jelou-spec-plugin",
   "license": "MIT",
-  "keywords": ["spec-driven-development", "tdd", "multi-service"]
+  "keywords": ["spec-driven-development", "tdd", "multi-service", "context7", "mcp"],
+  "requires": {
+    "mcpServers": ["context7"],
+    "claudeCode": ">=1.0.0"
+  }
 }
