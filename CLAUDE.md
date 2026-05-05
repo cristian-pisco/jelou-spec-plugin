@@ -1,3 +1,13 @@
+## Pre-push checklist (main branch)
+
+Before pushing to `main` — directly or via merge — the unit test suite MUST pass.
+
+Run: `npm test` (equivalent to `node --test tests/unit/*.test.mjs`)
+
+Also run: `node bin/sync-agents.mjs --check` to confirm `.opencode/agents/` is in sync with `agents/`.
+
+If either fails, do not push. Fix the failure first. Never push with a red suite — `release after every push to main` means a broken push becomes a broken release.
+
 ## Skill routing
 
 When the user's request matches an available skill, ALWAYS invoke it using the Skill
