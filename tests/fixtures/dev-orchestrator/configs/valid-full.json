@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "defaults": {
+    "log_failure_patterns": ["EADDRINUSE", "Cannot find module"],
+    "readiness_timeout_seconds": 30,
+    "log_capture_lines": 100,
+    "poll_interval_ms": 2000,
+    "notification_cooldown_seconds": 60,
+    "window_prefix": ""
+  },
+  "services": [
+    {
+      "name": "redis",
+      "path": ".",
+      "command": "docker compose up redis",
+      "env_file": null,
+      "depends_on": [],
+      "readiness": { "type": "tcp", "host": "localhost", "port": 6379, "timeout_seconds": 15 },
+      "log_failure_patterns": [],
+      "panel": { "title": "redis", "color": "yellow" }
+    },
+    {
+      "name": "api",
+      "path": "./services/api",
+      "runtime": {
+        "type": "docker-compose",
+        "compose_file": "./docker-compose.yml",
+        "compose_service": "api",
+        "exec_template": "docker compose -f {compose_file} exec {compose_service} {cmd}"
+      },
+      "command": "docker compose up -d && docker compose exec api npm run start:dev",
+      "env_file": ".env",
+      "depends_on": ["redis"],
+      "readiness": { "type": "http", "url": "http://localhost:3000/health", "expect_status": 200, "timeout_seconds": 30 },
+      "log_failure_patterns": ["ECONNREFUSED.*redis"],
+      "panel": { "title": "API", "color": "cyan" }
+    }
+  ]
+}

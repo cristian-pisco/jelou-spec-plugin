@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "services": [
+    { "name": "api", "path": "./a", "command": "x" },
+    { "name": "api", "path": "./b", "command": "y" }
+  ]
+}

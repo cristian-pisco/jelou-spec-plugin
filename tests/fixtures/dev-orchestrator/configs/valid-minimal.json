@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "services": [
+    { "name": "api", "path": "./api", "command": "npm run dev" }
+  ]
+}

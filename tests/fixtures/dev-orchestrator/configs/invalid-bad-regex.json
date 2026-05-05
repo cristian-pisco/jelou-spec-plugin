@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "services": [
+    { "name": "api", "path": "./a", "command": "x", "log_failure_patterns": ["[unclosed"] }
+  ]
+}
