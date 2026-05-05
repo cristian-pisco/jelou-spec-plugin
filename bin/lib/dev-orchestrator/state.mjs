@@ -8,10 +8,12 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join, basename } from 'node:path';
 import { homedir } from 'node:os';
 
-const DEFAULT_BASE = join(homedir(), '.jlu');
+function defaultBase() {
+  return process.env.JLU_HOME || join(homedir(), '.jlu');
+}
 
 function base(opts) {
-  return (opts && opts.baseDir) || DEFAULT_BASE;
+  return (opts && opts.baseDir) || defaultBase();
 }
 
 export function stateDir({ workspaceId, slug = '_global', baseDir }) {

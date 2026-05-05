@@ -39,7 +39,9 @@ function parseArgv(argv) {
 }
 
 function tmuxRunner(args, opts = {}) {
-  return spawnSync('tmux', args, { encoding: 'utf8', ...opts });
+  const sock = process.env.JLU_TMUX_SOCKET;
+  const finalArgs = sock ? ['-L', sock, ...args] : args;
+  return spawnSync('tmux', finalArgs, { encoding: 'utf8', ...opts });
 }
 
 function emit(logPath, evt) {

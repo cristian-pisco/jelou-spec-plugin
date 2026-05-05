@@ -52,3 +52,17 @@ describe('currentSymlinkPath', () => {
     assert.equal(currentSymlinkPath(), join(homedir(), '.jlu', 'current'));
   });
 });
+
+describe('JLU_HOME override', () => {
+  test('honors JLU_HOME env var when no baseDir provided', () => {
+    const prev = process.env.JLU_HOME;
+    process.env.JLU_HOME = '/tmp/jlu-home-override';
+    try {
+      const p = stateDir({ workspaceId: 'wid', slug: 'foo' });
+      assert.equal(p, join('/tmp/jlu-home-override', 'workspaces', 'wid', 'foo'));
+    } finally {
+      if (prev === undefined) delete process.env.JLU_HOME;
+      else process.env.JLU_HOME = prev;
+    }
+  });
+});
