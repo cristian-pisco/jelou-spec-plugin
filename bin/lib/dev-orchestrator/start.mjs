@@ -11,6 +11,7 @@ import {
   splitWindow, selectLayout, selectPaneTitle, setPaneStyle,
   selectWindow, sendKeys
 } from './tmux.mjs';
+import { daemonSpawn as realDaemonSpawn } from './daemon-spawn.mjs';
 
 export function chooseLayout(n) {
   if (n <= 1) return 'single-pane';
@@ -76,8 +77,9 @@ function ensureTmuxRunning({ env, runner }) {
 }
 
 export function startDev({
-  config, workspaceRoot, slug, env = process.env,
-  runner, daemonSpawn = () => ({ pid: 0 })
+  config, workspaceRoot, workspaceId, slug, configPath,
+  env = process.env,
+  runner, daemonSpawn = realDaemonSpawn
 }) {
   const tmux = tmuxAvailable(runner);
   if (!tmux.ok) return { status: 'tmux-missing' };
@@ -117,7 +119,7 @@ export function startDev({
   selectLayout({ target: winTarget, layout: plan.layout }, runner);
   selectWindow({ target: winTarget }, runner);
 
-  const daemon = daemonSpawn({ slug, workspaceRoot, windowName });
+  const daemon = daemonSpawn({ slug, workspaceRoot, workspaceId, windowName, configPath });
 
   return {
     status: 'created',

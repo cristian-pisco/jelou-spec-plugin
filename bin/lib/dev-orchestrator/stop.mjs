@@ -1,9 +1,11 @@
 // bin/lib/dev-orchestrator/stop.mjs
 //
-// Implements /jlu:stop-dev. Phase 2 version stubs out daemon-kill via a
-// callback; Phase 3 will wire in the real PID-file/SIGTERM logic.
+// Implements /jlu:stop-dev. Default daemon-kill is the real one from
+// daemon-spawn.mjs; tests inject a fake.
 
 import { killWindow } from './tmux.mjs';
+import { killDaemon as realKillDaemon } from './daemon-spawn.mjs';
+import { truncateEventsLog } from './state-daemon.mjs';
 
 function windowNameFor(slug) {
   return `jlu-dev-${slug || '_global'}`;
@@ -13,9 +15,10 @@ export function stopDev({
   workspaceId, slug,
   runner,
   killServices = false,
-  killDaemon = () => ({ killed: false })
+  killDaemon = realKillDaemon
 }) {
   const daemon = killDaemon({ workspaceId, slug });
+  truncateEventsLog({ workspaceId, slug });
   const windowResult = { killed: false };
   if (killServices) {
     const target = windowNameFor(slug);
