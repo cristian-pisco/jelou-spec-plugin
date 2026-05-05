@@ -25,6 +25,14 @@ describe('ensureStateDir', () => {
     assert.equal(p, join(fakeHome, 'workspaces', 'wid', 'slg'));
     rmSync(fakeHome, { recursive: true, force: true });
   });
+
+  test('uses _global slug when omitted', () => {
+    const fakeHome = mkdtempSync(join(tmpdir(), 'jlu-state-'));
+    const p = ensureStateDir({ workspaceId: 'wid', baseDir: fakeHome });
+    assert.equal(p, join(fakeHome, 'workspaces', 'wid', '_global'));
+    assert.equal(existsSync(p), true);
+    rmSync(fakeHome, { recursive: true, force: true });
+  });
 });
 
 describe('writeMeta', () => {
@@ -34,6 +42,7 @@ describe('writeMeta', () => {
     const meta = JSON.parse(readFileSync(join(fakeHome, 'workspaces', 'wid', 'meta.json'), 'utf8'));
     assert.equal(meta.path, '/x/y');
     assert.ok(typeof meta.name === 'string');
+    assert.ok(!Number.isNaN(Date.parse(meta.updated_at)), `updated_at must parse: ${meta.updated_at}`);
     rmSync(fakeHome, { recursive: true, force: true });
   });
 });
