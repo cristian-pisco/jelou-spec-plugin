@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.145] — 2026-05-05
+
+### Added
+- standard markdown output, status_percentages map, cutoff window, full-line strike, short-term status notes
+
 ## [0.3.144] — 2026-05-05
 
 ### Added
