@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.146] — 2026-05-05
+
+### Added
+- jlu-spec-interviewer: reject 'E2E not required for MVP' / 'manual QA covers it' / 'defer to follow-up' framing; require at least one Success Criterion describing a browser-level flow when a UI service is in scope.
+- jlu-proposal-agent: forbid 'E2E not required for MVP' phrasing in proposals; Testing Strategy must list E2E flows traced to SCs and the phase plan must include a /jlu:ui-qa-run run.
+- jlu-ui-e2e-writer: add MODE=derive-from-spec so the agent can generate user-flow.md from SPEC.md when the spec author skipped /jlu:refine-task. Document the derivation rules (Routes, Steps, Boot Order, Env Vars, Auth Precondition) and the NEEDS_CONTEXT escalations for ambiguous inputs.
+- ui-qa-run workflow: harden the UI-service detection (stack OR description regex), refuse exit-0 when a UI service is missing a dev block in services.yaml, dispatch the e2e-writer in derive-from-spec mode when no user-flow.md exists, and commit the generated file to the task directory so it survives runs.
+
 ## [0.3.145] — 2026-05-05
 
 ### Added
