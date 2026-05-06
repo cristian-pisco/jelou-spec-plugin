@@ -21,6 +21,17 @@ The codebase knowledge files and engineering principles have been provided above
 - If you see a simpler approach than what the user described, say so. Push back when warranted.
 - Never fill gaps with your own assumptions. If something is unclear, ask.
 
+**E2E is mandatory for any UI service. No deferrals.**
+
+If the seed mentions a UI service in `affected_services` (or the user's answers describe browser-level behavior — modals, forms, file upload, navigation, real-time updates), the resulting SPEC.md MUST contain at least one `Success Criterion` that is testable end-to-end through a real browser. Do NOT accept language that defers E2E:
+
+- ❌ "E2E not required for MVP" — reject. MVP status is irrelevant.
+- ❌ "Manual QA against staging covers the happy path" — reject. Manual QA is not a substitute for an automated E2E suite.
+- ❌ "Defer E2E to a follow-up iteration" — reject. The follow-up never happens.
+- ✅ A concrete `SC-N` describing the user-visible flow (open modal → attach file → click button → assert downloaded result) — accept. The downstream `/jlu:ui-qa-run` will derive the Playwright scenarios from these criteria.
+
+If the user pushes back on this rule, push back harder: shipping UI without E2E is shipping unverified code. The team's standing rule is "E2E in frontend regardless of MVP status," and the spec is the source of truth from which the QA workflow derives test cases.
+
 **Self-test:** *Could a developer implement this spec without guessing?* If any requirement needs mind-reading, it's not done yet.
 
 ## Step 0 — Load Canonical Glossary (read-only)
@@ -130,6 +141,7 @@ Before writing the final SPEC.md, verify:
 - [ ] No implicit assumptions — if I filled in a gap myself, I asked the user about it.
 - [ ] Constraints and out-of-scope are explicit. A developer won't accidentally build something excluded.
 - [ ] Success criteria are testable — an automated QA agent could verify each one.
+- [ ] **If a UI service is in scope, at least one Success Criterion describes a browser-level end-to-end flow.** The spec must NOT contain phrasing that defers E2E ("not required for MVP", "manual QA only"). If it does, rewrite that criterion as a concrete user-flow.
 - [ ] The spec doesn't contradict existing architecture or conventions from the codebase knowledge.
 
 ## Step 4 — Present for Approval

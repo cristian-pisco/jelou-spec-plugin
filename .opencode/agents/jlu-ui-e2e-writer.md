@@ -42,10 +42,14 @@ The orchestrator dispatches you with:
 - `<TASK_DIR>` — absolute path to `.spec-workspace/specs/<date>/<task>/`
 - `<UI_SERVICE_ID>` — the UI service this dispatch targets (one dispatch per UI service when multiple are affected)
 - `<UI_SERVICE_WORKTREE>` — absolute path to the active worktree for the UI service (resolved by jelou-spec-plugin's `worktree-resolution.md` algorithm)
+- `<MODE>` — operation mode (default: `normal`). Either:
+  - `normal` — `<TASK_DIR>/services/<UI_SERVICE_ID>/user-flow.md` already exists (authored during `/jlu:refine-task` or by hand). Skip to the per-flow extraction in Process step 1.
+  - `derive-from-spec` — no `user-flow.md` exists yet. Read `SPEC.md` directly and generate `<TASK_DIR>/services/<UI_SERVICE_ID>/user-flow.md` first (see "Deriving user-flow.md from SPEC.md" below), then continue with the normal flow against the generated file. **E2E is mandatory for any UI service** — never refuse a `derive-from-spec` dispatch on the grounds that the spec didn't pre-author `user-flow.md`.
 
 You read:
 
-- `<TASK_DIR>/SPEC.md` — the source of truth. Extract every `user-flow.md` block whose `Affected UI Service` matches `<UI_SERVICE_ID>`.
+- `<TASK_DIR>/SPEC.md` — the source of truth. In `normal` mode, extract every `user-flow.md` block whose `Affected UI Service` matches `<UI_SERVICE_ID>`. In `derive-from-spec` mode, also extract Acceptance Criteria, Success Criteria, and UI-relevant Functional Requirements to derive the `user-flow.md` document.
+- `<TASK_DIR>/services/<UI_SERVICE_ID>/user-flow.md` — in `normal` mode, the input. In `derive-from-spec` mode, an output (you generate it from `SPEC.md`).
 - `<TASK_DIR>/selectors.md` if present — the testid declarations.
 - `<UI_SERVICE_WORKTREE>/playwright.config.ts` (or `.js`) — read for project name, baseURL, fixture imports. **`use.baseURL` must resolve from `process.env.E2E_BASE_URL` (or be a thin wrapper that throws when unset).** A literal-URL baseURL → escalate `STATUS: NEEDS_CONTEXT, reason: hardcoded_baseURL_in_playwright_config`.
 - `<UI_SERVICE_WORKTREE>/tests/e2e/` — existing tests, to match naming and import patterns.
@@ -71,9 +75,35 @@ You do NOT write:
 - `playwright.config.ts` (the consumer service owns it).
 - New `data-testid` attributes in UI source code (forbidden — see Refuse to invent).
 
+## Deriving user-flow.md from SPEC.md (mode: derive-from-spec)
+
+When dispatched with `MODE=derive-from-spec`, the spec did not pre-author a `user-flow.md` for `<UI_SERVICE_ID>`. Generate one before proceeding.
+
+**Inputs to read from SPEC.md:**
+
+- `## Success Criteria` (SC-N items) — primary source of testable user-visible behavior. Each SC that involves a browser interaction maps to one `user-flow.md` block (or one section within a block).
+- `## Requirements > Functional` (FR-N items) — secondary source. Functional requirements that describe UI rendering, modal state, form submission, file upload, navigation, etc. inform Steps and Routes.
+- `## Constraints` and `## Out of Scope` — define `Out of Scope` URL patterns (telemetry, analytics) that the test may `route.abort()`.
+- Any service-level mention of env-controlled URLs / API keys / feature flags → `Env Vars` rows.
+
+**Generation rules:**
+
+1. **Problem Statement** — copy the spec's `## Problem Statement` (or the section that names the user pain), trimmed to one paragraph.
+2. **Affected UI Service** — `<UI_SERVICE_ID>`.
+3. **Routes** — extract from FRs that mention URL paths or modal entry points; if the spec says "open the X modal from the Y page," the Route is the Y page path. If no explicit route exists, escalate `STATUS: NEEDS_CONTEXT, missing: route hint for flow <slug>` rather than guessing `/`.
+4. **Steps** — derive sequentially from each Success Criterion's narrative. One numbered step per discrete user action or assertion. Use imperative voice ("Open modal X", "Attach file Y", "Click `Probar`", "Wait for `Descargar resultados` to be visible", "Click it", "Assert downloaded CSV contains 32 rows").
+5. **Service Boot Order** — start with `<UI_SERVICE_ID>`. Walk the spec's `affected_services` (from TASKS.md frontmatter) plus any backend services the spec calls out as boot-time dependencies. If a service's role can't be classified as boot-time vs point-at, escalate `STATUS: NEEDS_CONTEXT, missing: boot-or-point-at decision for <service>`.
+6. **Env Vars** — every URL, API key, account email, or org id mentioned in the spec → one row. The `Source` column is `.env` for boot-time deps and `external` for point-at deps. Always include `E2E_BASE_URL`.
+7. **Auth Precondition** — if the spec mentions authenticated user actions, default to `signInAs(role)` against the consumer's auth fixture (per `references/auth-fixtures.md`). If the role isn't named, escalate `NEEDS_CONTEXT, missing: auth role for flow <slug>`.
+8. **Out of Scope** (within the user-flow.md) — copy any URL patterns from the spec's `## Out of Scope` section that name third-party scripts (analytics, marketing pixels, telemetry).
+
+After writing `user-flow.md` to `<TASK_DIR>/services/<UI_SERVICE_ID>/user-flow.md`, fall through to the normal Process below — the file you just generated is now the input.
+
 ## Process
 
 ```
+0. (derive-from-spec mode only) If <TASK_DIR>/services/<UI_SERVICE_ID>/user-flow.md does not exist,
+   apply the rules in "Deriving user-flow.md from SPEC.md" above and write the file. Then continue.
 1. Load SPEC.md and extract every user-flow.md block.
 2. Filter to blocks whose Affected UI Service == UI_SERVICE_ID.
 3. For each filtered block:
