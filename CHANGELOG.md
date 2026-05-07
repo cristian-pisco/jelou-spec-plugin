@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.148] — 2026-05-07
+
+### Fixed
+- jlu-execute-task Step 7e (post-Green lint/format): scope the format command to the implementer's `Files Modified` + the test-writer's `Tests Written` artifacts. Previously ran `npx eslint --fix . && npx prettier --write .` against the whole repo, which reformatted unrelated files and then tripped Step 7j's scope check on imperfectly-formatted codebases.
+- jlu-execute-task Step 7e: detect format command from CONVENTIONS.md / `package.json` scripts instead of hardcoding eslint+prettier; fall through to a `skipping post-Green format` log line when no command is detectable (Python/Go services).
+
+### Internal
+- jlu-implementer, jlu-test-writer, jlu-build-validator, jlu-qa-agent: add a Context Discipline section. Subagents Grep before Read for orientation, pipe verbose test/build output through `tail -200` / error-filters before consumption, bound `context7 query-docs` to narrow topics, and use the three-strike escalation as the overflow safety valve instead of accumulating fix-round output. Reduces the "Agent context overflowed" fresh-spawn fallback rate on long multi-phase tasks.
+
 ## [0.3.147] — 2026-05-06
 
 ### Internal
