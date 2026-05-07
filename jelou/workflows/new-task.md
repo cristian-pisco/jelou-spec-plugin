@@ -336,45 +336,53 @@ After storing `DUAL_PR`, **insert** the `## Branching` section into the existing
 
 ---
 
-## Step 10 — Load Codebase Files
+## Step 10 — Load Codebase Context (selective)
 
-For each service in `CONFIRMED_SERVICES`, attempt to read:
+For each service in `CONFIRMED_SERVICES`, read in parallel (single tool-call message):
 
 - `<WORKSPACE_PATH>/services/<service-id>/codebase/ARCHITECTURE.md`
-- `<WORKSPACE_PATH>/services/<service-id>/codebase/STACK.md`
 - `<WORKSPACE_PATH>/services/<service-id>/codebase/CONVENTIONS.md`
 - `<WORKSPACE_PATH>/services/<service-id>/codebase/INTEGRATIONS.md`
-- `<WORKSPACE_PATH>/services/<service-id>/codebase/STRUCTURE.md`
-- `<WORKSPACE_PATH>/services/<service-id>/codebase/CONCERNS.md`
 
-Track which files exist and which are missing.
+**Skipped by default**: `STACK.md`, `STRUCTURE.md`, `CONCERNS.md`. These are large reference docs that rarely shape a spec interview.
+
+**Lazy-load triggers**: if `TASK_DESCRIPTION` mentions any of the following keywords, also load the matching file in the same parallel batch:
+- "stack", "framework", "version", "library", "dependency", "package" → `STACK.md`
+- "directory", "module structure", "file layout", "where does", "folder" → `STRUCTURE.md`
+- "known issue", "tech debt", "concern", "legacy", "workaround" → `CONCERNS.md`
+
+Track which files were loaded and which were missing (only counts default-3 misses for the warning in Step 12).
 
 **Store**: `CODEBASE_CONTEXT` = map of service-id -> map of filename -> content
 
 ---
 
-## Step 11 — Read Engineering Principles
+## Step 11 — Read Engineering Principles (conditional)
 
-1. Read `<WORKSPACE_PATH>/principles/ENGINEERING_PRINCIPLES.md`.
-2. If the file does not exist, note it but do not block. The interview can proceed without it.
+Load `<WORKSPACE_PATH>/principles/ENGINEERING_PRINCIPLES.md` ONLY if `TASK_DESCRIPTION` contains an architectural keyword: `architecture`, `security`, `performance`, `scalability`, `auth`, `schema`, `contract`, `event`, `migration`, `infrastructure`, `production`.
 
-**Store**: `PRINCIPLES_CONTENT` = contents (or empty string if missing)
+Rationale: principles are global guidance and add noise to scoped tasks. The interview can ask the user directly when architectural decisions arise.
+
+If loaded but the file doesn't exist, note it and do not block. If not loaded (no keyword match), `PRINCIPLES_CONTENT` is empty string.
+
+**Store**: `PRINCIPLES_CONTENT` = contents (or empty string if not loaded or missing)
 
 ---
 
 ## Step 12 — Warn on Missing Context
 
-1. If any codebase files are missing for any affected service:
-   - Present a warning for each:
+1. If ANY of the **default-3** files (`ARCHITECTURE.md`, `CONVENTIONS.md`, `INTEGRATIONS.md`) are missing for any affected service:
+   - Present a warning per service:
      ```
-     Missing codebase files for <service-id>:
+     Missing default codebase files for <service-id>:
        - ARCHITECTURE.md
-       - STACK.md
+       - CONVENTIONS.md
        - (etc.)
      ```
    - Offer: "Run `/jlu-map-codebase <service-id>` to generate them? Or continue without codebase context?"
-   - If user chooses to map: pause this workflow, instruct user to run `/jlu-map-codebase`, then re-run `/jlu-new-task`.
+   - If user chooses to map: pause, instruct user to run `/jlu-map-codebase`, then re-run `/jlu-new-task`.
    - If user chooses to continue: proceed with whatever context is available.
+2. Do NOT warn about lazy-load files (`STACK.md`, `STRUCTURE.md`, `CONCERNS.md`) being absent — they are only loaded on demand and the interview can proceed without them.
 
 ---
 

@@ -5,13 +5,7 @@
 
 > **Execution policy**: This workflow runs fully autonomous. The ONLY case where execution pauses for user input is after 5 failed retry attempts on a phase or build step. All other decisions are auto-resolved.
 
-> **SQL Safety Gate — inject into every agent prompt that has Bash access (test-writer, implementer, qa-agent, build-validator):**
-> ```
-> ## SQL Safety Gate
-> NEVER execute Bash commands containing destructive SQL keywords: DROP TABLE, DROP DATABASE, DROP INDEX, DROP COLUMN, DELETE FROM, or TRUNCATE. This applies to direct SQL commands, database CLI tools (psql, mysql, mongosh, redis-cli), and any command that pipes SQL to a database.
-> If a phase requires running destructive SQL, SKIP the execution and report:
-> "BLOCKED: Phase requires destructive SQL execution. Manual intervention needed."
-> ```
+> **SQL Safety Gate**: inject the block from `jelou/references/sql-safety.md` into every Bash-capable agent prompt (test-writer, implementer, qa-agent, build-validator).
 
 ---
 
@@ -158,43 +152,41 @@ If `TASK_IS_TRIVIAL`:
    - **Testing Strategy**: `Tier 1: cover each FR with a behavior test in the existing test convention. No deferred Tier 2.`
    - **Risks**: `None identified — trivial scope.`
 2. Generate the single phase file at `<TASK_DIR>/services/<service-id>/phases/01-<phase-slug>.md` from `<plugin-root>/jelou/templates/phase.md`, populating Requirements from SPEC.md FR list.
-3. Log: `Task classified as trivial — PROPOSAL.md and phase file synthesized inline (no proposal-agent dispatch). Saves ~1-2 min.`
+3. Log: `Task classified as trivial — PROPOSAL.md and phase file synthesized inline.`
 4. Skip Steps 4a-4f and continue to Step 6 (Transition to Implementing).
 
 If `TASK_IS_TRIVIAL` is false: continue with Step 4a (full proposal-agent flow).
 
 **Store**: `TASK_IS_TRIVIAL`
 
-### 4a. Load Context (parallel reads)
+### 4a. Load Minimum Context (orchestrator)
 
-Issue ALL of the following Reads in a **single orchestrator message** (parallel reads, not sequential). For a 5-service task this collapses 32 sequential Reads into one fan-out, saving 3-15 s of accumulated I/O round-trips.
+Read in a single orchestrator message:
 
-- `<TASK_DIR>/SPEC.md` (required)
-- `<WORKSPACE_PATH>/principles/ENGINEERING_PRINCIPLES.md`
-- For each affected service, the 6 codebase files:
-  - `<WORKSPACE_PATH>/services/<service-id>/codebase/ARCHITECTURE.md`
-  - `<WORKSPACE_PATH>/services/<service-id>/codebase/STACK.md`
-  - `<WORKSPACE_PATH>/services/<service-id>/codebase/CONVENTIONS.md`
-  - `<WORKSPACE_PATH>/services/<service-id>/codebase/INTEGRATIONS.md`
-  - `<WORKSPACE_PATH>/services/<service-id>/codebase/STRUCTURE.md`
-  - `<WORKSPACE_PATH>/services/<service-id>/codebase/CONCERNS.md`
+- `<TASK_DIR>/SPEC.md` (required — feeds the Step 4.0 triviality classifier and downstream gates)
 
-Files that don't exist for a service are tolerable — the proposal-agent receives whatever is available; no abort.
+Do NOT preload codebase files or `ENGINEERING_PRINCIPLES.md` into the orchestrator. The proposal-agent has `Read` access and pulls them itself. Preloading would balloon every subsequent agent dispatch in the task with 30–80k tokens of context the orchestrator does not need.
 
 ### 4b. Global Strategy Pass (Decision #21)
 
-Spawn `jlu-proposal-agent` with model: **MODEL_CONFIG.proposal** (default: sonnet):
-- All context from 4a
-- Task: "Produce the global proposal — cross-service strategy, dependency order, phase structure, contract boundaries, risks, testing strategy."
-- The agent writes a draft global strategy.
+Spawn `jlu-proposal-agent` with model: **MODEL_CONFIG.proposal** (default: sonnet). In the prompt, include:
+
+- **Inlined**: full SPEC.md content (already in orchestrator context from 4a), affected services list with their `services.yaml` entries (`{id, path, stack, docker?}`).
+- **Paths to Read** (the agent reads on demand, the orchestrator does NOT prepend file content):
+  - `<WORKSPACE_PATH>/principles/ENGINEERING_PRINCIPLES.md`
+  - `<WORKSPACE_PATH>/registry/services.yaml`
+  - For each affected service, the 6 codebase files at `<WORKSPACE_PATH>/services/<service-id>/codebase/{ARCHITECTURE,STACK,CONVENTIONS,INTEGRATIONS,STRUCTURE,CONCERNS}.md`. Missing files are tolerable — the agent skips silently.
+- **Task**: "Produce the global proposal — cross-service strategy, dependency order, phase structure, contract boundaries, risks, testing strategy."
 
 ### 4c. Local Detail Pass (Multi-Service Only)
 
-If there are **2+ affected services**:
-- For each affected service, spawn a `jlu-proposal-agent` with model: **MODEL_CONFIG.proposal** (default: sonnet) in parallel:
-  - Pass: the global strategy draft + service-specific codebase files + SPEC.md
-  - Task: "Expand service-specific execution details for `<service-id>`: local scope, relevant modules, implementation constraints, service-level phases."
-- Wait for all local agents to complete.
+If there are **2+ affected services**, spawn one `jlu-proposal-agent` per service in parallel (single orchestrator message), model: **MODEL_CONFIG.proposal** (default: sonnet). Each prompt includes:
+
+- **Inlined**: full SPEC.md, the global strategy draft from 4b, the target service's `services.yaml` entry.
+- **Paths to Read**: the 6 codebase files for the target service (same paths as 4b, scoped to one service).
+- **Task**: "Expand service-specific execution details for `<service-id>`: local scope, relevant modules, implementation constraints, service-level phases."
+
+Wait for all local agents to complete before continuing to 4d.
 
 ### 4d. Consolidate PROPOSAL.md
 
@@ -256,7 +248,7 @@ Skip proposal generation. Read the existing PROPOSAL.md and phase files to resum
    - Status: `implementing`
    - Add timestamp: `- Implementing: <current-datetime-ISO>`
 
-2. **Per-service setup (once per task — not per phase).** For each affected service, perform the per-service work that does NOT change between phases. Resolving paths and starting Docker once at task start (instead of in Step 7c per phase) saves 5-30 s × N phases for Docker services:
+2. **Per-service setup (once per task — not per phase).** Run path resolution and Docker bring-up here so subsequent phases reuse cached values:
 
    a. Resolve `SERVICE_SOURCE_PATH[service-id]` via the worktree resolution algorithm in `references/worktree-resolution.md` (worktree if `<service-repo>/.worktrees/<TASK_SLUG>` exists, else service main repo from `services.yaml`).
    b. Read the service's `docker` config from `services.yaml`.
@@ -299,7 +291,7 @@ Per-service setup ran once at task start in Step 6.2. Look up the precomputed va
 - `DOCKER_EXEC_PREFIX = DOCKER_EXEC_PREFIX[service-id]`
 - `IS_DOCKER_SERVICE = IS_DOCKER_SERVICE[service-id]`
 
-Do NOT re-run `docker compose ps` or `docker compose up -d` here. Those ran once in Step 6 — repeating them per phase wastes 5-30 s × N phases. If a Docker container died mid-task (rare), the failure surfaces in the next test command's exit code; handle it as a regular phase failure rather than pre-emptively re-checking every phase.
+Do NOT re-run `docker compose ps` or `docker compose up -d` here — those ran once in Step 6. If a container died mid-task, the next test command's non-zero exit will surface it; handle it as a regular phase failure.
 
 ### 7d. TDD Red — Spawn Test Writer
 
@@ -312,21 +304,11 @@ Spawn `jlu-test-writer` agent with model: **MODEL_CONFIG.code** (default: sonnet
   - Service source path (worktree or repo)
   - SPEC.md relevant sections
   - `TEST_TIER: 1` (TDD cycle — fast, isolated tests only)
-- **Docker context** (only if `IS_DOCKER_SERVICE` is true): Include in the agent prompt:
-  ```
-  ## Execution Environment
-  This service runs in Docker. When running tests or any framework command via Bash, prefix with:
-    <DOCKER_EXEC_PREFIX> <command>
-  File reads/writes (Read, Write, Glob, Grep) operate on the host filesystem (the worktree).
-  Only test execution, lint, build, and dependency commands go through Docker.
-  ```
-  Omit this block entirely for non-Docker services.
+- **Docker context** (only if `IS_DOCKER_SERVICE` is true): inject the block from `jelou/references/docker-execution-context.md`. Omit entirely for non-Docker services.
 - **Task**: Write failing tests that cover the phase requirements.
 - **Output**: Test file paths and a summary of what was tested.
 
-**Red verification (trust-the-report)**:
-
-The test-writer agent ran the new test files in its own session as Step 4 of `agents/jlu-test-writer.md` ("Verify Tests Fail") and reported `Test Run Result > Status` and `Command`. Do not re-run the same tests in the orchestrator session — that duplicates 30-60 s per phase with no added signal.
+**Red verification (trust-the-report)**: the test-writer already ran tests in its own session and reports `Status` + `Command`. Don't re-run in the orchestrator unless the report is incomplete or flags an unexpected pass.
 
 1. Parse the test-writer's report.
 2. If the report includes `Status: RED` AND a `Command:` line with the exact test runner invocation: trust the result. Continue to Step 7e.
@@ -347,7 +329,7 @@ Spawn `jlu-implementer` agent with model: **MODEL_CONFIG.code** (default: sonnet
   - Test file paths (from the test writer)
   - `<WORKSPACE_PATH>/services/<service-id>/codebase/CONVENTIONS.md`
   - Service source path
-- **Docker context** (only if `IS_DOCKER_SERVICE` is true): Include the same `## Execution Environment` block as in Step 7d. Omit for non-Docker services.
+- **Docker context** (only if `IS_DOCKER_SERVICE` is true): inject the block from `jelou/references/docker-execution-context.md`. Omit for non-Docker services.
 - **Task**: Implement the minimum code to make all tests pass.
 - **Output**: Implementation file paths and a summary.
 
@@ -357,9 +339,7 @@ After the implementer finishes and tests are green, run lint and format inside t
 2. Run: `<DOCKER_EXEC_PREFIX> npx eslint --fix . && <DOCKER_EXEC_PREFIX> npx prettier --write .`
 3. Re-run ONLY the phase test files to confirm Green is maintained after formatting changes.
 
-**Green verification (trust-the-report)**:
-
-The implementer agent ran the phase test files in its own session as Step 4 of `agents/jlu-implementer.md` ("Run Tests") and reported `Test Results > Status` and `Command`. Do not re-run the same tests in the orchestrator session — that duplicates 30-60 s per phase with no added signal.
+**Green verification (trust-the-report)**: the implementer already ran phase tests in its own session and reports `Status` + `Command`. Don't re-run in the orchestrator unless the report is incomplete or post-Green lint/format modified files without re-verification.
 
 1. Parse the implementer's report.
 2. If the report includes `Status: GREEN` AND a `Command:` line with the exact test runner invocation: trust the result. Continue to Step 7e.1.
@@ -409,7 +389,7 @@ If the implementer flags that a test is incorrect:
 
 ### 7g. Refactor Pass (Optional)
 
-**Skip this step entirely if `PHASE_IS_TRIVIAL` is true.** Trivial phases by construction have no duplicated code, no naming hot-spots, and no functions exceeding 100 lines.
+**Skip if `PHASE_IS_TRIVIAL`.**
 
 Otherwise:
 1. Review implementation for code quality:
@@ -421,7 +401,7 @@ Otherwise:
 
 ### 7h. Per-Phase QA (Decision #13)
 
-**Skip this step entirely if `PHASE_IS_TRIVIAL` is true.** Per-phase static review on a 1-3 file, ≤20-line change yields no signal worth the agent dispatch. Comprehensive QA still runs once at Step 8c against the full task scope.
+**Skip if `PHASE_IS_TRIVIAL`.** Comprehensive QA still runs at Step 8c against the full task scope.
 
 Otherwise, spawn `jlu-qa-agent` with model: **MODEL_CONFIG.code** (default: sonnet) for a static per-phase review:
 - Phase file with requirements
@@ -440,7 +420,7 @@ If QA finds code quality issues (convention violations, function length, test ti
 
 ### 7i. Update TASKS.md (inline)
 
-The orchestrator updates TASKS.md directly via `Edit` — no agent dispatch. All required data is already in context from prior steps in this phase:
+The orchestrator edits TASKS.md directly via `Edit` — no agent dispatch needed for string substitution.
 
 1. Locate the phase entry in `<TASK_DIR>/TASKS.md`.
 2. Update via `Edit`:
@@ -448,11 +428,9 @@ The orchestrator updates TASKS.md directly via `Edit` — no agent dispatch. All
    - Add: test pass/fail counts (from the Green verification step), artifacts list (file paths from test-writer + implementer reports), and any deviations noted by the implementer.
 3. The commit SHA is appended in Step 7l after the inline commit in Step 7j; do not record it here.
 
-Rationale: this step is pure file editing. Spawning a subagent for a string-substitution task is wasted overhead.
-
 ### 7j. Git Commit (inline)
 
-The orchestrator stages and commits directly via `Bash` — no agent dispatch. Stage and commit are deterministic operations; the prior `jlu-git-agent` (haiku) added 5-15 s of LLM round-trip per phase with zero decision value.
+The orchestrator stages and commits directly via `Bash` — no agent dispatch (stage + commit are deterministic).
 
 **Pre-flight (mandatory)**:
 
@@ -499,14 +477,14 @@ If a commit fails due to a hook (lint, commitlint, etc.): parse the hook output,
 
 ### 7k. Build Validation
 
-**Skip this step entirely if `PHASE_IS_TRIVIAL` is true.** Trivial phases by construction have no edits to manifests, lockfiles, tsconfigs, type declaration files, or migrations — the categories that justify a separate build pass on top of the in-phase tsc/lint that already ran. Tier 2 build/regression checking still runs once at Step 8b across the full task scope.
+**Skip if `PHASE_IS_TRIVIAL`.** Tier 2 build/regression check still runs at Step 8b.
 
 Otherwise, spawn `jlu-build-validator` agent with model: **MODEL_CONFIG.code** (default: sonnet):
 - **Input**:
   - Service source path (worktree or repo)
   - `<WORKSPACE_PATH>/services/<service-id>/codebase/CONVENTIONS.md`
   - Phase context (phase number, service-id)
-- **Docker context** (only if `IS_DOCKER_SERVICE` is true): Include the same `## Execution Environment` block as in Step 7d. Omit for non-Docker services.
+- **Docker context** (only if `IS_DOCKER_SERVICE` is true): inject the block from `jelou/references/docker-execution-context.md`. Omit for non-Docker services.
 - **Task**: Run the project build command and fix any compilation failures. Do NOT run the test suite.
 
 **If the agent reports PASS** (with or without fixes):
@@ -534,7 +512,7 @@ Otherwise, spawn `jlu-build-validator` agent with model: **MODEL_CONFIG.code** (
    - Commit: <sha>
    - Completed: <ISO datetime>
    ```
-4. **No per-phase container cleanup.** Container pruning runs ONCE before Step 8b (full suite, clean slate) and ONCE at Step 8d (post-validation). Pruning between phases costs 1-5 s per phase and risks killing warm Testcontainers that the next phase would otherwise reuse.
+4. **No per-phase container cleanup.** Pruning runs once before Step 8b and once at Step 8d. Skipping it between phases keeps Testcontainers warm for reuse.
 
 ---
 
@@ -544,14 +522,14 @@ After all phases are complete, this is the SINGLE full test suite run for the en
 
 ### 8a. Write Tier 2 Integration Tests (gated)
 
-**Aggregate first**: collect all `Tier 2 Deferred` entries reported by every test-writer dispatch across all phases. If the aggregated list is **empty**, skip this entire step and continue to Step 8b. Log: `Tier 2 step skipped — no deferred integration requirements across <N> phases.`
+**Aggregate first**: collect every `Tier 2 Deferred` entry reported across phases. If empty, skip to Step 8b and log: `Tier 2 step skipped — no deferred requirements.`
 
 Otherwise, for each service that has Tier 2 deferred requirements:
 1. Collect all deferred requirements from that service's phase files.
 2. Spawn `jlu-test-writer` with model: **MODEL_CONFIG.code** (default: sonnet):
    - **Input**: Deferred requirements list, CONVENTIONS.md, service source path
    - **TEST_TIER: 2** (integration tests — Testcontainers and real infrastructure allowed)
-   - **Docker context**: Include if applicable
+   - **Docker context** (only if `IS_DOCKER_SERVICE` is true): inject the block from `jelou/references/docker-execution-context.md`. Omit for non-Docker services.
    - **Task**: Write integration tests for all deferred requirements.
 3. Spawn `jlu-implementer` with model: **MODEL_CONFIG.code** (default: sonnet) if the integration tests reveal missing wiring (e.g., a repository method needs a real database query that was mocked in Tier 1).
 
@@ -564,7 +542,7 @@ This is the only time the full test suite runs during the entire task execution.
    docker container prune -f 2>/dev/null || true
    ```
 
-2. Run the complete test suite for each affected service. **Dispatch in parallel** when there are 2+ services: emit a single orchestrator message with one `Bash` call per service. Service test suites are independent (different repos, different processes); waiting for them serially can take N × suite-time when the same work runs in max(suite-time):
+2. Run the complete test suite for each affected service. **Dispatch in parallel** when there are 2+ services: emit a single orchestrator message with one `Bash` call per service (independent repos and processes — serial dispatch wastes wall time):
    - Per service, use the full test command from CONVENTIONS.md (e.g., `npm test`, `pytest`, `go test ./...`)
    - If Docker-enabled: `<DOCKER_EXEC_PREFIX[service-id]> <full test command>`
    - This includes ALL tests: unit, integration, Testcontainer-based, e2e
@@ -577,12 +555,12 @@ This is the only time the full test suite runs during the entire task execution.
 
 ### 8c. Comprehensive QA (static only)
 
-Spawn `jlu-qa-agent` with model: **MODEL_CONFIG.code** (default: sonnet) for **static** comprehensive review. The QA agent **must NOT run the test suite** — Step 8b is the only sanctioned full test run, and re-running here is duplicate work that the trace shows costing 1-3 min per task.
+Spawn `jlu-qa-agent` with model: **MODEL_CONFIG.code** (default: sonnet) for a **static** comprehensive review. The QA agent **must NOT run the test suite** — Step 8b is the only sanctioned full run; re-running here is duplicate work.
 
 Pass the QA agent the captured Step 8b results (test counts, failing test list if any) so it has the verdict without re-executing:
 
 - **Step 8b results**: PASS/FAIL counts per service, list of any failing tests
-- **Docker context** (only if `IS_DOCKER_SERVICE` is true): Include the `## Execution Environment` block. Omit for non-Docker services.
+- **Docker context** (only if `IS_DOCKER_SERVICE` is true): inject the block from `jelou/references/docker-execution-context.md`. Omit for non-Docker services.
 - **Full coverage analysis**: Are all requirements from SPEC.md covered by tests? (read SPEC.md and test files; do not run them)
 - **Edge case review**: Were edge cases from the spec addressed?
 - **Cross-service contract verification** (if multi-service): Do the services communicate correctly? Are contracts honored?
@@ -625,7 +603,7 @@ If all validation passes:
    - Status: `validating` → `ready_to_publish`
    - Add completion timestamp
    - Record final test counts
-2. Print the final summary directly to terminal — no agent dispatch. The orchestrator already has every field from earlier steps in this run (TASKS.md just updated, git commit SHAs from Step 7j per phase, test counts from Step 8b, artifact paths from test-writer + implementer reports). Format:
+2. Print the final summary directly to terminal — no agent dispatch (orchestrator already has every field from prior steps). Format:
 
    ```
    ## Execution Complete — <TASK_SLUG>
@@ -651,8 +629,6 @@ If all validation passes:
    - Run `/jlu-create-pr` to open the pull request.
    - After merge, run `/jlu-close-task`.
    ```
-
-   Rationale: this step is fixed-format rendering of data already in context. Dispatching a subagent for string interpolation is wasted overhead.
 
 ---
 

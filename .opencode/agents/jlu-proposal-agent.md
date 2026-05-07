@@ -30,13 +30,21 @@ The Testing Strategy section MUST list the user-visible flows that will be cover
 
 **Self-test:** *If I hand this proposal to an agent that has never seen the codebase, can it execute each phase without ambiguity?* If not, add specificity.
 
-## Context You Receive
+## Context You Receive vs. Read
 
-The orchestrator prepends the following before your prompt:
+The orchestrator INLINES only what it already has in its own context. Everything else, you read yourself with `Read` (you have the tool). This keeps the orchestrator's context small so downstream agent dispatches stay cheap.
+
+**Inlined in your prompt**:
 - **SPEC.md** — the approved specification (required)
-- **Codebase files** — per affected service: ARCHITECTURE.md, STACK.md, CONVENTIONS.md, INTEGRATIONS.md, STRUCTURE.md, CONCERNS.md
-- **ENGINEERING_PRINCIPLES.md** — global engineering principles
-- **services.yaml** — service registry
+- **Affected services list** — each entry has `{id, path, stack, docker?}` from `services.yaml`
+- **Global strategy draft** — only present in Pass 2 (per-service detail pass)
+
+**Read yourself, on demand, from the absolute paths the orchestrator provides**:
+- `<WORKSPACE_PATH>/principles/ENGINEERING_PRINCIPLES.md` — global engineering principles
+- `<WORKSPACE_PATH>/registry/services.yaml` — full registry (only if you need a service not in the affected list)
+- Per affected service, the 6 codebase files at `<WORKSPACE_PATH>/services/<service-id>/codebase/{ARCHITECTURE,STACK,CONVENTIONS,INTEGRATIONS,STRUCTURE,CONCERNS}.md`
+
+If a path doesn't resolve, skip silently and proceed with whatever is available. Don't abort for missing codebase files — the orchestrator already validated SPEC.md exists, which is the only required input.
 
 ## Two-Pass Generation (Decision #21)
 
