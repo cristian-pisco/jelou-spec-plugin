@@ -334,10 +334,20 @@ Spawn `jlu-implementer` agent with model: **MODEL_CONFIG.code** (default: sonnet
 - **Output**: Implementation file paths and a summary.
 
 **Post-Green lint/format** (Docker-enabled services only):
-After the implementer finishes and tests are green, run lint and format inside the container:
-1. Detect the lint command from `package.json` scripts or `CONVENTIONS.md`.
-2. Run: `<DOCKER_EXEC_PREFIX> npx eslint --fix . && <DOCKER_EXEC_PREFIX> npx prettier --write .`
-3. Re-run ONLY the phase test files to confirm Green is maintained after formatting changes.
+After the implementer finishes and tests are green, run lint/format on **phase-changed files only** — never against the whole repo, because reformatting unrelated files would trip the Step 7j scope check.
+
+1. Build `CHANGED_FILES` from the union of:
+   - The implementer's `Files Modified` artifacts for this phase.
+   - The test-writer's `Tests Written` artifacts for this phase.
+   If `CHANGED_FILES` is empty (no files declared), skip the format step and continue to Green verification.
+2. Detect the format command in priority order:
+   a. An explicit "Format" or "Lint" command in CONVENTIONS.md.
+   b. A `format` or `lint:fix` script in `package.json` (run via `npm run <script> -- <CHANGED_FILES>` if the script supports file arguments; otherwise skip this option).
+   c. Default for JS/TS services: `npx eslint --fix` then `npx prettier --write`.
+   If none of the above is detectable (e.g., a Python or Go service with no convention noted), log `No format command detected for <service-id>, skipping post-Green format.` and continue.
+3. Run the detected command(s) against `CHANGED_FILES` only:
+   `<DOCKER_EXEC_PREFIX> <format-command> <CHANGED_FILES>`
+4. Re-run ONLY the phase test files to confirm Green is maintained after formatting changes.
 
 **Green verification (trust-the-report)**: the implementer already ran phase tests in its own session and reports `Status` + `Command`. Don't re-run in the orchestrator unless the report is incomplete or post-Green lint/format modified files without re-verification.
 

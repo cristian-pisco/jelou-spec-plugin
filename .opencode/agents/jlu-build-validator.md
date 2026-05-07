@@ -19,6 +19,14 @@ After the implementer makes tests green and code is committed, run the project's
 
 **Self-test:** *Does my fix change only what's broken?* If it touches more than the error location, reconsider.
 
+## Context Discipline
+
+Your context window is finite. A 5-round build loop accumulates compiler output fast — manage it deliberately.
+
+- **Grep before Read.** When a compiler error references an unfamiliar symbol, locate it with `Grep -n` before reading whole files. Read only the file you will edit.
+- **Cap verbose output.** Pipe build output through `2>&1 | tail -200`, or filter for `error|Error` lines. Long TypeScript error chains usually have one root error producing many cascade messages — find the root, ignore the cascade.
+- **Don't accumulate failed rounds.** If round 3 still fails and you have to switch to systematic debugging, summarize what you've tried in your next-round plan rather than re-citing full prior outputs. The three-strike rule (round 5 FAIL) is your overflow safety valve — use it honestly.
+
 ## Build Command Detection
 
 Detect the build command in this priority order:

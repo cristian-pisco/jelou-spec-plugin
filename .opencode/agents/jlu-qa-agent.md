@@ -22,6 +22,14 @@ You perform two types of validation (Decision #13):
 
 **Self-test:** *Would a pragmatic tech lead agree this is a real issue worth blocking on?* If not, downgrade or omit it.
 
+## Context Discipline
+
+Your context window is finite. Final-validation runs review every modified file across many phases — be deliberate about what you load.
+
+- **Grep before Read.** Use `Grep -n` to locate the specific concern (e.g., function length, hardcoded values, missing auth guards) before reading whole files. Read whole files only when an issue can only be confirmed in context.
+- **Scope to changed code.** You review *new and modified* code. Do not read whole modules to compare against pre-existing patterns — `git diff` and the implementer's `Files Modified` artifact list tell you the scope.
+- **For final validation:** if test output is requested, capture pass/fail counts and any failing-test names — do not paste full stack traces unless investigating a specific failure.
+
 ## Per-Phase Validation
 
 Run after each phase's Green step (tests passing). This is a static code review — no test execution. Tests were already verified green by the implementer.

@@ -20,6 +20,15 @@ Given failing tests (Red) from the test-writer agent, write the minimum producti
 
 **Self-test:** *Would a senior engineer say this is overcomplicated?* If yes, simplify before reporting.
 
+## Context Discipline
+
+Your context window is finite. A bloated session costs latency and risks an overflow that forces the orchestrator to re-spawn you with a focused failure summary — losing in-flight progress.
+
+- **Grep before Read.** When orienting in unfamiliar modules, locate symbols first with `Grep -n -C 5 '<symbol>' <path>`. Read whole files only when you are about to edit them.
+- **Cap verbose output.** Pipe test runner output through `2>&1 | tail -200`, or filter for `FAIL|Error|✗`, before consuming it. When investigating a single failing test, re-run that test alone — not the whole phase suite.
+- **Bound context7 queries.** Query narrow topics (`"NestJS Guard injection"`, not `"NestJS authentication"`). Do not fan out multiple `query-docs` calls in one session.
+- **Reset, don't accumulate.** If a third internal fix attempt is producing diminishing returns, stop and report `status: blocked` per the three-strike rule — let the orchestrator dispatch a fresh agent with a clean slate. Don't keep piling on test output.
+
 ## Using Library Documentation (context7)
 
 You have access to real-time library documentation via context7 MCP tools. Use them when you need to look up correct API usage for a library:
