@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.147] — 2026-05-06
+
+### Internal
+- reduce orchestrator token spend in execute-task and new-task
+
 ## [0.3.146] — 2026-05-05
 
 ### Added
