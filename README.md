@@ -23,6 +23,57 @@ Follows the conventions established by [OpenSpec](https://github.com/Fission-AI/
 - (Phase 2) ClickUp MCP server for task management integration
 - (Phase 2) Slack MCP server for daily posts
 
+## Installation (one command)
+
+### 1) Clone the plugin repository
+
+```bash
+git clone https://github.com/cristian-pisco/jelou-spec-plugin.git
+cd jelou-spec-plugin
+```
+
+### 2) Install by host
+
+The `--host` flag supports only these values:
+- `claude`
+- `opencode`
+
+Run one of these commands:
+
+```bash
+# Install/update both hosts (default)
+./setup
+
+# Claude Code only
+./setup --host claude
+
+# OpenCode only
+./setup --host opencode
+
+# Explicitly both hosts
+./setup --host claude --host opencode
+```
+
+### 3) Optional: install into a specific OpenCode project
+
+```bash
+./setup --host opencode --project /path/to/your-project
+```
+
+### 4) Update later
+
+Use the exact same setup command after pulling:
+
+```bash
+git pull
+./setup
+```
+
+What `./setup` does:
+- Regenerates `.opencode/agents` from canonical `agents/` before install
+- Installs/updates Claude fallback files in `~/.claude` (skills, agents, references)
+- Installs/updates OpenCode files in `~/.config/opencode`
+
 ## Quick Start (OpenCode)
 
 Run OpenCode from this repository root:
@@ -46,7 +97,13 @@ Use the command palette with the `jlu-` namespace:
 Automatic install (recommended):
 
 ```bash
-# from this plugin repo
+# from this plugin repo (preferred)
+./setup --host opencode --project /path/to/your-project
+```
+
+Legacy equivalent:
+
+```bash
 ./bin/install-opencode.sh /path/to/your-project
 ```
 
@@ -73,10 +130,11 @@ Use commands like `/jlu-new-task`, `/jlu-execute-task`, `/jlu-create-pr`, `/jlu-
 
 ### Update in Existing Project
 
-Run the same installer again:
+Run the same setup command again:
 
 ```bash
-./bin/install-opencode.sh /path/to/your-project
+git pull
+./setup --host opencode --project /path/to/your-project
 ```
 
 ### Quick Start (Claude Code)
@@ -107,10 +165,10 @@ The plugin silently checks for updates when you run any `/jlu-*` command. If a n
 # Option A: Load directly from a local directory
 claude --plugin-dir /path/to/jelou-spec-plugin
 
-# Option B: Fallback installer (copies skills/agents to ~/.claude/)
+# Option B: Fallback installer (same behavior as ./setup --host claude)
 git clone https://github.com/cristian-pisco/jelou-spec-plugin.git
 cd jelou-spec-plugin
-./bin/install.sh
+./setup --host claude
 ```
 
 ## Core Commands

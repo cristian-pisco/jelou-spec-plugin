@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PLUGIN_DIR="$SCRIPT_DIR"
+
+INSTALL_CLAUDE="true"
+INSTALL_OPENCODE="true"
+HOST_FILTERED="false"
+OPENCODE_TARGET="${OPENCODE_HOME:-$HOME/.config/opencode}"
+NO_GLOBAL_OPENCODE="false"
+declare -a OPENCODE_PROJECTS=()
+
+usage() {
+  cat <<'USAGE'
+Jelou Spec Plugin setup
+
+Usage:
+  ./setup [options]
+
+Options:
+  --host <claude|opencode>      Select install target (repeatable). Default: both.
+  --opencode-target <path>      Global OpenCode config path (default: ~/.config/opencode)
+  --project <path>              Also install OpenCode files into a project (repeatable)
+  --no-opencode-global          Skip install into --opencode-target
+  -h, --help                    Show this help
+
+Examples:
+  ./setup
+  ./setup --host claude
+  ./setup --host claude --host opencode
+  ./setup --host opencode --project /path/to/repo
+  ./setup --host opencode --no-opencode-global --project /path/to/repo
+USAGE
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --host)
+      [ "$#" -lt 2 ] && { echo "Error: --host requires a value" >&2; exit 2; }
+      if [ "$HOST_FILTERED" = "false" ]; then
+        INSTALL_CLAUDE="false"
+        INSTALL_OPENCODE="false"
+        HOST_FILTERED="true"
+      fi
+      case "$2" in
+        claude) INSTALL_CLAUDE="true" ;;
+        opencode) INSTALL_OPENCODE="true" ;;
+        *)
+          echo "Error: --host must be one of: claude, opencode" >&2
+          exit 2
+          ;;
+      esac
+      shift 2
+      ;;
+    --opencode-target)
+      [ "$#" -lt 2 ] && { echo "Error: --opencode-target requires a path" >&2; exit 2; }
+      OPENCODE_TARGET="$2"
+      shift 2
+      ;;
+    --project)
+      [ "$#" -lt 2 ] && { echo "Error: --project requires a path" >&2; exit 2; }
+      OPENCODE_PROJECTS+=("$2")
+      shift 2
+      ;;
+    --no-opencode-global)
+      NO_GLOBAL_OPENCODE="true"
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Error: unknown option '$1'" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+HOST_LABEL="both"
+if [ "$INSTALL_CLAUDE" = "true" ] && [ "$INSTALL_OPENCODE" = "false" ]; then
+  HOST_LABEL="claude"
+elif [ "$INSTALL_CLAUDE" = "false" ] && [ "$INSTALL_OPENCODE" = "true" ]; then
+  HOST_LABEL="opencode"
+fi
+
+echo "=== Jelou Spec Plugin Setup ==="
+echo "Plugin: $PLUGIN_DIR"
+echo "Host:   $HOST_LABEL"
+echo
+
+if command -v node >/dev/null 2>&1 && [ -f "$PLUGIN_DIR/bin/sync-agents.mjs" ]; then
+  echo "Syncing OpenCode agent mirror..."
+  (cd "$PLUGIN_DIR" && node bin/sync-agents.mjs >/dev/null)
+  echo "  done"
+else
+  echo "Syncing OpenCode agent mirror... skipped (node not found)"
+fi
+
+if [ "$INSTALL_CLAUDE" = "true" ]; then
+  echo
+  echo "Installing for Claude Code..."
+  JLU_SKIP_SYNC_AGENTS=true "$PLUGIN_DIR/bin/install.sh"
+fi
+
+if [ "$INSTALL_OPENCODE" = "true" ]; then
+  if [ "$NO_GLOBAL_OPENCODE" = "false" ]; then
+    echo
+    echo "Installing for OpenCode (global): $OPENCODE_TARGET"
+    mkdir -p "$OPENCODE_TARGET"
+    "$PLUGIN_DIR/bin/install-opencode.sh" "$OPENCODE_TARGET"
+  fi
+
+  if [ "${#OPENCODE_PROJECTS[@]}" -gt 0 ]; then
+    for project in "${OPENCODE_PROJECTS[@]}"; do
+      echo
+      echo "Installing for OpenCode project: $project"
+      "$PLUGIN_DIR/bin/install-opencode.sh" "$project"
+    done
+  fi
+fi
+
+echo
+echo "Setup complete."
+echo "Run this same command after pulling updates to refresh your local installs."

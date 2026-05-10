@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.150] — 2026-05-10
+
+### Added
+- add unified host installer command
+
 ## [0.3.149] — 2026-05-10
 
 ### Internal

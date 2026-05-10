@@ -36,10 +36,12 @@ fi
 
 # Sync .opencode/agents from agents/ (canonical) so OpenCode users get the
 # same content. Non-fatal: install never breaks if Node is missing.
-if command -v node >/dev/null 2>&1 && [ -f "$PLUGIN_DIR/bin/sync-agents.mjs" ]; then
-  echo "Syncing .opencode/agents from agents/..."
-  (cd "$PLUGIN_DIR" && node bin/sync-agents.mjs >/dev/null) \
-    || echo "  sync-agents skipped (non-fatal)"
+if [ "${JLU_SKIP_SYNC_AGENTS:-false}" != "true" ]; then
+  if command -v node >/dev/null 2>&1 && [ -f "$PLUGIN_DIR/bin/sync-agents.mjs" ]; then
+    echo "Syncing .opencode/agents from agents/..."
+    (cd "$PLUGIN_DIR" && node bin/sync-agents.mjs >/dev/null) \
+      || echo "  sync-agents skipped (non-fatal)"
+  fi
 fi
 
 # Copy update check script
