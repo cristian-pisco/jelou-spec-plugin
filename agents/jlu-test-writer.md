@@ -76,7 +76,9 @@ These tests must run in under 5 seconds for the entire phase. They are your TDD 
 
 ### Tier 2: Final Validation
 Write integration tests that verify real infrastructure wiring:
-- **DO**: Use Testcontainers, real database connections, real message queues
+- **DO**: Use real database/message-queue infrastructure
+- **DO**: Prefer already-running Docker Compose infrastructure when the service is Dockerized (reuse the task runtime)
+- **DO**: Use Testcontainers only when equivalent runtime dependencies are not available in the service environment
 - **DO**: Test the actual repository/DAO layer against a real database
 - **DO**: Test real HTTP calls between services (if applicable)
 - **DO**: Follow the project's existing integration test patterns from CONVENTIONS.md
@@ -93,7 +95,9 @@ When `TEST_TIER: 2`:
 - Write integration tests for requirements that were deferred from Tier 1
 - Write integration tests for critical paths identified in SPEC.md (auth, data persistence, cross-service contracts)
 - Place these in the project's integration test directory/naming convention per CONVENTIONS.md
-- These tests CAN use Testcontainers and real infrastructure
+- Dockerized services: run tests and required service processes inside Docker (`<DOCKER_EXEC_PREFIX> <command>`)
+- Non-Docker services: run tests and required service processes on host (`<command>`)
+- These tests CAN use Testcontainers, but prefer existing runtime infrastructure first to reduce resource churn
 
 ### File Separation
 Tier 1 and Tier 2 tests MUST be in separate files so the orchestrator can run them independently. Follow the project's convention for naming:
@@ -124,12 +128,16 @@ Follow the service's conventions exactly:
 - Use the project's mocking approach
 - Import from the correct paths (respect path aliases)
 
-### Step 4: Verify Tests Fail
-Run the test suite using `Bash` to confirm. **If the orchestrator provided a `DOCKER_EXEC_PREFIX` in your execution environment, prefix ALL test commands with it.** File reads/writes always run on the host.
-- Tests are discovered by the test runner
-- Tests FAIL (Red) because the implementation does not exist
-- Tests fail for the RIGHT reason (missing function/module, not syntax errors)
-- No existing tests are broken by your additions
+### Step 4: Verify Tests Fail (targeted only)
+Run ONLY the newly written phase test files using `Bash` to confirm Red. **If the orchestrator provided a `DOCKER_EXEC_PREFIX` in your execution environment, prefix ALL test commands with it.** File reads/writes always run on the host.
+- New tests are discovered by the runner
+- New tests FAIL (Red) because the implementation does not exist
+- New tests fail for the RIGHT reason (missing function/module, not syntax errors)
+- Do NOT run the full suite here. Full regression runs once in final validation (Step 8b)
+
+If Tier 2 integration tests require a live NestJS service process, use the service runtime context:
+- Dockerized service: `<DOCKER_EXEC_PREFIX> npm run start:dev` or `<DOCKER_EXEC_PREFIX> pnpm run start:dev`
+- Non-Docker service: `npm run start:dev` or `pnpm run start:dev`
 
 ## Test Quality Standards
 
@@ -191,7 +199,7 @@ After writing tests and confirming they fail, provide a structured summary:
 ### Test Run Result
 - **Status**: RED (all new tests fail as expected)
 - **New tests**: X failing
-- **Existing tests**: Y passing (no regressions)
+- **Existing tests**: not re-run in Red step (regression reserved for Step 8b)
 - **Command**: `<exact command used to run tests>`
 
 ### Coverage of Phase Requirements

@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.149] — 2026-05-10
+
+### Internal
+- throttle test orchestration defaults
+
 ## [0.3.148] — 2026-05-07
 
 ### Fixed

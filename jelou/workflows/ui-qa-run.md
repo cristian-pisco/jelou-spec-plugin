@@ -9,7 +9,7 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
   - `--force` — override the pre-flight resource gate (use sparingly).
   - `--allow-shared-data` — required when any affected service has `dev.data_isolation: shared`.
   - `--allow-test-edits` — let the fix-loop edit `.spec.ts` files (default forbids this).
-  - `--workers=N` — Playwright worker count. Default 1. Refuses N>1 unless system has >8GB RAM available.
+  - `--workers=N` — Playwright worker count. Default 1. Refuses unsafe values unless both RAM and CPU gates pass (or `--force` is set).
 
 ## Process
 
@@ -69,6 +69,12 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
 
 8. **Pre-flight resource check** (inline; no separate `bin/` script).
    ```bash
+   WORKERS=${WORKERS:-1}
+   if ! [[ "$WORKERS" =~ ^[0-9]+$ ]] || [ "$WORKERS" -lt 1 ]; then
+     echo "ERROR: --workers must be an integer >= 1 (got '$WORKERS')."
+     exit 1
+   fi
+
    OS=$(uname -s)
    if [ "$OS" = "Linux" ] && grep -qiE 'microsoft|wsl' /proc/version 2>/dev/null; then
      OS_VARIANT="WSL2"
@@ -78,15 +84,17 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
 
    case "$OS_VARIANT" in
      Linux|WSL2)
-       AVAIL_MB=$(awk '/MemAvailable/ {print  / 1024}' /proc/meminfo 2>/dev/null)
-       [ -z "$AVAIL_MB" ] && AVAIL_MB=$(awk '/MemFree/ {f=} /^Cached/ {c=} END {print (f+c) / 1024}' /proc/meminfo)
+       AVAIL_MB=$(awk '/MemAvailable/ {print $2 / 1024}' /proc/meminfo 2>/dev/null)
+       [ -z "$AVAIL_MB" ] && AVAIL_MB=$(awk '/MemFree/ {f=$2} /^Cached/ {c=$2} END {print (f+c) / 1024}' /proc/meminfo)
+       CPU_CORES=$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN)
        ;;
      Darwin)
        PAGE_SIZE=$(sysctl -n hw.pagesize)
-       FREE_PAGES=$(vm_stat | awk '/Pages free/ {gsub(/\./,"",); print }')
-       SPEC_PAGES=$(vm_stat | awk '/Pages speculative/ {gsub(/\./,"",); print }')
-       INACTIVE_PAGES=$(vm_stat | awk '/Pages inactive/ {gsub(/\./,"",); print }')
+       FREE_PAGES=$(vm_stat | awk '/Pages free/ {gsub(/\./,"",$3); print $3}')
+       SPEC_PAGES=$(vm_stat | awk '/Pages speculative/ {gsub(/\./,"",$3); print $3}')
+       INACTIVE_PAGES=$(vm_stat | awk '/Pages inactive/ {gsub(/\./,"",$3); print $3}')
        AVAIL_MB=$(( (FREE_PAGES + SPEC_PAGES + INACTIVE_PAGES) * PAGE_SIZE / 1024 / 1024 ))
+       CPU_CORES=$(sysctl -n hw.logicalcpu)
        ;;
      *)
        echo "ERROR: unsupported OS '$OS'. Linux + macOS + WSL2 supported. Windows-native is out of scope."
@@ -94,14 +102,27 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
        ;;
    esac
 
-   REQUIRED_MB=$(( SUM_DEV_RAM_ESTIMATES + 1300 ))   # 800MB Chromium+Node + 500MB headroom
+   # CPU gate: reserve at least half the machine for services/OS. Hard cap at 4 workers.
+   MAX_WORKERS_BY_CPU=$(( CPU_CORES / 2 ))
+   [ "$MAX_WORKERS_BY_CPU" -lt 1 ] && MAX_WORKERS_BY_CPU=1
+   [ "$MAX_WORKERS_BY_CPU" -gt 4 ] && MAX_WORKERS_BY_CPU=4
+
+   if [ "$WORKERS" -gt "$MAX_WORKERS_BY_CPU" ] && [ -z "$FORCE" ]; then
+     echo "ERROR: requested --workers=$WORKERS exceeds CPU safety cap ($MAX_WORKERS_BY_CPU with $CPU_CORES logical cores)."
+     echo "  Use fewer workers or pass --force to override."
+     exit 1
+   fi
+
+   # RAM gate: base browser overhead + per-extra-worker overhead.
+   REQUIRED_MB=$(( SUM_DEV_RAM_ESTIMATES + 1300 + ((WORKERS - 1) * 700) ))
 
    if [ "$AVAIL_MB" -lt "$REQUIRED_MB" ] && [ -z "$FORCE" ]; then
-     echo "ERROR: pre-flight resource check failed."
-     echo "  available: ${AVAIL_MB}MB"
-     echo "  required:  ${REQUIRED_MB}MB"
-     echo "  Close apps or pass --force to override."
-     exit 1
+      echo "ERROR: pre-flight resource check failed."
+      echo "  available: ${AVAIL_MB}MB"
+      echo "  required:  ${REQUIRED_MB}MB"
+      echo "  workers:   ${WORKERS} (cpu cap: ${MAX_WORKERS_BY_CPU})"
+      echo "  Close apps or pass --force to override."
+      exit 1
    fi
    ```
 
@@ -251,7 +272,8 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
 |---|---|---|
 | No `.spec-workspace/` | 2 | "requires a workspace" + how to make one |
 | Off-task branch, no slug arg | 2 | "no task slug detected from branch" + how to pass explicitly |
-| Pre-flight RAM fails | 2 | "available <X>MB < required <Y>MB" + `--force` hint |
+| Invalid `--workers` value | 2 | "--workers must be an integer >= 1" |
+| Pre-flight RAM/CPU gate fails | 2 | "available <X>MB < required <Y>MB" or "workers exceed CPU cap" + `--force` hint |
 | Port held by stale | 2 | `/jlu-ui-qa-cleanup` hint |
 | Lock held | 2 | "PID <X> holds lock; wait or kill" |
 | Docker daemon down | 2 | "docker info failed; start Docker Desktop / dockerd" |

@@ -106,10 +106,10 @@ Run after ALL phases are complete. This is a comprehensive review.
 
 ### Checklist:
 
-#### 1. Full Test Suite
-- Run the complete test suite
-- All tests must pass
-- Record total counts: unit, integration, e2e
+#### 1. Test Suite Evidence (from orchestrator)
+- Use the Step 8b full-suite results passed by the orchestrator (PASS/FAIL counts + failing test list)
+- Do NOT re-run tests in this agent. This review is static analysis plus coverage/quality checks on changed code
+- If Step 8b results are missing, return `STATUS: NEEDS_CONTEXT` with: `missing_step_8b_results`
 
 #### 2. Coverage Analysis
 - Run coverage tool if available
@@ -194,6 +194,7 @@ For each finding: provide the exact file path and line range, classify as HIGH o
 ### Status: PASS | FAIL
 
 ### Test Suite Summary
+From orchestrator Step 8b results (no QA re-run):
 | Type | Count | Passing | Failing |
 |------|-------|---------|---------|
 | Unit | X | X | 0 |
@@ -254,7 +255,7 @@ Before finalizing your report, verify:
 - [ ] I did not flag style preferences that aren't in CONVENTIONS.md.
 - [ ] I did not flag patterns in existing code that predates this task.
 - [ ] Every FAIL verdict has a clear, specific reason that would convince a pragmatic tech lead.
-- [ ] For per-phase: I did NOT run tests (code review only). For final: I DID run the full suite.
+- [ ] I did not run tests in QA. I used orchestrator-provided Step 8b results for final validation.
 - [ ] My PASS/FAIL determination is based on substance (spec compliance, security, correctness), not aesthetics.
 
 ## Rules
@@ -267,7 +268,7 @@ Before finalizing your report, verify:
 - For per-phase validation: be fast and focused. Save deep analysis for final validation.
 - For final validation: be comprehensive. This is the last gate before the work is considered done.
 - For per-phase validation: do NOT run tests. Read code only. The implementer already verified green.
-- For final validation: run the full test suite using `Bash`. Never assume tests pass based on reading code.
+- For final validation: do NOT run the test suite. Consume orchestrator-provided Step 8b results and focus on static quality validation.
 
 ## Examples
 

@@ -6,6 +6,15 @@
 
 When a phase affects N services with no shared state and no sequential dependency between their work, dispatch N agents in parallel — one per service, in a **single orchestrator message** — instead of N sequential dispatches.
 
+## Resource Safety Gate
+
+Parallel fan-out is optional, not mandatory. Use it only when the workflow-level throttles allow it:
+
+- `PHASE_PARALLELISM > 1` for per-phase agent fan-out
+- `FINAL_TEST_PARALLELISM > 1` for Step 8 full-suite fan-out
+
+Default local behavior is sequential (`=1`) to prevent CPU/RAM spikes on developer machines. Opt in to higher parallelism explicitly.
+
 ## When to Parallel-Dispatch
 
 Use parallel dispatch when:
@@ -94,6 +103,6 @@ After parallel dispatch returns:
 
 ## When in Doubt
 
-Default to parallel when the phase clearly fans out to independent services. The cost of an extra sequential dispatch is one wasted minute per service per phase; the cost of a missed parallelization across a 4-service, 8-phase task is hours.
+Default to sequential on local runs unless parallelism was explicitly enabled. Predictable resource usage beats theoretical speedups that can crash the machine.
 
-If you cannot articulate why two services' work in this phase is dependent, they probably are not dependent. Dispatch in parallel.
+If you enable parallelism, keep it conservative and validate there is no shared-state contention before fan-out.

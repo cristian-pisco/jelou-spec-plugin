@@ -123,7 +123,7 @@ OpenCode command definitions live in `.opencode/commands/`. All commands use the
 | `/jlu-ubiquitous-language [service-id]` | Curate the workspace's domain glossary; extract terms from code + spec/interview artifacts; review-then-save loop |
 | `/jlu-new-task` | Create a new task with spec, worktrees, and affected service detection |
 | `/jlu-refine-task` | Apply a targeted change to an approved spec via structured interview |
-| `/jlu-execute-task` | Run TDD implementation (autonomous or step-by-step mode) |
+| `/jlu-execute-task` | Run TDD implementation with CPU-safe defaults (sequential by default; opt-in parallelism) |
 | `/jlu-extend-phase` | Add scope to an in-progress task via focused mini-interview |
 | `/jlu-task-clickup` | (Phase 2) Create/update ClickUp macro task and subtasks via MCP |
 | `/jlu-report-task` | Executive summary with progress, blockers, and stale worktree detection |
@@ -133,8 +133,10 @@ OpenCode command definitions live in `.opencode/commands/`. All commands use the
 | `/jlu-close-task` | Close task after PR merge — updates ClickUp, cleans worktrees |
 | `/jlu-rollback-phase` | Reset service worktrees to the last known-good phase state |
 | `/jlu-architecture-review [<service-id>] [--cross-service]` | Surface deepening opportunities (single-service or cross-service); interactive grilling loop; lazy ADRs |
-| `/jlu-ui-qa-run [task-slug]` | Boot affected services and run the Playwright E2E suite with bounded auto-fix loop |
+| `/jlu-ui-qa-run [task-slug]` | Boot affected services and run the Playwright E2E suite with bounded auto-fix loop and RAM/CPU worker gates |
 | `/jlu-ui-qa-cleanup [task-slug]` | Recover from leaked dev servers, stale containers, or held lock files |
+
+`/jlu-execute-task` defaults to conservative local resource usage. Multi-service fan-out and final-suite parallel runs are throttled unless explicitly increased via `JLU_PHASE_PARALLELISM` and `JLU_FINAL_TEST_PARALLELISM`.
 
 ### Spec Compliance Review
 
@@ -174,7 +176,7 @@ For tasks that touch a UI service, jelou-spec-plugin generates failing Playwrigh
 |---|---|---|
 | **RED** (during `/jlu-execute-task`) | `jlu-ui-e2e-writer` agent | Reads `user-flow.md` blocks, emits failing Playwright tests under `.spec-workspace/specs/<task>/services/<ui-service>/e2e/`. Role-based locators by default; refuses to invent `data-testid` selectors not declared in `selectors.md`. |
 | **GREEN** (during `/jlu-execute-task`) | `jlu-implementer` (existing) | Writes UI source code to make the tests pass. |
-| **VERIFY** (post-deploy, user-triggered) | `/jlu-ui-qa-run [task-slug]` | Boots only the services in `affected_services`, runs Playwright headless single-worker, dispatches `jlu-ui-fix-loop` on failure with hard bounds (3 attempts/assertion, 15-min suite circuit-breaker). |
+| **VERIFY** (post-deploy, user-triggered) | `/jlu-ui-qa-run [task-slug]` | Boots only the services in `affected_services`, runs Playwright headless (default 1 worker; guarded scale-up), dispatches `jlu-ui-fix-loop` on failure with hard bounds (3 attempts/assertion, 15-min suite circuit-breaker). |
 | **RECOVER** (after a crashed run) | `/jlu-ui-qa-cleanup` | Frees stale dev servers, containers, ports, and lock files. |
 
 Each E2E-targeted service must declare a `dev` block in `services.yaml` (launcher, command, readiness signal, RAM estimate, data isolation). See [`jelou/references/dev-block-schema.md`](./jelou/references/dev-block-schema.md). Services without a `dev` block are skipped.

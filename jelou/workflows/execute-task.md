@@ -271,6 +271,15 @@ Skip proposal generation. Read the existing PROPOSAL.md and phase files to resum
 
 **Store** (per-service maps): `SERVICE_SOURCE_PATH`, `DOCKER_EXEC_PREFIX`, `IS_DOCKER_SERVICE`.
 
+4. **Set local CPU safety throttles (once per task).**
+
+   - `PHASE_PARALLELISM`: default `1` (sequential) unless explicitly overridden by `JLU_PHASE_PARALLELISM`.
+   - `FINAL_TEST_PARALLELISM`: default `1` (sequential) unless explicitly overridden by `JLU_FINAL_TEST_PARALLELISM`.
+   - If any affected service is Docker-enabled and no override is provided, keep both values at `1`.
+   - Clamp both values to `1..N` where `N = number of affected services`.
+
+**Store** (task-level): `PHASE_PARALLELISM`, `FINAL_TEST_PARALLELISM`.
+
 ---
 
 ## Step 7 — Execute Phases
@@ -295,7 +304,7 @@ Do NOT re-run `docker compose ps` or `docker compose up -d` here — those ran o
 
 ### 7d. TDD Red — Spawn Test Writer
 
-When the phase affects multiple services with no cross-service contract being defined this phase, dispatch one `jlu-test-writer` per service **in a single orchestrator message** rather than sequentially. See `jelou/references/parallel-dispatch.md` for the pattern, scope-isolation rules, and conflict-detection on return.
+When the phase affects multiple services with no cross-service contract being defined this phase, dispatch one `jlu-test-writer` per service **in a single orchestrator message** only when `PHASE_PARALLELISM > 1`. Otherwise run sequentially. See `jelou/references/parallel-dispatch.md` for the pattern, scope-isolation rules, and conflict-detection on return.
 
 Spawn `jlu-test-writer` agent with model: **MODEL_CONFIG.code** (default: sonnet):
 - **Input**:
@@ -321,7 +330,7 @@ Spawn `jlu-test-writer` agent with model: **MODEL_CONFIG.code** (default: sonnet
 
 ### 7e. TDD Green — Spawn Implementer
 
-When the phase affects multiple services with no shared file edits, dispatch one `jlu-implementer` per service **in a single orchestrator message** rather than sequentially. See `jelou/references/parallel-dispatch.md`. After all implementers return, compare `artifacts` arrays to detect any unintended overlap before running per-phase QA.
+When the phase affects multiple services with no shared file edits, dispatch one `jlu-implementer` per service **in a single orchestrator message** only when `PHASE_PARALLELISM > 1`. Otherwise run sequentially. See `jelou/references/parallel-dispatch.md`. After all implementers return, compare `artifacts` arrays to detect any unintended overlap before running per-phase QA.
 
 Spawn `jlu-implementer` agent with model: **MODEL_CONFIG.code** (default: sonnet):
 - **Input**:
@@ -522,7 +531,7 @@ Otherwise, spawn `jlu-build-validator` agent with model: **MODEL_CONFIG.code** (
    - Commit: <sha>
    - Completed: <ISO datetime>
    ```
-4. **No per-phase container cleanup.** Pruning runs once before Step 8b and once at Step 8d. Skipping it between phases keeps Testcontainers warm for reuse.
+4. **No per-phase container cleanup.** Pruning runs once before Step 8b and once at Step 8d. Skipping it between phases avoids unnecessary container churn between TDD cycles.
 
 ---
 
@@ -540,7 +549,7 @@ Otherwise, for each service that has Tier 2 deferred requirements:
    - **Input**: Deferred requirements list, CONVENTIONS.md, service source path
    - **TEST_TIER: 2** (integration tests — Testcontainers and real infrastructure allowed)
    - **Docker context** (only if `IS_DOCKER_SERVICE` is true): inject the block from `jelou/references/docker-execution-context.md`. Omit for non-Docker services.
-   - **Task**: Write integration tests for all deferred requirements.
+   - **Task**: Write integration tests for all deferred requirements. Prefer existing runtime infrastructure (Compose services/real dependencies) over spawning fresh Testcontainers when Dockerized.
 3. Spawn `jlu-implementer` with model: **MODEL_CONFIG.code** (default: sonnet) if the integration tests reveal missing wiring (e.g., a repository method needs a real database query that was mocked in Tier 1).
 
 ### 8b. Full Test Suite Run
@@ -552,10 +561,12 @@ This is the only time the full test suite runs during the entire task execution.
    docker container prune -f 2>/dev/null || true
    ```
 
-2. Run the complete test suite for each affected service. **Dispatch in parallel** when there are 2+ services: emit a single orchestrator message with one `Bash` call per service (independent repos and processes — serial dispatch wastes wall time):
-   - Per service, use the full test command from CONVENTIONS.md (e.g., `npm test`, `pytest`, `go test ./...`)
-   - If Docker-enabled: `<DOCKER_EXEC_PREFIX[service-id]> <full test command>`
-   - This includes ALL tests: unit, integration, Testcontainer-based, e2e
+2. Run the complete test suite for each affected service. Use `FINAL_TEST_PARALLELISM` from Step 6.4:
+   - If `FINAL_TEST_PARALLELISM == 1`: run sequentially (default, safest for local CPU/RAM).
+   - If `FINAL_TEST_PARALLELISM > 1`: dispatch in parallel with one `Bash` call per service in a single orchestrator message.
+      - Per service, use the full test command from CONVENTIONS.md (e.g., `npm test`, `pytest`, `go test ./...`)
+      - If Docker-enabled: `<DOCKER_EXEC_PREFIX[service-id]> <full test command>`
+      - This includes ALL tests: unit, integration, Testcontainer-based, e2e
    - Aggregate pass/fail counts across services after all return; pass the consolidated results to Step 8c.
 
 3. If tests fail:

@@ -31,3 +31,16 @@ Previously the same block was duplicated 4–5 times across the execute-task wor
 - One place to update if the prefix scheme changes.
 - Workflow stays terser, lowering per-invocation token cost.
 - Subagent prompts include only the variant they need (Docker vs. non-Docker).
+
+## Integration Runtime Policy
+
+When integration tests require a running service process (for example NestJS e2e/integration flows), keep runtime and test execution in the same environment:
+
+- **Docker-enabled service**: run service/framework commands via Docker, e.g.
+  - `docker compose exec <APP> npm run start:dev`
+  - `docker compose exec <APP> pnpm run start:dev`
+- **Non-Docker service**: run service/framework commands on host, e.g.
+  - `npm run start:dev`
+  - `pnpm run start:dev`
+
+Do not mix host-run services with container-run tests for the same service.
