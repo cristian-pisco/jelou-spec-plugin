@@ -2,7 +2,12 @@
 description: Create pull requests per service
 agent: build
 ---
-Execute this workflow exactly: @jelou/workflows/create-pr.md
+Resolve workflow path in this order:
+1. `jelou/workflows/create-pr.md` (project-local install)
+2. `<HOME>/.config/opencode/jelou/workflows/create-pr.md` (global install fallback; resolve `<HOME>` to an absolute path first)
+
+If neither path exists, stop and report both checked paths.
+Read the resolved workflow file and execute it exactly.
 
 Command arguments: $ARGUMENTS
 Current directory is the project working directory.

@@ -2,7 +2,12 @@
 description: Analyze service codebase map
 agent: build
 ---
-Execute this workflow exactly: @jelou/workflows/map-codebase.md
+Resolve workflow path in this order:
+1. `jelou/workflows/map-codebase.md` (project-local install)
+2. `<HOME>/.config/opencode/jelou/workflows/map-codebase.md` (global install fallback; resolve `<HOME>` to an absolute path first)
+
+If neither path exists, stop and report both checked paths.
+Read the resolved workflow file and execute it exactly.
 
 Command arguments: $ARGUMENTS
 Current directory is the project working directory.

@@ -17,14 +17,26 @@ Use worktree-first detection:
    - If it matches `production/<task-slug>`, extract the task slug.
 2. Check current directory path for `/.worktrees/<task-slug>/` pattern — extract the slug from the path.
 3. If an argument was provided to the command, use it as the task slug (overrides auto-detection).
-4. **Fallback**: Read `.spec-workspace.json` in the current directory (or up to 5 parent directories) to find the workspace path, then scan `<workspace>/specs/` for the most recent task directory. If multiple tasks exist, list them and ask the user to pick one.
+4. **Fallback**: Resolve workspace in this order, then scan `<WORKSPACE_PATH>/specs/` for the most recent task directory.
+   - First try `.spec-workspace.json` from the current directory (or up to 5 parent directories).
+   - If missing, search upward (up to 5 parent directories) for `.spec-workspace/specs/` and set `WORKSPACE_PATH = <found-parent>/.spec-workspace`.
+   - If multiple tasks exist, list them and ask the user to pick one.
 
 ## Step 2 — Resolve Task Directory
 
 1. Locate `.spec-workspace.json` — search from the current directory upward (up to 5 levels). If in a worktree, the workspace pointer may be in a parent directory of the worktree root.
-2. Read `.spec-workspace.json` to get the `workspace` path.
-3. Resolve the full task directory: `<workspace>/specs/<date>/<task-slug>/`
-   - If the date folder is unknown, glob for `<workspace>/specs/*/<task-slug>/` to find it.
+2. If `.spec-workspace.json` exists:
+   - Read the `workspace` path and resolve it to an absolute path.
+   - Set `WORKSPACE_PATH` to that resolved value.
+   - Validate `WORKSPACE_PATH/specs` exists.
+   - Compatibility fallback: if `WORKSPACE_PATH/specs` is missing but `WORKSPACE_PATH/.spec-workspace/specs` exists, set `WORKSPACE_PATH = WORKSPACE_PATH/.spec-workspace`.
+3. If `.spec-workspace.json` does not exist:
+   - Search from the current directory upward (up to 5 levels) for `.spec-workspace/specs/`.
+   - If found at `<root>/.spec-workspace/specs/`, set `WORKSPACE_PATH = <root>/.spec-workspace`.
+4. Resolve the full task directory: `<WORKSPACE_PATH>/specs/<date>/<task-slug>/`
+   - If the date folder is unknown, glob for `<WORKSPACE_PATH>/specs/*/<task-slug>/` to find it.
+
+If `WORKSPACE_PATH` cannot be resolved, stop with: "No workspace found. Expected `.spec-workspace.json` or a parent `.spec-workspace/specs/` directory."
 
 If the task directory cannot be found, report the error clearly and stop.
 

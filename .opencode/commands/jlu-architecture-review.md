@@ -2,7 +2,12 @@
 description: "Surface deepening opportunities in a service or across services. Argument: [<service-id>] [--cross-service]"
 agent: build
 ---
-Execute this workflow exactly: @jelou/workflows/architecture-review.md
+Resolve workflow path in this order:
+1. `jelou/workflows/architecture-review.md` (project-local install)
+2. `<HOME>/.config/opencode/jelou/workflows/architecture-review.md` (global install fallback; resolve `<HOME>` to an absolute path first)
+
+If neither path exists, stop and report both checked paths.
+Read the resolved workflow file and execute it exactly.
 
 Command arguments: $ARGUMENTS
 Current directory is the project working directory.

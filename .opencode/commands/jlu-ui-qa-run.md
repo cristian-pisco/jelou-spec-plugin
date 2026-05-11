@@ -2,7 +2,12 @@
 description: Run the Playwright E2E suite against affected services with bounded auto-fix loop
 agent: build
 ---
-Execute this workflow exactly: @jelou/workflows/ui-qa-run.md
+Resolve workflow path in this order:
+1. `jelou/workflows/ui-qa-run.md` (project-local install)
+2. `<HOME>/.config/opencode/jelou/workflows/ui-qa-run.md` (global install fallback; resolve `<HOME>` to an absolute path first)
+
+If neither path exists, stop and report both checked paths.
+Read the resolved workflow file and execute it exactly.
 
 Command arguments: $ARGUMENTS
 Current directory is the project working directory.

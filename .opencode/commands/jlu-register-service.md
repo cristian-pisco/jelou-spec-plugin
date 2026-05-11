@@ -2,7 +2,12 @@
 description: Register or update a service in jlu-services.json
 agent: build
 ---
-Execute this workflow exactly: @jelou/workflows/register-service.md
+Resolve workflow path in this order:
+1. `jelou/workflows/register-service.md` (project-local install)
+2. `<HOME>/.config/opencode/jelou/workflows/register-service.md` (global install fallback; resolve `<HOME>` to an absolute path first)
+
+If neither path exists, stop and report both checked paths.
+Read the resolved workflow file and execute it exactly.
 
 Command arguments: $ARGUMENTS
 Current directory is the project working directory.

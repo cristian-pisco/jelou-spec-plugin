@@ -36,6 +36,16 @@ mkdir -p "$TARGET_DIR/jelou"
 cp -R "$PLUGIN_DIR/.opencode/." "$TARGET_DIR/.opencode/"
 cp -R "$PLUGIN_DIR/jelou/." "$TARGET_DIR/jelou/"
 
+# Global OpenCode config uses root-level commands/ and agents/.
+# Keep those mirrors in sync when TARGET_DIR looks like OPENCODE_HOME.
+if [ -f "$TARGET_DIR/opencode.json" ]; then
+  mkdir -p "$TARGET_DIR/commands"
+  mkdir -p "$TARGET_DIR/agents"
+  cp -R "$PLUGIN_DIR/.opencode/commands/." "$TARGET_DIR/commands/"
+  cp -R "$PLUGIN_DIR/.opencode/agents/." "$TARGET_DIR/agents/"
+  echo "Synced OpenCode root command/agent mirrors"
+fi
+
 echo "Installed OpenCode command/agent files"
 echo "Installed jelou workflows/templates/references"
 
