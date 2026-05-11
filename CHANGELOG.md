@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.151] — 2026-05-10
+
+### Fixed
+- add global workflow fallbacks for jlu commands
+
 ## [0.3.150] — 2026-05-10
 
 ### Added
