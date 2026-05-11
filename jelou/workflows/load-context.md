@@ -34,7 +34,12 @@ Use worktree-first detection:
    - Search from the current directory upward (up to 5 levels) for `.spec-workspace/specs/`.
    - If found at `<root>/.spec-workspace/specs/`, set `WORKSPACE_PATH = <root>/.spec-workspace`.
 4. Resolve the full task directory: `<WORKSPACE_PATH>/specs/<date>/<task-slug>/`
-   - If the date folder is unknown, glob for `<WORKSPACE_PATH>/specs/*/<task-slug>/` to find it.
+   - If the date folder is unknown, do not glob directories directly (the glob tool may only return files).
+   - Instead, glob for marker files in this order and derive the task directory from the parent path:
+     1. `<WORKSPACE_PATH>/specs/*/<task-slug>/TASKS.md`
+     2. `<WORKSPACE_PATH>/specs/*/<task-slug>/SPEC.md`
+     3. `<WORKSPACE_PATH>/specs/*/<task-slug>/PROPOSAL.md`
+   - If any marker exists, set `TASK_DIR = dirname(<marker-file>)`.
 
 If `WORKSPACE_PATH` cannot be resolved, stop with: "No workspace found. Expected `.spec-workspace.json` or a parent `.spec-workspace/specs/` directory."
 

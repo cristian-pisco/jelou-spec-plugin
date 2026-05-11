@@ -4,13 +4,13 @@ Best-effort recovery for state left behind by a crashed `/jlu-ui-qa-run`: orphan
 
 ## Inputs
 
-- Optional argument: task slug. When omitted, sweeps every task directory under `.spec-workspace/specs/*/`.
+- Optional argument: task slug. When omitted, sweeps every task discovered via marker files under `.spec-workspace/specs/*/*/TASKS.md`.
 
 ## Process
 
 ### 1. Locate workspace + tasks
 
-Walk up from the current service repo to find `.spec-workspace/`. List the task directories to sweep:
+Walk up from the current service repo to find `.spec-workspace/`. List the task directories to sweep (derive each `TASK_DIR` from marker files, not directory globs):
 
 - If `<task-slug>` was passed: sweep only that one task.
 - If omitted: sweep all tasks whose lifecycle is `implementing` or `validating` (read from `TASKS.md` Status section; skip `done` and `closed` tasks).

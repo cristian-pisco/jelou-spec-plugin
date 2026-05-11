@@ -31,7 +31,12 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
 
 2. **Locate the workspace.** Walk up from the current service repo to find `.spec-workspace/`. Refuse if missing: "this workflow requires a `.spec-workspace/` (created by /jlu-new-task)."
 
-3. **Locate the task directory.** `.spec-workspace/specs/*/$SLUG/`. Refuse if not found.
+3. **Locate the task directory.** Do not glob directories directly. Use marker files and derive `TASK_DIR = dirname(<marker>)`:
+   - `.spec-workspace/specs/*/$SLUG/TASKS.md`
+   - fallback: `.spec-workspace/specs/*/$SLUG/SPEC.md`
+   - fallback: `.spec-workspace/specs/*/$SLUG/PROPOSAL.md`
+
+   Refuse if no marker file is found.
 
 4. **Acquire the per-task lock.**
    ```bash
