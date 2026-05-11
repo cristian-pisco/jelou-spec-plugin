@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.153] — 2026-05-10
+
+### Fixed
+- enforce single-hit workflow resolution
+
 ## [0.3.152] — 2026-05-10
 
 ### Fixed
