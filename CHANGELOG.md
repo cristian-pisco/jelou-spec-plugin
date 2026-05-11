@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.152] — 2026-05-10
+
+### Fixed
+- resolve task dirs from marker files
+
 ## [0.3.151] — 2026-05-10
 
 ### Fixed
