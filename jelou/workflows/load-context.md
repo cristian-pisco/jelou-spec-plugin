@@ -24,16 +24,18 @@ Use worktree-first detection:
 
 ## Step 2 — Resolve Task Directory
 
-1. Locate `.spec-workspace.json` — search from the current directory upward (up to 5 levels). If in a worktree, the workspace pointer may be in a parent directory of the worktree root.
-2. If `.spec-workspace.json` exists:
-   - Read the `workspace` path and resolve it to an absolute path.
-   - Set `WORKSPACE_PATH` to that resolved value.
-   - Validate `WORKSPACE_PATH/specs` exists.
-   - Compatibility fallback: if `WORKSPACE_PATH/specs` is missing but `WORKSPACE_PATH/.spec-workspace/specs` exists, set `WORKSPACE_PATH = WORKSPACE_PATH/.spec-workspace`.
-3. If `.spec-workspace.json` does not exist:
-   - Search from the current directory upward (up to 5 levels) for `.spec-workspace/specs/`.
-   - If found at `<root>/.spec-workspace/specs/`, set `WORKSPACE_PATH = <root>/.spec-workspace`.
-4. Resolve the full task directory: `<WORKSPACE_PATH>/specs/<date>/<task-slug>/`
+1. Build an ordered ancestor list from current directory upward (max 5 levels, nearest first).
+2. Locate `.spec-workspace.json` by discovery first (prefer `glob` against the ancestor list), then read only the nearest match. If in a worktree, the workspace pointer may be in a parent directory of the worktree root.
+3. If `.spec-workspace.json` exists:
+    - Read the `workspace` path and resolve it to an absolute path.
+    - Set `WORKSPACE_PATH` to that resolved value.
+    - Validate `WORKSPACE_PATH/specs` exists.
+    - Compatibility fallback: if `WORKSPACE_PATH/specs` is missing but `WORKSPACE_PATH/.spec-workspace/specs` exists, set `WORKSPACE_PATH = WORKSPACE_PATH/.spec-workspace`.
+4. If `.spec-workspace.json` does not exist:
+    - Discover `.spec-workspace/specs/` from the same ancestor list and use the nearest match.
+    - If found at `<root>/.spec-workspace/specs/`, set `WORKSPACE_PATH = <root>/.spec-workspace`.
+5. Stop discovery after the first valid match. Do not probe higher ancestors once `WORKSPACE_PATH` is resolved.
+6. Resolve the full task directory: `<WORKSPACE_PATH>/specs/<date>/<task-slug>/`
    - If the date folder is unknown, do not glob directories directly (the glob tool may only return files).
    - Instead, glob for marker files in this order and derive the task directory from the parent path:
      1. `<WORKSPACE_PATH>/specs/*/<task-slug>/TASKS.md`
