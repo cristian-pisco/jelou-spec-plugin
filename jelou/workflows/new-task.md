@@ -19,19 +19,30 @@
 
 **When to simplify:** For obvious, well-bounded tasks (single endpoint, single fix, clear requirements), the interview can be as short as 1-2 rounds. Don't force 8 rounds of questions on a task that's already clear.
 
+## Performance Guardrails (mandatory)
+
+- Read this workflow file once per run. Do not re-read it unless the file changed during execution.
+- Batch independent filesystem/tool reads in a single parallel tool-call message whenever possible.
+- If `.spec-workspace.json` exists and resolves correctly, do not run recursive workspace discovery globs.
+- For large scans under `<WORKSPACE_PATH>/specs/`, always do a 2-pass strategy: (1) cheap file shortlist, (2) targeted reads on shortlist only.
+- For `TASKS.md` metadata extraction (status/services), read only the top section first (max 40 lines) and expand only if required.
+- Keep pre-interview source drilldown bounded: max 3 focused grep queries + max 3 source file reads unless unresolved ambiguity remains.
+- Minimize question latency: ask with recommended defaults when available; only branch into follow-up prompts if user picks custom input.
+
 ---
 
 ## Step 1 — Resolve Workspace
 
 1. Read `.spec-workspace.json` from the current working directory.
    - If it exists:
-     a. Extract `workspace` path and `serviceId`.
-     b. Resolve `workspace` relative to the current directory.
-     c. Verify the `.spec-workspace/` directory exists at that path.
-     d. If the directory does NOT exist at the configured path:
-        - Search parent directories (up to 5 levels) for `.spec-workspace/`.
-        - If found elsewhere, offer to update `.spec-workspace.json` to the correct path.
-        - If not found anywhere, offer to create it (see step 1.2).
+      a. Extract `workspace` path and `serviceId`.
+      b. Resolve `workspace` relative to the current directory.
+      c. Verify the `.spec-workspace/` directory exists at that path.
+      c1. If this succeeds, skip any additional workspace discovery globs/searches.
+      d. If the directory does NOT exist at the configured path:
+         - Search parent directories (up to 5 levels) for `.spec-workspace/`.
+         - If found elsewhere, offer to update `.spec-workspace.json` to the correct path.
+         - If not found anywhere, offer to create it (see step 1.2).
    - If `.spec-workspace.json` does NOT exist:
      a. Search parent directories (up to 5 levels) for `.spec-workspace/`.
      b. If found: offer to create `.spec-workspace.json` in the current directory pointing to it.
@@ -107,15 +118,21 @@ After service registration (or if already registered):
 1. Check if `<WORKSPACE_PATH>/templates/` directory exists.
    - If not, create it and copy built-in templates from `<PLUGIN_ROOT>/jelou/templates/spec-templates/` to `<WORKSPACE_PATH>/templates/`.
 2. Scan `<WORKSPACE_PATH>/templates/` for `.md` files.
-3. For each file, read the `## Description` section to extract the one-line description.
-4. Analyze the task description (`TASK_DESCRIPTION`) against each template's description and interview hints.
+3. Build an initial candidate list using filename+keyword heuristics **without reading all templates**:
+   - API/endpoint/route/request/response keywords -> shortlist `rest-api.md`
+   - UI/component/frontend/screen/form/modal keywords -> shortlist `ui-component.md`
+   - Database/migration/schema/table/column keywords -> shortlist `db-migration.md`
+   - Event/consumer/async/queue/message/subscriber keywords -> shortlist `event-consumer.md`
+4. If the shortlist is non-empty, read only shortlisted template files.
+5. If the shortlist is empty, then (fallback) read each template's `## Description` section and do semantic matching.
+6. Analyze the task description (`TASK_DESCRIPTION`) against chosen template descriptions and interview hints.
    Determine which templates are relevant based on keyword and semantic matching:
    - API/endpoint/route/request/response keywords → rest-api template
    - UI/component/frontend/screen/form/modal keywords → ui-component template
    - Database/migration/schema/table/column keywords → db-migration template
    - Event/consumer/async/queue/message/subscriber keywords → event-consumer template
    - Custom templates: match against their `## Description` content
-5. If one or more templates match:
+7. If one or more templates match:
    a. Read each matching template file.
    b. Merge `## Pre-filled Sections` from all matching templates:
       - Combine Functional Requirements lists (re-number sequentially: FR-1, FR-2, ...)
@@ -128,9 +145,9 @@ After service registration (or if already registered):
    d. Set `DETECTED_TEMPLATES` = list of template names,
       `MERGED_PREFILL` = merged pre-filled sections,
       `MERGED_HINTS` = combined interview hints.
-6. If no templates match:
+8. If no templates match:
    a. Set `DETECTED_TEMPLATES` = empty, `MERGED_PREFILL` = empty, `MERGED_HINTS` = empty.
-7. Log detected templates to terminal:
+9. Log detected templates to terminal:
    "Auto-detected templates: <template-1>, <template-2>" or
    "No domain-specific templates matched. Using generic interview."
 
@@ -145,10 +162,12 @@ After service registration (or if already registered):
    - If not provided, ask the user:
      > "Describe the task you want to create:"
 2. **Sprint number**:
-   - Ask the user:
-     > "Sprint number for this task? (positive integer, e.g. 14)"
-   - No default. The user must provide a value.
-   - Validate: must be a positive integer (> 0). If invalid, ask again.
+   - Infer a recommended sprint from the latest `- Sprint:` value found in existing `TASKS.md` files under `<WORKSPACE_PATH>/specs/`.
+   - Ask once with options:
+     - `Use <recommended-sprint>` (recommended)
+     - `Custom sprint`
+   - If user picks `Custom sprint`, ask for numeric value and validate (> 0).
+   - If no prior sprint exists, use `1` as recommended.
 3. **Creation date**:
    - Auto-generate today's date in `dd-mm-yyyy` format using the system's local timezone.
    - Do NOT prompt the user.
@@ -267,16 +286,17 @@ Update `TASKS.md` with the confirmed affected services list.
 
 After confirming affected services, scan for overlapping active tasks:
 
-1. **Scan active tasks**:
-   a. List all date folders under `<WORKSPACE_PATH>/specs/`.
-   b. For each date folder, list all task slug directories.
-   c. For each task directory (excluding the current task being created):
-      - Read `TASKS.md` and extract the task status.
-      - If status is `closed`, `cancelled`, or `rolled_back`: skip.
-      - Otherwise: extract the affected services list from TASKS.md.
-      - If TASKS.md doesn't list services, try reading SPEC.md for service references.
+1. **Build candidate set quickly (2-pass):**
+   a. Glob `specs/*/*/TASKS.md` once.
+   b. Exclude files whose status is clearly terminal (`closed`, `cancelled`, `rolled_back`) using grep/metadata extraction.
+   c. From non-terminal files, shortlist only those mentioning any service in `CONFIRMED_SERVICES` on `- Primary:` or `- Affected:` lines.
+   d. Exclude the current task being created.
 
-2. **Detect overlaps**:
+2. **Read candidate metadata only:**
+   - For each shortlisted file, read top section first (max 40 lines) to extract status + services.
+   - Only if services cannot be determined from `TASKS.md`, then read `SPEC.md` first heading/intro as fallback.
+
+3. **Detect overlaps**:
    For each active task, compare its affected services with `CONFIRMED_SERVICES`.
    If any service-id appears in both lists, record the overlap:
    - Active task slug
@@ -284,7 +304,7 @@ After confirming affected services, scan for overlapping active tasks:
    - Overlapping service IDs
    - Active task's spec title (from SPEC.md first line, if readable)
 
-3. **Report conflicts**:
+4. **Report conflicts**:
    If overlaps were found, present via question:
    ```
    Conflict detected with active task(s):
@@ -307,7 +327,7 @@ After confirming affected services, scan for overlapping active tasks:
 
    If the user selects "Abort": stop the workflow. Report: "Task creation aborted due to conflicts. Review active tasks and retry."
 
-4. **No conflicts**: continue silently to Step 8c.
+5. **No conflicts**: continue silently to Step 8c.
 
 ---
 
@@ -426,6 +446,10 @@ Before asking any questions, silently analyze the task description (`TASK_DESCRI
 - Integration points with other services or systems referenced in INTEGRATIONS.md
 - Non-functional requirements (performance, scalability, observability) not mentioned
 - Known concerns from CONCERNS.md that intersect with this task
+- For bugfix/single-path tasks, keep extra code drilldown bounded to:
+  - up to 3 focused `grep` searches
+  - up to 3 targeted source-file reads (<= 220 lines each)
+  Escalate beyond this only if ambiguity remains after the first interview round.
 - If `MERGED_HINTS` is non-empty: incorporate the merged interview hints from all auto-detected templates as high-priority gap areas. These cover domain-specific questions from each applicable template and tell you which questions are most relevant for this type of work.
 - Additionally, apply domain-aware gap detection for any domains NOT already covered by detected templates:
   - **API/endpoint work**: HTTP method, URL path, auth model, request/response schema, validation rules, pagination, rate limits, partial failure handling
@@ -561,8 +585,9 @@ After the user approves (or declines) the spec:
 
 2. If the user **approved** the spec:
    a. Update `<TASK_DIR>/TASKS.md`:
-      - Change `Status: refining` to `Status: planned`
+      - Replace the existing `## Status: refining` line in place with `## Status: planned` (do not append a second status heading)
       - Add transition timestamp: `- Planned: <current-datetime-ISO>`
+      - Verify there is exactly one `## Status:` line after the update
 3. If the user **did not approve** or the interview ended without approval:
    a. Leave TASKS.md status as `refining`.
    b. Report: "SPEC.md was created but not yet approved. You can:"

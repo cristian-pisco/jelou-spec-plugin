@@ -93,6 +93,8 @@ For **Step 8** (`gh pr edit`), on exhaustion: warn "Cross-reference update for <
 
 ## Step 2 — Load Task State
 
+Read and cache task artifacts in one pass (single parallel tool-call message where supported), then reuse the cached content in later steps. Do not re-read the same files unless they changed on disk.
+
 1. Read `<TASK_DIR>/TASKS.md`. Extract:
    - Current status
    - Affected services list
@@ -121,10 +123,9 @@ For **Step 8** (`gh pr edit`), on exhaustion: warn "Cross-reference update for <
 
 ### 2b. Spec Compliance Review
 
-1. Read `<TASK_DIR>/SPEC.md`.
-2. Read `<TASK_DIR>/PROPOSAL.md` (if exists).
-3. Read `<TASK_DIR>/versions/SPEC-changelog.md` (if exists).
-4. For each affected service, collect the git diff:
+1. Reuse cached `SPEC.md` and `PROPOSAL.md` content loaded in Step 2 (do not re-read).
+2. Read `<TASK_DIR>/versions/SPEC-changelog.md` (if exists).
+3. For each affected service, collect the git diff:
    a. Resolve the service working directory (worktree or repo root, same logic as Step 4).
    b. Detect the default branch:
       ```bash
@@ -135,10 +136,10 @@ For **Step 8** (`gh pr edit`), on exhaustion: warn "Cross-reference update for <
       ```bash
       cd <SERVICE_CWD> && git diff <DEFAULT_BRANCH>..production/<TASK_SLUG>
       ```
-5. Spawn `jlu-spec-reviewer` agent with model: **MODEL_CONFIG.code** (default: sonnet):
+4. Spawn `jlu-spec-reviewer` agent with model: **MODEL_CONFIG.code** (default: sonnet):
    - Pass: SPEC.md content, PROPOSAL.md content (or empty), SPEC-changelog.md content (or empty), combined git diff for all services, service source paths.
-6. Receive the compliance report from the agent.
-7. **Decision gate**:
+5. Receive the compliance report from the agent.
+6. **Decision gate**:
    a. If the report shows any MISSING requirements, present via question:
       ```
       Spec Compliance Review found gaps:
@@ -154,7 +155,7 @@ For **Step 8** (`gh pr edit`), on exhaustion: warn "Cross-reference update for <
       B) Abort PR creation (go implement missing requirements)
       ```
    b. If all requirements are COVERED or PARTIALLY_COVERED: log the summary to terminal and continue.
-8. Store the compliance report for inclusion in PR descriptions.
+7. Store the compliance report for inclusion in PR descriptions.
 
 **Store**: `COMPLIANCE_REPORT`
 

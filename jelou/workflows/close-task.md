@@ -29,7 +29,13 @@
 
 1. Read `<TASK_DIR>/TASKS.md`.
 2. Extract the current status.
-3. Validate:
+3. From the same read, also extract and cache for Step 2b:
+   - Dual PR (`## Branching → Dual PR`, default "no")
+   - Setup mode (`## Branching → Mode`, default "worktree")
+   - External link PR URLs:
+     - Trunk PR URL (row labeled "PR main (<service-id>)", or the legacy "PR (<service-id>)")
+     - Alpha PR URL (row labeled "PR alpha (<service-id>)", only present when Dual PR = yes)
+4. Validate:
    - If status is `done` or `ready_to_publish`: proceed.
    - If status is `closed`: stop. "Task `<TASK_SLUG>` is already closed."
    - If status is anything else: warn and ask.
@@ -41,18 +47,13 @@
 
 ### 2b. Check PR Status
 
-1. Read `<TASK_DIR>/TASKS.md` → `## Branching → Dual PR` (default "no").
-2. Read `## Branching → Mode` (default "worktree").
-3. From `## External Links`, extract:
-   - Trunk PR URL (row labeled "PR main (<service-id>)", or the legacy "PR (<service-id>)")
-   - Alpha PR URL (row labeled "PR alpha (<service-id>)", only present when Dual PR = yes)
+1. Reuse the parsed TASKS metadata from Step 2a (do not re-read `TASKS.md`).
+2. If any PR URL is still missing, also check `<TASK_DIR>/CLICKUP_TASK.json` (if exists) for additional PR references.
 
 For each affected service:
 
-4. **Trunk PR** (required): `gh pr view <trunk-pr-url> --json state,mergedAt`. Must be in `MERGED` state. If not, present the same options as today (check different URL / skip PR check / abort).
-5. **Alpha PR** (if DUAL_PR = yes): `gh pr view <alpha-pr-url> --json state,mergedAt`. **Not required to be merged.** Record its state for later teardown (Step 4).
-
-Also check `<TASK_DIR>/CLICKUP_TASK.json` (if exists) for any additional PR references.
+3. **Trunk PR** (required): `gh pr view <trunk-pr-url> --json state,mergedAt`. Must be in `MERGED` state. If not, present the same options as today (check different URL / skip PR check / abort).
+4. **Alpha PR** (if DUAL_PR = yes): `gh pr view <alpha-pr-url> --json state,mergedAt`. **Not required to be merged.** Record its state for later teardown (Step 4).
 
 If NO PR information is found:
 - Warn: "No PR found for this task. Closing without PR verification."

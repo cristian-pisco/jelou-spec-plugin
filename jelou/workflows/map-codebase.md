@@ -59,7 +59,7 @@
 ## Step 4 — Determine Source Code Root
 
 1. If the orchestrator is running from within the service's repository (the current directory contains source code):
-   - Use the current working directory as the source root.
+   - Use the current working directory as the source root candidate.
 2. If the `service-id` was provided as an argument (and we might not be in the service repo):
    a. Read `<WORKSPACE_PATH>/registry/services.yaml`.
    b. Find the entry matching the `service-id`.
@@ -67,10 +67,17 @@
    d. Verify the path exists.
 3. If the source root cannot be determined:
    - Ask the user: "Where is the source code for `<service-id>`? Provide the absolute or relative path."
+4. Normalize the resolved path to an absolute path and store it as `SOURCE_ROOT`.
+5. Log once before continuing: `Resolved SOURCE_ROOT=<SOURCE_ROOT>`.
 
 **Store**: `SOURCE_ROOT` = absolute path to the service's source code.
 
-**Error gate**: If the source root does not exist or is empty, stop and report the error.
+**Error gate**: Stop and report the error if any of these are true:
+- `SOURCE_ROOT` does not exist, is not a directory, or is empty.
+- `SOURCE_ROOT` resolves to `/`.
+- `SOURCE_ROOT` does not look like a repository root (missing all of: `.git`, `package.json`, `go.mod`, `pyproject.toml`, `Cargo.toml`, `pom.xml`, `composer.json`).
+
+If this gate fails, ask the user for an explicit path and re-validate before proceeding.
 
 ---
 
@@ -81,7 +88,7 @@
    a. Read the JSON and extract the `commit` SHA.
    b. Verify all 6 docs exist in `<OUTPUT_DIR>/` (ARCHITECTURE.md, STACK.md, STRUCTURE.md, CONVENTIONS.md, INTEGRATIONS.md, CONCERNS.md).
    c. If any doc is missing: set `ANALYSIS_MODE` = `full` and continue to Step 5.
-   d. Run: `cd <SOURCE_ROOT> && git diff <commit>..HEAD --stat`
+   d. Run: `git -C <SOURCE_ROOT> diff <commit>..HEAD --stat`
    e. If no changes: log "Codebase unchanged since last analysis (commit <commit>). Skipping." and skip to Step 8 (report).
    f. If changes exist: categorize changed files and set `ANALYSIS_MODE` = `incremental`.
 3. If `.last-analysis.json` does not exist: set `ANALYSIS_MODE` = `full` and continue to Step 5.
@@ -120,6 +127,7 @@ Spawn both agents simultaneously using the task tool. Each agent receives the sa
 - `SOURCE_ROOT`: the service's source code path
 - `OUTPUT_DIR`: where to write output files
 - `service-id`: the service identifier
+- Safety rule: every file search/read and Bash command must be scoped to `SOURCE_ROOT` (explicit path or workdir). Never scan `/` or system mounts.
 
 #### Agent 1: jlu-codebase-analyzer-structural (model: **sonnet**)
 - **Prompt**: Read the agent definition from `<plugin-root>/agents/jlu-codebase-analyzer-structural.md`. Prepend:
@@ -127,6 +135,7 @@ Spawn both agents simultaneously using the task tool. Each agent receives the sa
   Service ID: <service-id>
   Source code path: <SOURCE_ROOT>
   Output directory: <OUTPUT_DIR>
+  Safety: Scope all file operations and Bash commands to <SOURCE_ROOT>. Never scan /, /proc, /sys, /dev, /run, or home-level container storage paths.
   ```
 - **Output**: `<OUTPUT_DIR>/ARCHITECTURE.md`, `<OUTPUT_DIR>/STACK.md`, `<OUTPUT_DIR>/STRUCTURE.md`
 
@@ -136,6 +145,7 @@ Spawn both agents simultaneously using the task tool. Each agent receives the sa
   Service ID: <service-id>
   Source code path: <SOURCE_ROOT>
   Output directory: <OUTPUT_DIR>
+  Safety: Scope all file operations and Bash commands to <SOURCE_ROOT>. Never scan /, /proc, /sys, /dev, /run, or home-level container storage paths.
   ```
 - **Output**: `<OUTPUT_DIR>/CONVENTIONS.md`, `<OUTPUT_DIR>/INTEGRATIONS.md`, `<OUTPUT_DIR>/CONCERNS.md`
 - **Note**: This agent combines automated code analysis with a user interview. It will use `question` to gather concerns not visible in the code (planned deprecations, scaling limits, tribal knowledge). See Decision #30.
@@ -167,6 +177,7 @@ You are updating existing codebase analysis documents, NOT writing from scratch.
 - UPDATE the existing document: preserve sections that are still accurate, modify sections affected by changes, add new sections if changes introduce new patterns not previously documented.
 - Do NOT rewrite sections unrelated to the changes.
 - For docs NOT in your update list: do not touch them.
+- Scope all file operations and Bash commands to `<SOURCE_ROOT>` (explicit path/workdir). Never run repository scans from `/`.
 ```
 
 If only one agent needs to run, spawn only that one (not both).
@@ -208,7 +219,7 @@ After all docs are verified, write the analysis marker to `<OUTPUT_DIR>/.last-an
 
 ```json
 {
-  "commit": "<current HEAD SHA from: cd <SOURCE_ROOT> && git rev-parse HEAD>",
+  "commit": "<current HEAD SHA from: git -C <SOURCE_ROOT> rev-parse HEAD>",
   "timestamp": "<current ISO datetime>",
   "docs_generated": [
     "ARCHITECTURE.md",

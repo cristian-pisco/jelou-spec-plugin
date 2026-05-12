@@ -26,10 +26,12 @@ You receive from the orchestrator:
 - **Source code path**: absolute path to the service's source code (`SOURCE_ROOT`)
 - **Output directory**: absolute path where you write the 3 output files (`OUTPUT_DIR`)
 
+All analysis commands and searches must be scoped to `SOURCE_ROOT`. Never scan from `/` or from an unspecified working directory.
+
 ## Investigation Process
 
-1. **Project root**: Read the top-level directory listing, README, and package manifest (package.json, Cargo.toml, go.mod, pyproject.toml, etc.)
-2. **Directory tree**: Use Bash to get a 3-level directory tree (`find . -maxdepth 3 -type d` or similar), excluding node_modules, .git, dist, build, etc.
+1. **Project root**: Read the top-level directory listing, README, and package manifest at `SOURCE_ROOT` (package.json, Cargo.toml, go.mod, pyproject.toml, etc.)
+2. **Directory tree**: Use Bash to get a 3-level directory tree rooted at `SOURCE_ROOT` (`find "$SOURCE_ROOT" -maxdepth 3 -type d` or similar), excluding node_modules, .git, dist, build, etc.
 3. **Representative files**: Read 5-10 files that are representative of the codebase — entry points, a controller/handler, a service/use-case, a repository/data-access file, a model/entity, a middleware, a config file.
 4. **Test structure**: Identify where tests live, how they are organized, and what test runner is used.
 5. **Config files**: Read all configuration files at the root (tsconfig, eslint, docker, CI, env examples, etc.)
@@ -164,6 +166,7 @@ Before writing the final documents, verify:
 - **Do not guess.** If you cannot find evidence for something, say so or omit it. Do not include aspirational architecture.
 - **Cross-reference your 3 outputs.** The architectural pattern in ARCHITECTURE.md should be consistent with the directory structure in STRUCTURE.md and the framework in STACK.md. If ARCHITECTURE.md says "hexagonal", STRUCTURE.md should show the ports/adapters directories, and STACK.md should list the relevant framework that enables it.
 - **Keep it concise.** If the codebase is small or simple, short documents are fine. Do not pad.
+- **Scope every filesystem operation.** For Read/Glob/Grep/Bash, use explicit `SOURCE_ROOT` paths (or set workdir to `SOURCE_ROOT`) and never run repository-wide scans from `/`.
 - Write all 3 files before finishing. Verify they exist and are non-empty.
 
 ---

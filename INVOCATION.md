@@ -31,6 +31,10 @@ The `jlu:` prefix derives from `.claude-plugin/plugin.json` (`name: "jlu"`). Ski
 
 Commands are invoked with a hyphen-prefixed name (`jlu-`).
 
+OpenCode normalization rules:
+- `/jlu-<name>` and bare `jlu-<name>` are equivalent.
+- If a `jlu-*` command exists, command execution takes precedence over similarly named skills.
+
 | Skill                  | Invocation                       |
 |------------------------|----------------------------------|
 | `new-task`             | `/jlu-new-task [desc]`           |
@@ -50,7 +54,7 @@ Commands are invoked with a hyphen-prefixed name (`jlu-`).
 | `ui-qa-run`            | `/jlu-ui-qa-run`                 |
 | `ui-qa-cleanup`        | `/jlu-ui-qa-cleanup`             |
 
-OpenCode commands live in `.opencode/commands/jlu-<skill>.md` and dispatch the corresponding workflow in `jelou/workflows/<skill>.md`.
+OpenCode commands live in `.opencode/commands/jlu-<skill>.md` and resolve workflow files global-first from `~/.config/opencode/jelou/` before project-local fallbacks. Most commands dispatch `jelou/workflows/<skill>.md`; OpenCode-specific overrides may live under `jelou/workflows-opencode/`.
 
 ## Agent dispatch
 

@@ -72,7 +72,7 @@ git pull
 What `./setup` does:
 - Regenerates `.opencode/agents` from canonical `agents/` before install
 - Installs/updates Claude fallback files in `~/.claude` (skills, agents, references)
-- Installs/updates OpenCode files in `~/.config/opencode`
+- Installs/updates OpenCode files in `~/.config/opencode` (global source of truth)
 
 ## Quick Start (OpenCode)
 
@@ -91,6 +91,10 @@ Use the command palette with the `jlu-` namespace:
 # (Optional) Map your codebase first
 /jlu-map-codebase
 ```
+
+OpenCode also accepts bare `jlu-*` input (without slash). Example: `jlu-load-context` is normalized to `/jlu-load-context`.
+
+Workflow resolution in OpenCode is global-first: commands load from `~/.config/opencode/jelou/...` before checking project-local fallbacks.
 
 ## Install in an Existing OpenCode Project
 
@@ -126,7 +130,7 @@ After that, start OpenCode in the target repo and run:
 opencode
 ```
 
-Use commands like `/jlu-new-task`, `/jlu-execute-task`, `/jlu-create-pr`, `/jlu-ubiquitous-language`.
+Use commands like `/jlu-new-task`, `/jlu-execute-task`, `/jlu-create-pr`, `/jlu-ubiquitous-language` (or bare `jlu-new-task`, `jlu-execute-task`, etc.).
 
 ### Update in Existing Project
 

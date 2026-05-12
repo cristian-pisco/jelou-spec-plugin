@@ -3,13 +3,15 @@ description: Load task context for Q&A
 agent: build
 ---
 Resolve workflow path in this order:
-1. `jelou/workflows/load-context.md` (project-local install)
-2. `<HOME>/.config/opencode/jelou/workflows/load-context.md` (global install fallback; resolve `<HOME>` to an absolute path first)
+1. `<HOME>/.config/opencode/jelou/workflows-opencode/load-context.md` (global OpenCode workflow preferred; resolve `<HOME>` to an absolute path first)
+2. `jelou/workflows-opencode/load-context.md` (project-local OpenCode fallback)
+3. `<HOME>/.config/opencode/jelou/workflows/load-context.md` (legacy global fallback)
+4. `jelou/workflows/load-context.md` (legacy project-local fallback)
 
 Resolution rules:
 - Select the first existing path only.
-- Do not read or execute the fallback path if the project-local path exists.
-- If neither path exists, stop and report both checked paths.
+- Do not read or execute lower-priority paths when a higher-priority path exists.
+- If none of these paths exist, stop and report every checked path.
 
 Read exactly one resolved workflow file and execute it exactly.
 

@@ -10,11 +10,17 @@ In OpenCode:
 - Use only `jlu-*` command names (e.g., `/jlu-new-task`).
 - Never invent `jlu:*` names — that prefix belongs to Claude Code only.
 
+OpenCode command normalization:
+- Treat bare `jlu-*` input as the equivalent slash command (`jlu-load-context` => `/jlu-load-context`).
+- When a `jlu-*` command exists, prefer command execution over similarly named skills.
+- Never route `jlu-*` invocations to non-`jlu-*` skills.
+
 ## OpenCode Runtime Contract
 
 - Use `question` for all user prompts and confirmations.
 - Use `task` for subagent dispatches.
-- Workflows live in `jelou/workflows/*.md`.
+- Shared workflows live in `jelou/workflows/*.md`.
+- OpenCode-only workflow overrides live in `jelou/workflows-opencode/*.md`.
 - OpenCode commands live in `.opencode/commands/*.md`.
 - OpenCode subagents live in `.opencode/agents/*.md`.
 

@@ -25,8 +25,10 @@
 
 ## Step 1 — Resolve Task
 
+Read `.spec-workspace.json` once at the start of this step (if present) and cache it as `WORKSPACE_CONFIG`. Reuse this cached object in Step 2b instead of reading the file again.
+
 1. If a `task-slug` is provided as a command argument:
-   a. Read `.spec-workspace.json` to get the workspace path.
+   a. Use `WORKSPACE_CONFIG.workspace` to get the workspace path.
    b. Search `<WORKSPACE_PATH>/specs/` across all date folders for the matching slug.
 2. If no `task-slug` provided:
    a. Find the most recent task (latest date folder, latest task within it).
@@ -34,7 +36,7 @@
 
 **Error gate**: If no task found, stop: "No task found. Run `/jlu-new-task` first."
 
-**Store**: `TASK_DIR`, `TASK_SLUG`, `WORKSPACE_PATH`
+**Store**: `TASK_DIR`, `TASK_SLUG`, `WORKSPACE_PATH`, `WORKSPACE_CONFIG`
 
 ---
 
@@ -46,19 +48,20 @@
    - Affected services list
    - Phase progress (if any phases have been executed)
    - Any blocked or failed phases
+   - Setup mode from `## Branching → Mode` (default `worktree` if absent)
 
 **Validation**:
 - If status is `draft` or `refining`: stop. "Task is in `<status>` state. Run `/jlu-new-task <slug>` first to complete the spec interview and get it to `planned`."
 - If status is `closed` or `cancelled`: stop. "Task is already `<status>`. Cannot execute."
 
-**Store**: `CURRENT_STATUS`, `AFFECTED_SERVICES`, `PHASE_STATE`
+**Store**: `CURRENT_STATUS`, `AFFECTED_SERVICES`, `PHASE_STATE`, `SETUP_MODE`
 
 ---
 
 ### 2b. Resolve Model Configuration
 
-1. Read `.spec-workspace.json` from the current working directory.
-2. If a `models` section exists, extract the model overrides.
+1. Reuse `WORKSPACE_CONFIG` loaded in Step 1 (do not re-read `.spec-workspace.json`).
+2. If a `models` section exists in `WORKSPACE_CONFIG`, extract the model overrides.
 3. Store as `MODEL_CONFIG` — a map of group name → model name.
 4. When spawning agents in subsequent steps, resolve the model:
    - For proposal-agent: use `MODEL_CONFIG.proposal` or default `"sonnet"`
@@ -89,10 +92,10 @@ If TASKS.md shows a mid-execution state (status is `implementing` and some phase
 
 ## Step 3b — Mode Detection and Auto-Checkout (Decision gate)
 
-Read `<TASK_DIR>/TASKS.md` → `## Branching → Mode`:
+Use `SETUP_MODE` parsed from Step 2 (do not re-read `TASKS.md`):
 
-- If `Mode: worktree` or the `## Branching` section is absent (old-style task): skip to Step 4. Implementation will run in the task worktree.
-- If `Mode: branch`: continue with the branch-mode pre-flight below.
+- If `SETUP_MODE = worktree` (or `## Branching` section absent): skip to Step 4. Implementation will run in the task worktree.
+- If `SETUP_MODE = branch`: continue with the branch-mode pre-flight below.
 
 ### Branch-mode pre-flight (runs before the first phase)
 

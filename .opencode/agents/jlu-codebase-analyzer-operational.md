@@ -26,10 +26,12 @@ You receive from the orchestrator:
 - **Source code path**: absolute path to the service's source code (`SOURCE_ROOT`)
 - **Output directory**: absolute path where you write the 3 output files (`OUTPUT_DIR`)
 
+All analysis commands and searches must be scoped to `SOURCE_ROOT`. Never scan from `/` or from an unspecified working directory.
+
 ## Investigation Process
 
 1. **Read 10-15 representative files**: Controllers, services, repositories, models, tests, middleware, utilities — enough to see the patterns.
-2. **Scan for patterns**: Use Grep to search for TODOs, FIXMEs, deprecated usage, error handling patterns, logging calls, external HTTP calls, database queries, environment variables.
+2. **Scan for patterns**: Use Grep to search for TODOs, FIXMEs, deprecated usage, error handling patterns, logging calls, external HTTP calls, database queries, environment variables — always with `SOURCE_ROOT` as the search path.
 3. **Map external calls**: Identify all outbound connections — other services, databases, external APIs, file storage, message queues, auth providers.
 4. **Detect test infrastructure weight**: Search for heavy test dependencies and filtering capabilities:
    - Grep for `testcontainers`, `TestContainers`, `@Testcontainers`, `GenericContainer`, `PostgreSQLContainer`, `DockerComposeContainer` in source and test files
@@ -244,6 +246,7 @@ Before writing the final documents, verify:
 - **User interview is mandatory** for CONCERNS.md. Do not skip it.
 - **Every concern MUST have**: severity (`critical`, `high`, `medium`, `low`) and source (`code` or `user`).
 - **Cross-reference your 3 outputs.** If CONVENTIONS.md describes an error handling pattern, CONCERNS.md should not contradict it. If INTEGRATIONS.md lists a database, CONCERNS.md should reference the same database engine.
+- **Scope every filesystem operation.** For Read/Glob/Grep/Bash, use explicit `SOURCE_ROOT` paths (or set workdir to `SOURCE_ROOT`) and never run repository-wide scans from `/`.
 - If a section has no concerns, write "No concerns identified." rather than omitting it.
 - Write all 3 files before finishing. Verify they exist and are non-empty.
 
