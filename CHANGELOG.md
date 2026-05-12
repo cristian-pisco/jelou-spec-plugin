@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.154] — 2026-05-12
+
+### Fixed
+- prioritize global workflows and trim redundant reads
+
 ## [0.3.153] — 2026-05-10
 
 ### Fixed
