@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.156] — 2026-05-12
+
+### Fixed
+- Four workflows (`execute-task`, `create-pr`, `rollback-phase`, `load-context`) had an inline parenthetical that resolved each service's working directory via filesystem existence (*"worktree if `.worktrees/<slug>` exists, else main repo"*). This contradicted the canonical algorithm in `references/worktree-resolution.md`, which is mode-driven. Branch-mode tasks that happened to have a leftover `.worktrees/<slug>` directory on disk got silently routed into it — tests, builds, and commits all landed in the wrong tree. Each affected workflow now respects `SETUP_MODE` parsed from `TASKS.md → ## Branching → Mode`: `Mode: branch` always resolves to the main repo root, regardless of what's on disk. When a leftover `.worktrees/<slug>` is detected during a branch-mode run, the workflow logs a one-line "ignoring leftover worktree" notice with a remediation hint, but never picks it.
+
+### Added
+- `tests/unit/worktree-resolution-modes.test.mjs` — regression guard. Asserts every path-resolving workflow names both modes explicitly, pairs `Mode: branch` with "main repo", rejects the previously-buggy filesystem-only phrasings, and contains a "leftover worktree" defensive logging line.
+
 ## [0.3.155] — 2026-05-12
 
 ### Added
