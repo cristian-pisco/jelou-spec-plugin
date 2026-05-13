@@ -1,5 +1,31 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- `jelou/references/tdd-principles.md` — canonical philosophical reference for every agent in the TDD pipeline. Covers: RED→GREEN→REFACTOR cycle, test-behavior-not-implementation (with the canonical bad/good example pair), vertical slicing within a phase, deep modules, interface design for testability, mock-at-boundaries-only, refactor candidates catalog with stop conditions, per-cycle checklist, and the three-strike rule. Adapted from `mattpocock/skills/engineering/tdd` and tightened for this plugin's multi-agent operational model.
+- `jlu-refactor-agent` — new agent that owns the Refactor phase of TDD. Runs in execute-task Step 7g (replacing the previous placeholder), skipped when `PHASE_IS_TRIVIAL`. Applies surgical refactors one at a time, re-runs phase tests after each, rolls back on red, never touches test files, never changes a public API. Soft cap of 3 refactors per phase. Reports `APPLIED | NO_CHANGES | BLOCKED`.
+- `jlu-tdd-cycle` — new agent that runs vertical-slicing TDD (RED→GREEN per FR within one session) for small single-service phases (≤ 3 FR/NFR, exactly one service). Replaces the test-writer + implementer dispatch in those cases. Includes a procedural Self-Correction Rule that replaces the dispute mechanism: any test rewrite must be documented under `Test Rewrites` with a spec quote, and verified at per-phase QA.
+- execute-task Step 7c.1 — new "Phase Mode Classification" step computing `PHASE_MODE = vertical | horizontal` from FR/NFR count and service count. Overrideable per-phase to `horizontal`, never overrideable to `vertical` past the size gate.
+- execute-task Step 7de — new "TDD Vertical Cycle" step dispatching `jlu-tdd-cycle` when `PHASE_MODE == vertical`. Includes the same post-Green lint/format pass as Step 7e.
+
+### Changed
+- execute-task Step 7g (Refactor Pass) — replaced the optional/inline checklist with a proper `jlu-refactor-agent` dispatch. Still gated on `!PHASE_IS_TRIVIAL`.
+- execute-task Step 7d/7e — now horizontal-mode-only. Skipped when `PHASE_MODE == vertical`.
+- execute-task Step 7f (Test Dispute Resolution) — now horizontal-mode-only. Vertical-mode `Test Rewrites` are surfaced via the agent's report and scrutinized at 7h instead.
+- execute-task Step 7h (Per-Phase QA) — receives `PHASE_MODE` and (in vertical mode) the `Test Rewrites` list, so it can verify each rewrite has a valid spec quote and the rewritten tests describe behavior, not implementation.
+- jlu-test-writer, jlu-implementer, jlu-qa-agent — added "Required Reading" pointer to `tdd-principles.md`; removed duplicated philosophical content (behavior-not-implementation rule, bad/good examples, minimum-code rationale) now sourced from the principles doc.
+- jlu-implementer report template — added a `Refactor Candidates` section so the refactor agent has structured input. The implementer surfaces candidates but never applies them.
+- jlu-qa-agent — adds a "TDD Principles Compliance" check block to its report (§2 behavior-not-implementation, §4 no new shallow modules, §6 mocks at boundaries only). A passing test that violates §2 or §6 is now a FAIL.
+- `tdd-cycle.md` — operational doc realigned with the no-Docker policy (no Testcontainers in any tier) and the new two-mode agent layout (horizontal vs vertical). Cross-references the new `tdd-principles.md`.
+- jlu-execute-task: remove Docker from the TDD pipeline. The orchestrator no longer runs `docker compose up -d` in Step 6, no longer computes `DOCKER_EXEC_PREFIX` / `IS_DOCKER_SERVICE`, and no longer injects the Docker execution context block into test-writer, implementer, build-validator, qa-agent, or Tier 2 dispatches. All test, build, lint, and format commands run on the host runtime directly. Step 8b/8d container-prune calls dropped.
+- jlu-test-writer: ban Testcontainers (and any container-spawning library) in **both** tiers — previously only banned in Tier 1. Tier 2 now assumes any required real infrastructure is already running on the host via `/jlu-start-dev`; tests that can't be exercised in the current host environment are reported as skipped instead of starting anything.
+- jlu-implementer, jlu-build-validator: drop the `DOCKER_EXEC_PREFIX` prefix from test, lint, format, and build invocations; commands run on the host runtime directly.
+- jlu-qa-agent: extend the Docker check from "Tier 1 only" to "any tier" — flags Testcontainers, `dockerode`, and `docker`/`docker compose`/`podman` shell-outs as FAIL regardless of tier.
+
+### Removed
+- `jelou/references/docker-execution-context.md` — the prompt block was the source of the per-test `docker compose exec` calls that piled load onto the host. Dev-container lifecycle is now owned exclusively by `/jlu-start-dev`.
+
 ## [0.3.154] — 2026-05-12
 
 ### Fixed

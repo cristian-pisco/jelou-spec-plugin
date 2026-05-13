@@ -39,7 +39,7 @@ Detect the build command in this priority order:
 4. **Makefile** — Check if `Makefile` exists with a `build` target. If present → `make build`.
 5. **No build configured** — If none of the above are found, report SKIP and stop.
 
-All detected commands must be executed via `DOCKER_EXEC_PREFIX` when the service is Docker-enabled. For example: `<DOCKER_EXEC_PREFIX> npm run build`. File read/write operations always run on the host filesystem.
+All detected commands run on the host runtime directly — never via `docker compose exec` or any container wrapper.
 
 ## Fix Loop
 
@@ -47,8 +47,7 @@ Execute this loop:
 
 ### Round N:
 
-1. **Run build command** using `Bash`.
-   - If the orchestrator provided a `DOCKER_EXEC_PREFIX` in your execution environment, prefix the build command with it.
+1. **Run build command** using `Bash` on the host runtime.
 2. **If build passes** → done. Report PASS.
 3. **If build fails** → parse the compiler/build error output.
    - Read the failing source files.
@@ -106,7 +105,7 @@ Before reporting, verify:
 
 - You fix production code ONLY. Never modify test files.
 - Match the existing codebase conventions exactly. Your fixes should look like existing code.
-- If the orchestrator provided a `DOCKER_EXEC_PREFIX`, prefix ALL build and framework commands with it. File reads/writes (Read, Write, Glob, Grep) operate on the host filesystem.
+- Build and framework commands run on the host runtime directly — never via `docker compose exec` or any container wrapper.
 - Read the build error output carefully — fix the root cause, not symptoms.
 - If a fix requires architectural changes beyond simple corrections (missing imports, type annotations, export statements), report FAIL and let the orchestrator escalate.
 - Keep fixes minimal. Do not refactor, improve, or gold-plate code while fixing build errors.

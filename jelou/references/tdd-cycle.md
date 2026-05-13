@@ -1,6 +1,8 @@
 # TDD Cycle Reference
 
 > This document defines the strict Test-Driven Development cycle enforced by the Jelou Spec Plugin. TDD is not optional — it is a core engineering principle (Precedence #4) and is enforced by the orchestrator at every implementation phase.
+>
+> For the *philosophical* foundations every agent in the TDD pipeline must apply (behavior-not-implementation, vertical slicing, deep modules, interface design, mocking at boundaries, refactor candidates, per-cycle checklist), see `tdd-principles.md`. This file describes the *operational* protocol only.
 
 ## The Red-Green-Refactor Cycle
 
@@ -31,25 +33,42 @@ The **implementer agent** receives the failing tests and writes the minimum code
 
 ### 3. Refactor — Improve Without Breaking Green
 
-After all tests pass, the implementer (or a dedicated refactor pass) may improve the code:
+After all tests pass, `jlu-refactor-agent` runs in Step 7g (skipped when `PHASE_IS_TRIVIAL`) and applies surgical refactors guided by `tdd-principles.md` §7:
 
 - Eliminate duplication.
+- Deepen shallow modules (small interface, deep implementation).
 - Improve naming and readability.
-- Simplify logic.
 - Extract functions or modules where clarity improves.
+- Address what the new code revealed about pre-existing code.
 
 **Critical rule**: Tests must remain green after every refactor step. If a refactor breaks a test, it is rolled back.
 
 ## Agent Separation (Decision #4)
 
-The TDD cycle uses **two separate agents** per cycle:
+The TDD cycle has two execution modes — **horizontal** (default, two-agent) and **vertical** (small-phase, one-agent):
+
+### Horizontal mode (default)
+
+Used when the phase has > 3 FR/NFR items, or affects more than one service, or `PHASE_MODE` is explicitly forced to `horizontal`.
 
 | Agent | Role | Model Tier |
 |-------|------|------------|
-| **test-writer** | Writes failing tests from requirements | Sonnet |
-| **implementer** | Makes tests pass with minimum code, then refactors | Sonnet |
+| **test-writer** | Writes failing tests from requirements (RED) | Sonnet |
+| **implementer** | Makes tests pass with minimum code (GREEN) | Sonnet |
+| **refactor-agent** | Surfaces refactor candidates after GREEN (Step 7g) | Sonnet |
 
-This separation prevents the common failure mode where a single agent writes tests that match its own implementation rather than the specification.
+The test-writer/implementer separation prevents the common failure mode where a single agent writes tests that match its own implementation rather than the specification. The dispute mechanism (Decision #5) is the safety net when the implementer believes a test is wrong.
+
+### Vertical mode (small phases)
+
+Used when the phase has ≤ 3 FR/NFR items AND affects exactly one service. Recommended in `tdd-principles.md` §3.
+
+| Agent | Role | Model Tier |
+|-------|------|------------|
+| **tdd-cycle** | Per-FR loop: write one failing test → run it (RED) → implement → run it (GREEN) → repeat for next FR | Sonnet |
+| **refactor-agent** | Surfaces refactor candidates after GREEN (Step 7g) | Sonnet |
+
+Vertical mode is faster on small phases (one dispatch instead of two) and produces tests that respond to what the previous cycle revealed. It does not have a separate dispute mechanism because the same agent owns both sides — agents in this mode must self-correct without rewriting tests retroactively to match a regrettable implementation.
 
 ## Test Dispute Mediation (Decision #5)
 
@@ -96,28 +115,31 @@ A task is not considered complete until:
 
 ## Test Tiers
 
-The TDD cycle uses a tiered testing strategy to keep the feedback loop fast while maintaining full coverage at the end.
+The TDD cycle uses a tiered testing strategy to keep the feedback loop fast while maintaining full coverage at the end. **No tier uses Docker.** Tests, build, lint, and format always run on the host runtime directly.
 
 ### Tier 1: TDD Feedback Loop
-- Unit tests and mock-based integration tests
-- No external infrastructure (no Testcontainers, no real databases, no running services)
-- Must run in under 5 seconds per phase
-- Used during Red-Green-Refactor (Steps 7d, 7e, 7g)
-- Run only the phase's test files, not the full suite
+- Unit tests and mock-based integration tests.
+- No external infrastructure (no databases, no running services, no containers).
+- Mocks at system boundaries only — see `tdd-principles.md` §6.
+- Must run in under 5 seconds per phase.
+- Used during Red-Green-Refactor (Steps 7d, 7e, 7g).
+- Run only the phase's test files, not the full suite.
 
 ### Tier 2: Final Validation
-- Integration tests with real infrastructure (Testcontainers, real databases, message queues)
-- Written after all phases are complete, for requirements that couldn't be meaningfully tested with mocks
-- Run exactly ONCE during Step 8 (Final Validation)
-- This is the only time the full test suite executes
+- Integration tests against **host-resident** infrastructure only (e.g., a real Postgres the developer started via `/jlu-start-dev`).
+- No Testcontainers, no `dockerode`, no `docker compose` shell-outs — these are banned in all tiers (see `jlu-qa-agent.md` Test Tier Compliance).
+- Written after all phases are complete, for requirements that couldn't be meaningfully tested with mocks.
+- If a required dependency is not running on the host, the test is reported skipped with a clear reason — agents never start anything.
+- Run exactly ONCE during Step 8 (Final Validation).
+- This is the only time the full test suite executes.
 
-### Why
-Running integration tests with Testcontainers during every TDD iteration (20-36 times per task) causes:
-- Memory exhaustion from accumulated Docker containers
-- Slow feedback loops (minutes instead of seconds per cycle)
-- Zombie containers from interrupted or retried test runs
+### Why no Docker in any tier
+- Memory and CPU pressure on the host from accumulating containers across iterations.
+- Slow feedback loops (minutes instead of seconds per cycle).
+- Zombie containers from interrupted or retried test runs.
+- Dev-container lifecycle is independently owned by `/jlu-start-dev`; conflating it with the TDD loop pulls in failures from the dev runtime that have nothing to do with the code under test.
 
-The TDD cycle's value comes from speed. Integration tests' value comes from fidelity. Separating them by tier serves both purposes without compromise.
+The TDD cycle's value comes from speed. Integration tests' value comes from fidelity. Separating them by tier — and keeping both on the host runtime — serves both purposes without compromise.
 
 ### Test Count Per Task
 
