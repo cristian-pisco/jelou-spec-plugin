@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.3.155] — 2026-05-12
 
 ### Added
 - `jelou/references/tdd-principles.md` — canonical philosophical reference for every agent in the TDD pipeline. Covers: RED→GREEN→REFACTOR cycle, test-behavior-not-implementation (with the canonical bad/good example pair), vertical slicing within a phase, deep modules, interface design for testability, mock-at-boundaries-only, refactor candidates catalog with stop conditions, per-cycle checklist, and the three-strike rule. Adapted from `mattpocock/skills/engineering/tdd` and tightened for this plugin's multi-agent operational model.
