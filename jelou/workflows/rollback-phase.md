@@ -61,10 +61,13 @@ For each service in `AFFECTED_SERVICES`:
 
 ### 4a. Resolve Worktree Path
 
+Apply the **mode-driven** worktree resolution algorithm from `references/worktree-resolution.md`. Do **not** use a filesystem existence check — respect `SETUP_MODE` from `TASKS.md → ## Branching → Mode`.
+
 1. Look up the service's repo path from `<WORKSPACE_PATH>/registry/services.yaml`.
-2. Check if worktree exists: `<service-repo>/.worktrees/<TASK_SLUG>`
-3. If worktree exists: use it as `SERVICE_CWD`.
-4. If not: use the service repo root. Warn: "No worktree found for `<service-id>`. Operating on the main repo — proceed with caution."
+2. Resolve based on `SETUP_MODE`:
+   - `Mode: worktree`: `SERVICE_CWD = <service-repo>/.worktrees/<TASK_SLUG>`. If that path is missing, fall back to the main repo and warn: `Worktree missing for <service-id> despite Mode: worktree — using main repo.`
+   - `Mode: branch`: `SERVICE_CWD = <service-repo>` (main repo root). Ignore any leftover `.worktrees/<TASK_SLUG>/` that may exist. If detected, log: `Branch-mode task has a leftover worktree at <path>. Ignoring it.`
+   - `## Branching` section absent (legacy): fall back to `references/worktree-resolution.md` §3c.
 
 ### 4b. Safety Check
 

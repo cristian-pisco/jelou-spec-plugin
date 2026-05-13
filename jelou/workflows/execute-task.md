@@ -253,7 +253,10 @@ Skip proposal generation. Read the existing PROPOSAL.md and phase files to resum
 
 2. **Per-service setup (once per task — not per phase).** Resolve the source path and capture the baseline commit so subsequent phases reuse cached values:
 
-   a. Resolve `SERVICE_SOURCE_PATH[service-id]` via the worktree resolution algorithm in `references/worktree-resolution.md` (worktree if `<service-repo>/.worktrees/<TASK_SLUG>` exists, else service main repo from `services.yaml`).
+   a. Resolve `SERVICE_SOURCE_PATH[service-id]` via the worktree resolution algorithm in `references/worktree-resolution.md`. The algorithm is **mode-driven**, NOT a filesystem existence check:
+      - `Mode: worktree` (`SETUP_MODE = worktree`): `SERVICE_SOURCE_PATH = <WORKSPACE_PATH>/<service-repo>/.worktrees/<TASK_SLUG>/`. If that path is missing, fall back to the main repo and log `Worktree missing for <service-id> despite Mode: worktree — using main repo.`
+      - `Mode: branch` (`SETUP_MODE = branch`): `SERVICE_SOURCE_PATH = <WORKSPACE_PATH>/<service-repo>` (main repo root). **Ignore any `.worktrees/<TASK_SLUG>/` that may exist on disk** — it is leftover state from a prior attempt, not the task's working tree. If such a leftover is detected, log `Branch-mode task <TASK_SLUG> has a leftover worktree at <path>. Ignoring it for execution; clean up with /jlu-close-task or git worktree remove.`
+      - `## Branching` section absent (legacy `spec/<slug>` tasks only): defer to `references/worktree-resolution.md` §3c.
    b. Record current HEAD as the pre-execution baseline: `cd <SERVICE_SOURCE_PATH[service-id]> && git rev-parse --short HEAD`. Per-service `git rev-parse` calls can run in parallel (single orchestrator message) when 2+ services.
 
    **Do NOT** run `docker compose up -d`, `docker compose ps`, or compute any container exec prefix here. The TDD pipeline runs entirely on the host — tests, build, lint, and format never go through a container. If the developer wants a dev container running for the service, that is `/jlu-start-dev`'s job and is independent of this workflow.
@@ -779,7 +782,8 @@ Awaiting your input to proceed.
 | PROPOSAL.md | `.spec-workspace/specs/<date>/<task-slug>/PROPOSAL.md` |
 | TASKS.md | `.spec-workspace/specs/<date>/<task-slug>/TASKS.md` |
 | Phase files | `.spec-workspace/specs/<date>/<task-slug>/services/<service-id>/phases/<NN>-<phase>.md` |
-| Implementation | `<service-repo>/.worktrees/<task-slug>/` (or service repo if no worktree) |
+| Implementation (Mode: worktree) | `<service-repo>/.worktrees/<task-slug>/` |
+| Implementation (Mode: branch) | `<service-repo>` (main repo root, on branch `production/<task-slug>`) |
 
 ---
 

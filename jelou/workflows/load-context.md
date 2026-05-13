@@ -119,11 +119,12 @@ Resolve the correct source paths for all affected services so the assistant uses
 
 1. Read `<WORKSPACE_PATH>/registry/services.yaml`.
 2. Extract the list of affected services from the TASKS.md loaded in Step 3 (the "Services" field in the Metadata section). If TASKS.md does not list affected services, extract them from SPEC.md or PROPOSAL.md instead.
-3. For each affected service, apply the worktree resolution algorithm from `references/worktree-resolution.md`:
+3. For each affected service, apply the **mode-driven** worktree resolution algorithm from `references/worktree-resolution.md`. Do **not** use a filesystem existence check — respect `SETUP_MODE` from `TASKS.md → ## Branching → Mode`.
    a. Resolve the absolute repo path from `services.yaml`.
-   b. Check if `<service-repo>/.worktrees/<TASK_SLUG>/` exists (using the task slug from Step 1).
-   c. If it exists: record the worktree path as the service's source path.
-   d. If not: record the main repo path and log a warning.
+   b. Resolve the source path based on `SETUP_MODE`:
+      - `Mode: worktree`: source path = `<service-repo>/.worktrees/<TASK_SLUG>/`. If that path is missing, fall back to the main repo and warn: `Worktree missing for <service-id> despite Mode: worktree — using main repo.`
+      - `Mode: branch`: source path = `<service-repo>` (main repo root). Ignore any leftover `.worktrees/<TASK_SLUG>/` that may exist. If detected, log: `Branch-mode task has a leftover worktree at <path>. Ignoring it.`
+      - `## Branching` section absent (legacy): fall back to `references/worktree-resolution.md` §3c.
 4. Store the Worktree Map for use in Step 8.
 
 ## Step 8 — Present Context Block
