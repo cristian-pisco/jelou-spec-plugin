@@ -276,6 +276,155 @@ describe('daily-slack-render — closed-like custom statuses (status_name)', () 
   });
 });
 
+describe('daily-slack-render — short_term epoch-ms due_date', () => {
+  test('converts numeric epoch-ms string to ISO date', () => {
+    // 1778490000000 ms = 2026-05-11T17:00:00.000Z → ISO date `2026-05-11`
+    const data = {
+      first_run: false,
+      achieved: [],
+      not_achieved: [],
+      short_term: [
+        { name: 'A', url: 'u1', due_date: '1778490000000', status_type: 'open' },
+      ],
+    };
+    const out = JSON.parse(run(setup(data)).stdout);
+    assert.equal(out.short_term_goals, '`[2026-05-11]` <u1|A>');
+  });
+
+  test('accepts a raw number epoch-ms', () => {
+    const data = {
+      first_run: false,
+      achieved: [],
+      not_achieved: [],
+      short_term: [
+        { name: 'A', url: 'u1', due_date: 1778490000000, status_type: 'open' },
+      ],
+    };
+    const out = JSON.parse(run(setup(data)).stdout);
+    assert.equal(out.short_term_goals, '`[2026-05-11]` <u1|A>');
+  });
+
+  test('still slices ISO strings (back-compat)', () => {
+    const data = {
+      first_run: false,
+      achieved: [],
+      not_achieved: [],
+      short_term: [
+        { name: 'A', url: 'u1', due_date: '2026-04-30T00:00:00Z', status_type: 'open' },
+      ],
+    };
+    const out = JSON.parse(run(setup(data)).stdout);
+    assert.equal(out.short_term_goals, '`[2026-04-30]` <u1|A>');
+  });
+});
+
+describe('daily-slack-render — tasks_by_status grouping', () => {
+  test('groups all_tasks by status_name with title-cased headers', () => {
+    const data = {
+      first_run: false,
+      achieved: [],
+      not_achieved: [],
+      short_term: [],
+      all_tasks: [
+        { name: 'A', url: 'u1', percentage: 60, status_type: 'custom', status_name: 'in progress' },
+        { name: 'B', url: 'u2', percentage: 80, status_type: 'custom', status_name: 'internal qa' },
+        { name: 'C', url: 'u3', percentage: 40, status_type: 'custom', status_name: 'in progress' },
+      ],
+    };
+    const out = JSON.parse(run(setup(data)).stdout);
+    // Internal QA group max=80, In Progress group max=60 → Internal QA first.
+    // Within group: sort by percentage desc, then name asc.
+    assert.equal(
+      out.tasks_by_status,
+      '**Internal QA**\n`[80%]` <u2|B>\n\n**In Progress**\n`[60%]` <u1|A>\n`[40%]` <u3|C>'
+    );
+  });
+
+  test('sorts groups by descending max percentage and breaks ties alphabetically', () => {
+    const data = {
+      first_run: false,
+      achieved: [],
+      not_achieved: [],
+      short_term: [],
+      all_tasks: [
+        { name: 'A', url: 'u1', percentage: 90, status_type: 'custom', status_name: 'pending to production' },
+        { name: 'B', url: 'u2', percentage: 90, status_type: 'custom', status_name: 'awaiting review' },
+      ],
+    };
+    const out = JSON.parse(run(setup(data)).stdout);
+    // Both groups peak at 90 → alphabetical: Awaiting Review before Pending To Production.
+    assert.equal(
+      out.tasks_by_status,
+      '**Awaiting Review**\n`[90%]` <u2|B>\n\n**Pending To Production**\n`[90%]` <u1|A>'
+    );
+  });
+
+  test('includes closed tasks under Closed group at top when percentage is 100', () => {
+    const data = {
+      first_run: false,
+      achieved: [],
+      not_achieved: [],
+      short_term: [],
+      all_tasks: [
+        { name: 'Done', url: 'u1', percentage: 100, status_type: 'closed', status_name: 'Closed' },
+        { name: 'WIP', url: 'u2', percentage: 50, status_type: 'custom', status_name: 'in progress' },
+      ],
+    };
+    const out = JSON.parse(run(setup(data)).stdout);
+    assert.equal(
+      out.tasks_by_status,
+      '**Closed**\n`[100%]` <u1|Done>\n\n**In Progress**\n`[50%]` <u2|WIP>'
+    );
+  });
+
+  test('skips tasks without a status_name', () => {
+    const data = {
+      first_run: false,
+      achieved: [],
+      not_achieved: [],
+      short_term: [],
+      all_tasks: [
+        { name: 'A', url: 'u1', percentage: 60, status_type: 'custom', status_name: 'in progress' },
+        { name: 'B', url: 'u2', percentage: 40, status_type: 'custom', status_name: null },
+        { name: 'C', url: 'u3', percentage: 0, status_type: 'custom' },
+      ],
+    };
+    const out = JSON.parse(run(setup(data)).stdout);
+    assert.equal(out.tasks_by_status, '**In Progress**\n`[60%]` <u1|A>');
+  });
+
+  test('empty all_tasks renders empty string', () => {
+    const data = { first_run: false, achieved: [], not_achieved: [], short_term: [], all_tasks: [] };
+    const out = JSON.parse(run(setup(data)).stdout);
+    assert.equal(out.tasks_by_status, '');
+  });
+
+  test('missing all_tasks key renders empty string (backwards-compat)', () => {
+    const data = { first_run: false, achieved: [], not_achieved: [], short_term: [] };
+    const out = JSON.parse(run(setup(data)).stdout);
+    assert.equal(out.tasks_by_status, '');
+  });
+
+  test('case-insensitively merges status_name variants under one group', () => {
+    const data = {
+      first_run: false,
+      achieved: [],
+      not_achieved: [],
+      short_term: [],
+      all_tasks: [
+        { name: 'A', url: 'u1', percentage: 80, status_type: 'custom', status_name: 'Internal QA' },
+        { name: 'B', url: 'u2', percentage: 80, status_type: 'custom', status_name: 'internal qa' },
+      ],
+    };
+    const out = JSON.parse(run(setup(data)).stdout);
+    // Display label uses the first-seen original casing for the merged group.
+    assert.equal(
+      out.tasks_by_status,
+      '**Internal QA**\n`[80%]` <u1|A>\n`[80%]` <u2|B>'
+    );
+  });
+});
+
 describe('daily-slack-render — IO and validation errors', () => {
   test('exits 2 with usage message when no args', () => {
     const r = spawnSync('node', [SCRIPT], { encoding: 'utf8' });

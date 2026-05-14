@@ -77,9 +77,14 @@ The available ClickUp MCP exposes only `clickup_get_tasks(listId|listName, ...)`
 **6b.3 — Page through the sprint list.**
 Call `clickup_get_tasks(listId=<sprint-list-id>, subtasks=false, page=<n>)` starting at `page: 0`. Concatenate the results from each page into a single array. Stop when a page returns fewer items than the previous page or returns an empty array. Do **not** pass a `statuses` filter — we want both open and closed tasks.
 
-Write the concatenated array to `<workspace>/.cache/sprint-list-tasks.json`.
+The list endpoint omits `custom_fields` from each task payload, so this concatenated array cannot be filtered by Responsable on its own — it only fixes the list of task IDs in the sprint.
 
-**6b.4 — Post-filter via the discover script.**
+**6b.4 — Hydrate every task in the sprint list.**
+The Responsable filter in 6b.5 needs `custom_fields`, which only `clickup_get_task(id)` returns. Fan out one `clickup_get_task(<id>)` call **in parallel** for every task in the concatenated list — issue all calls in a single multi-tool message, never one-at-a-time. Collect the responses into a single array and write it to `<workspace>/.cache/sprint-list-tasks.json` (this hydrated file replaces the raw list dump everywhere downstream).
+
+This per-list-task fetch also serves Step 6c: Step 6c reads from the same hydrated file instead of issuing a second round of `clickup_get_task` calls.
+
+**6b.5 — Post-filter via the discover script.**
 Build `<workspace>/.cache/plugin-task-ids.json`: a JSON array of every `clickup_id` collected in 6a.
 
 ```bash
@@ -92,8 +97,12 @@ node <plugin-root>/bin/daily-slack-discover.mjs \
 
 The script returns a JSON array of clickup-only stubs (`{clickup_id, name, url, source: "clickup-only", slug: null, pr_urls: []}`) for tasks where `assignees` contains `user_id` OR the Responsable custom field references `user_id`, with plugin IDs already excluded. Append these stubs to the union task set.
 
+> **Why hydrate before filtering.** The raw `clickup_get_tasks(listId=…)` payload omits `custom_fields`, so a discover script that filters on Responsable will silently drop every task where the user is Responsable-only (not on `assignees`). 6b.4 hydrates the list with full task objects so the OR filter in 6b.5 actually evaluates Responsable.
+
 ### 6c. Per-task data fetch
-Fire one `clickup_get_task` per task in the union **in parallel** — issue all calls in a single multi-tool message rather than awaiting each before sending the next. From each response, extract:
+The hydrated `<workspace>/.cache/sprint-list-tasks.json` written in 6b.4 already contains the full task object for every clickup-only task in the union. **Do not issue a second round of `clickup_get_task` calls for those IDs** — read them from the hydrated file. For plugin tasks (`source: "plugin"` from 6a) that are not present in the sprint list (rare — plugin tasks normally live in the same list), fan out additional `clickup_get_task` calls in parallel and merge the results.
+
+From each task object, extract:
 - `name` (from ClickUp; for plugin tasks, override with the SPEC.md first heading if available)
 - `status.type` (record as `status_type`)
 - `status.status` (record as `status_name` — the human-readable status string used by `closed_like_statuses` and `status_percentages`)
@@ -178,7 +187,8 @@ Build `<workspace>/.cache/render-data.json`:
   "first_run": <bool>,
   "achieved": [{"name": "...", "url": "...", "percentage": <int>}, ...],
   "not_achieved": [{"name": "...", "url": "...", "reason": "..."}, ...],
-  "short_term": [{"name": "...", "url": "...", "due_date": "<iso-or-null>", "status_type": "<closed|open|custom|...>", "status_name": "<human status string>", "status_note": "<short note for non-closed items>"}, ...]
+  "short_term": [{"name": "...", "url": "...", "due_date": "<iso-or-null>", "status_type": "<closed|open|custom|...>", "status_name": "<human status string>", "status_note": "<short note for non-closed items>"}, ...],
+  "all_tasks": [{"name": "...", "url": "...", "percentage": <int>, "status_type": "...", "status_name": "..."}, ...]
 }
 ```
 
@@ -186,13 +196,15 @@ Build `<workspace>/.cache/render-data.json`:
 - `status_type` and `status_name` so the renderer can strike through closed tasks AND any custom status listed in `closed_like_statuses` (the strikethrough wraps the **entire line** — date and link together).
 - `status_note` (only for non-closed items) so the renderer appends ` — _<note>_` to give the reader context (pending prod, on hold reason, in QA, etc.). Closed-like items ignore `status_note`.
 
+`all_tasks` is the **entire** union (every task in the sprint that survived discovery), regardless of `due_date` or bucket. It drives the new `{{tasks_by_status}}` placeholder which groups tasks by their current `status_name` and shows the daily reader where every sprint item lives — not just deltas. Use the normalized `percentage` from Step 8 (post `status_percentages` and `closed_like_statuses` mapping) so each badge stays a numeric `[N%]`.
+
 ```bash
 node <plugin-root>/bin/daily-slack-render.mjs \
   --data <workspace>/.cache/render-data.json \
   --closed-like-statuses <workspace>/.cache/closed-like-statuses.json
 ```
 
-Capture stdout JSON: `{achieved_goals, not_achieved_goals, short_term_goals}`.
+Capture stdout JSON: `{achieved_goals, not_achieved_goals, short_term_goals, tasks_by_status}`.
 
 ## Step 11 — Check Existing Draft
 
@@ -211,7 +223,7 @@ For each field in `manual_fields` (in order):
 
 1. Write the compose inputs to disk so the script can read them deterministically:
    - `<workspace>/.cache/template-body.md` — the template body parsed in Step 3 (no frontmatter).
-   - `<workspace>/.cache/render-output.json` — the `{achieved_goals, not_achieved_goals, short_term_goals}` JSON captured from Step 10.
+   - `<workspace>/.cache/render-output.json` — the `{achieved_goals, not_achieved_goals, short_term_goals, tasks_by_status}` JSON captured from Step 10.
    - `<workspace>/.cache/manual-fields.json` — a flat `{<field>: "<user-response>"}` object built from Step 12 answers.
 
 2. Run the deterministic compose script. Do NOT substitute placeholders by LLM rewriting — the script preserves the rendered standard markdown (`**bold**` headers, `~~strike~~`, backticks around `[N%]` / `[YYYY-MM-DD]`, `<url|text>` hyperlinks, italic `_text_`) literally:

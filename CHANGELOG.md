@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.3.157] — 2026-05-14
+
+### Added
+- `{{tasks_by_status}}` — new placeholder in the daily-slack pipeline. Groups every sprint task owned by you under a bold per-status header (`**Internal QA**`, `**In Progress**`, `**Pending To Production**`, …) followed by `` `[<%>]` <url|name> `` per task. Groups sort by descending max percentage; within a group, tasks sort by descending percentage then alphabetically. Renders a static "status board" view alongside the delta-driven `{{achieved_goals}}` / `{{not_achieved_goals}}`. Wired through `bin/daily-slack-render.mjs` (new `renderTasksByStatus`, `titleCase` with QA/PR/UI/UX/API/MCP/POC/RFC/SDK acronym preservation, and the `all_tasks` input field in `render-data.json`).
+- `tests/unit/daily-slack-render.test.mjs` — eight new assertions covering grouping by `status_name`, descending-percentage sort with alphabetical tie-break, closed-tasks-at-top behavior, skip-tasks-without-status, empty/missing `all_tasks` back-compat, and case-insensitive status merging with first-seen casing preserved.
+
+### Fixed
+- daily-slack discovery silently dropped every task where the user was set as `Responsable` (custom field) but not present in `assignees`. Root cause: `clickup_get_tasks(listId=…)` omits `custom_fields` from each task payload, so `bin/daily-slack-discover.mjs` had nothing to evaluate the Responsable OR-branch against — every Responsable-only task ended up in the "filter failed" path and never surfaced in the daily. The workflow now hydrates the entire sprint list via parallel `clickup_get_task(<id>)` calls (new Step 6b.4) before running the discover script, so the post-filter actually sees `custom_fields`. Step 6c reads from the same hydrated file instead of issuing a second round of fetches.
+
+### Changed
+- `jelou/workflows/daily-slack.md` — Step 6b split into 6b.3 (page through list to fix task IDs), 6b.4 (hydrate every task in parallel), 6b.5 (post-filter on the hydrated set), with a "Why hydrate before filtering" callout documenting the Responsable trap. Step 6c rewritten to read from the hydrated cache instead of re-fetching, with a fallback for plugin tasks that live outside the sprint list. Step 10 contract updated to include `all_tasks` in `render-data.json` and `tasks_by_status` in the renderer's stdout JSON; Step 13 inputs updated accordingly.
+- `jelou/templates/slack-channel.md` — placeholder index updated with the `{{tasks_by_status}}` entry and its formatting rules.
+
 ## [0.3.156] — 2026-05-12
 
 ### Fixed
