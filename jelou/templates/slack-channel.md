@@ -48,7 +48,12 @@ running together.
 ## Placeholders
 
 ### Automated (filled from sprint task data)
-- `{{achieved_goals}}` — tasks whose percentage rose since the last published draft, OR whose `date_closed` falls within the cutoff window. Format per task: `` `[<%>]` <url|name> ``. The percentage is **always numeric** — never a status string. Mapping rules: closed → 100, anything in `status_percentages` (e.g. "pending to production" → 90, "in qa" → 80) → mapped value, in-progress → subtask ratio.
+- `{{achieved_goals}}` — tasks whose percentage rose since the last published draft, OR whose `date_closed` falls within the cutoff window, split into sub-buckets:
+  - `- :ladybug: Issues` for tasks whose ClickUp `task_type` is `"Issue"` (case-insensitive).
+  - `- :clipboard: Tareas` for every other task (including ones with no `task_type`).
+  - `- :calendar: Meets` for the lines the user typed into the `meetings` manual field (one bullet per line).
+
+  Each task bullet is `` `[<%>]` <url|name> ``; meet bullets are the user's text verbatim. Sub-buckets with no items are omitted entirely. The percentage is **always numeric** — never a status string. Mapping rules: closed → 100, anything in `status_percentages` (e.g. "pending to production" → 90, "in qa" → 80) → mapped value, in-progress → subtask ratio. Because `meetings` is folded into this placeholder, the template body MUST NOT also include a separate `{{meetings}}` placeholder — that would duplicate the input.
 - `{{not_achieved_goals}}` — tasks whose percentage did not advance. Format per task: `<name> — <auto-extracted reason>\n<url>`
 - `{{short_term_goals}}` — sprint tasks with a due date. Format per task: `` `[<YYYY-MM-DD>]` <url|name> ``. Closed-like tasks render with the **entire line** wrapped in `~~...~~` (date and link together). Open tasks may include a status note: `` `[<YYYY-MM-DD>]` <url|name> — _<status note>_ `` (e.g., "pendiente a producción · PR repo#123 abierto").
 - `{{tasks_by_status}}` — **every** sprint task owned by you, grouped by current status. Renders a bold header per status (`**Internal QA**`, `**In Progress**`, `**Pending To Production**`, …) followed by `` `[<%>]` <url|name> `` for each task in that group. Groups are sorted by descending max percentage; within a group, tasks sort by descending percentage then by name. Use this section when you want a static "status board" view in addition to the delta-driven `{{achieved_goals}}` / `{{not_achieved_goals}}`. Tasks without a `status_name` are omitted (the renderer cannot label them).
@@ -139,11 +144,6 @@ manual_prompts:
 **¿Qué objetivos has logrado desde tu última actualización?**
 
 {{achieved_goals}}
-
-
-**Reuniones**
-
-{{meetings}}
 
 
 **¿Qué objetivos no has logrado desde tu última actualización? ¿Y por qué?**

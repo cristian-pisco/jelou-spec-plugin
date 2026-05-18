@@ -106,6 +106,7 @@ From each task object, extract:
 - `name` (from ClickUp; for plugin tasks, override with the SPEC.md first heading if available)
 - `status.type` (record as `status_type`)
 - `status.status` (record as `status_name` — the human-readable status string used by `closed_like_statuses` and `status_percentages`)
+- `task_type` (ClickUp custom task-type label — `"Issue"`, `"Improvement"`, `"Task"`, etc.; drives the `{{achieved_goals}}` Issues vs Tareas split downstream). Missing or empty values are treated as non-Issue.
 - `due_date`
 - `date_closed` (epoch ms; `null` for non-closed tasks) — used by the bucketer's cutoff logic
 - `date_updated` (epoch ms) — useful for status-transition heuristics
@@ -117,7 +118,7 @@ Calculate `percentage` (in-progress fallback only — `bin/daily-slack-bucket.mj
 
 Note: closed-like tasks (`status_type === 'closed'` OR `status_name` listed in `closed_like_statuses`) are normalized to `percentage: 100` downstream. Tasks whose `status_name` matches a key in `status_percentages` are normalized to the mapped value (e.g. "pending to production" → 90, "in qa" → 80). The orchestrator's per-task calculation here is the in-progress fallback; the bucketer enforces the status-driven invariants.
 
-Build `<workspace>/.cache/current-tasks.json`: an array of `{clickup_id, name, url, percentage, status_type, status_name, due_date, date_closed, date_updated, source, slug, pr_urls}`.
+Build `<workspace>/.cache/current-tasks.json`: an array of `{clickup_id, name, url, percentage, status_type, status_name, task_type, due_date, date_closed, date_updated, source, slug, pr_urls}`.
 
 ## Step 7 — Resolve Cutoff and Snapshot
 
@@ -179,24 +180,44 @@ Per-task work fans out, so issue all calls in parallel — never one-task-at-a-t
 
 Attach `reason` to each task in `not_achieved`. Attach `status_note` to each non-closed short-term task.
 
-## Step 10 — Render Automated Placeholders
+## Step 10 — Check Existing Draft
+
+Look for `<workspace>/drafts/slack/<sprint>-<channel>.md`:
+- `status: draft` → ask via `question`: "A draft exists for sprint <sprint> on #<channel>. Resume editing it, or regenerate?". On resume, load the body and skip to Step 14.
+- `status: published` → ask: "This sprint already has a published report on #<channel>. Re-post it, or regenerate?". On re-post, skip to Step 15. On regenerate, continue to Step 11.
+
+## Step 11 — Prompt Manual Fields
+
+Manual prompts run **before** the render step so the renderer can fold the `meetings` answer directly into `{{achieved_goals}}` as the `:calendar: Meets` sub-bucket. For each field in `manual_fields` (in order):
+1. Read prompt from `manual_prompts.<field>`.
+2. For `planned_achievements`, append helper context to the prompt: a comma-separated list of stuck task names from Step 8. Example: `(in progress: Migration, API node)`.
+3. Ask via `question` and store the response.
+
+Write the flat answers map to `<workspace>/.cache/manual-fields.json` before continuing to Step 12 — the renderer reads `meetings` from this file.
+
+## Step 12 — Render Automated Placeholders
 
 Build `<workspace>/.cache/render-data.json`:
 ```json
 {
   "first_run": <bool>,
-  "achieved": [{"name": "...", "url": "...", "percentage": <int>}, ...],
+  "achieved": [{"name": "...", "url": "...", "percentage": <int>, "task_type": "<Issue|Improvement|Task|...>"}, ...],
   "not_achieved": [{"name": "...", "url": "...", "reason": "..."}, ...],
   "short_term": [{"name": "...", "url": "...", "due_date": "<iso-or-null>", "status_type": "<closed|open|custom|...>", "status_name": "<human status string>", "status_note": "<short note for non-closed items>"}, ...],
-  "all_tasks": [{"name": "...", "url": "...", "percentage": <int>, "status_type": "...", "status_name": "..."}, ...]
+  "all_tasks": [{"name": "...", "url": "...", "percentage": <int>, "status_type": "...", "status_name": "..."}, ...],
+  "meetings": "<raw multi-line text from manual-fields.json, one meet per line>"
 }
 ```
+
+`achieved` carries `task_type` through from the bucketer so the renderer can split items into the `:ladybug: Issues` and `:clipboard: Tareas` sub-buckets under `{{achieved_goals}}`. Anything whose `task_type` matches `"issue"` (case-insensitive) lands under Issues; everything else — including tasks with no `task_type` at all — lands under Tareas.
 
 `short_term` is built from the union task set (any task with a `due_date`). Pass through:
 - `status_type` and `status_name` so the renderer can strike through closed tasks AND any custom status listed in `closed_like_statuses` (the strikethrough wraps the **entire line** — date and link together).
 - `status_note` (only for non-closed items) so the renderer appends ` — _<note>_` to give the reader context (pending prod, on hold reason, in QA, etc.). Closed-like items ignore `status_note`.
 
-`all_tasks` is the **entire** union (every task in the sprint that survived discovery), regardless of `due_date` or bucket. It drives the new `{{tasks_by_status}}` placeholder which groups tasks by their current `status_name` and shows the daily reader where every sprint item lives — not just deltas. Use the normalized `percentage` from Step 8 (post `status_percentages` and `closed_like_statuses` mapping) so each badge stays a numeric `[N%]`.
+`all_tasks` is the **entire** union (every task in the sprint that survived discovery), regardless of `due_date` or bucket. It drives the `{{tasks_by_status}}` placeholder which groups tasks by their current `status_name` and shows the daily reader where every sprint item lives — not just deltas. Use the normalized `percentage` from Step 8 (post `status_percentages` and `closed_like_statuses` mapping) so each badge stays a numeric `[N%]`.
+
+`meetings` is the verbatim string from `manual-fields.json` (one meet per line, e.g. `:repeat: Daily`). When the field is missing, empty, or whitespace-only the renderer omits the Meets sub-bucket entirely. The renderer parses lines itself — do **not** pre-format. Because meetings are folded into `{{achieved_goals}}`, the template body MUST NOT include a separate `{{meetings}}` placeholder; rendering it twice would duplicate the user's input.
 
 ```bash
 node <plugin-root>/bin/daily-slack-render.mjs \
@@ -206,25 +227,12 @@ node <plugin-root>/bin/daily-slack-render.mjs \
 
 Capture stdout JSON: `{achieved_goals, not_achieved_goals, short_term_goals, tasks_by_status}`.
 
-## Step 11 — Check Existing Draft
-
-Look for `<workspace>/drafts/slack/<sprint>-<channel>.md`:
-- `status: draft` → ask via `question`: "A draft exists for sprint <sprint> on #<channel>. Resume editing it, or regenerate?". On resume, load the body and skip to Step 14.
-- `status: published` → ask: "This sprint already has a published report on #<channel>. Re-post it, or regenerate?". On re-post, skip to Step 15. On regenerate, continue to Step 12.
-
-## Step 12 — Prompt Manual Fields
-
-For each field in `manual_fields` (in order):
-1. Read prompt from `manual_prompts.<field>`.
-2. For `planned_achievements`, append helper context to the prompt: a comma-separated list of stuck task names from Step 8. Example: `(in progress: Migration, API node)`.
-3. Ask via `question` and store the response.
-
 ## Step 13 — Compose, Save, and Scan
 
 1. Write the compose inputs to disk so the script can read them deterministically:
    - `<workspace>/.cache/template-body.md` — the template body parsed in Step 3 (no frontmatter).
-   - `<workspace>/.cache/render-output.json` — the `{achieved_goals, not_achieved_goals, short_term_goals, tasks_by_status}` JSON captured from Step 10.
-   - `<workspace>/.cache/manual-fields.json` — a flat `{<field>: "<user-response>"}` object built from Step 12 answers.
+   - `<workspace>/.cache/render-output.json` — the `{achieved_goals, not_achieved_goals, short_term_goals, tasks_by_status}` JSON captured from Step 12.
+   - `<workspace>/.cache/manual-fields.json` — the flat `{<field>: "<user-response>"}` object already written in Step 11.
 
 2. Run the deterministic compose script. Do NOT substitute placeholders by LLM rewriting — the script preserves the rendered standard markdown (`**bold**` headers, `~~strike~~`, backticks around `[N%]` / `[YYYY-MM-DD]`, `<url|text>` hyperlinks, italic `_text_`) literally:
    ```bash

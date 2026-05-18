@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.3.159] — 2026-05-17
+
+### Added
+- `{{achieved_goals}}` placeholder now renders **three sub-buckets** instead of a flat list:
+  - `- :ladybug: Issues` — tasks whose ClickUp `task_type` matches `"Issue"` (case-insensitive).
+  - `- :clipboard: Tareas` — every other task, including tasks with no `task_type` at all.
+  - `- :calendar: Meets` — one bullet per non-blank line of the user's `meetings` manual answer.
+
+  Each task bullet is `   * \`[<%>]\` <url|name>` (three-space indent + asterisk to render as a sub-bullet in Slack). Meet bullets carry the user's text verbatim. Sub-buckets with no items are omitted entirely so the reader never sees a stray header above an empty list. The first-run banner only kicks in when **all three** sub-buckets are empty — if the user captured meetings on their first run, those still surface and the banner is suppressed.
+
+### Changed
+- `task_type` now flows end-to-end through the daily-slack pipeline: extracted during Step 6 from each ClickUp task object (via the already-hydrated `clickup_get_task` cache), preserved by `bin/daily-slack-bucket.mjs` into `new_snapshot` so it survives subsequent runs, threaded into `render-data.json`'s `achieved[*]` entries, and consumed by `bin/daily-slack-render.mjs` to drive the Issues / Tareas split. Missing or empty `task_type` is treated as non-Issue (lands under Tareas), so legacy snapshots taken before this release continue to render correctly.
+- `meetings` is no longer a standalone `{{meetings}}` placeholder in the template body. It's now folded into `{{achieved_goals}}` as the `:calendar: Meets` sub-bucket. The template's separate `**Reuniones**` block + `{{meetings}}` placeholder is removed to prevent duplicate rendering — having both would print the user's input twice. The renderer parses the meetings string itself (one non-blank line per bullet); do not pre-format upstream.
+- `jelou/workflows/daily-slack.md` Steps 10–12 reordered. Previously: 10 Render → 11 Check Draft → 12 Prompt Manual. Now: 10 Check Draft → 11 Prompt Manual → 12 Render. The render step is moved last because it now depends on `meetings`, which only exists after the manual-fields prompt. Manual answers are persisted to `<workspace>/.cache/manual-fields.json` before render so `bin/daily-slack-render.mjs` reads them deterministically from disk.
+- `render-data.json` schema gains two fields: `achieved[*].task_type` and a top-level `meetings: "<raw multi-line string>"`. Both are optional — missing values render the same as before, just without the new categorization.
+
+### Tests
+- `tests/unit/daily-slack-bucket.test.mjs` — new "task_type pass-through" suite confirming `Issue` / `Improvement` values survive snapshot + are emitted on both `achieved[*]` and `new_snapshot[*]`.
+- `tests/unit/daily-slack-render.test.mjs` — expanded coverage for the new categorization: existing happy-path and multi-task tests updated for the sub-bucket format; new tests for Issues-only / Tareas-only / mixed rendering, missing `task_type` → Tareas fallback, Meets bullet parsing (whitespace lines stripped, empty meetings omits the header), and the first-run banner gated on all-empty.
+
 ## [0.3.158] — 2026-05-17
 
 This release fixes the root cause of the "full test + comprehensive QA" local-machine freeze and extracts full-suite test execution out of the orchestrator into a dedicated on-demand skill. It also clears six related issues found during the freeze investigation.

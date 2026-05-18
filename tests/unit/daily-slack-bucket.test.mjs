@@ -122,6 +122,26 @@ describe('daily-slack-bucket — delta', () => {
   });
 });
 
+describe('daily-slack-bucket — task_type pass-through', () => {
+  test('preserves task_type on achieved entries so the renderer can categorize them', () => {
+    const current = [
+      { clickup_id: 'a', name: 'A', url: 'u', percentage: 100, status_type: 'closed', task_type: 'Issue' },
+      { clickup_id: 'b', name: 'B', url: 'u', percentage: 60, status_type: 'in_progress', task_type: 'Improvement' },
+    ];
+    const snap = {
+      a: { name: 'A', url: 'u', percentage: 50, status_type: 'in_progress', task_type: 'Issue' },
+      b: { name: 'B', url: 'u', percentage: 30, status_type: 'in_progress', task_type: 'Improvement' },
+    };
+    const r = run(setup(current, snap));
+    const out = JSON.parse(r.stdout);
+    const byId = Object.fromEntries(out.achieved.map((t) => [t.clickup_id, t]));
+    assert.equal(byId.a.task_type, 'Issue');
+    assert.equal(byId.b.task_type, 'Improvement');
+    assert.equal(out.new_snapshot.a.task_type, 'Issue');
+    assert.equal(out.new_snapshot.b.task_type, 'Improvement');
+  });
+});
+
 describe('daily-slack-bucket — IO and validation errors', () => {
   test('exits 2 with usage message when no args', () => {
     const r = spawnSync('node', [SCRIPT], { encoding: 'utf8' });

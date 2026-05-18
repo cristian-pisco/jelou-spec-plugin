@@ -44,7 +44,10 @@ describe('daily-slack-render — happy path', () => {
     const r = run(setup(data));
     assert.equal(r.status, 0, `stderr: ${r.stderr}`);
     const out = JSON.parse(r.stdout);
-    assert.equal(out.achieved_goals, '`[90%]` <https://app.clickup.com/t/abc|API node>');
+    assert.equal(
+      out.achieved_goals,
+      '- :clipboard: Tareas\n   * `[90%]` <https://app.clickup.com/t/abc|API node>'
+    );
     assert.equal(out.not_achieved_goals, 'Migration — esperando revisión\nhttps://app.clickup.com/t/def');
     assert.equal(out.short_term_goals, '`[2026-04-30]` <https://app.clickup.com/t/abc|API node>');
   });
@@ -203,7 +206,7 @@ describe('daily-slack-render — short_term status_note for open tasks', () => {
 });
 
 describe('daily-slack-render — multi-task spacing', () => {
-  test('separates multiple achieved items with single newline', () => {
+  test('groups multiple non-issue achieved tasks under the Tareas header', () => {
     const data = {
       first_run: false,
       achieved: [
@@ -214,7 +217,147 @@ describe('daily-slack-render — multi-task spacing', () => {
       short_term: [],
     };
     const out = JSON.parse(run(setup(data)).stdout);
-    assert.equal(out.achieved_goals, '`[50%]` <u1|A>\n`[100%]` <u2|B>');
+    assert.equal(
+      out.achieved_goals,
+      '- :clipboard: Tareas\n   * `[50%]` <u1|A>\n   * `[100%]` <u2|B>'
+    );
+  });
+});
+
+describe('daily-slack-render — achieved goal categorization', () => {
+  test('groups Issue tasks under :ladybug: and other tasks under :clipboard:', () => {
+    const data = {
+      first_run: false,
+      achieved: [
+        { name: 'Bug fix', url: 'u1', percentage: 100, task_type: 'Issue' },
+        { name: 'Feature', url: 'u2', percentage: 80, task_type: 'Improvement' },
+        { name: 'Crash', url: 'u3', percentage: 100, task_type: 'Issue' },
+        { name: 'Default-type task', url: 'u4', percentage: 50 },
+      ],
+      not_achieved: [],
+      short_term: [],
+    };
+    const out = JSON.parse(run(setup(data)).stdout);
+    assert.equal(
+      out.achieved_goals,
+      [
+        '- :ladybug: Issues',
+        '   * `[100%]` <u1|Bug fix>',
+        '   * `[100%]` <u3|Crash>',
+        '- :clipboard: Tareas',
+        '   * `[80%]` <u2|Feature>',
+        '   * `[50%]` <u4|Default-type task>',
+      ].join('\n')
+    );
+  });
+
+  test('matches task_type case-insensitively for the Issue bucket', () => {
+    const data = {
+      first_run: false,
+      achieved: [{ name: 'A', url: 'u1', percentage: 100, task_type: 'issue' }],
+      not_achieved: [],
+      short_term: [],
+    };
+    const out = JSON.parse(run(setup(data)).stdout);
+    assert.equal(out.achieved_goals, '- :ladybug: Issues\n   * `[100%]` <u1|A>');
+  });
+
+  test('omits Issues header when no Issue tasks are present', () => {
+    const data = {
+      first_run: false,
+      achieved: [{ name: 'A', url: 'u1', percentage: 50, task_type: 'Task' }],
+      not_achieved: [],
+      short_term: [],
+    };
+    const out = JSON.parse(run(setup(data)).stdout);
+    assert.equal(out.achieved_goals, '- :clipboard: Tareas\n   * `[50%]` <u1|A>');
+  });
+
+  test('omits Tareas header when only Issues are present', () => {
+    const data = {
+      first_run: false,
+      achieved: [{ name: 'A', url: 'u1', percentage: 100, task_type: 'Issue' }],
+      not_achieved: [],
+      short_term: [],
+    };
+    const out = JSON.parse(run(setup(data)).stdout);
+    assert.equal(out.achieved_goals, '- :ladybug: Issues\n   * `[100%]` <u1|A>');
+  });
+});
+
+describe('daily-slack-render — meetings sub-bucket', () => {
+  test('appends Meets section from multi-line meetings input', () => {
+    const data = {
+      first_run: false,
+      achieved: [{ name: 'A', url: 'u1', percentage: 100, task_type: 'Issue' }],
+      not_achieved: [],
+      short_term: [],
+      meetings: ':repeat: Daily\n:repeat: 1:1 con manager',
+    };
+    const out = JSON.parse(run(setup(data)).stdout);
+    assert.equal(
+      out.achieved_goals,
+      [
+        '- :ladybug: Issues',
+        '   * `[100%]` <u1|A>',
+        '- :calendar: Meets',
+        '   * :repeat: Daily',
+        '   * :repeat: 1:1 con manager',
+      ].join('\n')
+    );
+  });
+
+  test('renders only the Meets section when there are no achieved tasks', () => {
+    const data = {
+      first_run: false,
+      achieved: [],
+      not_achieved: [],
+      short_term: [],
+      meetings: ':repeat: Daily',
+    };
+    const out = JSON.parse(run(setup(data)).stdout);
+    assert.equal(out.achieved_goals, '- :calendar: Meets\n   * :repeat: Daily');
+  });
+
+  test('trims blank lines and whitespace from meetings input', () => {
+    const data = {
+      first_run: false,
+      achieved: [],
+      not_achieved: [],
+      short_term: [],
+      meetings: '\n   :repeat: Daily   \n\n   :repeat: Planning\n',
+    };
+    const out = JSON.parse(run(setup(data)).stdout);
+    assert.equal(
+      out.achieved_goals,
+      '- :calendar: Meets\n   * :repeat: Daily\n   * :repeat: Planning'
+    );
+  });
+
+  test('omits Meets when meetings is empty, whitespace, or missing', () => {
+    for (const meetings of ['', '   \n\n', undefined, null]) {
+      const data = {
+        first_run: false,
+        achieved: [{ name: 'A', url: 'u1', percentage: 50 }],
+        not_achieved: [],
+        short_term: [],
+        meetings,
+      };
+      const out = JSON.parse(run(setup(data)).stdout);
+      assert.equal(out.achieved_goals, '- :clipboard: Tareas\n   * `[50%]` <u1|A>');
+    }
+  });
+
+  test('first_run banner is suppressed when meetings provide content', () => {
+    const data = {
+      first_run: true,
+      achieved: [],
+      not_achieved: [],
+      short_term: [],
+      meetings: ':repeat: Daily',
+    };
+    const out = JSON.parse(run(setup(data)).stdout);
+    assert.equal(out.achieved_goals, '- :calendar: Meets\n   * :repeat: Daily');
   });
 });
 

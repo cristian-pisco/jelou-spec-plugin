@@ -54,6 +54,7 @@ function snapshotEntry(t) {
     percentage: t.percentage,
     status_type: t.status_type,
     status_name: t.status_name,
+    task_type: t.task_type,
   };
 }
 

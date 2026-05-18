@@ -39,16 +39,57 @@ const FIRST_RUN_BANNER = '_Primer reporte del sprint — sin línea base para co
 const ACHIEVED_EMPTY = '_Sin avances desde la última actualización._';
 const NOT_ACHIEVED_EMPTY = '_Todas las tareas avanzaron._';
 
+const ISSUES_HEADER = '- :ladybug: Issues';
+const TAREAS_HEADER = '- :clipboard: Tareas';
+const MEETS_HEADER = '- :calendar: Meets';
+const SUB_BULLET = '   * ';
+
 function slackLink(url, text) {
   return `<${url}|${text}>`;
 }
 
-function renderAchieved(achieved, firstRun) {
-  if (firstRun) return FIRST_RUN_BANNER;
-  if (!achieved.length) return ACHIEVED_EMPTY;
-  return achieved
-    .map((t) => `\`[${t.percentage}%]\` ${slackLink(t.url, t.name)}`)
-    .join('\n');
+function isIssue(task) {
+  return typeof task?.task_type === 'string' && task.task_type.toLowerCase() === 'issue';
+}
+
+function parseMeetingsLines(meetings) {
+  if (typeof meetings !== 'string' || !meetings.trim()) return [];
+  return meetings
+    .split('\n')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function renderTaskItem(t) {
+  return `${SUB_BULLET}\`[${t.percentage}%]\` ${slackLink(t.url, t.name)}`;
+}
+
+// Splits `achieved` into Issues / Tareas buckets via `task_type` (case-insensitive
+// match against "issue" — anything else, including missing `task_type`, falls
+// into Tareas). The manual `meetings` text is parsed line-by-line (each non-blank
+// line becomes one bullet). Sections render only when non-empty so the reader
+// never sees a stray header above an empty list.
+//
+// First-run banner only kicks in when every bucket is empty — if the user
+// captured meetings on their first run, those still surface, the banner doesn't.
+function renderAchieved(achieved, firstRun, meetings) {
+  const issues = achieved.filter(isIssue);
+  const tasks = achieved.filter((t) => !isIssue(t));
+  const meets = parseMeetingsLines(meetings);
+  if (!issues.length && !tasks.length && !meets.length) {
+    return firstRun ? FIRST_RUN_BANNER : ACHIEVED_EMPTY;
+  }
+  const sections = [];
+  if (issues.length) {
+    sections.push(`${ISSUES_HEADER}\n${issues.map(renderTaskItem).join('\n')}`);
+  }
+  if (tasks.length) {
+    sections.push(`${TAREAS_HEADER}\n${tasks.map(renderTaskItem).join('\n')}`);
+  }
+  if (meets.length) {
+    sections.push(`${MEETS_HEADER}\n${meets.map((m) => `${SUB_BULLET}${m}`).join('\n')}`);
+  }
+  return sections.join('\n');
 }
 
 function renderNotAchieved(not_achieved) {
@@ -149,7 +190,7 @@ function main() {
   const d = parseJsonOrDie(readOrDie(data, '--data'), '--data');
   const closedLikeStatuses = loadClosedLikeStatuses(closedLike);
   const out = {
-    achieved_goals: renderAchieved(d.achieved || [], !!d.first_run),
+    achieved_goals: renderAchieved(d.achieved || [], !!d.first_run, d.meetings),
     not_achieved_goals: renderNotAchieved(d.not_achieved || []),
     short_term_goals: renderShortTerm(d.short_term || [], closedLikeStatuses),
     tasks_by_status: renderTasksByStatus(d.all_tasks || []),
