@@ -123,7 +123,7 @@ Build `DOCS_TO_UPDATE` = set of doc names that need updating.
 
 ### Full Mode (ANALYSIS_MODE = full)
 
-Spawn both agents simultaneously using the task tool. Each agent receives the same base context:
+Spawn both agents using the task tool. Honor `JLU_PHASE_PARALLELISM` from the environment (default `1`): when `> 1`, fan out the two analyzers in a single orchestrator message; when `= 1`, run them sequentially (structural first, then operational, so the operational analyzer can re-use STRUCTURE.md context when it's already on disk). Each agent receives the same base context:
 - `SOURCE_ROOT`: the service's source code path
 - `OUTPUT_DIR`: where to write output files
 - `service-id`: the service identifier
@@ -150,7 +150,7 @@ Spawn both agents simultaneously using the task tool. Each agent receives the sa
 - **Output**: `<OUTPUT_DIR>/CONVENTIONS.md`, `<OUTPUT_DIR>/INTEGRATIONS.md`, `<OUTPUT_DIR>/CONCERNS.md`
 - **Note**: This agent combines automated code analysis with a user interview. It will use `question` to gather concerns not visible in the code (planned deprecations, scaling limits, tribal knowledge). See Decision #30.
 
-**Important**: Both agents MUST be spawned in parallel (2 separate task tool calls in a single response).
+**Parallel dispatch**: when `JLU_PHASE_PARALLELISM > 1`, spawn both agents in one orchestrator response (2 task tool calls). Otherwise run them sequentially. Sequential is the default — predictable local CPU/RAM beats theoretical speedup that can crash the developer's machine.
 
 ### Incremental Mode (ANALYSIS_MODE = incremental)
 

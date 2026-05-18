@@ -8,12 +8,18 @@ When a phase affects N services with no shared state and no sequential dependenc
 
 ## Resource Safety Gate
 
-Parallel fan-out is optional, not mandatory. Use it only when the workflow-level throttles allow it:
+Parallel fan-out is optional, not mandatory. Use it only when the workflow-level throttle allows it:
 
-- `PHASE_PARALLELISM > 1` for per-phase agent fan-out
-- `FINAL_TEST_PARALLELISM > 1` for Step 8 full-suite fan-out
+- `PHASE_PARALLELISM > 1` for per-phase agent fan-out AND for per-task fan-out (proposal-agent multi-service, codebase analyzers).
 
 Default local behavior is sequential (`=1`) to prevent CPU/RAM spikes on developer machines. Opt in to higher parallelism explicitly.
+
+### Deprecated throttles
+
+| Env var | Status | Why |
+|---------|--------|-----|
+| `JLU_FINAL_TEST_PARALLELISM` | Deprecated since the full-suite extraction to `/jlu-test-suite`. The orchestrator no longer fans out the full suite in Step 8b (it now runs affected tests only, sequentially per service under `PHASE_PARALLELISM`). The variable is silently ignored. |
+| `JLU_TEST_MAX_WORKERS` | Deprecated. Step 8b now uses a fixed cap of 2 workers for affected-tests; `/jlu-test-suite` uses a fixed cap of 1 worker. Neither honors this env var. |
 
 ## When to Parallel-Dispatch
 
@@ -76,12 +82,17 @@ Per-phase fan-out points in `jelou/workflows/execute-task.md`:
 | 7e (TDD Green) | `jlu-implementer` | N affected services for this phase |
 | 7h (Per-Phase QA) | `jlu-qa-agent` | N affected services for this phase |
 | 7k (Build Validation) | `jlu-build-validator` | N Docker services for this phase |
+| 8b (Affected Tests) | (no agent — orchestrator `Bash`) | N affected services for the task |
 
-Per-task fan-out points (already parallel by precedent at Step 4f / line 159 of execute-task.md):
+Per-task fan-out points (also gated by `PHASE_PARALLELISM`; sequential by default):
 
-- `map-codebase`: structural and operational analyzers per service
-- `new-task`: per-service worktree setup as a background subtask group
-- Step 4f (proposal): `jlu-proposal-agent` per service
+| Workflow | Step | Agents fanned out |
+|----------|------|-------------------|
+| `map-codebase` | Step 5 | structural + operational analyzers |
+| `execute-task` | Step 4c (proposal) | `jlu-proposal-agent` per service (multi-service tasks only) |
+| `new-task` | Step 8 (worktree setup) | per-service git worktree creation |
+
+These were previously dispatched in parallel by precedent. They're now gated by `PHASE_PARALLELISM` so a developer running multiple agents under heavy local load can flip a single env var and get full sequential behavior.
 
 ## Common Mistakes
 

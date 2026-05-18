@@ -195,10 +195,148 @@ OpenCode command definitions live in `.opencode/commands/`. All commands use the
 | `/jlu-close-task` | Close task after PR merge — updates ClickUp, cleans worktrees |
 | `/jlu-rollback-phase` | Reset service worktrees to the last known-good phase state |
 | `/jlu-architecture-review [<service-id>] [--cross-service]` | Surface deepening opportunities (single-service or cross-service); interactive grilling loop; lazy ADRs |
+| `/jlu-test-suite` | Run the current service's unit + integration tests with workers=1, report failures grouped by component (Controller, Service, Repository, etc.). Invoke before `/jlu-create-pr`. No arguments. |
 | `/jlu-ui-qa-run [task-slug]` | Boot affected services and run the Playwright E2E suite with bounded auto-fix loop and RAM/CPU worker gates |
 | `/jlu-ui-qa-cleanup [task-slug]` | Recover from leaked dev servers, stale containers, or held lock files |
 
-`/jlu-execute-task` defaults to conservative local resource usage. Multi-service fan-out and final-suite parallel runs are throttled unless explicitly increased via `JLU_PHASE_PARALLELISM` and `JLU_FINAL_TEST_PARALLELISM`.
+### Test execution model
+
+The plugin splits test responsibilities to keep the local TDD loop fast and the regression net robust:
+
+| Stage | Who runs it | What runs |
+|-------|-------------|-----------|
+| Per-phase (TDD inner loop) | Sub-agents (`jlu-test-writer`, `jlu-implementer`, `jlu-tdd-cycle`, `jlu-refactor-agent`) | Only the test files for the current phase |
+| Step 8b (regression check at end of task) | Orchestrator (no agent, just `Bash`) | **Affected tests only** — `jest --findRelatedTests` / `vitest related` / `pytest --picked` / `go test -p 2` against changed packages. Workers capped at 2. |
+| Pre-PR (developer's call) | `/jlu-test-suite` skill | Full unit + integration of the current service. Workers fixed at 1. Failures grouped by component. |
+| CI on push | GitHub Actions (or equivalent) | Full suite with whatever your CI declares |
+
+The orchestrator never runs the full suite. That responsibility belongs to `/jlu-test-suite` (local on-demand) and CI (on push). This split is what prevents "full test + comprehensive QA" from swap-thrashing developer machines.
+
+### Test Suite — Pre-PR Validation
+
+`/jlu-test-suite` is the developer-invoked counterpart to Step 8b's affected-tests check. It runs the current service's full unit + integration suites under a strict 1-worker cap, then groups failures by the component under test so the dev can see at a glance whether the regressions concentrate in a Service, a Repository, a Controller, etc.
+
+**When to use it**
+
+| Scenario | Use `/jlu-test-suite`? |
+|----------|------------------------|
+| About to open a PR and want a richer signal than Step 8b's affected subset | **Yes** |
+| Step 8b reported `SKIPPED` (mocha, plugin-less pytest, only config files changed) | **Yes** — Step 8c's QA agent will explicitly recommend it |
+| You suspect a cross-cutting change (helper, type, base class) and want belt-and-suspenders | **Yes** |
+| Tests are slow and you're in the middle of TDD on a single phase | **No** — keep using the per-phase agents' targeted runs |
+| You want coverage numbers | **No** — coverage is CI's job; this skill never runs `--coverage` |
+
+**Invocation**
+
+```bash
+/jlu-test-suite
+```
+
+No arguments. By design — the workers-fixed-at-1 contract can't be loosened, and the service is resolved from cwd. If you need to validate a different service, `cd` into it first.
+
+**What it does (in order)**
+
+1. Walks up from cwd looking for `.spec-workspace/` (max 5 levels). Resolves the service via longest-prefix match against `services.yaml`.
+2. Honors active task worktrees: if you're on `production/<slug>` or `staging/<slug>` and `TASKS.md` declares `Mode: worktree`, runs against `<repo>/.worktrees/<slug>/`. Otherwise the main repo.
+3. Lightweight pre-flight: aborts only on truly degraded machines (< 1.5 GB available RAM). Workers=1 means the normal threshold is generous.
+4. Detects the runner from CONVENTIONS.md's "Test Filtering Commands" table (populated by `/jlu-map-codebase`), with manifest-introspection fallback. Supports **Jest, Vitest, Mocha, pytest** (+ `pytest-xdist` / `pytest-json-report` when present), and **Go**.
+5. Runs unit tests first, then integration tests (only if CONVENTIONS.md declares them as a separate command). Worker cap is injected per runner: `--runInBand` (Jest), `--pool=threads --poolOptions.threads.maxThreads=1` (Vitest), `-n 1` (pytest-xdist), `-p 1` (Go).
+6. **If everything is green** — prints a one-line pass summary and exits 0.
+7. **If anything failed** — parses the runner's JSON output (or falls back to stdout), reads each failing test file, identifies the symbol under test from imports and the `describe(...)` subject, and classifies it by suffix:
+
+   | Basename suffix | Component type |
+   |-----------------|----------------|
+   | `*.controller.{ts,js,py}` | Controller |
+   | `*.service.{ts,js,py}` | Service |
+   | `*.repository.{ts,js,py}`, `*.repo.{ts,js}` | Repository |
+   | `*.middleware.{ts,js}` | Middleware |
+   | `*.guard.{ts,js}`, `*.interceptor.{ts,js}`, `*.pipe.{ts,js}`, `*.filter.{ts,js}` | Guard/Interceptor |
+   | `*.dto.{ts,js}`, `*.entity.{ts,js}`, `*.schema.{ts,js}`, `*.model.{ts,js,py}` | DTO/Entity |
+   | `*.handler.{ts,js,go}`, `*.command.{ts,js}`, `*.query.{ts,js}` | Handler |
+   | `*.util.{ts,js,py}`, `*.helper.{ts,js,py}` | Util |
+   | Anything else | Module |
+
+   CONVENTIONS.md can override these defaults via its `## Naming Conventions` section.
+
+**Sample success output**
+
+```
+## Test Suite — PASS
+
+- Unit: 142/142 passing
+- Integration: 38/38 passing
+- Runner: jest, workers: 1
+- Effective path: /home/cris/jelou/jelou-api/.worktrees/add-oauth-flow/
+```
+
+**Sample failure output**
+
+```
+## Test Suite — FAIL (3 unit · 1 integration)
+
+### AuthService (src/auth/auth.service.ts) — 2 failures — Service
+✗ verifyToken rejects expired tokens
+  src/auth/__tests__/auth.service.spec.ts:42
+  Expected status 401; received 500
+
+✗ parseClaims returns null for malformed payload
+  src/auth/__tests__/auth.service.spec.ts:67
+  Expected: null; Received: undefined
+
+### UsersController (src/users/users.controller.ts) — 1 failure — Controller
+✗ GET /users/:id returns 404 for missing user
+  src/users/__tests__/users.controller.spec.ts:88
+  Expected status 404; Received 500
+
+### AuthFlowIntegration (test/integration/auth.spec.ts) — 1 failure — Module
+✗ login → token → /me happy path
+  test/integration/auth.spec.ts:23
+  Connection refused: postgres://localhost:5432
+  ↪ Dev infrastructure appears unreachable. Did you run /jlu-start-dev?
+
+### Summary
+- Unit:        142/144 passing · 2 failing
+- Integration: 37/38 passing  · 1 failing
+- Components with failures: Service, Controller, Module
+- Effective path: /home/cris/jelou/jelou-api
+- Workers: 1
+```
+
+The "Did you run /jlu-start-dev?" hint is automatic — any error matching `ECONNREFUSED`, `connection refused`, `Pool exhausted`, `getaddrinfo ENOTFOUND`, `connect timeout`, or `MongoServerSelectionError` triggers it under the failing test.
+
+**Exit codes**
+
+| Code | Meaning |
+|------|---------|
+| 0 | All tests green |
+| 1 | One or more tests failed (report rendered) |
+| 2 | Pre-flight RAM gate aborted |
+| 3 | Test runner could not be detected — add a "Test Filtering Commands" table to CONVENTIONS.md or a `test` script to your manifest |
+
+**Limitations (V1)**
+
+- **Single-service.** To validate multiple services in one task, invoke once per service from each `cd`. V2 may add `--all-affected` reading TASKS.md.
+- **Workers fixed at 1.** No env var override, by design. If you need parallelism, run the underlying runner directly.
+- **No coverage.** Coverage runs roughly double RAM per worker and belong in CI. Step 8c reads existing coverage reports if present but never generates them.
+- **No auto-fix.** This skill validates and reports. Fixes are the developer's call. (Step 8b dispatches `jlu-implementer` on failure; `/jlu-test-suite` deliberately does not.)
+- **Classification is best-effort.** Suffix-based heuristics + CONVENTIONS.md overrides. Projects with non-standard naming may see "Module" fallbacks on tests the classifier can't pin down.
+
+**Best results in Sonnet+**
+
+Step 7 (the failure-classification step) reads test files and infers component types from imports. Haiku can produce underspecific classifications on projects with non-standard naming. If you're already in Sonnet or Opus, no action needed. To override:
+
+```json
+// .spec-workspace.json
+{ "models": { "code": "sonnet" } }
+```
+
+### Resource knobs
+
+| Env var | Default | Effect |
+|---------|---------|--------|
+| `JLU_PHASE_PARALLELISM` | `1` | Concurrent agent fan-out per phase AND per-task (proposal-agent multi-service, codebase analyzers, Step 8b across services). Bump only if your box has headroom. |
+| `JLU_FINAL_TEST_PARALLELISM` | — | **Deprecated.** No longer read — the orchestrator no longer runs the full suite. |
+| `JLU_TEST_MAX_WORKERS` | — | **Deprecated.** Step 8b is fixed at 2 workers; `/jlu-test-suite` is fixed at 1. |
 
 ### Spec Compliance Review
 

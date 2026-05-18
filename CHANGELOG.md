@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.3.158] — 2026-05-17
+
+This release fixes the root cause of the "full test + comprehensive QA" local-machine freeze and extracts full-suite test execution out of the orchestrator into a dedicated on-demand skill. It also clears six related issues found during the freeze investigation.
+
+### Added
+- `/jlu-test-suite` — new on-demand skill that runs the current service's unit + integration tests with a fixed worker cap of `1` (literal "minimum workers"), then groups failures by the component under test (Controller, Service, Repository, Middleware, Guard/Interceptor, DTO/Entity, Handler, Util, Module). Resolves the service from cwd against `services.yaml`. Honors task-active worktrees via the standard `worktree-resolution.md` algorithm. Includes a lightweight RAM pre-flight (~1.5 GB threshold) that fails fast on degraded machines. Supports Jest, Vitest, Mocha, pytest (+ `pytest-xdist` / `pytest-json-report` when present), and Go. Failure reporter parses the runner's JSON output (or falls back to stdout) and reads test files to infer the symbol under test from imports and `describe(...)` subjects. Integration-failure errors matching `ECONNREFUSED` / `connection refused` / `Pool exhausted` / `getaddrinfo ENOTFOUND` automatically get a `Did you run /jlu-start-dev?` hint appended. Zero arguments — invocation is unconfigurable on purpose so the workers=1 contract can't be loosened. `skills/test-suite/SKILL.md` + `jelou/workflows/test-suite.md` + `.opencode/commands/jlu-test-suite.md`.
+- README "Test execution model" section + dedicated "Test Suite — Pre-PR Validation" subsection with sample success / failure outputs, exit codes, the per-suffix component classifier table, and V1 limitations.
+- `docs/architecture.excalidraw` — diagram updated to document the new Test Execution Model (4 boxes: per-phase → Step 8b affected → /jlu-test-suite → CI, with flow arrows), the pre-PR annotation hanging off `ready_to_publish`, and new agents (`tdd-cycle`, `build-validator`, `spec-reviewer`, `refactor-agent`, `summary-agent`). Stale labels also corrected — see "Changed" below.
+
+### Changed
+- **execute-task Step 8b extracted from full-suite to affected-tests.** The orchestrator no longer runs `npm test` (or `pytest`, `go test ./...`) against the entire service. Step 8b now invokes the runner's native affected-tests resolver against the task diff: `jest --findRelatedTests`, `vitest related`, `pytest --picked --mode=branch` (when `pytest-picked` is installed), `pytest --testmon` (when `pytest-testmon` is installed), or `go test -p 2` against changed packages. Worker cap is fixed at 2. Mocha and plugin-less pytest skip the step with a hint to run `/jlu-test-suite` before PR. Coverage is forbidden in Step 8b — that's CI's domain. Rationale: the old "full suite + comprehensive QA" pair was triggering local-machine freezes because Jest's default `maxWorkers = cores - 1` spawn pattern + the QA agent's "Run coverage tool if available" instruction caused two back-to-back full-suite runs at near-default workers.
+- execute-task Step 6.4 — `TEST_MAX_WORKERS` (and the related `JLU_TEST_MAX_WORKERS` env var) removed. Step 8b's cap is now hard-coded at 2; `/jlu-test-suite` is hard-coded at 1. The workflow no longer reads `JLU_FINAL_TEST_PARALLELISM` either.
+- execute-task Step 8c — QA agent now consumes the new `AFFECTED_TESTS_RESULT` structure (per-service PASS / FAIL / SKIPPED / NO_DIFF) instead of the old full-suite verdict. When any service reports SKIPPED, the QA agent surfaces an explicit pre-PR action recommending `/jlu-test-suite`.
+- execute-task Step 4c — multi-service proposal-agent fan-out now respects `PHASE_PARALLELISM` (default `1` = sequential) instead of always parallel. Predictable local CPU/RAM beats theoretical speedup.
+- `jlu-qa-agent` — three-fold prompt rewrite: (1) consumes `AFFECTED_TESTS_RESULT` instead of the old full-suite verdict, (2) the "Run coverage tool if available" line that caused contradictory behavior (re-running the suite with `--coverage` during 8c) was removed — coverage is now strictly read-only (parse existing reports if present, infer statically otherwise), (3) self-checklist hardened with "did NOT run any test command — not the affected subset, not the full suite, not coverage, not a single test file".
+- `jlu-architecture-explorer` — `Agent` removed from `tools:` frontmatter; the agent no longer dispatches `Explore` sub-agents (which produced L3 recursion). Discovery Strategy rewritten to use `Glob` / `Grep` / `Read` directly. Same outputs, ~exponentially less context burn.
+- `map-codebase` Step 5 — the two analyzers (structural + operational) are now gated by `JLU_PHASE_PARALLELISM` instead of always-parallel. Default sequential.
+- `jelou/references/docker-conventions.md` — the "Command Classification" table was contradicting every other doc by listing tests / lint / build as "Container" commands. Corrected: all TDD-pipeline commands run on the **Host**, only long-running dev services (started by `/jlu-start-dev`) go through Docker. The stale "Docker Exec Prefix" section is removed (every agent already treats it as ignorable).
+- `parallel-dispatch.md` — `FINAL_TEST_PARALLELISM` and `TEST_MAX_WORKERS` documented as deprecated; per-task fan-out points (proposal-agent multi-service, codebase analyzers) confirmed as gated by `PHASE_PARALLELISM`.
+- README — new "Test execution model" + "Test Suite — Pre-PR Validation" subsections; resource-knob table updated to reflect the deprecations.
+- `docs/architecture.excalidraw` — diagram labels corrected: "6 Parallel Researchers" → "2 Codebase Analyzers"; sub-label rewritten to name the structural / operational doc sets explicitly; "cross-validator" (removed agent) → "refactor-agent" (the agent that actually owns the post-Green pass now); "final validation" → "Step 8: affected + static QA"; `tasks-agent` moved from the Sonnet tier visual to the Haiku tier visual (it has been operational-group/Haiku in `model-tiers.md` for a while).
+
+### Fixed
+- `bin/lib/dev-orchestrator/daemon-spawn.mjs` `killDaemon` had a tight busy-wait (`while (Date.now() < target) { /* spin */ }`) inside its 5-second grace-period loop, burning 100 % of one CPU core every time the dev daemon was stopped. Replaced with `spawnSync('sleep', ['0.1'])` so the wait actually yields. Function stays synchronous; no caller signature changes.
+
+### Removed
+- The full-suite run in `execute-task` Step 8b, along with its pre-flight RAM/CPU gate and per-runner worker-cap injection table. Both moved to `/jlu-test-suite` (in tightened, workers=1 form). Step 8b's pre-flight is gone — affected-tests with cap=2 doesn't need it.
+
 ## [0.3.157] — 2026-05-14
 
 ### Added

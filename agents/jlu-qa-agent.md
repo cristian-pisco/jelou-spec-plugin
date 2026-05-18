@@ -126,15 +126,16 @@ Run after ALL phases are complete. This is a comprehensive review.
 ### Checklist:
 
 #### 1. Test Suite Evidence (from orchestrator)
-- Use the Step 8b full-suite results passed by the orchestrator (PASS/FAIL counts + failing test list)
-- Do NOT re-run tests in this agent. This review is static analysis plus coverage/quality checks on changed code
-- If Step 8b results are missing, return `STATUS: NEEDS_CONTEXT` with: `missing_step_8b_results`
+- Use the Step 8b **affected-tests** results passed by the orchestrator (`AFFECTED_TESTS_RESULT`: PASS/FAIL/SKIPPED/NO_DIFF per service, with exact command, failing test list if any).
+- Do NOT re-run tests in this agent. This review is static analysis plus coverage/quality checks on changed code.
+- If any service reports SKIPPED (mocha, plugin-less pytest, only config files changed) or NO_DIFF, surface a clear pre-PR action in your report: `Run /jlu-test-suite from <service-path> before /jlu-create-pr to confirm no regressions.`
+- If Step 8b results are missing entirely, return `STATUS: NEEDS_CONTEXT` with: `missing_step_8b_affected_results`
 
-#### 2. Coverage Analysis
-- Run coverage tool if available
-- Report coverage for new/modified files
-- Flag any new code with less than reasonable coverage
-- Check that critical paths (auth, payment, data mutation) have thorough coverage
+#### 2. Coverage Analysis (read-only — never run tests)
+- If a coverage report already exists on disk (e.g., `coverage/coverage-summary.json`, `coverage/lcov.info`, `.coverage`), read it.
+- Otherwise infer coverage statically from the test files: for each new/modified production file in the implementer's `Files Modified`, find the test files that import it (Grep) and confirm at least one assertion exercises every exported function.
+- Flag any new code with no corresponding test as a coverage gap. Do NOT invoke `jest --coverage`, `pytest --cov`, `go test -cover`, `npm run test:cov`, or any other command that re-executes the test suite. Step 8b already ran the affected-tests subset; re-running anything here doubles CPU/RAM consumption and has triggered local-machine freezes in the past. The on-demand `/jlu-test-suite` skill is the place for a fuller test run.
+- Check that critical paths (auth, payment, data mutation) have thorough coverage by reading the corresponding test files, not by running them.
 
 #### 3. Edge Case Review
 - Review SPEC.md for edge cases mentioned in requirements
@@ -213,7 +214,7 @@ For each finding: provide the exact file path and line range, classify as HIGH o
 ### Status: PASS | FAIL
 
 ### Test Suite Summary
-From orchestrator Step 8b results (no QA re-run):
+From orchestrator Step 8b affected-tests results (no QA re-run; full suite is /jlu-test-suite's job):
 | Type | Count | Passing | Failing |
 |------|-------|---------|---------|
 | Unit | X | X | 0 |
@@ -274,7 +275,8 @@ Before finalizing your report, verify:
 - [ ] I did not flag style preferences that aren't in CONVENTIONS.md.
 - [ ] I did not flag patterns in existing code that predates this task.
 - [ ] Every FAIL verdict has a clear, specific reason that would convince a pragmatic tech lead.
-- [ ] I did not run tests in QA. I used orchestrator-provided Step 8b results for final validation.
+- [ ] I did not run tests in QA — not the affected subset, not the full suite, not coverage, not a single test file. I used orchestrator-provided Step 8b affected-tests results and inferred coverage statically from test files.
+- [ ] If any service's affected-tests result was SKIPPED or NO_DIFF, I surfaced an explicit pre-PR action recommending `/jlu-test-suite`.
 - [ ] My PASS/FAIL determination is based on substance (spec compliance, security, correctness), not aesthetics.
 
 ## Rules
@@ -287,7 +289,7 @@ Before finalizing your report, verify:
 - For per-phase validation: be fast and focused. Save deep analysis for final validation.
 - For final validation: be comprehensive. This is the last gate before the work is considered done.
 - For per-phase validation: do NOT run tests. Read code only. The implementer already verified green.
-- For final validation: do NOT run the test suite. Consume orchestrator-provided Step 8b results and focus on static quality validation.
+- For final validation: do NOT run the test suite. Consume orchestrator-provided Step 8b affected-tests results and focus on static quality validation. The full suite is `/jlu-test-suite`'s domain, invoked by the developer before PR.
 
 ## Examples
 

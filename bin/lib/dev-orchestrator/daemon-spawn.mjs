@@ -2,7 +2,7 @@
 //
 // Detached spawn + kill of the daemon process.
 
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { openSync } from 'node:fs';
@@ -42,11 +42,11 @@ export function killDaemon({ workspaceId, slug }) {
     return { killed: false, pid: pid || null };
   }
   try { process.kill(pid, 'SIGTERM'); } catch {}
-  // Wait up to 5s.
+  // Wait up to 5s for graceful exit, polling every 100ms via /bin/sleep
+  // (avoids CPU spin; spawnSync on `sleep` blocks without burning the core).
   const start = Date.now();
   while (isAlive(pid) && (Date.now() - start) < 5000) {
-    const target = Date.now() + 50;
-    while (Date.now() < target) { /* spin */ }
+    spawnSync('sleep', ['0.1']);
   }
   if (isAlive(pid)) {
     try { process.kill(pid, 'SIGKILL'); } catch {}

@@ -1,23 +1,24 @@
 # Docker Conventions
 
-> Defines Docker-first execution rules, command classification, port allocation, and teardown policy for Docker-enabled services. Docker support is opt-in per service via the `docker` block in `services.yaml`.
-
-## Docker-First Execution Rule
-
-All dependency and framework commands (`npm`, `nest`, `npx`, `yarn`, `composer`, `artisan`, `go`, `cargo`) must run inside the service container via `docker compose exec <service> <command>`. File I/O and git operations always run on the host.
+> Defines port allocation, override generation, inter-service URL wiring, and teardown policy for Docker-enabled services. Docker support is opt-in per service via the `docker` block in `services.yaml`.
+>
+> **Scope:** these rules apply only to dev services started by `/jlu-start-dev`. The TDD pipeline (tests, build, lint, format) always runs on the host runtime — never via `docker compose exec`. See "Command Classification" below.
 
 ## Command Classification
+
+The TDD pipeline runs entirely on the host. Containers are reserved for the long-running dev services managed by `/jlu-start-dev`.
 
 | Type | Where | Example |
 |------|-------|---------|
 | File I/O | Host | `Read`, `Write`, `Glob`, `Grep` |
 | Git | Host | `git add`, `git commit`, `git push` |
-| Dependency install | Container | `docker compose exec <svc> npm install` |
-| Tests | Container | `docker compose exec <svc> npm test` |
-| Lint/format | Container | `docker compose exec <svc> npx eslint .` |
-| Build/CLI | Container | `docker compose exec <svc> npm run build` |
+| Tests (any tier) | Host | `npm test`, `pytest`, `go test ./...` |
+| Lint/format | Host | `npx eslint .`, `npx prettier --write` |
+| Build/CLI | Host | `npm run build`, `tsc --noEmit` |
+| Dependency install | Host | `npm install`, `pip install`, `go mod download` |
+| Dev server (long-running) | Container (when `docker.compose_file` is set) | `docker compose up -d <svc>` via `/jlu-start-dev` |
 
-**Rule of thumb**: If the command invokes a language runtime or package manager, it runs in the container. If it reads/writes files or interacts with git, it runs on the host.
+**Rule of thumb**: anything that runs once and exits (tests, build, lint, install) runs on the host. Only the long-running dev process for a service with a `docker` block goes through Docker, and only when `/jlu-start-dev` boots it.
 
 ## Port Allocation Algorithm
 
@@ -148,16 +149,6 @@ This removes:
 - All images built for the compose services (`--rmi all`)
 - Any orphaned containers (`--remove-orphans`)
 
-## Docker Exec Prefix
-
-During TDD execution, the orchestrator computes a `DOCKER_EXEC_PREFIX` for each Docker-enabled service:
-
-```
-cd <worktree> && docker compose exec <docker-service>
-```
-
-This prefix is injected into agent prompts (test-writer, implementer, QA). Agents must prefix all test, lint, build, and dependency commands with it.
-
 ## Non-Docker Services
 
-If a service's entry in `services.yaml` does not have a `docker` block, all commands run directly on the host. No Docker prompts, port allocation, or teardown steps apply. The plugin behavior is identical to the pre-Docker baseline.
+If a service's entry in `services.yaml` does not have a `docker` block, port allocation, override generation, and teardown steps do not apply. The dev workflow falls back to the `dev.command` field for booting the service. The TDD pipeline behavior is identical with or without a `docker` block — all tests/build/lint commands always run on the host either way.

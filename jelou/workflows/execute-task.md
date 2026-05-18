@@ -183,7 +183,7 @@ Spawn `jlu-proposal-agent` with model: **MODEL_CONFIG.proposal** (default: sonne
 
 ### 4c. Local Detail Pass (Multi-Service Only)
 
-If there are **2+ affected services**, spawn one `jlu-proposal-agent` per service in parallel (single orchestrator message), model: **MODEL_CONFIG.proposal** (default: sonnet). Each prompt includes:
+If there are **2+ affected services**, spawn one `jlu-proposal-agent` per service, model: **MODEL_CONFIG.proposal** (default: sonnet). Honor `PHASE_PARALLELISM` (Step 6.4): when `> 1`, fan out in a single orchestrator message; when `= 1` (default), dispatch sequentially. Each prompt includes:
 
 - **Inlined**: full SPEC.md, the global strategy draft from 4b, the target service's `services.yaml` entry.
 - **Paths to Read**: the 6 codebase files for the target service (same paths as 4b, scoped to one service).
@@ -272,11 +272,11 @@ Skip proposal generation. Read the existing PROPOSAL.md and phase files to resum
 
 4. **Set local CPU safety throttles (once per task).**
 
-   - `PHASE_PARALLELISM`: default `1` (sequential) unless explicitly overridden by `JLU_PHASE_PARALLELISM`.
-   - `FINAL_TEST_PARALLELISM`: default `1` (sequential) unless explicitly overridden by `JLU_FINAL_TEST_PARALLELISM`.
-   - Clamp both values to `1..N` where `N = number of affected services`.
+   - `PHASE_PARALLELISM`: default `1` (sequential) unless explicitly overridden by `JLU_PHASE_PARALLELISM`. Clamp to `1..N` where `N = number of affected services`.
 
-**Store** (task-level): `PHASE_PARALLELISM`, `FINAL_TEST_PARALLELISM`.
+The orchestrator no longer runs the full test suite — Step 8b is reduced to an **affected-tests** regression check (lightweight). The full suite is now owned by the dedicated `/jlu-test-suite` skill, which the developer invokes on-demand before opening a PR. For background: `JLU_FINAL_TEST_PARALLELISM` and `JLU_TEST_MAX_WORKERS` are no longer read here; see `jelou/references/parallel-dispatch.md` for the deprecation note.
+
+**Store** (task-level): `PHASE_PARALLELISM`.
 
 ---
 
@@ -601,7 +601,7 @@ Otherwise, spawn `jlu-build-validator` agent with model: **MODEL_CONFIG.code** (
 
 ## Step 8 — Final Validation
 
-After all phases are complete, this is the SINGLE full test suite run for the entire task.
+After all phases are complete, this is the **regression check** for the entire task. It does NOT run the full test suite — Step 8b runs only the tests affected by the task's diff. The full suite is owned by the on-demand `/jlu-test-suite` skill (invoke before `/jlu-create-pr` when you want a richer signal) and by CI on push.
 
 ### 8a. Write Tier 2 Integration Tests (gated)
 
@@ -615,30 +615,99 @@ Otherwise, for each service that has Tier 2 deferred requirements:
    - **Task**: Write integration tests for all deferred requirements. Assume any required real dependency (database, queue, peer service) is already running on the host; if it isn't, mark the test skipped with a clear reason rather than starting anything yourself.
 3. Spawn `jlu-implementer` with model: **MODEL_CONFIG.code** (default: sonnet) if the integration tests reveal missing wiring (e.g., a repository method needs a real database query that was mocked in Tier 1).
 
-### 8b. Full Test Suite Run
+### 8b. Affected-Tests Regression Check
 
-This is the only time the full test suite runs during the entire task execution.
+After all phases are complete, run only the tests **related to the modified files**. This is the cheap regression net for cross-cutting changes (helpers, types, base classes) without saturating local CPU/RAM. The full suite is the developer's job to run via `/jlu-test-suite` (or CI's, on push).
 
-1. Run the complete test suite for each affected service on the host runtime. Use `FINAL_TEST_PARALLELISM` from Step 6.4:
-   - If `FINAL_TEST_PARALLELISM == 1`: run sequentially (default, safest for local CPU/RAM).
-   - If `FINAL_TEST_PARALLELISM > 1`: dispatch in parallel with one `Bash` call per service in a single orchestrator message.
-      - Per service, use the full test command from CONVENTIONS.md (e.g., `npm test`, `pytest`, `go test ./...`) executed directly on the host.
-      - This includes ALL tests: unit, integration, e2e. None of them go through Docker.
-   - Aggregate pass/fail counts across services after all return; pass the consolidated results to Step 8c.
+The orchestrator never invokes the bare full-suite command (e.g., `npm test`) here. That responsibility was extracted from this workflow.
 
-3. If tests fail:
-   - Analyze failures: are they Tier 1 tests (regression) or Tier 2 tests (new integration tests)?
-   - Spawn `jlu-implementer` to fix. Retry up to 5 times.
-   - If still failing after 5 attempts: pause and notify user.
+#### 8b.1 — Compute the affected file set
+
+For each affected service:
+
+```bash
+cd <SERVICE_SOURCE_PATH[service-id]>
+PRE_SHA=<the pre-execution commit cached in TASKS.md "Commit Tracking" for this service>
+git diff --name-only "$PRE_SHA"..HEAD > .changed-files.txt
+```
+
+Filter `.changed-files.txt` to source files only — drop:
+- `*.md`, `*.lock`, `*.yaml`, `*.yml`, `*.json` (except `package.json`)
+- Any `*.test.*`, `*.spec.*`, `__tests__/*`, `test/**`, `tests/**`
+- Lock files (`package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`)
+- Migration files (`migrations/*`)
+- Files under `dist/`, `build/`, `coverage/`, `.next/`
+
+Call the result `CHANGED_SOURCES`.
+
+**If `CHANGED_SOURCES` is empty**, skip Step 8b entirely. Log: `No production source changed for <service-id> — affected-tests step skipped.` Continue to Step 8c.
+
+**If config files were the only thing that changed** (e.g., only `tsconfig.json`, `package.json`, or migration files): skip Step 8b but log: `Only config/migration files changed for <service-id> — affected-tests cannot detect related tests. Run /jlu-test-suite before opening PR.`
+
+#### 8b.2 — Detect runner
+
+Same detection chain as `/jlu-test-suite` Step 4 (read CONVENTIONS.md, fall back to manifest introspection). Identify `RUNNER` ∈ `{jest, vitest, mocha, pytest, go, unknown}`.
+
+#### 8b.3 — Build the affected-tests command
+
+| RUNNER | Command | Notes |
+|--------|---------|-------|
+| jest | `npx jest --findRelatedTests $CHANGED_SOURCES --maxWorkers=2` | Jest's native related-tests resolver |
+| vitest | `npx vitest related $CHANGED_SOURCES --pool=threads --poolOptions.threads.maxThreads=2 --run` | Vitest's `related` mode |
+| pytest with `pytest-picked` installed | `pytest --picked --mode=branch -n 2` (drops `-n` if no xdist) | Picks tests based on git diff |
+| pytest with `pytest-testmon` installed | `pytest --testmon -n 2` | Persistent affected-test map |
+| pytest without either plugin | (skip) | Log: `pytest affected-test detection unavailable. Run /jlu-test-suite before opening PR.` |
+| mocha | (skip) | Log: `Mocha has no built-in affected-tests resolver. Run /jlu-test-suite before opening PR.` |
+| go | `go test -p 2 $(go list -deps ./... \| grep -Ff <(awk -F/ '{print $1"/"$2}' .changed-files.txt \| sort -u))` | Lists packages depending on changed packages. If shell magic above is risky, fall back to `go test ./...` with `-p 2` |
+| unknown | (skip) | Log: `Affected-tests unavailable for unknown runner. Run /jlu-test-suite before opening PR.` |
+
+The cap is **fixed at 2 workers** here (not a configurable env var). Affected sets are usually small (10–50 tests); two workers is enough to be fast and never overloads the box. If you want more parallelism, that's the dev's call — they run `/jlu-test-suite` (which still uses 1 worker but covers the full suite) or invoke the runner directly.
+
+Never inject `--coverage` or `--cov` here. Coverage belongs in CI.
+
+#### 8b.4 — Dispatch
+
+1. Use `PHASE_PARALLELISM` from Step 6.4 to decide cross-service fan-out. Default `1` (sequential per service).
+2. Per service, run the constructed command on the host runtime. Stream stdout for dev visibility.
+3. Capture the runner's exit code as `AFFECTED_TESTS_RESULT[service-id]`.
+
+#### 8b.5 — Handle failures
+
+If any service's affected tests failed:
+- Aggregate failing test names + file paths.
+- Spawn `jlu-implementer` with model: **MODEL_CONFIG.code** (default: sonnet) and the failure context to fix. Retry up to 5 times.
+- If still failing after 5 attempts: pause and notify user.
+
+If a service was skipped (mocha, plugin-less pytest, unknown runner), pass `AFFECTED_TESTS_RESULT[service-id] = SKIPPED` to Step 8c.
+
+#### 8b.6 — Pass results to Step 8c
+
+The QA agent expects a structured object:
+
+```
+AFFECTED_TESTS_RESULT = {
+  "<service-id>": {
+    "status": "PASS | FAIL | SKIPPED | NO_DIFF",
+    "command": "<exact command run>",
+    "tests_run": <N>,
+    "tests_failed": <N>,
+    "failing_tests": ["<name @ file:line>", ...],
+    "skip_reason": "<only if SKIPPED>"
+  },
+  ...
+}
+```
 
 ### 8c. Comprehensive QA (static only)
 
-Spawn `jlu-qa-agent` with model: **MODEL_CONFIG.code** (default: sonnet) for a **static** comprehensive review. The QA agent **must NOT run the test suite** — Step 8b is the only sanctioned full run; re-running here is duplicate work.
+Spawn `jlu-qa-agent` with model: **MODEL_CONFIG.code** (default: sonnet) for a **static** comprehensive review. The QA agent **must NOT run the test suite** — not the affected-tests subset, not coverage, not anything. Test execution this task is owned by Step 8b (affected) and by `/jlu-test-suite` (on-demand full); the QA agent's job is static analysis.
 
-Pass the QA agent the captured Step 8b results (test counts, failing test list if any) so it has the verdict without re-executing:
+Pass the QA agent the captured Step 8b results (affected-tests verdict per service):
 
-- **Step 8b results**: PASS/FAIL counts per service, list of any failing tests
-- **Full coverage analysis**: Are all requirements from SPEC.md covered by tests? (read SPEC.md and test files; do not run them)
+- **Step 8b affected-tests results** (`AFFECTED_TESTS_RESULT` from 8b.6): PASS/FAIL/SKIPPED/NO_DIFF per service, exact command run, failing tests if any
+- **Full coverage analysis**: Are all requirements from SPEC.md covered by tests? (read SPEC.md and test files; do not run them). Note: this is static — checking that every requirement has at least one test file asserting the behavior, not measuring runtime coverage percentages
+- **Pre-PR recommendation**: if any service's 8b result was SKIPPED (mocha, plugin-less pytest, or only config files changed), the QA agent surfaces a clear note in its report:
+  > `Pre-PR action: run /jlu-test-suite from <service-path> before opening the pull request to confirm no regressions in the full suite.`
 - **Edge case review**: Were edge cases from the spec addressed?
 - **Cross-service contract verification** (if multi-service): Do the services communicate correctly? Are contracts honored?
 - **Convention compliance**: Final check against CONVENTIONS.md
