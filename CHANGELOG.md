@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.162] — 2026-05-19
+
+### Fixed
+- `bin/bump-version.sh` — guard against desynced version files and resync manifests to the actual current version. The previous script read `CURRENT` from `package.json` and used a single `sed` pattern that required all 3 version files (`package.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`) to share that exact `"version"` string. Once the files desynced once (a manual edit, a bad merge, anything that touched `package.json` without going through this script), every subsequent run only bumped `package.json` — the two manifests stayed frozen forever. Because Claude Code's marketplace installer reads the plugin version from `.claude-plugin/marketplace.json` on `origin/main` (not from `package.json` and not from git tags), this silently shipped a stale version to every user updating through the marketplace, regardless of how many tags or releases the maintainer cut. The visible symptom: `package.json` at `0.3.161`, tags up to `v0.3.161`, but everyone updating via `/plugin` kept landing on `0.3.157` (the last version where all 3 files happened to agree). New behavior: a pre-bump guard reads all 3 files and aborts with a clear `Versions desynced: package.json=X, plugin.json=Y, marketplace.json=Z` error if they disagree, and a post-bump verification loop confirms every file actually moved to `NEW`. Either failure exits non-zero so the surrounding release workflow halts instead of pushing a half-bumped commit. The manifests are also resynced as part of this release so the marketplace catches up: `0.3.157` → `0.3.162` for both `plugin.json` and `marketplace.json`.
+
 ## [0.3.161] — 2026-05-19
 
 ### Changed
