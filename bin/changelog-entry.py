@@ -149,11 +149,23 @@ def staged_version_pair(project: Path, rel: str) -> tuple[str | None, str | None
     return (head_m.group(1), staged_m.group(1))
 
 
+def has_marker(subject: str, body: str, marker: str) -> bool:
+    """True if [marker] appears as an end-of-line token in the commit message.
+
+    A bare substring check would mis-fire whenever a commit message *documents*
+    a marker (e.g. release notes that say "Use [skip-bump] when...") and the
+    hook would silently skip the bump. Requiring the marker at end-of-line
+    matches the existing project convention of trailing markers on the subject
+    line (e.g. `git commit -m "feat: foo [skip-bump]"`) and on body lines.
+    """
+    blob = f"{subject}\n{body}"
+    return bool(re.search(rf"(?m)\[{re.escape(marker)}\]\s*$", blob))
+
+
 def find_marker(subject: str, body: str) -> str | None:
     """Return the bump marker present in the commit message, if any."""
-    blob = f"{subject}\n{body}"
     for m in ("bump-major", "bump-minor", "allow-jump"):
-        if f"[{m}]" in blob:
+        if has_marker(subject, body, m):
             return m
     return None
 
@@ -252,7 +264,7 @@ def main() -> int:
         return 1
 
     marker = find_marker(subject, body)
-    skip_bump = "[skip-bump]" in subject or "[skip-bump]" in body
+    skip_bump = has_marker(subject, body, "skip-bump")
 
     # If the commit already stages a version change, the hook becomes a no-op
     # for the actual bump — but we still verify the staged delta is exactly

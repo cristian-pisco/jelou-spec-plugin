@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.163] — 2026-05-19
+
+### Fixed
+- `bin/changelog-entry.py` — version-bump markers used by the commit-msg hook now require **end-of-line placement** to be recognized. Previously the hook used a bare substring check, so any commit message that *documented* a marker inside its body (release notes, plan docs, ADRs explaining the workflow) silently activated the marker. The hardening commit that was supposed to ship as 0.3.163 was the visible victim: its body referenced the marker family while explaining the new guards, the hook detected an inline `skip-bump` substring, took the early-return path, and the release never bumped at all. New rule: markers are recognized only when they appear at end of line in the subject or body, matching the existing project convention (`git commit -m "feat: foo [skip-bump]"`). Verified against four scenarios: inline mention does **not** trigger; trailing-subject placement does. Applies to all four markers — the legacy `[skip-bump]` and the three guards added in this release (`[allow-jump]`, `[bump-minor]`, `[bump-major]`).
+
+### Added
+- Three controls layered on top of the drift guard added in 0.3.162 so the silent-manifest-freeze scenario cannot recur even on a clone that never ran the maintainer setup. (1) `npm install` now activates the commit-msg hook automatically — `package.json` declares a `prepare` script that invokes `bin/install-git-hooks.sh`, which itself was hardened to exit silently when run outside a git checkout (so end-user npm installs from a tarball do not error). (2) `tests/unit/version-sync.test.mjs` reads all three manifests and fails if their `version` fields disagree, catching drift inside a PR even when the contributor's clone has no commit-msg hook. (3) `bin/changelog-entry.py` gained an anti-jump guard: when a commit pre-stages a version change (the `bin/bump-version.sh` path or a manual edit), the hook now verifies the staged delta against HEAD — it must be exactly +1 patch, or +1 minor / +1 major when the matching `[bump-minor]` / `[bump-major]` marker is present, or any value when `[allow-jump]` is present. `[skip-bump]` no longer bypasses the guard, so it cannot be used to disguise a multi-version leap. Staged drift across the three files (different new versions) is reported with a per-file delta so the maintainer sees which file diverged. Combined effect: silent drift, no-hook clones, and skip-bump-disguised jumps all become loud failures at commit time, and CI catches drift even on clones where the hook was never installed.
+
 ## [0.3.162] — 2026-05-19
 
 ### Fixed
