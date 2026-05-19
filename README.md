@@ -15,6 +15,7 @@ Follows the conventions established by [OpenSpec](https://github.com/Fission-AI/
 - **Integrations**: Git worktree management and PR coordination in Phase 1; ClickUp and Slack MCP integrations in Phase 2.
 - **Ubiquitous language**: `/jlu-ubiquitous-language` discovers and curates the workspace's domain glossary across services, anchoring each term to the services where it's implemented and referenced.
 - **Architecture review**: `/jlu-architecture-review` surfaces deepening opportunities (single-service or cross-service) — refactors that turn shallow modules into deep ones — runs an interactive grilling loop on a chosen candidate, and lazily records ADRs when candidates are rejected with load-bearing reasons.
+- **Dev environment diagnose**: `/jlu-diagnose` reads recent failure events and a TMUX pane capture from your dev environment, dispatches a focused diagnoser agent to triage the failure, and proposes a structured fix (host or container) that you confirm before it runs. Failure patterns can be registered with `/jlu-add-failure-pattern` so the daemon picks them up on the next match.
 
 ## Prerequisites
 
@@ -90,6 +91,12 @@ Use the command palette with the `jlu-` namespace:
 
 # (Optional) Map your codebase first
 /jlu-map-codebase
+
+# Surface refactor candidates for a service (or --cross-service across all of them)
+/jlu-architecture-review <service-id>
+
+# Diagnose a failing service in your TMUX dev environment
+/jlu-diagnose <service-id>
 ```
 
 OpenCode also accepts bare `jlu-*` input (without slash). Example: `jlu-load-context` is normalized to `/jlu-load-context`.
@@ -194,6 +201,7 @@ OpenCode command definitions live in `.opencode/commands/`. All commands use the
 | `/jlu-daily-slack <sprint> #channel` | Generate and post a sprint-scoped daily summary to a Slack channel |
 | `/jlu-close-task` | Close task after PR merge — updates ClickUp, cleans worktrees |
 | `/jlu-rollback-phase` | Reset service worktrees to the last known-good phase state |
+| `/jlu-diagnose [name]` | Analyze a failing dev-environment service (TMUX pane + recent events) and propose a structured fix (host or container) |
 | `/jlu-architecture-review [<service-id>] [--cross-service]` | Surface deepening opportunities (single-service or cross-service); interactive grilling loop; lazy ADRs |
 | `/jlu-test-suite` | Run the current service's unit + integration tests with workers=1, report failures grouped by component (Controller, Service, Repository, etc.). Invoke before `/jlu-create-pr`. No arguments. |
 | `/jlu-ui-qa-run [task-slug]` | Boot affected services and run the Playwright E2E suite with bounded auto-fix loop and RAM/CPU worker gates |
