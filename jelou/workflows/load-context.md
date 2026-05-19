@@ -78,7 +78,6 @@ Glob for all task artifacts and organize them by category. Use the task director
 - `SPEC.md`, `TASKS.md`, `PROPOSAL.md`, `CLICKUP_TASK.json`
 
 **Per-service artifacts** (under `services/<service-id>/`):
-- `CONTEXT.md` — service-specific context and integration points
 - `phases/*.md` — phase execution files (Red/Green/Refactor details)
 - `uh/*.md` — user story files
 
@@ -177,7 +176,6 @@ Present the loaded context in this structured format:
 - <✅ or ❌> CLICKUP_TASK.json — <path>
 
 **Service: <service-id>**
-- <✅ or ❌> CONTEXT.md — <path>
 - Phases: <list of phase files with paths>
 - User Stories: <list of UH files with paths>
 

@@ -99,7 +99,6 @@ Core artifacts in `TASK_DIR`:
 - `SPEC.md`, `TASKS.md`, `PROPOSAL.md`, `CLICKUP_TASK.json`
 
 Per-service artifacts under `TASK_DIR/services/<service-id>/`:
-- `CONTEXT.md`
 - `phases/*.md`
 - `uh/*.md`
 

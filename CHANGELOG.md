@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.161] — 2026-05-19
+
+### Changed
+- `jelou/workflows/load-context.md` — removed stale `CONTEXT.md` references in two places: the per-service artifact bullet under Step 5 (Artifact Inventory) and the `<✅ or ❌> CONTEXT.md — <path>` line in the Step 8 presented inventory block. `CONTEXT.md` generation was removed in 0.3.0 (see CHANGELOG entry for 0.3.0 → "Removed: CONTEXT.md generation — duplicated information already in phase files and codebase knowledge files."), but the inventory still surfaced the file as `❌` for every service in every task, which read as a missing artifact instead of a deprecated one.
+- `jelou/workflows-opencode/load-context.md` — same cleanup applied to the OpenCode variant (Step 6 Artifact Inventory).
+- `README.md` — removed `CONTEXT.md` from the workspace directory tree under `specs/<dd-mm-yyyy>/<task-slug>/services/<service-id>/` so the documented filesystem layout matches what the plugin actually produces.
+
+No behavior change — purely doc/inventory hygiene. Tasks created after 0.3.0 (e.g. `jelou-apps`, `workflows-service` in recent reports) will no longer show a misleading `❌ CONTEXT.md` row when running `/jlu-load-context`.
+
 ## [0.3.160] — 2026-05-19
 
 ### Changed

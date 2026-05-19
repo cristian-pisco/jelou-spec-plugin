@@ -505,7 +505,6 @@ The plugin uses `.spec-workspace/` in the parent directory of your services as t
         TASKS.md           # YAML frontmatter exposes affected_services as structured data
         services/
           <service-id>/
-            CONTEXT.md
             phases/
             uh/
 ```
