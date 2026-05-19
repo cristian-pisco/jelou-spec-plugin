@@ -7,14 +7,20 @@ Properties:
   - Atomic: reads all three manifest versions first; aborts (exit 1) if they
     differ, so a partial drift can never compound silently.
   - Idempotent: if any manifest already has a staged version change, the bump
-    is skipped — re-running on the same commit attempt is a no-op.
+    is skipped — but the staged delta must still be exactly +1 patch from
+    HEAD, otherwise the commit is aborted (anti-jump guard).
   - Skips merges, rebases, cherry-picks, reverts, and amends so historical
     rewrites never touch the version.
-  - Honors a "[skip-bump]" marker in the commit subject or body.
+  - Honors a "[skip-bump]" marker in the commit subject or body — but the
+    anti-jump guard still runs so [skip-bump] cannot be used to disguise a
+    multi-version leap.
+  - Honors "[allow-jump]" / "[bump-minor]" / "[bump-major]" markers when
+    the maintainer is intentionally moving the version non-consecutively.
 
 Exit codes:
   0  bumped, skipped intentionally, or no-op
-  1  drift detected, message unparseable, or unexpected failure (aborts commit)
+  1  drift detected, message unparseable, jump without marker, or unexpected
+     failure (aborts commit)
 """
 from __future__ import annotations
 
@@ -77,6 +83,21 @@ def bump_patch(version: str) -> str:
     return f"{major}.{minor}.{int(patch) + 1}"
 
 
+def parse_semver(version: str) -> tuple[int, int, int]:
+    major, minor, patch = (int(p) for p in version.split("."))
+    return major, minor, patch
+
+
+def expected_next(parent: str, marker: str | None) -> str:
+    """Return the only version we'll accept as a successor to `parent`."""
+    maj, mn, pt = parse_semver(parent)
+    if marker == "bump-major":
+        return f"{maj + 1}.0.0"
+    if marker == "bump-minor":
+        return f"{maj}.{mn + 1}.0"
+    return f"{maj}.{mn}.{pt + 1}"
+
+
 def read_version(path: Path) -> str:
     m = VERSION_RE.search(path.read_text())
     if not m:
@@ -113,6 +134,28 @@ def staged_version_changed(project: Path, rel: str) -> bool:
     if not head_m or not staged_m:
         return False
     return head_m.group(1) != staged_m.group(1)
+
+
+def staged_version_pair(project: Path, rel: str) -> tuple[str | None, str | None]:
+    """Return (parent_version, staged_version) for `rel`, or (None, None)."""
+    head = git_show(project, f"HEAD:{rel}")
+    staged = git_show(project, f":{rel}")
+    if head is None or staged is None:
+        return (None, None)
+    head_m = VERSION_RE.search(head)
+    staged_m = VERSION_RE.search(staged)
+    if not head_m or not staged_m:
+        return (None, None)
+    return (head_m.group(1), staged_m.group(1))
+
+
+def find_marker(subject: str, body: str) -> str | None:
+    """Return the bump marker present in the commit message, if any."""
+    blob = f"{subject}\n{body}"
+    for m in ("bump-major", "bump-minor", "allow-jump"):
+        if f"[{m}]" in blob:
+            return m
+    return None
 
 
 def in_special_state(project: Path) -> bool:
@@ -208,10 +251,60 @@ def main() -> int:
         print("changelog-entry: empty commit subject — aborting.", file=sys.stderr)
         return 1
 
-    if "[skip-bump]" in subject or "[skip-bump]" in body:
+    marker = find_marker(subject, body)
+    skip_bump = "[skip-bump]" in subject or "[skip-bump]" in body
+
+    # If the commit already stages a version change, the hook becomes a no-op
+    # for the actual bump — but we still verify the staged delta is exactly
+    # +1 patch (or +1 minor/major if the matching marker is present). This
+    # blocks the "skip-bump + manually jump 5 versions ahead" pattern that
+    # let the marketplace silently freeze at 0.3.157 in the past.
+    staged_pairs = {rel: staged_version_pair(project, rel) for rel in VERSION_FILES}
+    if any(parent != staged for parent, staged in staged_pairs.values()
+           if parent is not None and staged is not None):
+        # Confirm all three files agree on parent and on staged separately.
+        parents = {p for p, _ in staged_pairs.values() if p is not None}
+        stageds = {s for _, s in staged_pairs.values() if s is not None}
+        if len(parents) > 1 or len(stageds) > 1:
+            detail = "\n".join(
+                f"  {rel}: {p} -> {s}" for rel, (p, s) in staged_pairs.items()
+            )
+            print(
+                "changelog-entry: staged version change is not uniform across "
+                "manifests — aborting commit.\n"
+                f"{detail}\n"
+                "Stage the same version on all three files, then re-commit.",
+                file=sys.stderr,
+            )
+            return 1
+
+        parent = next(iter(parents))
+        staged = next(iter(stageds))
+        if marker == "allow-jump":
+            return 0
+        try:
+            target = expected_next(parent, marker)
+        except ValueError:
+            print(f"changelog-entry: invalid semver in HEAD ({parent}).", file=sys.stderr)
+            return 1
+        if staged != target:
+            marker_hint = (
+                "Add `[allow-jump]` to the commit message if this skip is "
+                "intentional, or `[bump-minor]` / `[bump-major]` for the "
+                "corresponding semver step."
+            )
+            print(
+                f"changelog-entry: refusing to commit a version jump.\n"
+                f"  HEAD version: {parent}\n"
+                f"  Staged:       {staged}\n"
+                f"  Expected:     {target} (marker: {marker or 'none'})\n"
+                f"{marker_hint}",
+                file=sys.stderr,
+            )
+            return 1
         return 0
 
-    if any(staged_version_changed(project, rel) for rel in VERSION_FILES):
+    if skip_bump:
         return 0
 
     versions = {rel: read_version(project / rel) for rel in VERSION_FILES}
@@ -227,7 +320,11 @@ def main() -> int:
         return 1
 
     old = next(iter(distinct))
-    new = bump_patch(old)
+    try:
+        new = expected_next(old, marker)
+    except ValueError:
+        print(f"changelog-entry: invalid semver in manifest ({old}).", file=sys.stderr)
+        return 1
 
     try:
         for rel in VERSION_FILES:

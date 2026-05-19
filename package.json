@@ -18,6 +18,7 @@
   "scripts": {
     "test": "node --test tests/unit/*.test.mjs",
     "sync-agents": "node bin/sync-agents.mjs",
-    "check-sync": "node bin/sync-agents.mjs --check"
+    "check-sync": "node bin/sync-agents.mjs --check",
+    "prepare": "bash bin/install-git-hooks.sh"
   }
 }
