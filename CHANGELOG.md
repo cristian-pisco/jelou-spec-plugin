@@ -1,5 +1,13 @@
 # Changelog
 
+## [unreleased]
+
+### Added
+- **Tracing foundation (Phase 1 of harness-engineering observability layer).** New `bin/lib/trace/{schema,emitter,reader}.mjs` modules and three CLI wrappers (`bin/trace-start-span.mjs`, `bin/trace-end-span.mjs`, `bin/trace-reconcile.mjs`) that emit and read a workspace-local JSONL span store at `<WORKSPACE>/.traces/spans.jsonl`. The emitter is stdlib-only, ULID-based, payload-capped at 3500 bytes (under `PIPE_BUF` for atomic appends), with a `TRACE_DISABLED=1` short-circuit and a stderr fallback when the store is unwritable. The reconciler sweeps orphan spans older than 30 minutes (override via `TRACE_RECONCILE_AFTER_MS`). New reference doc at `jelou/references/tracing.md`. No workflow is instrumented yet (Phase 2) and no analyzer/suggester ships (Phase 3) — this release is foundation only. Agents are untouched.
+
+### Changed
+- `.gitignore` now ignores `.traces/` at the workspace level.
+
 ## [0.3.173] — 2026-05-23
 
 ### Internal
