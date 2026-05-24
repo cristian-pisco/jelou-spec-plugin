@@ -102,3 +102,19 @@ describe('refine-task workflow — trace instrumentation', () => {
     assert.match(wf, /WORKFLOW_SPAN_ID/);
   });
 });
+
+describe('create-pr workflow — trace instrumentation', () => {
+  const wf = read('jelou/workflows/create-pr.md');
+
+  test('Step 0.5 runs trace-reconcile.mjs', () => {
+    assert.match(wf, /trace-reconcile\.mjs/);
+  });
+
+  test('opens workflow-level span with --name create_pr', () => {
+    assert.match(wf, /trace-start-span\.mjs[\s\S]*?--name create_pr/);
+  });
+
+  test('closes the workflow span', () => {
+    assert.match(wf, /trace-end-span\.mjs/);
+  });
+});

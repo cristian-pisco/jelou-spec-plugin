@@ -7,6 +7,25 @@
 
 ---
 
+## Step 0 — Trace bootstrap
+
+> **Tracing tolerance**: When `TRACE_DISABLED=1`, every span_id is an empty string and downstream calls become no-ops.
+
+1. **Sweep orphans from any prior interrupted run** (idempotent):
+   ```bash
+   node "${PLUGIN_ROOT:-.}/bin/trace-reconcile.mjs"
+   ```
+
+2. **Open the workflow-level span**:
+   ```bash
+   WF_OUT=$(node "${PLUGIN_ROOT:-.}/bin/trace-start-span.mjs" \
+     --name create_pr --scope task --task "$TASK_SLUG")
+   WORKFLOW_SPAN_ID=$(echo "$WF_OUT" | jq -r '.span_id // ""')
+   WORKFLOW_TRACE_ID=$(echo "$WF_OUT" | jq -r '.trace_id // ""')
+   ```
+
+---
+
 ## Principles
 
 > **Idempotent. Verifiable. No surprises in the diff.**
@@ -698,3 +717,18 @@ Present the results:
 | SPEC.md (read-only) | `<WORKSPACE_PATH>/specs/<date>/<task-slug>/SPEC.md` |
 | PROPOSAL.md (read-only) | `<WORKSPACE_PATH>/specs/<date>/<task-slug>/PROPOSAL.md` |
 | services.yaml (read-only) | `<WORKSPACE_PATH>/registry/services.yaml` |
+
+---
+
+## Step N — Close workflow span
+
+Determine `$WORKFLOW_OUTCOME`:
+- `ok` — PRs created successfully
+- `blocked` — workflow halted (uncommitted changes, push failures, gh CLI missing)
+- `failed` — irrecoverable error
+
+Run:
+```bash
+node "${PLUGIN_ROOT:-.}/bin/trace-end-span.mjs" \
+  --span "$WORKFLOW_SPAN_ID" --status "$WORKFLOW_OUTCOME"
+```
