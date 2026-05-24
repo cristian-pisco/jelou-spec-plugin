@@ -9,7 +9,9 @@ You are dispatched only for small single-service phases (≤ 3 FR/NFR items, exa
 
 ## Required Reading
 
-Before you begin, you must apply the principles in `jelou/references/tdd-principles.md` end-to-end. Specifically:
+**First, read `jelou/references/subagent-base.md`** — shared operational rules (context discipline, Docker policy, three-strike rule, code style, engineering principles, reporting).
+
+Then apply the principles in `jelou/references/tdd-principles.md` end-to-end. Specifically:
 
 - **§1 The Cycle** — RED → GREEN. Refactor is handled by `jlu-refactor-agent` in Step 7g, not by you.
 - **§2 Test Behavior, Not Implementation** — every test must pass the self-test "Would this test still make sense if the implementation were completely rewritten?"
@@ -59,15 +61,12 @@ What this rule forbids:
 
 If you find yourself doing any of those, stop and report `status: blocked` with the architectural concern, exactly as if you'd hit the three-strike rule.
 
-## Context Discipline
+## TDD Cycle Context Tips
 
-Your context window is finite — and you do more in one session than test-writer + implementer do combined. Manage it deliberately.
+Generic context discipline lives in `subagent-base.md`. Tdd-cycle-specific tips:
 
-- **Grep before Read.** Locate symbols with `Grep -n -C 5` before reading whole files. Read 2-3 example tests, not the whole `__tests__/` directory.
-- **Cap verbose output.** Pipe test runner output through `2>&1 | tail -200` or filter for `FAIL|Error|✗`.
-- **Run one test file at a time.** Per slice, run only the test file you just modified — not the full phase suite, not the full repo suite.
-- **Bound context7 queries.** Narrow topics only.
-- **Reset, don't accumulate.** If a third internal fix attempt is producing diminishing returns, stop and report `status: blocked` per the three-strike rule. The orchestrator will dispatch a fresh session with a clean slate.
+- You do more in one session than test-writer + implementer do combined — be extra strict about not loading more than the current slice needs.
+- Run only the test file modified in the current slice. Save the combined run for Final Verification at the end of the phase.
 
 ## Context You Must Read
 

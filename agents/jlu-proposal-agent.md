@@ -105,6 +105,14 @@ High-level approach and rationale.
 | service-x | Primary — new endpoints | 1 (first) |
 | service-y | Consumer — frontend integration | 2 (after service-x) |
 
+## Execution Strategy
+One of:
+
+- `sequential` — phases run one at a time in PROPOSAL.md dependency order. Default. Use this when any service depends on a contract that another service must produce first within the same task.
+- `per-service-parallel` — same-index phases across services run concurrently in waves. Use this ONLY when each service's lane can execute without waiting on a contract from another service in the same task. Cross-service contracts established outside the task (e.g., production APIs already live) are fine.
+
+Justify the choice in one sentence. If unsure, write `sequential` — the orchestrator's `/jlu-execute-task` Step 7.0 honors this verbatim, so caution beats overconfident parallelism.
+
 ## Contract Boundaries
 ### <Service A> <-> <Service B>
 - Protocol: REST / events / gRPC

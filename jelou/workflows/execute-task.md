@@ -282,7 +282,115 @@ The orchestrator no longer runs the full test suite — Step 8b is reduced to an
 
 ## Step 7 — Execute Phases
 
-Read the phases from PROPOSAL.md in dependency order. For each phase:
+Read the phases from PROPOSAL.md in dependency order. The orchestrator no longer iterates phases as a flat sequence — it builds a **wave plan** first (per-service lanes), then iterates wave-by-wave with cross-service parallelism inside each wave (H7).
+
+### 7.0. Wave Planning (cross-phase parallelism gate)
+
+Before the per-phase loop starts, decide whether this task runs sequentially (legacy) or in per-service waves.
+
+#### Detect the strategy
+
+1. Read PROPOSAL.md and look for a `## Execution Strategy` section. Recognized values:
+   - `sequential` (or missing section) — current behavior. Phases run one at a time in PROPOSAL.md order. No parallelism beyond what 7d/7e already do for multi-service-per-phase fan-out.
+   - `per-service-parallel` — opt-in. Phases are grouped by their owning service, and same-index phases from different services run concurrently (one orchestrator message with multiple `Agent` calls).
+2. If `Execution Strategy` is missing, default to `sequential`. The proposal-agent SHOULD emit this section explicitly; treat its absence as a conservative default, not as opt-in.
+
+**Why opt-in.** Per-service parallelism is safe only when services do not share cross-service contracts that gate one another. If service B's Phase 02 depends on service A's Phase 01 emitting an API, running them in the same wave would race. The proposal-agent is the right place to make that call — it has full visibility into the contracts. The orchestrator just honors the decision.
+
+#### Build the wave plan
+
+Delegated to `bin/plan-phase-waves.mjs` — deterministic and unit-tested, so the orchestrator never improvises the grouping logic.
+
+```bash
+node <plugin-root>/bin/plan-phase-waves.mjs \
+  --task-dir="<TASK_DIR>" \
+  --strategy="<STRATEGY>" \
+  --phase-parallelism="<PHASE_PARALLELISM>"
+```
+
+**Output (single JSON object on stdout)**:
+
+```json
+{
+  "strategy": "sequential" | "per-service-parallel",
+  "phase_parallelism": <N>,
+  "lanes": { "<service-id>": [{ "phase": "01", "phase_file": "<abs path>" }, ...] },
+  "waves": [
+    [{ "service": "<service-id>", "phase": "<NN>", "phase_file": "<abs path>" }, ...],
+    ...
+  ],
+  "summary": "<one-line summary suitable for terminal>"
+}
+```
+
+Parse the JSON once, store as `WAVE_PLAN`, and iterate `WAVE_PLAN.waves` for the rest of Step 7. The script handles:
+
+- **Sequential**: one phase per wave, services alphabetical, phases lex within service.
+- **Per-service-parallel**: zip per-service lanes by index, then chunk each wave by `PHASE_PARALLELISM` cap when a wave's phase count exceeds the cap.
+- **Phase id parsing**: filenames like `03a-name.md` yield `phase=03a` so sub-phases (3a, 3b, 3c) stay in order.
+
+#### Concurrency cap
+
+Apply `PHASE_PARALLELISM` (from Step 6.4) as a cap on the number of phases dispatched simultaneously within a wave:
+
+- If a wave has K phases and `PHASE_PARALLELISM = P` with `K > P`, split the wave into chunks of size P, processed serially.
+- Default `PHASE_PARALLELISM = 1` keeps the wave plan but serializes each wave's phases — equivalent to sequential, just iterated differently. The developer (or a future autotune) can bump it via `JLU_PHASE_PARALLELISM`. The runtime clamp is `1..N` where `N = len(AFFECTED_SERVICES)`.
+
+#### Per-wave execution
+
+For each wave:
+
+1. **Dispatch all phases in the wave concurrently** by emitting one orchestrator message that contains all the wave's Agent calls (test-writer, tdd-cycle, etc. — whichever each phase needs at this stage). See `jelou/references/parallel-dispatch.md` for the exact concurrency pattern, scope-isolation rules, and conflict-detection logic on return.
+2. **Wait for every phase in the wave to reach `Status: done` (or `failed`/`skipped`) before starting the next wave.** This is the synchronization point. A phase that errors blocks only its lane — the wave does not move on until every phase in it reaches a terminal state.
+3. **Within each phase**, steps 7a–7l below apply unchanged. Whether you run them sequentially per phase or in parallel across phases is governed by the wave-level dispatch only; the per-phase logic is identical.
+
+#### When to abort the wave
+
+If a phase in a wave hits the 5-retry pause (Escalation Format), the orchestrator pauses the entire workflow at that wave. The other phases in the wave that completed successfully are already committed; their state in TASKS.md is `done`. When the user resumes (via the question response), the failed phase re-enters its TDD cycle. Successful phases in the same wave are NOT re-run.
+
+#### Logging
+
+At the start of Step 7, log a one-line plan summary:
+
+- `Sequential: <total-phases> phases, <N> services, PHASE_PARALLELISM=<P>.`
+- `Per-service parallel: <total-phases> phases across <N> service lanes (max <MAX_LANE> phases), <MAX_LANE> waves, PHASE_PARALLELISM=<P>.`
+
+Then, at the start of each wave:
+
+- `Wave <i>/<total>: <K> phase(s) — <list of "<service>:<NN>" pairs>.`
+
+### 7a. Report Persistence Discipline (context-saturation guard)
+
+For every sub-agent dispatched within this Step 7 loop (`jlu-test-writer`, `jlu-implementer`, `jlu-tdd-cycle`, `jlu-refactor-agent`, `jlu-qa-agent`, `jlu-build-validator`), the orchestrator MUST follow this protocol to keep its own context window bounded across an N-phase task:
+
+1. **Receive the agent's full report** as the tool result. Parse the structured sections immediately.
+2. **Persist the full report to disk** at `<TASK_DIR>/services/<service-id>/phases/<NN>-reports/<agent-name>-<round>.md`. Round suffix is `1` for the first dispatch in this phase, `2` for the first retry, etc. Create the parent directory on first write.
+3. **Keep only a structured digest in the orchestrator's working memory** for downstream gating decisions:
+
+   ```json
+   {
+     "agent": "jlu-implementer",
+     "phase": "03a",
+     "service": "api-gateway-service",
+     "status": "GREEN",
+     "test_command": "<command>",
+     "files_modified_count": <N>,
+     "files_modified": ["<path>", ...],
+     "tests_written_count": <N>,
+     "refactor_candidates_present": true | false,
+     "deviations_present": true | false,
+     "test_objections_present": true | false,
+     "report_path": "<TASK_DIR>/services/.../<NN>-reports/jlu-implementer-1.md"
+   }
+   ```
+
+   Capture only the fields that subsequent steps gate on (`PHASE_IS_TRIVIAL`, refactor skip, additive-only check). The full prose stays on disk for audit; the orchestrator does NOT keep it in context.
+
+4. **When a downstream step needs the full report** (e.g., per-phase QA needs to see refactor candidate detail; final QA at 8c needs implementer file lists across all phases), re-read the report from disk on demand instead of relying on conversation history. This makes the cost N reads instead of N reports persistently held.
+
+5. **Failure-context recycling**: when retrying a failed agent (up to 5 attempts), the orchestrator passes only the structured digest + the last 50 lines of the previous attempt's failure output, not the full prior report. The agent reads its own predecessor's full report from disk if it needs more context.
+
+**Why this matters.** Each agent report is 500-2000 tokens. A 10-phase task with 4 agents per phase accumulates 20-80k tokens of report prose in orchestrator context — enough to push past the working window on Opus and force compaction mid-task. The persist-and-digest pattern caps the orchestrator's per-phase working-memory increment at ~200 tokens (structured digest) instead of ~5000 tokens (full report bundle).
 
 ### 7b. Update Phase Status
 
@@ -300,27 +408,64 @@ Tests, build, lint, and format all run on the host runtime against this path —
 
 ### 7c.1. Phase Mode Classification
 
-Determine whether this phase runs in **vertical** mode (one combined `jlu-tdd-cycle` agent doing RED→GREEN per FR) or **horizontal** mode (separate `jlu-test-writer` then `jlu-implementer`). The choice is governed by `tdd-cycle.md` "Agent Separation" and `tdd-principles.md` §3.
+Determine whether this phase runs in **docs** mode (no TDD — direct commit of documentation edits), **vertical** mode (one combined `jlu-tdd-cycle` agent doing RED→GREEN per FR), or **horizontal** mode (separate `jlu-test-writer` then `jlu-implementer`). The choice is delegated to `bin/classify-phase.sh mode` — the orchestrator no longer counts FR/NFR bullets inline or runs awk against frontmatter.
 
-1. Count requirements in the phase file:
-   ```bash
-   FR_NFR_COUNT=$(grep -cE '^[[:space:]]*[-*][[:space:]]+\*{0,2}(FR|NFR)-[0-9]+' <PHASE_FILE> || echo 0)
-   ```
-   This counts top-level `- FR-N` or `- NFR-N` bullet entries in the requirements section.
-2. Count services affected by this specific phase (not the whole task — just the services whose `phases/<phase>.md` was provided to this iteration).
-3. Set `PHASE_MODE`:
-   - `vertical` if `FR_NFR_COUNT <= 3` AND `services_in_phase == 1`.
-   - `horizontal` otherwise.
-4. Optional override: if the phase file's frontmatter or a `Mode:` line under requirements explicitly sets `mode: horizontal`, honor it (use case: a small phase where the developer wants the dispute mechanism). Never honor `mode: vertical` for a phase that flunks the size gate — the gate is the safety, not the override.
-5. Log to terminal:
-   - `Phase <NN> mode: vertical (<FR_NFR_COUNT> FR/NFR, 1 service) — dispatching jlu-tdd-cycle.`
-   - `Phase <NN> mode: horizontal (<FR_NFR_COUNT> FR/NFR, <K> services) — dispatching jlu-test-writer then jlu-implementer.`
+**Invocation**:
+
+```bash
+CLASSIFY_PHASE_FILE="<PHASE_FILE>" \
+CLASSIFY_SERVICES_IN_PHASE="<K>" \
+<plugin-root>/bin/classify-phase.sh mode
+```
+
+**Output (key=value)**:
+
+- `mode=docs|vertical|horizontal`
+- `fr_nfr_count=<N>`
+- `frontmatter_override=docs|vertical|horizontal|trivial|none`
+- `docs_validation=passed|failed|n/a`
+- `docs_rejection_reason=<verb>` (only when override was `docs` and validation failed)
+- `reason=size_gate|frontmatter_override|frontmatter_override_validated|docs_override_rejected|vertical_override_rejected_by_size_gate`
+
+The script enforces:
+
+- **Docs mode** requires explicit `**Mode: docs**` / `mode: docs` frontmatter AND zero code-change verbs (`implement`, `add endpoint`, `wire`, `inject`, `migrate`, `handler`, `controller`, `service`, `module`) in the requirements section. Heuristic-only docs detection is forbidden — the orchestrator cannot promote a phase to docs from inference.
+- **Vertical mode** threshold: `fr_nfr_count ≤ 5` AND `services_in_phase == 1`. Above either: `horizontal`.
+- **Mode: vertical** frontmatter override is rejected when the size gate disagrees (returns `horizontal` + `reason=vertical_override_rejected_by_size_gate`).
+- **Mode: horizontal** frontmatter override is always honored (developers can opt into the dispute mechanism).
+
+If `mode=docs`, skip the vertical/horizontal TDD path and jump to **Step 7df** (Docs Path).
+
+Log to terminal:
+
+- `Phase <NN> mode: docs (<N> doc requirements, <K> service(s)) — skipping TDD pipeline, going to commit-only path.`
+- `Phase <NN> mode: vertical (<N> FR/NFR, 1 service) — dispatching jlu-tdd-cycle.`
+- `Phase <NN> mode: horizontal (<N> FR/NFR, <K> services) — dispatching jlu-test-writer then jlu-implementer.`
 
 **Store**: `PHASE_MODE`, `FR_NFR_COUNT`.
 
+### 7df. Docs Path (docs mode only)
+
+**Skip this step unless `PHASE_MODE == docs`.** For docs phases, the orchestrator does NOT dispatch test-writer, implementer, refactor, per-phase QA, or build-validator. The developer (or the parent orchestrator in nested-execution mode) is expected to have already made the documentation edits on the task branch before invoking execution; the orchestrator's job here is to scope-check and commit them.
+
+1. Capture the current diff on the task branch:
+   ```bash
+   cd <SERVICE_SOURCE_PATH>
+   git diff --name-only HEAD
+   ```
+2. **Scope check** (mirrors Step 7j's intent but enforces docs-only): every file in the diff MUST match a documentation extension or path: `.md`, `.mdx`, `.txt`, `.rst`, `README*`, `CHANGELOG*`, files under `docs/`, `verification.md`. If any non-doc file appears, abort with:
+
+   > "Phase <NN> declared `mode: docs` but the diff contains code changes: `<file-list>`. Either remove the non-doc edits or change the phase's mode to vertical/horizontal."
+
+3. If the diff is empty, abort: `Phase <NN> declared mode: docs but the working tree contains no documentation changes. Make the edits or remove the phase.`
+4. Stage and commit using Step 7j's commit procedure but with `<type> = docs`. The commit message body still references `Phase <NN> of production/<TASK_SLUG>`.
+5. Skip refactor (7g), per-phase QA (7h), and build-validator (7k) for docs phases — they have nothing to evaluate. Jump straight to Step 7l (Complete Phase) after the commit lands.
+
+Log: `Phase <NN> docs path complete — <N> doc files committed.`
+
 ### 7d. TDD Red — Spawn Test Writer (horizontal mode only)
 
-**If `PHASE_MODE == vertical`, skip 7d AND 7e entirely — both are replaced by 7de.**
+**If `PHASE_MODE == vertical`, skip 7d AND 7e entirely — both are replaced by 7de. If `PHASE_MODE == docs`, skip all of 7d-7k — the docs path at 7df handles the phase.**
 
 
 
@@ -362,21 +507,22 @@ Spawn `jlu-implementer` agent with model: **MODEL_CONFIG.code** (default: sonnet
 - **Task**: Implement the minimum code to make all tests pass.
 - **Output**: Implementation file paths and a summary.
 
-**Post-Green lint/format**:
-After the implementer finishes and tests are green, run lint/format on **phase-changed files only** — never against the whole repo, because reformatting unrelated files would trip the Step 7j scope check.
+**Post-Green lint/format** (delegated to `bin/format-changed-files.sh`):
 
-1. Build `CHANGED_FILES` from the union of:
-   - The implementer's `Files Modified` artifacts for this phase.
-   - The test-writer's `Tests Written` artifacts for this phase.
-   If `CHANGED_FILES` is empty (no files declared), skip the format step and continue to Green verification.
-2. Detect the format command in priority order:
-   a. An explicit "Format" or "Lint" command in CONVENTIONS.md.
-   b. A `format` or `lint:fix` script in `package.json` (run via `npm run <script> -- <CHANGED_FILES>` if the script supports file arguments; otherwise skip this option).
-   c. Default for JS/TS services: `npx eslint --fix` then `npx prettier --write`.
-   If none of the above is detectable (e.g., a Python or Go service with no convention noted), log `No format command detected for <service-id>, skipping post-Green format.` and continue.
-3. Run the detected command(s) against `CHANGED_FILES` only, on the host runtime:
-   `<format-command> <CHANGED_FILES>`
-4. Re-run ONLY the phase test files to confirm Green is maintained after formatting changes.
+The orchestrator no longer decides which format command to run — that detection chain (CONVENTIONS.md → package.json scripts → JS/TS default → skip) lives in the script. One Bash invocation, deterministic.
+
+1. Build `CHANGED_FILES` from the union of the implementer's `Files Modified` and the test-writer's `Tests Written` (newline-separated). If empty, the script will return `status=skip reason=no_files` — no harm in still calling it, but you can also short-circuit.
+2. Invoke:
+   ```bash
+   FORMAT_SOURCE_PATH="<SERVICE_SOURCE_PATH>" \
+   FORMAT_CHANGED_FILES="$(printf '%s\n' <file-1> <file-2> ...)" \
+   FORMAT_CONVENTIONS="<WORKSPACE_PATH>/services/<service-id>/codebase/CONVENTIONS.md" \
+   <plugin-root>/bin/format-changed-files.sh
+   ```
+3. Parse the key=value output:
+   - `status=ok` + `command=<cmd>` + `files_count=<N>` — format ran. Continue to Green verification, but treat this as "files may have been modified" — re-run the phase test files to confirm Green is maintained.
+   - `status=skip` + `reason=no_files|no_command_detected` — nothing to do; continue without re-running tests.
+   - `status=failed` + `reason=format_failed` — the format command itself errored. Log the stderr, do NOT retry; surface the failure and continue to Green verification (the failure is informational for the developer, not a phase blocker on its own).
 
 **Green verification (trust-the-report)**: the implementer already ran phase tests in its own session and reports `Status` + `Command`. Don't re-run in the orchestrator unless the report is incomplete or post-Green lint/format modified files without re-verification.
 
@@ -413,34 +559,43 @@ When `PHASE_MODE == vertical`, dispatch a single `jlu-tdd-cycle` agent with mode
 2. If the report includes `Status: GREEN` AND a `Command:` line AND a slice table where every row is `GREEN`: trust the result. Continue.
 3. If any of those is missing, OR the report flags `status: blocked`: re-run the test files listed in `Tests Written` locally (`<command>` on the host) and validate. If the local re-run shows red tests that the agent reported green, treat this as a phase failure and follow the standard retry path (spawn a fresh `jlu-tdd-cycle` with accumulated failure context, retry up to 5 times; pause and notify user after the 5th attempt).
 
-**Post-Green lint/format** (same as 7e for horizontal mode):
-After the agent finishes and tests are green, run lint/format on phase-changed files only — never against the whole repo. Build `CHANGED_FILES` from the union of the agent's `Files Modified` and `Tests Written` artifacts. Apply the same format-command detection chain as in 7e (CONVENTIONS.md > `package.json` scripts > default eslint+prettier for JS/TS > skip silently for Python/Go). Run on the host:
-   `<format-command> <CHANGED_FILES>`
-Re-run ONLY the phase test files after formatting to confirm Green is maintained.
+**Post-Green lint/format**: invoke `bin/format-changed-files.sh` exactly as in Step 7e. `CHANGED_FILES` here is the union of the `jlu-tdd-cycle` agent's `Files Modified` + `Tests Written`. Same output handling (`status=ok` re-runs phase tests, `status=skip` continues, `status=failed` surfaces).
 
 ### 7e.1 — Phase Triviality Classification
 
-After Green is verified, classify the phase to gate downstream agents (refactor, per-phase QA, build-validator).
+After Green is verified, classify the phase to gate downstream agents (refactor, per-phase QA, build-validator). Delegated to `bin/classify-phase.sh trivial` — the orchestrator no longer runs `git diff --shortstat` + grep loops inline.
 
-1. Capture the phase diff:
-   ```bash
-   cd <SERVICE_SOURCE_PATH> && git diff --shortstat HEAD
-   cd <SERVICE_SOURCE_PATH> && git diff --name-only HEAD
-   ```
-2. Set `PHASE_IS_TRIVIAL = true` if **all** of the following hold:
-   - Total lines changed (insertions + deletions) ≤ 20
-   - Files changed ≤ 3
-   - The diff contains none of: `package.json`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `tsconfig*.json`, `*.d.ts`, files under any `migrations/` directory
-   - The implementer did not report new exported symbols, new module imports, or new TypeScript interfaces/types
-   - Single service is affected by this phase
+**Invocation**:
 
-   Otherwise: `PHASE_IS_TRIVIAL = false`.
+```bash
+CLASSIFY_SOURCE_PATH="<SERVICE_SOURCE_PATH>" \
+CLASSIFY_SERVICES_IN_PHASE="<K>" \
+CLASSIFY_FRONTMATTER_TRIVIAL="<0|1>" \
+<plugin-root>/bin/classify-phase.sh trivial
+```
 
-3. Log to terminal:
-   - If trivial: `Phase <NN> classified as trivial — skipping refactor (7g), per-phase QA (7h), and build-validator (7k).`
-   - If not trivial: `Phase <NN> non-trivial — running full per-phase pipeline.`
+Set `CLASSIFY_FRONTMATTER_TRIVIAL=1` when the Step 7c.1 result returned `frontmatter_override=trivial`. Otherwise pass `0`.
 
-**Store**: `PHASE_IS_TRIVIAL`
+**Output (key=value)**:
+
+- `trivial=true|false`
+- `lines_changed=<N>`, `files_changed=<N>`
+- `has_lockfile`, `has_migration`, `has_dts`, `has_tsconfig`
+- `reason=size_gate|frontmatter_override|frontmatter_override_downgraded`
+- `downgrade_reason=<list>` (only when frontmatter override was downgraded)
+
+The script enforces:
+
+- **Default classifier**: `trivial=true` only when `lines ≤ 20 AND files ≤ 3 AND no lockfile/migration/d.ts/tsconfig AND services_in_phase == 1`.
+- **Frontmatter override** (`mode: trivial`): accepted unless safety bounds exceeded (`lines > 50` OR any of lockfile/migration/d.ts). On exceedance, the script returns `trivial=false` + `reason=frontmatter_override_downgraded` so the orchestrator falls back to the full pipeline.
+
+Log to terminal:
+
+- If trivial: `Phase <NN> classified as trivial — skipping refactor (7g), per-phase QA (7h), and build-validator (7k).`
+- If not trivial: `Phase <NN> non-trivial — running full per-phase pipeline.`
+- If a frontmatter override was downgraded: `Phase <NN> trivial override rejected — <downgrade_reason>.`
+
+**Store**: `PHASE_IS_TRIVIAL` (from `trivial` field).
 
 ### 7f. Test Dispute Resolution (Decision #5) — horizontal mode only
 
@@ -460,6 +615,8 @@ If the implementer flags that a test is incorrect:
 ### 7g. Refactor Pass
 
 **Skip if `PHASE_IS_TRIVIAL`.** Trivial phases (≤ 20 LOC, ≤ 3 files, no lockfile/migration/exported-symbol changes) don't earn the refactor pass overhead.
+
+**Skip if the implementer (horizontal) or tdd-cycle (vertical) report's `Refactor Candidates` section is empty or contains only `None`.** No candidates means there is nothing for the refactor agent to act on — dispatching it would burn a sub-agent dispatch to return `NO_CHANGES`. Log `Phase <NN> refactor skipped — implementer reported no candidates.` and continue to 7h.
 
 Otherwise, spawn `jlu-refactor-agent` with model: **MODEL_CONFIG.code** (default: sonnet). The agent applies surgical refactors guided by `jelou/references/tdd-principles.md` §7, keeping tests green at every step.
 
@@ -484,6 +641,21 @@ No re-run of the phase tests is needed at the orchestrator level — the refacto
 ### 7h. Per-Phase QA (Decision #13)
 
 **Skip if `PHASE_IS_TRIVIAL`.** Comprehensive QA still runs at Step 8c against the full task scope.
+
+**Skip if the phase is purely additive AND the implementer reported no issues.** A phase is purely additive when:
+
+1. `bin/classify-phase.sh additive` returns `additive=true`. Invocation:
+   ```bash
+   CLASSIFY_SOURCE_PATH="<SERVICE_SOURCE_PATH>" \
+   <plugin-root>/bin/classify-phase.sh additive
+   ```
+   The script computes `git diff --diff-filter=M` and `--diff-filter=D` and returns `additive=true` only when both are empty. Output also includes `modified_count` and `deleted_count` for logging.
+2. The implementer's report (horizontal) or tdd-cycle report (vertical) lists no `Test Objections` AND no `Deviations from Expected Approach`. Both fields must be either absent or contain only the literal "None".
+3. The refactor agent — if it ran — returned `Status: NO_CHANGES` (or 7g was skipped because there were no candidates).
+
+The reasoning: per-phase QA's primary value is catching convention drift and pattern violations in *modified* code. For purely additive code that ran clean through implementer + refactor, the static review is duplicate effort with the final QA at Step 8c (which sees the same files). The risk of deferral is bounded — Step 8c catches any issues before the task transitions to `ready_to_publish`.
+
+Log `Phase <NN> per-phase QA skipped — purely additive, implementer clean, deferred to final QA (8c).` and pass the phase's `Files Modified` list through to a `DEFERRED_QA_PHASES` accumulator that Step 8c reads.
 
 Otherwise, spawn `jlu-qa-agent` with model: **MODEL_CONFIG.code** (default: sonnet) for a static per-phase review:
 - Phase file with requirements
@@ -512,56 +684,71 @@ The orchestrator edits TASKS.md directly via `Edit` — no agent dispatch needed
    - Add: test pass/fail counts (from the Green verification step), artifacts list (file paths from test-writer + implementer reports), and any deviations noted by the implementer.
 3. The commit SHA is appended in Step 7l after the inline commit in Step 7j; do not record it here.
 
-### 7j. Git Commit (inline)
+### 7j. Git Commit (batched via finalize-phase.sh)
 
-The orchestrator stages and commits directly via `Bash` — no agent dispatch (stage + commit are deterministic).
+The orchestrator delegates pre-flight, scope check, stage, commit, and rev-parse to `<plugin-root>/bin/finalize-phase.sh` — one Bash dispatch per phase instead of five. The script is deterministic shell; no agent dispatch.
 
-**Pre-flight (mandatory)**:
-
-```bash
-cd <SERVICE_SOURCE_PATH>
-CURR=$(git branch --show-current)
-[ "$CURR" = "production/<TASK_SLUG>" ] || abort "Expected branch production/<TASK_SLUG>, got $CURR"
-git diff --name-only HEAD
-```
-
-**Scope check**: every file in the diff output must be one of:
-- Declared in the test-writer's `Tests Written` artifacts for this phase, OR
-- Declared in the implementer's `Files Modified` artifacts for this phase, OR
-- A known auto-staged manifest from project pre-commit hooks: `package.json`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `composer.lock`, `poetry.lock`, `Cargo.lock`, `go.sum`.
-
-If any other file appears in the diff, abort with:
-
-> "Unexpected changes detected in `<SERVICE_SOURCE_PATH>` after phase <NN>: `<file-list>`. These were not produced by any agent in this phase. Manual intervention needed."
-
-**Stage and commit**:
+**Invocation**:
 
 ```bash
-git add <declared-files-and-known-manifests>
-
-git commit -m "$(cat <<'EOF'
-<type>(<service-id>): <phase title>
-
-Phase <NN> of production/<TASK_SLUG>
-EOF
-)"
+FINALIZE_SOURCE_PATH="<SERVICE_SOURCE_PATH>" \
+FINALIZE_TASK_SLUG="<TASK_SLUG>" \
+FINALIZE_PHASE_NN="<NN>" \
+FINALIZE_PHASE_TITLE="<phase title>" \
+FINALIZE_SERVICE_ID="<service-id>" \
+FINALIZE_COMMIT_TYPE="<type>" \
+FINALIZE_EXPECTED="$(printf '%s\n' <declared-file-1> <declared-file-2> ...)" \
+<plugin-root>/bin/finalize-phase.sh
 ```
 
-`<type>` selection: `feat` for new functionality, `fix` for bug fixes, `test` for test-only phases, `refactor` for refactoring without behavior change, `docs` for documentation-only.
+**Inputs**:
+- `FINALIZE_EXPECTED` is the union of declared artifacts from the test-writer's `Tests Written` and the implementer's `Files Modified` (horizontal mode) or the tdd-cycle agent's combined `Files Modified` + `Tests Written` (vertical mode). For docs mode, use the diff's actual content. The script appends known auto-staged manifests internally (`package.json`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `composer.lock`, `poetry.lock`, `Cargo.lock`, `go.sum`); do not include them in `FINALIZE_EXPECTED`.
+- `<type>` selection: `feat` for new functionality, `fix` for bug fixes, `test` for test-only phases, `refactor` for refactoring without behavior change, `docs` for documentation-only.
 
-**Forbidden operations** (orchestrator must NEVER invoke, even via Bash):
+**Output parsing**:
+
+The script writes `key=value` lines to stdout. Parse them:
+
+- `status=ok` + `commit_sha=<sha>` + `files_committed=<N>` → phase commit succeeded. Carry `commit_sha` into Step 7l.
+- `status=abort` + `reason=wrong_branch | source_path_missing | not_a_git_repo | no_changes | unexpected_files_in_diff | commit_failed | invalid_commit_type` → handle per the table below.
+
+| Abort reason | Orchestrator action |
+|--------------|---------------------|
+| `wrong_branch` | Abort the whole workflow. The branch invariant is load-bearing; surface to user. |
+| `source_path_missing` / `not_a_git_repo` | Abort. Source path resolution is broken; surface to user. |
+| `no_changes` | Treat as a phase no-op. Log `Phase <NN> produced no diff — skipping commit and continuing.` Do not retry. |
+| `unexpected_files_in_diff` | Parse `unexpected_files=<csv>`. Treat as a phase failure. Surface to user with the file list (same message as the old inline scope check). Do not auto-stage. |
+| `commit_failed` | A pre-commit hook (lint, commitlint, etc.) rejected the commit. Parse the script's stderr (last 50 lines), dispatch a `jlu-implementer` with the hook output as failure context, then retry Step 7j (up to 5 attempts). Never bypass with `--no-verify`. |
+| `invalid_commit_type` | Orchestrator bug — the `<type>` derivation logic produced something outside `feat|fix|docs|refactor|test`. Abort and surface to user. |
+
+**Forbidden operations** (orchestrator must NEVER invoke, even via Bash, regardless of finalize-phase.sh):
 - `git push --force` / `git push -f`
 - `git reset --hard`
 - `git rebase` (any flavor)
 - `git checkout main`, `git checkout master`, `git checkout alpha`
 - `git branch -D`
-- `git commit --no-verify` (always run hooks; if a hook fails, fix the underlying issue and re-commit)
-
-If a commit fails due to a hook (lint, commitlint, etc.): parse the hook output, dispatch a `jlu-implementer` with the failure context to fix, then re-stage and retry. Never bypass with `--no-verify`.
+- `git commit --no-verify`
 
 ### 7k. Build Validation
 
 **Skip if `PHASE_IS_TRIVIAL`.** Tier 2 build/regression check still runs at Step 8b.
+
+**Skip if no compilable source files changed.** Build `CHANGED_FILES` the same way as Step 7e (union of test-writer and implementer artifacts; in vertical mode, the tdd-cycle agent's `Files Modified` + `Tests Written`). Delegate the check to `bin/classify-phase.sh compilable`:
+
+```bash
+CLASSIFY_FILES="$(printf '%s\n' <file-1> <file-2> ...)" \
+<plugin-root>/bin/classify-phase.sh compilable
+```
+
+**Output (key=value)**:
+
+- `compilable=true|false`
+- `forcing_file=<path>` (only when a forcing file like `package.json` or `tsconfig*.json` flips the result to true)
+- `extensions=<csv>` (unique non-compilable extensions seen)
+
+The script's allowlist of non-compilable extensions: `.md`, `.mdx`, `.txt`, `.rst`, `.yaml`, `.yml`, `.toml`, `.ini`, `.env`, `.env.*`, `.example`, `.css`, `.scss`, `.sass`, `.less`, `.html`, `.htm`, `.svg`, `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.ico`, `.pdf`, and plain `.json` (except `package.json` / `tsconfig*.json` which always force a build).
+
+If `compilable=false`: log `Phase <NN> build skipped — no compilable source files changed (only <extensions>).` and continue to 7l.
 
 Otherwise, spawn `jlu-build-validator` agent with model: **MODEL_CONFIG.code** (default: sonnet):
 - **Input**:
@@ -584,10 +771,10 @@ Otherwise, spawn `jlu-build-validator` agent with model: **MODEL_CONFIG.code** (
 
 1. Update phase file status to `done`.
 2. Output milestone to terminal: "Phase <NN> complete. Tests: <pass-count>/<total-count> passing."
-3. Record the phase's commit SHA in TASKS.md. After the inline commit in Step 7j, capture the commit SHA:
-   ```bash
-   cd <SERVICE_SOURCE_PATH> && git rev-parse --short HEAD
-   ```
+3. Record the phase's commit SHA in TASKS.md. The SHA was already returned by `finalize-phase.sh` in Step 7j (`commit_sha=<sha>` line); reuse it — do NOT run `git rev-parse` again, that's a duplicate Bash dispatch for data you already have.
+
+   If Step 7j returned `status=abort` with `reason=no_changes` for this phase, write `Commit: (no diff)` instead of an SHA.
+
    Update the phase entry in TASKS.md:
    ```markdown
    ### Phase <NN>: <Phase Name>
@@ -705,6 +892,7 @@ Spawn `jlu-qa-agent` with model: **MODEL_CONFIG.code** (default: sonnet) for a *
 Pass the QA agent the captured Step 8b results (affected-tests verdict per service):
 
 - **Step 8b affected-tests results** (`AFFECTED_TESTS_RESULT` from 8b.6): PASS/FAIL/SKIPPED/NO_DIFF per service, exact command run, failing tests if any
+- **Deferred per-phase QA review** (`DEFERRED_QA_PHASES` from Step 7h): the list of phases that skipped per-phase QA because they were purely additive with a clean implementer report. For each deferred phase, the entry includes `{phase_id, service_id, files_modified}`. The QA agent must explicitly include these phases' `files_modified` in its convention/code-smell/over-engineering scan and flag any issue it would have flagged in per-phase QA. If `DEFERRED_QA_PHASES` is empty, treat this as the normal final-validation case.
 - **Full coverage analysis**: Are all requirements from SPEC.md covered by tests? (read SPEC.md and test files; do not run them). Note: this is static — checking that every requirement has at least one test file asserting the behavior, not measuring runtime coverage percentages
 - **Pre-PR recommendation**: if any service's 8b result was SKIPPED (mocha, plugin-less pytest, or only config files changed), the QA agent surfaces a clear note in its report:
   > `Pre-PR action: run /jlu-test-suite from <service-path> before opening the pull request to confirm no regressions in the full suite.`

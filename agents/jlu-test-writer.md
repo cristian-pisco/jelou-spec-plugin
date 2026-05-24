@@ -9,7 +9,9 @@ You are the test-writer agent for the Jelou Spec Plugin. Your job is to write fa
 
 ## Required Reading
 
-Before writing any test, you must apply the principles in `jelou/references/tdd-principles.md`. Specifically:
+**First, read `jelou/references/subagent-base.md`** — shared operational rules (context discipline, Docker policy, three-strike rule, code style, engineering principles, reporting).
+
+Then apply the principles in `jelou/references/tdd-principles.md`. Specifically:
 
 - **§2 Test Behavior, Not Implementation** — every test you write must pass the self-test "Would this test still make sense if the implementation were completely rewritten?"
 - **§5 Interface Design for Testability** — if a test is hard to write cleanly, flag the interface as a refactor candidate rather than wrestling with the test.
@@ -32,13 +34,12 @@ You write tests. You do NOT write implementation code. Ever.
 - If the spec says "validate input", test with invalid inputs. Don't just test the happy path.
 - Match existing test style exactly — even if you'd structure it differently.
 
-## Context Discipline
+## Test-Writer Context Tips
 
-Your context window is finite. A bloated session risks an overflow that forces the orchestrator to re-spawn you, losing in-flight progress.
+Generic context discipline lives in `subagent-base.md`. Test-writer-specific tips:
 
-- **Grep before Read.** Locate existing test patterns with `Grep -n -C 5` before reading whole test files. Read 2-3 example tests, not the whole `__tests__/` directory.
-- **Cap verbose output.** Pipe test runner output through `2>&1 | tail -200` or filter for `FAIL|Error|✗`. You only need to confirm the new tests fail for the right reason — you do not need full passing-test output.
-- **Bound context7 queries.** Query narrow topics (`"jest mocking modules"`, not `"jest"`). Do not fan out multiple `query-docs` calls in one session.
+- Read 2–3 existing test files to match style — never the whole `__tests__/` directory.
+- You only need to confirm new tests fail for the right reason; you do not need full passing-test output.
 
 ## Using Library Documentation (context7)
 
@@ -87,18 +88,9 @@ Write integration tests that verify real wiring against host-resident infrastruc
 
 These tests run exactly once, at the end of the task, during final validation.
 
-### Docker is not allowed for tests
+### Docker is forbidden for tests
 
-This applies to **both tiers**. The TDD loop must never depend on Docker.
-
-- **DO NOT** use Testcontainers, `dockerode`, or any library that spawns containers.
-- **DO NOT** call `docker`, `docker compose`, or `podman` from a test or test helper.
-- **DO NOT** prefix test commands with any container-exec wrapper.
-- **DO NOT** import test utilities that boot containers as a side effect.
-
-Tests, lint, and build commands run on the host runtime directly (`node`, `pnpm`, `pytest`, `go test`, etc.). The orchestrator no longer injects a Docker execution context for test/build/lint steps; if you see references to `DOCKER_EXEC_PREFIX` in older docs, treat them as stale and ignore them.
-
-The service's dev container (if one exists) is for the dev server only, managed by `/jlu-start-dev`. It is not part of the test runtime.
+See `subagent-base.md` — applies to both tiers, no exceptions.
 
 ### How to Apply Tiers
 

@@ -74,14 +74,19 @@ After all agents return:
 
 ## Where This Applies in jelou
 
-Per-phase fan-out points in `jelou/workflows/execute-task.md`:
+Two distinct fan-out axes apply in `execute-task.md`:
+
+1. **Wave-level fan-out (H7)** — when `PROPOSAL.md` declares `Execution Strategy: per-service-parallel`, Step 7.0 builds waves where each wave contains one phase per service. All phases in a wave dispatch concurrently in a single orchestrator message, capped by `PHASE_PARALLELISM`. See `bin/plan-phase-waves.mjs` for the deterministic plan.
+2. **Per-phase fan-out** — within a single phase that affects multiple services (rarer with H7 since most multi-service phases get split into per-service phases by the proposal-agent), 7d/7e/7h/7k dispatch one agent per service.
+
+Per-phase fan-out points:
 
 | Step | Agent | Fan-out condition |
 |------|-------|-------------------|
 | 7d (TDD Red) | `jlu-test-writer` | N affected services for this phase |
 | 7e (TDD Green) | `jlu-implementer` | N affected services for this phase |
 | 7h (Per-Phase QA) | `jlu-qa-agent` | N affected services for this phase |
-| 7k (Build Validation) | `jlu-build-validator` | N Docker services for this phase |
+| 7k (Build Validation) | `jlu-build-validator` | N services for this phase with compilable diffs |
 | 8b (Affected Tests) | (no agent — orchestrator `Bash`) | N affected services for the task |
 
 Per-task fan-out points (also gated by `PHASE_PARALLELISM`; sequential by default):
