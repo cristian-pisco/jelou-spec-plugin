@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.168] — 2026-05-23
+
+### Added
+- add tolerant JSONL reader with rotation awareness
+
 ## [0.3.167] — 2026-05-23
 
 ### Added
