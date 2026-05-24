@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.173] — 2026-05-23
+
+### Internal
+- schema and conventions reference
+
 ## [0.3.172] — 2026-05-23
 
 ### Internal
