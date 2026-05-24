@@ -31,11 +31,14 @@ describe('ulid()', () => {
     assert.match(id, /^[0-9A-HJKMNP-TV-Z]{26}$/);
   });
 
-  test('two consecutive ulids are monotonic by time prefix', () => {
-    const a = ulid();
-    const b = ulid();
-    // First 10 chars are the 48-bit ms timestamp; b must be >= a
-    assert.ok(b.slice(0, 10) >= a.slice(0, 10));
+  test('consecutive ulids are strictly monotonic over the full 26 chars', () => {
+    // Generate 500 ulids in a tight loop (mostly same-ms), assert strict lexical ordering.
+    const ids = [];
+    for (let i = 0; i < 500; i++) ids.push(ulid());
+    for (let i = 1; i < ids.length; i++) {
+      assert.ok(ids[i] > ids[i - 1],
+        `ulid ${i} (${ids[i]}) not > ulid ${i-1} (${ids[i-1]})`);
+    }
   });
 
   test('uniqueness across 1000 calls', () => {

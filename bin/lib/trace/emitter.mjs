@@ -21,18 +21,30 @@ import { EVENT_KIND, PAYLOAD_CAP_BYTES } from './schema.mjs';
 
 const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 let lastMs = 0;
-let lastSeq = 0;
+let lastRandom = Buffer.alloc(10);
 
 export function ulid() {
   let ms = Date.now();
-  // Ensure monotonicity inside the same millisecond by incrementing the
-  // random portion via a sequence counter when ms hasn't advanced.
   if (ms <= lastMs) {
     ms = lastMs;
-    lastSeq += 1;
+    // Increment lastRandom as a big-endian 80-bit integer with carry.
+    for (let i = 9; i >= 0; i--) {
+      if (lastRandom[i] < 0xff) {
+        lastRandom[i] += 1;
+        break;
+      }
+      lastRandom[i] = 0;
+      // If we overflow past byte 0, advance the timestamp by 1 ms instead
+      // of producing a non-monotonic id.
+      if (i === 0) {
+        ms += 1;
+        lastMs = ms;
+        lastRandom = randomBytes(10);
+      }
+    }
   } else {
     lastMs = ms;
-    lastSeq = 0;
+    lastRandom = randomBytes(10);
   }
   let tsPart = '';
   let t = ms;
@@ -40,11 +52,8 @@ export function ulid() {
     tsPart = CROCKFORD[t % 32] + tsPart;
     t = Math.floor(t / 32);
   }
-  const rnd = randomBytes(10);
-  // Mix the sequence counter into the last byte so same-ms ids stay monotonic.
-  rnd[9] = (rnd[9] + lastSeq) & 0xff;
   let bin = '';
-  for (const b of rnd) bin += b.toString(2).padStart(8, '0');
+  for (const b of lastRandom) bin += b.toString(2).padStart(8, '0');
   let randPart = '';
   for (let i = 0; i < 16; i++) {
     randPart += CROCKFORD[parseInt(bin.slice(i * 5, (i + 1) * 5), 2)];
