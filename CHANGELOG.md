@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.169] — 2026-05-23
+
+### Added
+- add trace-start-span CLI
+
 ## [0.3.168] — 2026-05-23
 
 ### Added
