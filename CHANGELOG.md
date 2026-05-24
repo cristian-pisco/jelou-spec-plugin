@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.165] — 2026-05-23
+
+### Internal
+- ignore .traces/ in workspaces
+
 ## [0.3.164] — 2026-05-23
 
 ### Changed
