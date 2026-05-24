@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.167] — 2026-05-23
+
+### Added
+- add JSONL emitter with ULID, payload cap, and TRACE_DISABLED short-circuit
+
 ## [0.3.166] — 2026-05-23
 
 ### Added
