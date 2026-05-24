@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.174] — 2026-05-23
+
+### Fixed
+- ULID monotonicity by incrementing 80-bit random portion with carry
+
 ## [unreleased]
 
 ### Added

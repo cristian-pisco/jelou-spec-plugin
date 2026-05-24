@@ -4,9 +4,12 @@
 //   - readSpans(file, { filter? }): generator of parsed events. Skip-malformed.
 //   - listRotatedFiles(baseFile): rotated siblings (spans-NNN.jsonl) + base in order.
 //
-// Designed for memory-bounded reads: the generator yields one event at a time,
-// callers can short-circuit via `for-of` `break`. Analyzers and the suggester
-// build their indexes incrementally without loading the whole file.
+// Implementation note: readSpans is lazy in iteration (callers can `break` early
+// to stop parsing), but the underlying read is a full-file load via
+// readFileSync — peak memory is proportional to the file size at the moment
+// it is read. For the 50 MB rotation threshold this is acceptable; rotated
+// siblings are read one file at a time, so the working set never exceeds
+// one rotation's worth.
 
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { dirname, basename, join } from 'node:path';
