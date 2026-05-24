@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.164] — 2026-05-23
+
+### Internal
+- orchestrator decisions move to bin/ scripts, agents share a base file, opt-in per-service-parallel waves
+
 ## [0.3.163] — 2026-05-19
 
 ### Fixed

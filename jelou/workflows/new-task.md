@@ -13,7 +13,7 @@
 
 - A vague spec produces vague code. Invest in clarity now to avoid rewrites later.
 - Every question should be informed by what you found in the codebase, not generic.
-- The user's time is valuable — ask 2-4 focused questions per round, not 10 scattered ones.
+- The user's time is valuable — ask 3-6 focused questions per round, not 10 scattered ones.
 - When the user says "that's enough", stop. Write the spec with what you have.
 - The spec is complete when a developer could implement it without guessing.
 
@@ -465,7 +465,8 @@ Prioritize gaps by impact: architectural decisions > behavioral requirements > e
 Using `question`, interview the user to resolve all identified gaps.
 
 Rules:
-- **2-4 questions per round**, grouped by theme — never random
+- **3-6 questions per round**, grouped by theme — never random
+- **Each question takes max 4 options** (hard API limit on `question`/`AskUserQuestion`). If a decision has more candidates than 4 (e.g., 7 services to route, 6 patterns to pick from), split it: ask the question across multiple rounds, group candidates into bucket options ("group A vs group B"), or use a free-text question instead of multiple-choice. **Never** stuff 5+ options into one question — the call will fail with `InputValidationError: too_big`.
 - **Themes to cover** (in rough priority order):
   1. Technical implementation details (how will this be built? what patterns apply?)
   2. Tradeoffs & alternatives (why this approach over others? what are we giving up?)

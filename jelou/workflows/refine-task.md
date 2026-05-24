@@ -91,7 +91,8 @@ Prioritize by impact: architectural implications > behavioral changes > edge cas
 Using `question`, interview the user to clarify the change's scope and constraints.
 
 Rules:
-- **2-4 questions per round**, grouped by theme — never random
+- **3-6 questions per round**, grouped by theme — never random
+- **Each question takes max 4 options** (hard API limit on `question`/`AskUserQuestion`). If a decision has more candidates than 4, split across rounds, group into bucket options, or fall back to a free-text question. Stuffing 5+ options into one question fails with `InputValidationError: too_big`.
 - **Scoped to the change** — do NOT re-interview the full spec
 - **Themes** (priority order):
   1. Technical implementation details
