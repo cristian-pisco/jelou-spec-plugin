@@ -16,6 +16,7 @@ Follows the conventions established by [OpenSpec](https://github.com/Fission-AI/
 - **Ubiquitous language**: `/jlu-ubiquitous-language` discovers and curates the workspace's domain glossary across services, anchoring each term to the services where it's implemented and referenced.
 - **Architecture review**: `/jlu-architecture-review` surfaces deepening opportunities (single-service or cross-service) — refactors that turn shallow modules into deep ones — runs an interactive grilling loop on a chosen candidate, and lazily records ADRs when candidates are rejected with load-bearing reasons.
 - **Dev environment diagnose**: `/jlu-diagnose` reads recent failure events and a TMUX pane capture from your dev environment, dispatches a focused diagnoser agent to triage the failure, and proposes a structured fix (host or container) that you confirm before it runs. Failure patterns can be registered with `/jlu-add-failure-pattern` so the daemon picks them up on the next match.
+- **Tracing & observability**: Plugin-native JSONL span store at `<WORKSPACE>/.traces/spans.jsonl` with three CLIs (`trace-start-span`, `trace-end-span`, `trace-reconcile`) for emitting and recovering workflow/phase/agent-dispatch spans. ULID-based, payload-capped under `PIPE_BUF` for atomic appends, `TRACE_DISABLED=1` short-circuits everything. Foundation only in Phase 1 — automatic workflow instrumentation and analyzer/suggester land in Phases 2-3.
 
 ## Prerequisites
 
@@ -478,6 +479,109 @@ The diagnoser will automatically run proposed fixes inside the container instead
 
 See [`jelou/references/dev-orchestrator.md`](./jelou/references/dev-orchestrator.md) for full configuration schema, troubleshooting, and design rationale.
 
+## Tracing & Observability
+
+Plugin-native tracing layer for the full task lifecycle. Every workflow step, phase, and agent dispatch can emit a structured span to a workspace-local JSONL store, enabling bottleneck analysis, retry hot-spot detection, and harness self-improvement. Three observable surfaces (Component / Experience / Decision) following the 2026 harness-engineering canon.
+
+> **Status:** Phase 1 (foundation) ships emission, storage, and orphan recovery. Workflow auto-instrumentation lands in Phase 2; analyzer + suggestion engine lands in Phase 3. Until Phase 2, the CLIs are the way to emit spans.
+
+### Where traces live
+
+- **Workspace store**: `<WORKSPACE>/.traces/spans.jsonl` (single source of truth, gitignored by default)
+- **Rotation**: at 50 MB → `spans-001.jsonl`, `spans-002.jsonl`, …
+- **Default cwd**: each CLI honors `TRACE_FILE`; if unset, resolves `<cwd>/.traces/spans.jsonl`
+- **Disable knob**: `TRACE_DISABLED=1` short-circuits all CLIs to no-ops (zero impact)
+
+### CLIs
+
+| CLI | Purpose | Returns |
+|---|---|---|
+| `bin/trace-start-span.mjs` | Emit a `span_start` event | JSON `{span_id, trace_id, parent}` to stdout |
+| `bin/trace-end-span.mjs` | Emit a matching `span_end`, compute `duration_ms` from start lookup | nothing |
+| `bin/trace-reconcile.mjs` | Sweep orphan spans older than 30 min (process killed mid-workflow); emit synthetic `span_end` with `status: "orphaned"` | `reconciled: <N>` to stdout |
+
+All three are stdlib-only Node ESM scripts. No npm deps. Idempotent. Best-effort instrumentation — write failures fall back to stderr without aborting the caller.
+
+### Manual usage (Phase 1)
+
+Open a workflow-level span, then a phase span, then an agent dispatch span — and close them in reverse:
+
+```bash
+# 1. Workflow root span
+WF=$(node bin/trace-start-span.mjs --name execute_task --scope task --task fix-mcp)
+WF_SPAN=$(echo "$WF" | jq -r .span_id)
+WF_TRACE=$(echo "$WF" | jq -r .trace_id)
+
+# 2. Phase child span
+PH=$(node bin/trace-start-span.mjs --name phase --scope task \
+       --task fix-mcp --service workflow-engine --phase 1 \
+       --parent "$WF_SPAN" --trace "$WF_TRACE")
+PH_SPAN=$(echo "$PH" | jq -r .span_id)
+
+# 3. Agent dispatch child span
+AG=$(node bin/trace-start-span.mjs --name agent_dispatch --scope task \
+       --agent implementer --model sonnet \
+       --task fix-mcp --service workflow-engine --phase 1 \
+       --parent "$PH_SPAN" --trace "$WF_TRACE")
+AG_SPAN=$(echo "$AG" | jq -r .span_id)
+
+# ... agent runs, returns its JSON report ...
+
+# 4. Close in reverse order (duration_ms computed automatically)
+node bin/trace-end-span.mjs --span "$AG_SPAN" --status ok \
+  --retries 1 --diff-size 87 --outcome "tests pass, 3 files modified"
+node bin/trace-end-span.mjs --span "$PH_SPAN" --status ok
+node bin/trace-end-span.mjs --span "$WF_SPAN" --status ok
+```
+
+The resulting `spans.jsonl` will contain 6 lines (3 starts + 3 ends), each ~600 bytes, every line independently parseable.
+
+### Recovering interrupted runs
+
+If a process is killed (Ctrl-C, OOM, crash) between `start-span` and `end-span`, the span is left open. The reconciler sweeps these on demand:
+
+```bash
+node bin/trace-reconcile.mjs
+# → reconciled: 2
+
+# Override the 30-minute threshold via env (rarely needed):
+TRACE_RECONCILE_AFTER_MS=60000 node bin/trace-reconcile.mjs
+```
+
+Idempotent — running it again on the same file does nothing.
+
+### Disabling tracing
+
+Two ways to fully disable emission:
+
+```bash
+# Per-invocation: set the env var
+TRACE_DISABLED=1 node bin/trace-start-span.mjs --name execute_task --scope task
+# → prints {"span_id":"","trace_id":"","parent":null}, writes nothing
+
+# Workspace-wide: add to .spec-workspace.json (honored in Phase 2 when workflows wire in)
+# {"tracing": {"enabled": false}}
+```
+
+### What gets captured
+
+Per span, the JSONL record carries: `ts`, `event_kind`, `span_id`, `parent_span_id`, `trace_id`, `scope` (`task` | `daemon` | `global`), `name`, optional `task_slug` / `service_id` / `phase_num` / `agent_role`, and an open `attrs` bag.
+
+On `span_end` additionally: `duration_ms`, `status` (`ok` | `blocked` | `failed` | `escalated` | `orphaned`), and attrs like `model_used`, `retry_count`, `escalation_reason`, `diff_size_loc`, `error_signature`, `outcome`, `artifacts`.
+
+Identifiers are ULIDs (26-char Crockford base32, monotonic by ms-prefix). Payloads over 3500 bytes drop `outcome`/`artifacts` first, then `attrs` entirely, so every append stays under `PIPE_BUF` (4 KB) and remains atomic under concurrent writers.
+
+### What's coming next
+
+- **Phase 2** will instrument the six lifecycle workflows (`new-task`, `refine-task`, `execute-task`, `create-pr`, `report-task`, `close-task`) so spans are emitted automatically per workflow + per phase + per agent dispatch. The dev-environment daemon also migrates to this emitter so its event stream joins the same store.
+- **Phase 3** will ship `bin/trace-analyze.mjs` (CLI queries: `--by-agent`, `--by-phase`, `--by-task`, `--trends`) and `bin/trace-suggest.mjs` (4 rules with 7-day cooldown — bump model tier, extend failure patterns, suggest parallelization, flag blocked spans) plus a `/jlu-trace-report` skill.
+
+### Reference
+
+- **[`jelou/references/tracing.md`](./jelou/references/tracing.md)** — full schema, canonical span names, attrs canon, "how to add a new span" guide
+- **[Design spec](./docs/superpowers/specs/2026-05-23-tracing-observability-design.md)** — architecture, suggestion rules, error handling, out-of-scope V1
+- **[Phase 1 plan](./docs/superpowers/plans/2026-05-23-tracing-observability-phase1-foundation.md)** — task-by-task implementation breakdown
+
 ## Workspace Structure
 
 The plugin uses `.spec-workspace/` in the parent directory of your services as the canonical root:
@@ -563,6 +667,8 @@ Per-service concrete rules in each service's `CONVENTIONS.md`.
 - **[Architecture Review Design](./docs/superpowers/specs/2026-04-26-architecture-review-design.md)** — Spec for `/jlu-architecture-review`: candidate discovery, grilling loop, ADR lifecycle, vocabulary contract
 - **[Architecture Language](./jelou/references/architecture-language.md)** — Vocabulary contract (Module, Interface, Seam, Adapter, Depth, Leverage, Locality) used by the architecture-review agents
 - **[Ubiquitous Language Design](./docs/superpowers/specs/2026-04-26-ubiquitous-language-design.md)** — Spec for `/jlu-ubiquitous-language`: extractor + curator split, candidates sidecar, review-then-save loop
+- **[Tracing Reference](./jelou/references/tracing.md)** — Schema, canonical span names, attrs canon, and "how to add a new span" guide for the observability layer
+- **[Tracing & Observability Design](./docs/superpowers/specs/2026-05-23-tracing-observability-design.md)** — Architecture for the three-phase harness-engineering observability layer (emission, analysis, suggestion)
 
 ## How It Works (Simplified)
 

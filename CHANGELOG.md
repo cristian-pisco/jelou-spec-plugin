@@ -1,5 +1,73 @@
 # Changelog
 
+## [0.3.176] — 2026-05-24
+
+### Internal
+- document tracing & observability foundation usage
+
+## [0.3.175] — 2026-05-23
+
+### Fixed
+- omit unmatched-start carry-over fields instead of serializing null
+
+## [0.3.174] — 2026-05-23
+
+### Fixed
+- ULID monotonicity by incrementing 80-bit random portion with carry
+
+## [unreleased]
+
+### Added
+- **Tracing foundation (Phase 1 of harness-engineering observability layer).** New `bin/lib/trace/{schema,emitter,reader}.mjs` modules and three CLI wrappers (`bin/trace-start-span.mjs`, `bin/trace-end-span.mjs`, `bin/trace-reconcile.mjs`) that emit and read a workspace-local JSONL span store at `<WORKSPACE>/.traces/spans.jsonl`. The emitter is stdlib-only, ULID-based, payload-capped at 3500 bytes (under `PIPE_BUF` for atomic appends), with a `TRACE_DISABLED=1` short-circuit and a stderr fallback when the store is unwritable. The reconciler sweeps orphan spans older than 30 minutes (override via `TRACE_RECONCILE_AFTER_MS`). New reference doc at `jelou/references/tracing.md`. No workflow is instrumented yet (Phase 2) and no analyzer/suggester ships (Phase 3) — this release is foundation only. Agents are untouched.
+
+### Changed
+- `.gitignore` now ignores `.traces/` at the workspace level.
+
+## [0.3.173] — 2026-05-23
+
+### Internal
+- schema and conventions reference
+
+## [0.3.172] — 2026-05-23
+
+### Internal
+- integration test for foundation CLIs end-to-end
+
+## [0.3.171] — 2026-05-23
+
+### Added
+- add trace-reconcile CLI for orphan sweep
+
+## [0.3.170] — 2026-05-23
+
+### Added
+- add trace-end-span CLI with duration computation
+
+## [0.3.169] — 2026-05-23
+
+### Added
+- add trace-start-span CLI
+
+## [0.3.168] — 2026-05-23
+
+### Added
+- add tolerant JSONL reader with rotation awareness
+
+## [0.3.167] — 2026-05-23
+
+### Added
+- add JSONL emitter with ULID, payload cap, and TRACE_DISABLED short-circuit
+
+## [0.3.166] — 2026-05-23
+
+### Added
+- add schema constants module
+
+## [0.3.165] — 2026-05-23
+
+### Internal
+- ignore .traces/ in workspaces
+
 ## [0.3.164] — 2026-05-23
 
 ### Changed

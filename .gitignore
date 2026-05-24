@@ -12,3 +12,6 @@ node_modules/
 # UI QA — Playwright run output
 playwright-output/
 test-results/
+
+# Tracing — workspace-local span store, never commit raw traces
+.traces/
