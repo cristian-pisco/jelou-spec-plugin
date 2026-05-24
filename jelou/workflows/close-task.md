@@ -7,6 +7,20 @@
 
 ---
 
+## Step 0 — Open workflow span
+
+> **Tracing tolerance**: When `TRACE_DISABLED=1`, captured ids are empty strings — the workflow continues regardless.
+
+Run:
+```bash
+WF_OUT=$(node "${PLUGIN_ROOT:-.}/bin/trace-start-span.mjs" \
+  --name close_task --scope task --task "$TASK_SLUG")
+WORKFLOW_SPAN_ID=$(echo "$WF_OUT" | jq -r '.span_id // ""')
+WORKFLOW_TRACE_ID=$(echo "$WF_OUT" | jq -r '.trace_id // ""')
+```
+
+---
+
 ## Step 1 — Resolve Task
 
 1. If `task-slug` is provided as an argument:
@@ -194,6 +208,20 @@ For each affected service:
 
 ---
 
+## Step 3.5 — Snapshot task trace to TASK_DIR
+
+Persist every span tagged with this task's `task_slug` to `<TASK_DIR>/_traces/snapshot.jsonl`. This preserves the task's full trace history even after workspace `spans.jsonl` rotates.
+
+Best-effort — closure proceeds whether or not this succeeds:
+
+```bash
+node "${PLUGIN_ROOT:-.}/bin/trace-snapshot-task.mjs" \
+  --task "$TASK_SLUG" \
+  --out "$TASK_DIR/_traces/snapshot.jsonl" || true
+```
+
+---
+
 ## Step 4 — Closure Report
 
 Present the final summary:
@@ -253,3 +281,19 @@ Present the final summary:
 | CLICKUP_TASK.json (updated) | `.spec-workspace/specs/<date>/<task-slug>/CLICKUP_TASK.json` |
 | Worktrees (removed) | `<service-repo>/.worktrees/<task-slug>` |
 | Branch (deleted) | `production/<task-slug>` |
+| Trace snapshot | `.spec-workspace/specs/<date>/<task-slug>/_traces/snapshot.jsonl` |
+
+---
+
+## Step N — Close workflow span
+
+Determine `$WORKFLOW_OUTCOME`:
+- `ok` — closure complete (ClickUp + Slack updated, task status moved)
+- `blocked` — closure halted (missing PR merge confirmation, ClickUp sync failure)
+- `failed` — irrecoverable error
+
+Run:
+```bash
+node "${PLUGIN_ROOT:-.}/bin/trace-end-span.mjs" \
+  --span "$WORKFLOW_SPAN_ID" --status "$WORKFLOW_OUTCOME"
+```

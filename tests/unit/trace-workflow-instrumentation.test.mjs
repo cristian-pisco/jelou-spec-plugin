@@ -130,3 +130,20 @@ describe('report-task workflow — trace instrumentation', () => {
     assert.match(wf, /trace-end-span\.mjs/);
   });
 });
+
+describe('close-task workflow — trace instrumentation', () => {
+  const wf = read('jelou/workflows/close-task.md');
+
+  test('opens workflow-level span with --name close_task', () => {
+    assert.match(wf, /trace-start-span\.mjs[\s\S]*?--name close_task/);
+  });
+
+  test('closes the workflow span', () => {
+    assert.match(wf, /trace-end-span\.mjs/);
+  });
+
+  test('snapshots the task trace to TASK_DIR before final closure', () => {
+    assert.match(wf, /_traces\/snapshot\.jsonl/);
+    assert.match(wf, /task_slug/);
+  });
+});
