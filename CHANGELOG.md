@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.170] — 2026-05-23
+
+### Added
+- add trace-end-span CLI with duration computation
+
 ## [0.3.169] — 2026-05-23
 
 ### Added
