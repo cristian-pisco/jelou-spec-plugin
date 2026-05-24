@@ -114,6 +114,11 @@ describe('bin/trace-end-span.mjs', () => {
     assert.equal(end.event_kind, 'span_end');
     assert.equal(end.duration_ms, undefined);
     assert.equal(end.attrs && end.attrs.unmatched_start, true);
+    // Issue #3 from code review: when no matching start, carried-over fields
+    // must be absent from the JSONL line, not serialized as null.
+    assert.ok(!('trace_id' in end), 'trace_id should be absent, not null');
+    assert.ok(!('scope' in end), 'scope should be absent, not null');
+    assert.ok(!('name' in end), 'name should be absent, not null');
   });
 
   test('TRACE_DISABLED=1: exits 0, writes nothing', () => {
