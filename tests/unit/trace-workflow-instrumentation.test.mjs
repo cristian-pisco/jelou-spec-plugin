@@ -63,3 +63,22 @@ describe('execute-task workflow — trace instrumentation', () => {
     assert.match(wf, /TRACE_DISABLED|empty span_id|tolerate empty/i);
   });
 });
+
+describe('new-task workflow — trace instrumentation', () => {
+  const wf = read('jelou/workflows/new-task.md');
+
+  test('opens workflow-level span with --name new_task', () => {
+    assert.match(wf, /trace-start-span\.mjs[\s\S]*?--name new_task/,
+      'workflow span open required');
+  });
+
+  test('closes the workflow span with trace-end-span.mjs', () => {
+    assert.match(wf, /trace-end-span\.mjs/,
+      'workflow span close required');
+  });
+
+  test('captures WORKFLOW_SPAN_ID', () => {
+    assert.match(wf, /WORKFLOW_SPAN_ID/,
+      'span_id capture required for end-span pairing');
+  });
+});
