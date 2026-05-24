@@ -2,8 +2,24 @@
 
 ## [0.3.164] — 2026-05-23
 
-### Internal
-- orchestrator decisions move to bin/ scripts, agents share a base file, opt-in per-service-parallel waves
+### Changed
+
+- `/jlu-execute-task` orchestrator decisions extracted to `bin/` scripts. Three classes of bloat were forcing the orchestrator to interpret long inline procedures on every dispatch — this release moves the deterministic parts to scripts, slims the agents to share a base file, and adds opt-in cross-phase parallelism behind a `PROPOSAL.md` flag.
+  - **Boilerplate consolidation across the six TDD agents** (`jlu-test-writer`, `jlu-implementer`, `jlu-tdd-cycle`, `jlu-refactor-agent`, `jlu-qa-agent`, `jlu-build-validator`). New `jelou/references/subagent-base.md` carries Context Discipline, Docker-forbidden, three-strike rule, code-style discipline, engineering-principles precedence, and reporting/escalation shape. Each agent now references the base file in `Required Reading` and keeps only agent-specific tips, removing ~250 lines of duplicated prose across the agent set.
+  - **QA smell catalog** lifted out of `jlu-qa-agent.md` into `jelou/references/qa-smell-catalog.md`. Code Smell Detection and Over-Engineering Detection catalogs (god classes, long methods, single-implementation abstractions, premature generalization, etc.) plus severity rules and report-table formats are lazy-read during Final Validation only, never preloaded for per-phase reviews.
+  - **`bin/finalize-phase.sh`** (9 unit tests) consolidates the five-step git-commit ceremony of Step 7j (pre-flight branch check, scope check, stage, commit, rev-parse) into one Bash dispatch with `key=value` output and an auto-staged-manifest allowlist for hook-touched files.
+  - **`bin/format-changed-files.sh`** (13 unit tests) owns the host-side lint/format detection chain — CONVENTIONS.md → `package.json` scripts → `npx eslint` default → skip silently — replacing the ~22 lines of decision logic duplicated between Step 7e and Step 7de. Supports `FORMAT_DRY_RUN=1` for tests.
+  - **`bin/classify-phase.sh`** (23 unit tests) replaces the four inline classifiers with subcommands: `mode` (Step 7c.1: docs/vertical/horizontal classification with frontmatter override, docs-mode validation against code-change verbs, and vertical-override size-gate enforcement), `trivial` (Step 7e.1 with safety-override downgrade when the diff exceeds 50 LOC or touches a lockfile/migration/`.d.ts`), `additive` (Step 7h purely-additive `M+D`-empty check), and `compilable` (Step 7k non-compilable allowlist with `package.json` / `tsconfig*.json` forcing the build).
+
+### Added
+
+- **H7 — per-service-parallel wave planning.** New `bin/plan-phase-waves.mjs` (13 unit tests) is a deterministic wave planner — reads phase files under `<TASK_DIR>/services/<svc>/phases/`, groups by service, zips lanes by index, and chunks each wave by `PHASE_PARALLELISM`. Emits JSON consumed by the new Step 7.0 (Wave Planning) at the start of Step 7 in `execute-task.md`. The orchestrator reads `PROPOSAL.md` for an `## Execution Strategy` section (default `sequential`, opt-in `per-service-parallel`); when opted in, each wave dispatches all its phases concurrently in a single orchestrator message and synchronizes at wave boundaries. `jlu-proposal-agent` emits the new section with a one-sentence justification, defaulting to sequential when in doubt. `parallel-dispatch.md` documents the two fan-out axes (wave-level via H7 and per-phase for multi-service phases) and links the helper.
+
+### Docs
+
+- `jelou/workflows/new-task.md` and `jelou/workflows/refine-task.md` — bumped per-round question count from "2-4" to "3-6". The previous rule was conservative: interviews were ending prematurely or stretching across more rounds than they needed when the gap analysis surfaced 6-7 clear questions of similar weight. More importantly, the `question` / `AskUserQuestion` tool fails with `InputValidationError: too_big` when a single question carries more than 4 options. This was undocumented in both workflows and surfaced as a runtime failure during real-task interviews. Added an explicit rule plus three escape hatches: split the decision across rounds, group candidates into bucket options, or fall back to a free-text question. No behavior change in the orchestrator — interview-rules hardening only.
+
+Tests: 388 → 437 (+49). Sync-agents check is clean. The orchestrator no longer counts FR/NFR bullets, runs `grep -cE` inline, or computes `git diff` shortstats — every decision that was inline now goes through a script with `key=value` output that's parseable and unit-tested, and the agent prompts no longer repeat 250+ lines of shared discipline.
 
 ## [0.3.163] — 2026-05-19
 
