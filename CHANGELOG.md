@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.175] — 2026-05-23
+
+### Fixed
+- omit unmatched-start carry-over fields instead of serializing null
+
 ## [0.3.174] — 2026-05-23
 
 ### Fixed
