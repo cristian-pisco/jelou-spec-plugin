@@ -3,7 +3,16 @@
 ## [0.3.166] — 2026-05-24
 
 ### Added
-- migrate dev-env daemon to shared trace emitter (scope: daemon)
+
+- **Tracing instrumentation across the task lifecycle (Phase 2 of the harness-engineering observability layer).** Every lifecycle workflow now emits structured spans: `new-task`, `refine-task`, `execute-task`, `create-pr`, `report-task`, `close-task` each open a workflow-level span on entry and close it on exit. The three "heavy" workflows (`refine-task`, `create-pr`, `execute-task`) additionally call `bin/trace-reconcile.mjs` at the top of their flow to sweep orphan spans from any prior interrupted run. Inside `execute-task` Step 7, each phase opens a child span (parent = workflow) and each subagent dispatch opens a grandchild span with `agent_role`, `model_used`, and on close the parsed report's `status`, `retry_count`, `outcome`, `diff_size_loc`, and `error_signature`. `close-task` snapshots the task's spans to `<TASK_DIR>/_traces/snapshot.jsonl` before closure via a new `bin/trace-snapshot-task.mjs` helper, so workspace-level rotation never loses the history of closed tasks.
+- **Dev-environment daemon migrated to the shared emitter.** `bin/lib/dev-orchestrator/events.mjs::appendEvent` now delegates to `bin/lib/trace/emitter.mjs::appendSpan` with `scope: "daemon"`. The legacy API (`EVENT_TYPES`, `SEVERITY`, `severityFor`, `appendEvent` signature) is preserved unchanged — daemon callers do not need to change. Daemon events now join the same workspace `spans.jsonl` as workflow spans, so the future analyzer (Phase 3) can correlate dev-env failures with the task that hit them.
+- **Tests**: 30 new unit tests (23 workflow structural assertions + 7 daemon migration) and 4 new integration tests (workflow span tree shape + TRACE_DISABLED end-to-end + daemon co-residency + workflow/daemon co-existence). Full unit suite: 520. Integration suite: 7 (3 Phase 1 + 4 Phase 2).
+
+### Internal
+
+- Workflow `.md` files now reference `${PLUGIN_ROOT:-.}/bin/trace-*.mjs` for plugin-root resolution, matching the existing pattern in other workflow steps.
+- The 23 agent prompts under `agents/` are byte-identical to prior main. Phase 2 instruments workflows, not agents — subagents continue to emit their existing JSON status reports unchanged; the orchestrator extracts span attrs from those reports.
+- New helper `bin/trace-snapshot-task.mjs` filters the workspace store by `task_slug` to write per-task snapshots. Stdlib only.
 
 ## [0.3.165] — 2026-05-24
 
