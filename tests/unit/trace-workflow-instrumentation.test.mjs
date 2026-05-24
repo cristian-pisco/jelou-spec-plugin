@@ -118,3 +118,15 @@ describe('create-pr workflow — trace instrumentation', () => {
     assert.match(wf, /trace-end-span\.mjs/);
   });
 });
+
+describe('report-task workflow — trace instrumentation', () => {
+  const wf = read('jelou/workflows/report-task.md');
+
+  test('opens workflow-level span with --name report_task', () => {
+    assert.match(wf, /trace-start-span\.mjs[\s\S]*?--name report_task/);
+  });
+
+  test('closes the workflow span', () => {
+    assert.match(wf, /trace-end-span\.mjs/);
+  });
+});
