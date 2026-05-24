@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.171] — 2026-05-23
+
+### Added
+- add trace-reconcile CLI for orphan sweep
+
 ## [0.3.170] — 2026-05-23
 
 ### Added
