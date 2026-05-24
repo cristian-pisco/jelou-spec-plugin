@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.176] — 2026-05-24
+
+### Internal
+- document tracing & observability foundation usage
+
 ## [0.3.175] — 2026-05-23
 
 ### Fixed
