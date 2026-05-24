@@ -1,0 +1,5 @@
+{"ts":"2026-05-20T10:00:00Z","event_kind":"span_start","span_id":"S1","trace_id":"T1","scope":"task","name":"execute_task","task_slug":"alpha"}
+{"ts":"2026-05-20T10:00:05Z","event_kind":"span_start","span_id":"S2","parent_span_id":"S1","trace_id":"T1","scope":"task","name":"phase","task_slug":"alpha","phase_num":1}
+{"ts":"2026-05-20T10:01:00Z","event_kind":"span_end","span_id":"S2","trace_id":"T1","scope":"task","name":"phase","status":"ok","duration_ms":55000,"attrs":{"retry_count":0},"task_slug":"alpha"}
+{"ts":"2026-05-20T10:01:05Z","event_kind":"span_end","span_id":"S1","trace_id":"T1","scope":"task","name":"execute_task","status":"ok","duration_ms":65000,"task_slug":"alpha"}
+{"ts":"2026-05-20T11:00:00Z","event_kind":"event","span_id":"E1","trace_id":"T2","scope":"daemon","name":"pattern_match"}
