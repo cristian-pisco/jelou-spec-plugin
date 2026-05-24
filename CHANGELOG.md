@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.166] — 2026-05-23
+
+### Added
+- add schema constants module
+
 ## [0.3.165] — 2026-05-23
 
 ### Internal
