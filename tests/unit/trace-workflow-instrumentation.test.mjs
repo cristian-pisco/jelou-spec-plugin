@@ -82,3 +82,23 @@ describe('new-task workflow — trace instrumentation', () => {
       'span_id capture required for end-span pairing');
   });
 });
+
+describe('refine-task workflow — trace instrumentation', () => {
+  const wf = read('jelou/workflows/refine-task.md');
+
+  test('Step 0.5 runs trace-reconcile.mjs', () => {
+    assert.match(wf, /trace-reconcile\.mjs/);
+  });
+
+  test('opens workflow-level span with --name refine_task', () => {
+    assert.match(wf, /trace-start-span\.mjs[\s\S]*?--name refine_task/);
+  });
+
+  test('closes the workflow span', () => {
+    assert.match(wf, /trace-end-span\.mjs/);
+  });
+
+  test('captures WORKFLOW_SPAN_ID', () => {
+    assert.match(wf, /WORKFLOW_SPAN_ID/);
+  });
+});

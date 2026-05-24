@@ -7,6 +7,26 @@
 
 ---
 
+## Step 0 — Trace bootstrap
+
+> **Tracing tolerance**: When `TRACE_DISABLED=1`, every span_id is an empty string and downstream calls become no-ops.
+
+1. **Sweep orphans from any prior interrupted run** (idempotent):
+   ```bash
+   node "${PLUGIN_ROOT:-.}/bin/trace-reconcile.mjs"
+   ```
+   The `reconciled: <N>` output is informational. Do not fail the workflow if this script exits non-zero — tracing is best-effort.
+
+2. **Open the workflow-level span**:
+   ```bash
+   WF_OUT=$(node "${PLUGIN_ROOT:-.}/bin/trace-start-span.mjs" \
+     --name refine_task --scope task --task "$TASK_SLUG")
+   WORKFLOW_SPAN_ID=$(echo "$WF_OUT" | jq -r '.span_id // ""')
+   WORKFLOW_TRACE_ID=$(echo "$WF_OUT" | jq -r '.trace_id // ""')
+   ```
+
+---
+
 ## Step 1 — Resolve Task
 
 1. If a `task-slug` is provided as a command argument:
@@ -307,3 +327,18 @@ Spec change: <CHANGE_REQUEST first 100 chars>
 | #33 | Context loaded in earlier steps, not during interview (separation of concerns) |
 | #37 | Minimal seed + interview expands to structured spec |
 | #43 | Per-service conventions injected; global principles loaded only on demand |
+
+---
+
+## Step N — Close workflow span
+
+Determine `$WORKFLOW_OUTCOME`:
+- `ok` — refinement applied, spec moved back to `planned`
+- `blocked` — refinement halted (user aborted or required input missing)
+- `failed` — irrecoverable error
+
+Run:
+```bash
+node "${PLUGIN_ROOT:-.}/bin/trace-end-span.mjs" \
+  --span "$WORKFLOW_SPAN_ID" --status "$WORKFLOW_OUTCOME"
+```
