@@ -23,6 +23,28 @@
 
 ---
 
+## Step 0.5 — Trace bootstrap
+
+> **Tracing tolerance**: Every `trace-start-span.mjs` invocation captures stdout JSON. When `TRACE_DISABLED=1` (env var or `.spec-workspace.json: tracing.enabled: false`), every span_id is an empty string. Downstream `trace-end-span.mjs` calls and `jq` lookups must tolerate empty values without failing the workflow.
+
+1. **Sweep orphans from any prior interrupted run** (idempotent — safe when the store is empty):
+   ```bash
+   node "${PLUGIN_ROOT:-.}/bin/trace-reconcile.mjs"
+   ```
+   The output line `reconciled: <N>` is informational. Do not fail the workflow if this script exits non-zero — tracing is best-effort.
+
+2. **Open the workflow-level span** (deferred to the end of Step 1 when `$TASK_SLUG` is known):
+   ```bash
+   WF_OUT=$(node "${PLUGIN_ROOT:-.}/bin/trace-start-span.mjs" \
+     --name execute_task --scope task --task "$TASK_SLUG")
+   WORKFLOW_SPAN_ID=$(echo "$WF_OUT" | jq -r '.span_id // ""')
+   WORKFLOW_TRACE_ID=$(echo "$WF_OUT" | jq -r '.trace_id // ""')
+   ```
+
+   Store `WORKFLOW_SPAN_ID` and `WORKFLOW_TRACE_ID` for the duration of the workflow. Empty strings are valid when `TRACE_DISABLED=1`.
+
+---
+
 ## Step 1 — Resolve Task
 
 Read `.spec-workspace.json` once at the start of this step (if present) and cache it as `WORKSPACE_CONFIG`. Reuse this cached object in Step 2b instead of reading the file again.
@@ -359,6 +381,46 @@ Then, at the start of each wave:
 
 - `Wave <i>/<total>: <K> phase(s) — <list of "<service>:<NN>" pairs>.`
 
+### Step 7 — Agent dispatch wrapper (referenced by every subagent dispatch below)
+
+Each subagent dispatch in this Step (test-writer, implementer, tdd-cycle, refactor-agent, qa-agent, build-validator) is wrapped in a span pair. Apply this pattern around every dispatch:
+
+**Before the dispatch:**
+```bash
+DS_OUT=$(node "${PLUGIN_ROOT:-.}/bin/trace-start-span.mjs" \
+  --name agent_dispatch --scope task \
+  --agent "<agent-role>" --model "$MODEL_FOR_AGENT" \
+  --task "$TASK_SLUG" --service "$SERVICE_ID" --phase "$PHASE_NUM" \
+  --parent "$PHASE_SPAN_ID" --trace "$WORKFLOW_TRACE_ID")
+DISPATCH_SPAN_ID=$(echo "$DS_OUT" | jq -r '.span_id // ""')
+```
+
+Replace `<agent-role>` with the literal agent role (`test-writer`, `implementer`, `tdd-cycle`, `refactor-agent`, `qa-agent`, `build-validator`). `$MODEL_FOR_AGENT` is resolved from `MODEL_CONFIG` (Step 2b).
+
+**After parsing the agent's JSON report:**
+
+Extract from the report:
+- `$AGENT_STATUS` — one of `ok`, `blocked`, `failed`, `escalated`
+- `$AGENT_RETRIES` — internal retry count (from agent report, may be absent)
+- `$AGENT_OUTCOME` — the `outcome` field (may be absent)
+- `$DIFF_SIZE_LOC` — LOC added+removed from `git diff --shortstat` over reported artifacts (may be absent)
+- `$ERROR_SIG` — `sha256(normalized_error_message)[:8]` when status is `blocked` or `failed`, else absent
+
+Then close the span:
+
+```bash
+node "${PLUGIN_ROOT:-.}/bin/trace-end-span.mjs" \
+  --span "$DISPATCH_SPAN_ID" --status "$AGENT_STATUS" \
+  ${AGENT_RETRIES:+--retries "$AGENT_RETRIES"} \
+  ${AGENT_OUTCOME:+--outcome "$AGENT_OUTCOME"} \
+  ${DIFF_SIZE_LOC:+--diff-size "$DIFF_SIZE_LOC"} \
+  ${ERROR_SIG:+--error-sig "$ERROR_SIG"}
+```
+
+Empty `DISPATCH_SPAN_ID` (when `TRACE_DISABLED=1`) makes the close a no-op.
+
+This wrapper applies to every `task` (OpenCode) / `Agent` (Claude Code) dispatch in the steps below. Do not skip the wrapper for any dispatch.
+
 ### 7a. Report Persistence Discipline (context-saturation guard)
 
 For every sub-agent dispatched within this Step 7 loop (`jlu-test-writer`, `jlu-implementer`, `jlu-tdd-cycle`, `jlu-refactor-agent`, `jlu-qa-agent`, `jlu-build-validator`), the orchestrator MUST follow this protocol to keep its own context window bounded across an N-phase task:
@@ -391,6 +453,19 @@ For every sub-agent dispatched within this Step 7 loop (`jlu-test-writer`, `jlu-
 5. **Failure-context recycling**: when retrying a failed agent (up to 5 attempts), the orchestrator passes only the structured digest + the last 50 lines of the previous attempt's failure output, not the full prior report. The agent reads its own predecessor's full report from disk if it needs more context.
 
 **Why this matters.** Each agent report is 500-2000 tokens. A 10-phase task with 4 agents per phase accumulates 20-80k tokens of report prose in orchestrator context — enough to push past the working window on Opus and force compaction mid-task. The persist-and-digest pattern caps the orchestrator's per-phase working-memory increment at ~200 tokens (structured digest) instead of ~5000 tokens (full report bundle).
+
+### 7a.0 — Open phase span
+
+Run:
+```bash
+PH_OUT=$(node "${PLUGIN_ROOT:-.}/bin/trace-start-span.mjs" \
+  --name phase --scope task \
+  --task "$TASK_SLUG" --service "$SERVICE_ID" --phase "$PHASE_NUM" \
+  --parent "$WORKFLOW_SPAN_ID" --trace "$WORKFLOW_TRACE_ID")
+PHASE_SPAN_ID=$(echo "$PH_OUT" | jq -r '.span_id // ""')
+```
+
+Empty span_id (when `TRACE_DISABLED=1`) is tolerated.
 
 ### 7b. Update Phase Status
 
@@ -784,6 +859,19 @@ Otherwise, spawn `jlu-build-validator` agent with model: **MODEL_CONFIG.code** (
    ```
 4. **No container cleanup.** The TDD pipeline never starts or manages containers, so there's nothing to prune.
 
+### 7z — Close phase span
+
+Determine `$PHASE_OUTCOME`:
+- `ok` — phase reached green tests + commit
+- `blocked` — three-strike rule fired
+- `failed` — phase aborted (non-recoverable)
+
+Run:
+```bash
+node "${PLUGIN_ROOT:-.}/bin/trace-end-span.mjs" \
+  --span "$PHASE_SPAN_ID" --status "$PHASE_OUTCOME"
+```
+
 ---
 
 ## Step 8 — Final Validation
@@ -1061,3 +1149,20 @@ Awaiting your input to proceed.
 | #36 | Real-time progress in TASKS.md + milestone terminal output |
 | #38 | Hybrid user story format |
 | #40 | Task branch `production/<task-slug>` across all repos |
+
+---
+
+## Step N — Close workflow span
+
+Determine `$WORKFLOW_OUTCOME`:
+- `ok` — all phases done, QA green, ready for `/jlu-create-pr`
+- `blocked` — workflow halted on a phase escalation; user intervention required
+- `failed` — workflow aborted (irrecoverable error)
+
+Run:
+```bash
+node "${PLUGIN_ROOT:-.}/bin/trace-end-span.mjs" \
+  --span "$WORKFLOW_SPAN_ID" --status "$WORKFLOW_OUTCOME"
+```
+
+Empty `$WORKFLOW_SPAN_ID` (when `TRACE_DISABLED=1`) is tolerated. This is the last step.

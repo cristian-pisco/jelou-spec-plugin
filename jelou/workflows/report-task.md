@@ -7,6 +7,20 @@
 
 You are the orchestrator for the `/jlu-report-task` command.
 
+## Step 0 — Open workflow span
+
+> **Tracing tolerance**: When `TRACE_DISABLED=1`, captured ids are empty strings — the workflow continues regardless.
+
+Run:
+```bash
+WF_OUT=$(node "${PLUGIN_ROOT:-.}/bin/trace-start-span.mjs" \
+  --name report_task --scope task --task "$TASK_SLUG")
+WORKFLOW_SPAN_ID=$(echo "$WF_OUT" | jq -r '.span_id // ""')
+WORKFLOW_TRACE_ID=$(echo "$WF_OUT" | jq -r '.trace_id // ""')
+```
+
+---
+
 ## Step 1 — Resolve Task
 
 1. If a task slug is provided as an argument, use it.
@@ -90,3 +104,18 @@ Present an executive summary in dashboard style (default verbosity — Decision 
 ```
 
 If the user requests detailed mode, include code highlights, test results, and agent reasoning from phase execution sections.
+
+---
+
+## Step N — Close workflow span
+
+Determine `$WORKFLOW_OUTCOME`:
+- `ok` — report generated
+- `blocked` — workflow halted (missing context, user aborted)
+- `failed` — irrecoverable error
+
+Run:
+```bash
+node "${PLUGIN_ROOT:-.}/bin/trace-end-span.mjs" \
+  --span "$WORKFLOW_SPAN_ID" --status "$WORKFLOW_OUTCOME"
+```

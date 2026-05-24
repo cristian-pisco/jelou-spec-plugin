@@ -31,6 +31,22 @@
 
 ---
 
+## Step 0 — Open workflow span
+
+> **Tracing tolerance**: When `TRACE_DISABLED=1`, the captured ids are empty strings — the workflow continues regardless.
+
+Run:
+```bash
+WF_OUT=$(node "${PLUGIN_ROOT:-.}/bin/trace-start-span.mjs" \
+  --name new_task --scope task)
+WORKFLOW_SPAN_ID=$(echo "$WF_OUT" | jq -r '.span_id // ""')
+WORKFLOW_TRACE_ID=$(echo "$WF_OUT" | jq -r '.trace_id // ""')
+```
+
+Note: `--task` is omitted at this step because the slug is created later in this workflow. The trace_id binds the workflow to the eventual task once the slug exists.
+
+---
+
 ## Step 1 — Resolve Workspace
 
 1. Read `.spec-workspace.json` from the current working directory.
@@ -792,3 +808,21 @@ If `DUAL_PR = yes`: append to the report:
 | Branch (primary) | `production/<task-slug>` (in each affected service repo) |
 | Branch (alpha, opt-in) | `staging/<task-slug>` (synthesized at first `/jlu-create-pr` when Dual PR = yes) |
 | Temp staging worktree | `<service-repo>/.worktrees/<task-slug>-staging-tmp` (ephemeral, dual-PR sync only) |
+
+---
+
+## Step N — Close workflow span
+
+Determine `$WORKFLOW_OUTCOME`:
+- `ok` — the spec reached `planned` state
+- `blocked` — interview aborted (user halted, or required input missing)
+- `failed` — irrecoverable error
+
+Run:
+```bash
+node "${PLUGIN_ROOT:-.}/bin/trace-end-span.mjs" \
+  --span "$WORKFLOW_SPAN_ID" --status "$WORKFLOW_OUTCOME" \
+  ${TASK_SLUG:+--outcome "task=$TASK_SLUG"}
+```
+
+Empty `$WORKFLOW_SPAN_ID` (when `TRACE_DISABLED=1`) makes this a no-op.
