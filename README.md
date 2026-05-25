@@ -16,7 +16,7 @@ Follows the conventions established by [OpenSpec](https://github.com/Fission-AI/
 - **Ubiquitous language**: `/jlu-ubiquitous-language` discovers and curates the workspace's domain glossary across services, anchoring each term to the services where it's implemented and referenced.
 - **Architecture review**: `/jlu-architecture-review` surfaces deepening opportunities (single-service or cross-service) — refactors that turn shallow modules into deep ones — runs an interactive grilling loop on a chosen candidate, and lazily records ADRs when candidates are rejected with load-bearing reasons.
 - **Dev environment diagnose**: `/jlu-diagnose` reads recent failure events and a TMUX pane capture from your dev environment, dispatches a focused diagnoser agent to triage the failure, and proposes a structured fix (host or container) that you confirm before it runs. Failure patterns can be registered with `/jlu-add-failure-pattern` so the daemon picks them up on the next match.
-- **Tracing & observability**: Plugin-native JSONL span store at `<WORKSPACE>/.traces/spans.jsonl` with three CLIs (`trace-start-span`, `trace-end-span`, `trace-reconcile`) for emitting and recovering workflow/phase/agent-dispatch spans. ULID-based, payload-capped under `PIPE_BUF` for atomic appends, `TRACE_DISABLED=1` short-circuits everything. Foundation only in Phase 1 — automatic workflow instrumentation and analyzer/suggester land in Phases 2-3.
+- **Tracing & observability**: Plugin-native JSONL span store at `<WORKSPACE>/.traces/spans.jsonl` with five CLIs (`trace-start-span`, `trace-end-span`, `trace-reconcile`, `trace-analyze`, `trace-suggest`) for emitting, recovering, querying, and getting improvement suggestions from workflow/phase/agent-dispatch spans. ULID-based, payload-capped under `PIPE_BUF` for atomic appends, `TRACE_DISABLED=1` short-circuits everything. Phase 1 laid the foundation; Phase 2 wired automatic workflow instrumentation; Phase 3 ships the analyzer, suggester, and `/jlu-trace-report` skill.
 
 ## Prerequisites
 
@@ -207,6 +207,7 @@ OpenCode command definitions live in `.opencode/commands/`. All commands use the
 | `/jlu-test-suite` | Run the current service's unit + integration tests with workers=1, report failures grouped by component (Controller, Service, Repository, etc.). Invoke before `/jlu-create-pr`. No arguments. |
 | `/jlu-ui-qa-run [task-slug]` | Boot affected services and run the Playwright E2E suite with bounded auto-fix loop and RAM/CPU worker gates |
 | `/jlu-ui-qa-cleanup [task-slug]` | Recover from leaked dev servers, stale containers, or held lock files |
+| `/jlu-trace-report` | Query the workspace trace store: by-agent / by-phase / by-task / trends |
 
 ### Test execution model
 
@@ -483,7 +484,7 @@ See [`jelou/references/dev-orchestrator.md`](./jelou/references/dev-orchestrator
 
 Plugin-native tracing layer for the full task lifecycle. Every workflow step, phase, and agent dispatch can emit a structured span to a workspace-local JSONL store, enabling bottleneck analysis, retry hot-spot detection, and harness self-improvement. Three observable surfaces (Component / Experience / Decision) following the 2026 harness-engineering canon.
 
-> **Status:** Phase 1 (foundation) ships emission, storage, and orphan recovery. Workflow auto-instrumentation lands in Phase 2; analyzer + suggestion engine lands in Phase 3. Until Phase 2, the CLIs are the way to emit spans.
+> **Status:** All three phases shipped. Phase 1 laid the emission, storage, and orphan-recovery foundation. Phase 2 wired automatic instrumentation into all six lifecycle workflows and migrated the dev-environment daemon into the same store. Phase 3 ships the analyzer (`bin/trace-analyze.mjs`), suggester (`bin/trace-suggest.mjs`), and the `/jlu-trace-report` skill.
 
 ### Where traces live
 
@@ -499,6 +500,8 @@ Plugin-native tracing layer for the full task lifecycle. Every workflow step, ph
 | `bin/trace-start-span.mjs` | Emit a `span_start` event | JSON `{span_id, trace_id, parent}` to stdout |
 | `bin/trace-end-span.mjs` | Emit a matching `span_end`, compute `duration_ms` from start lookup | nothing |
 | `bin/trace-reconcile.mjs` | Sweep orphan spans older than 30 min (process killed mid-workflow); emit synthetic `span_end` with `status: "orphaned"` | `reconciled: <N>` to stdout |
+| `bin/trace-analyze.mjs` | Read-side queries: `--by-agent` / `--by-phase` / `--by-task <slug>` / `--trends` | tabular output to stdout |
+| `bin/trace-suggest.mjs` | Scan recent traces, emit blocking suggestions per the four rules | one SUGGEST block per finding |
 
 All three are stdlib-only Node ESM scripts. No npm deps. Idempotent. Best-effort instrumentation — write failures fall back to stderr without aborting the caller.
 
@@ -571,10 +574,30 @@ On `span_end` additionally: `duration_ms`, `status` (`ok` | `blocked` | `failed`
 
 Identifiers are ULIDs (26-char Crockford base32, monotonic by ms-prefix). Payloads over 3500 bytes drop `outcome`/`artifacts` first, then `attrs` entirely, so every append stays under `PIPE_BUF` (4 KB) and remains atomic under concurrent writers.
 
-### What's coming next
+### Reading the trace store
 
-- **Phase 2** will instrument the six lifecycle workflows (`new-task`, `refine-task`, `execute-task`, `create-pr`, `report-task`, `close-task`) so spans are emitted automatically per workflow + per phase + per agent dispatch. The dev-environment daemon also migrates to this emitter so its event stream joins the same store.
-- **Phase 3** will ship `bin/trace-analyze.mjs` (CLI queries: `--by-agent`, `--by-phase`, `--by-task`, `--trends`) and `bin/trace-suggest.mjs` (4 rules with 7-day cooldown — bump model tier, extend failure patterns, suggest parallelization, flag blocked spans) plus a `/jlu-trace-report` skill.
+Use the `/jlu-trace-report` skill to inspect the workspace traces:
+
+```bash
+/jlu-trace-report --by-agent
+# agent_role       n   p50      p95      retry_rate  escalation_rate
+# implementer      14  62.0s    140.0s   21%         0%
+# test-writer      8   28.0s    35.0s    0%          0%
+# qa-agent         5   18.0s    24.0s    0%          0%
+```
+
+Other modes: `--by-phase` (durations grouped by `service:phase_num`), `--by-task <slug>` (full span tree of one task), `--trends` (week-over-week dispatch counts per agent).
+
+### Suggestions before heavy workflows
+
+The three heavy workflows (`/jlu-execute-task`, `/jlu-refine-task`, `/jlu-create-pr`) run the suggester at Step 0.5 right after the reconciler. The suggester applies four rules over recent traces:
+
+- **`bump_model_tier`** — agent retry rate > 20% over last 10 dispatches → suggests upgrading that agent's model tier
+- **`extend_patterns`** — same `error_signature` ≥ 3x in 30 days → suggests adding it to the daemon's failure-pattern matcher via `/jlu-add-failure-pattern`
+- **`suggest_parallelize`** — phase p95 / median > 3.0× → suggests enabling per-service-parallel waves
+- **`immediate_flag`** — any blocked/failed span in last 24h → surfaces it for review
+
+Each suggestion is presented as a single `y/n` question with inline evidence (retry counts, error signatures, p95/median ratios). User responses persist to `.spec-workspace/.cache/suggestion-history.jsonl` with a 7-day cooldown per `(rule, signature)` pair — the same finding never re-prompts within a week.
 
 ### Reference
 

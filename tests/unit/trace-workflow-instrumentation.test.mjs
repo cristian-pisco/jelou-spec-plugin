@@ -147,3 +147,19 @@ describe('close-task workflow — trace instrumentation', () => {
     assert.match(wf, /task_slug/);
   });
 });
+
+describe('suggester wired into Step 0.5 of heavy workflows (Phase 3)', () => {
+  const heavy = ['execute-task', 'refine-task', 'create-pr'];
+  for (const name of heavy) {
+    test(`${name} invokes bin/trace-suggest.mjs after reconcile`, () => {
+      const wf = read(`jelou/workflows/${name}.md`);
+      assert.match(wf, /trace-suggest\.mjs/,
+        `${name} must invoke bin/trace-suggest.mjs after reconcile`);
+    });
+
+    test(`${name} documents y/n approval + suggestion-history.jsonl`, () => {
+      const wf = read(`jelou/workflows/${name}.md`);
+      assert.match(wf, /suggestion-history\.jsonl|y\/n approval/);
+    });
+  }
+});

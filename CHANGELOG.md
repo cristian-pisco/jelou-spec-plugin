@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.3.168] — 2026-05-25
+
+### Added
+
+- **Tracing analyzer + suggester + skill (Phase 3 of the harness-engineering observability layer — closes the loop).** New `bin/trace-analyze.mjs` CLI with four query modes (`--by-agent`, `--by-phase`, `--by-task <slug>`, `--trends`) reads the workspace `spans.jsonl` and prints tabular summaries: agents with their p50/p95 durations, retry rate, and escalation rate; phases keyed by `service:phase_num`; the full span tree of one task; and week-over-week trend deltas. New `bin/trace-suggest.mjs` CLI applies four rules over recent traces with a 7-day cooldown: `bump_model_tier` (agent retry rate > 20% over last 10 dispatches), `extend_patterns` (error_signature ≥ 3 occurrences across 30 days), `suggest_parallelize` (phase p95/median > 3.0× over last 10), `immediate_flag` (any blocked/failed span in last 24h). The suggester is wired into the existing `Step 0.5` block of the three heavy workflows (`execute-task`, `refine-task`, `create-pr`) — right after the Phase 2 reconcile call — so suggestions surface before each workflow runs. Approved and declined responses persist to `.spec-workspace/.cache/suggestion-history.jsonl` with `(rule_id, signature)` keying.
+- **`/jlu-trace-report` skill** (`skills/trace-report/SKILL.md` + `.opencode/commands/jlu-trace-report.md` + `jelou/workflows/trace-report.md`) — interactive launcher that asks which view (by-agent / by-phase / by-task / trends) and invokes `bin/trace-analyze.mjs`. Read-only; no state written.
+- **`bin/lib/trace/aggregate.mjs`** — pure aggregation helpers shared between analyzer and suggester (`pairSpans`, `groupByTrace`, `groupByAgent`, `groupByPhase`, `percentile`, `retryRate`). Stdlib only, no I/O.
+- **`bin/lib/trace/rules.mjs`** — the four rules as data + a generic `evaluate(pairs)` entry point + `applyCooldown(findings, history)` + `formatSuggestion(finding)`. Thresholds (retry-rate 0.20, parallelize ratio 3.0, pattern occurrences 3, blocked lookback 24h, pattern lookback 30d, cooldown 7d) are module-scope constants — tunable without touching call sites.
+- **Tests**: 4 new unit test files (aggregate, rules, analyze, suggest) totaling ~38 new unit tests; 1 new integration test file (suggester end-to-end with synthetic 15-run trace store + cooldown verification). Full unit suite: 564. Integration suite: 10 (3 Phase 1 + 4 Phase 2 + 3 Phase 3).
+
+### Internal
+
+- The 23 agent prompts under `agents/` are byte-identical to prior main. Phase 3 adds analyzer + suggester + skill on top of Phase 2's instrumentation; subagents are not touched.
+- The dual-runtime contract for the new skill follows the existing pattern: shared workflow at `jelou/workflows/trace-report.md`, Claude Code launcher at `skills/trace-report/SKILL.md`, OpenCode launcher at `.opencode/commands/jlu-trace-report.md`.
+
 ## [0.3.167] — 2026-05-25
 
 ### Fixed

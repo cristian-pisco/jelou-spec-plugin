@@ -25,6 +25,30 @@
    WORKFLOW_TRACE_ID=$(echo "$WF_OUT" | jq -r '.trace_id // ""')
    ```
 
+### Step 0b — Surface suggestions from prior runs
+
+Run the suggester. It scans recent trace history and emits one SUGGEST block per active rule that fires (4 possible rules: bump model tier, extend failure patterns, suggest parallelization, immediate flag on blocked spans). The 7-day cooldown is honored automatically.
+
+```bash
+SUGGESTIONS=$(node "${PLUGIN_ROOT:-.}/bin/trace-suggest.mjs" 2>/dev/null || true)
+```
+
+If `SUGGESTIONS` is non-empty:
+
+1. Display each SUGGEST block to the user (one at a time) via `question` (OpenCode) / `AskUserQuestion` (Claude Code).
+2. For each, accept `y` (approve) or `n` (decline). Approval triggers the action (e.g., setting `MODEL_CONFIG` override, or queuing a `/jlu-add-failure-pattern` call). Decline silently dismisses the suggestion.
+3. Append a JSONL record to `<WORKSPACE>/.spec-workspace/.cache/suggestion-history.jsonl` for EACH decision (approved or declined). The record shape:
+
+   ```json
+   {"rule_id":"<id>","signature":"<sig>","action":"approved"|"declined","ts":"<iso8601>"}
+   ```
+
+   Both approved and declined actions start the 7-day cooldown, so the user is not re-prompted for the same finding immediately after responding.
+
+If `SUGGESTIONS` is empty, continue silently — no findings means no friction.
+
+Tracing is best-effort: if `bin/trace-suggest.mjs` errors out, the empty `SUGGESTIONS` variable means the workflow simply continues without prompts.
+
 ---
 
 ## Step 1 — Resolve Task

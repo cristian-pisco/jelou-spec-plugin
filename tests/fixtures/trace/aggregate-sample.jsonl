@@ -1,0 +1,16 @@
+{"ts":"2026-05-20T10:00:00.000Z","event_kind":"span_start","span_id":"T1WF","trace_id":"T1","scope":"task","name":"execute_task","task_slug":"alpha"}
+{"ts":"2026-05-20T10:00:01.000Z","event_kind":"span_start","span_id":"T1PH","parent_span_id":"T1WF","trace_id":"T1","scope":"task","name":"phase","task_slug":"alpha","service_id":"svc-x","phase_num":1}
+{"ts":"2026-05-20T10:00:02.000Z","event_kind":"span_start","span_id":"T1A1","parent_span_id":"T1PH","trace_id":"T1","scope":"task","name":"agent_dispatch","task_slug":"alpha","service_id":"svc-x","phase_num":1,"agent_role":"test-writer"}
+{"ts":"2026-05-20T10:00:30.000Z","event_kind":"span_end","span_id":"T1A1","trace_id":"T1","scope":"task","name":"agent_dispatch","status":"ok","duration_ms":28000,"agent_role":"test-writer","attrs":{"retry_count":0,"diff_size_loc":28}}
+{"ts":"2026-05-20T10:00:31.000Z","event_kind":"span_start","span_id":"T1A2","parent_span_id":"T1PH","trace_id":"T1","scope":"task","name":"agent_dispatch","task_slug":"alpha","service_id":"svc-x","phase_num":1,"agent_role":"implementer"}
+{"ts":"2026-05-20T10:02:30.000Z","event_kind":"span_end","span_id":"T1A2","trace_id":"T1","scope":"task","name":"agent_dispatch","status":"ok","duration_ms":119000,"agent_role":"implementer","attrs":{"retry_count":1,"diff_size_loc":87}}
+{"ts":"2026-05-20T10:02:31.000Z","event_kind":"span_end","span_id":"T1PH","trace_id":"T1","scope":"task","name":"phase","status":"ok","duration_ms":150000}
+{"ts":"2026-05-20T10:02:32.000Z","event_kind":"span_end","span_id":"T1WF","trace_id":"T1","scope":"task","name":"execute_task","status":"ok","duration_ms":152000}
+{"ts":"2026-05-20T11:00:00.000Z","event_kind":"span_start","span_id":"T2WF","trace_id":"T2","scope":"task","name":"execute_task","task_slug":"beta"}
+{"ts":"2026-05-20T11:00:01.000Z","event_kind":"span_start","span_id":"T2PH","parent_span_id":"T2WF","trace_id":"T2","scope":"task","name":"phase","task_slug":"beta","service_id":"svc-x","phase_num":1}
+{"ts":"2026-05-20T11:00:02.000Z","event_kind":"span_start","span_id":"T2A1","parent_span_id":"T2PH","trace_id":"T2","scope":"task","name":"agent_dispatch","task_slug":"beta","service_id":"svc-x","phase_num":1,"agent_role":"implementer"}
+{"ts":"2026-05-20T11:02:00.000Z","event_kind":"span_end","span_id":"T2A1","trace_id":"T2","scope":"task","name":"agent_dispatch","status":"ok","duration_ms":118000,"agent_role":"implementer","attrs":{"retry_count":0,"diff_size_loc":45}}
+{"ts":"2026-05-20T11:02:01.000Z","event_kind":"span_end","span_id":"T2PH","trace_id":"T2","scope":"task","name":"phase","status":"ok","duration_ms":121000}
+{"ts":"2026-05-20T11:02:02.000Z","event_kind":"span_start","span_id":"T2QA","parent_span_id":"T2WF","trace_id":"T2","scope":"task","name":"qa","task_slug":"beta"}
+{"ts":"2026-05-20T11:03:00.000Z","event_kind":"span_end","span_id":"T2QA","trace_id":"T2","scope":"task","name":"qa","status":"ok","duration_ms":58000}
+{"ts":"2026-05-20T11:03:01.000Z","event_kind":"span_end","span_id":"T2WF","trace_id":"T2","scope":"task","name":"execute_task","status":"ok","duration_ms":181000}
