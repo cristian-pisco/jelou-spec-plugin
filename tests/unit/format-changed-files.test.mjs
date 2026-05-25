@@ -223,6 +223,75 @@ describe('format-changed-files.sh — detection chain (dry-run)', () => {
     }
   });
 
+  test('CONVENTIONS.md: skips bare config filenames like `.prettierrc` and picks the real command', () => {
+    const dir = mktmp();
+    try {
+      writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'x', scripts: {} }));
+      const convPath = join(dir, 'CONVENTIONS.md');
+      writeFileSync(convPath, [
+        '# Conventions',
+        '',
+        '## Formatting',
+        '',
+        'The project uses `.prettierrc` for configuration.',
+        'To format the code, run `npx prettier --write`.',
+        '',
+        '## Other',
+        '',
+        'Stuff.',
+      ].join('\n'));
+      writeFileSync(join(dir, 'a.ts'), 'x\n');
+      const r = runScript({
+        FORMAT_SOURCE_PATH: dir,
+        FORMAT_CHANGED_FILES: 'a.ts',
+        FORMAT_CONVENTIONS: convPath,
+        FORMAT_DRY_RUN: '1',
+      });
+      assert.equal(r.code, 0, `expected ok, got: ${r.stdout}\n${r.stderr}`);
+      assert.equal(r.parsed.detection_source, 'conventions');
+      assert.match(r.parsed.command, /npx prettier --write/);
+      assert.doesNotMatch(r.parsed.command, /\.prettierrc/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('CONVENTIONS.md: skips `biome.json` in tables and picks `biome check` (jelou-apps shape)', () => {
+    const dir = mktmp();
+    try {
+      writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'x', scripts: {} }));
+      const convPath = join(dir, 'CONVENTIONS.md');
+      writeFileSync(convPath, [
+        '# Conventions',
+        '',
+        '## Formatting',
+        '',
+        '| Rule | Value | Source |',
+        '|------|-------|--------|',
+        '| Indentation | 4 spaces | `biome.json`, `.editorconfig` |',
+        '',
+        '**Pre-commit enforcement**: `lint-staged` runs `biome check --error-on-warnings --no-errors-on-unmatched` on staged files.',
+        '',
+        '## Other',
+        '',
+        'Stuff.',
+      ].join('\n'));
+      writeFileSync(join(dir, 'a.ts'), 'x\n');
+      const r = runScript({
+        FORMAT_SOURCE_PATH: dir,
+        FORMAT_CHANGED_FILES: 'a.ts',
+        FORMAT_CONVENTIONS: convPath,
+        FORMAT_DRY_RUN: '1',
+      });
+      assert.equal(r.code, 0, `expected ok, got: ${r.stdout}\n${r.stderr}`);
+      assert.equal(r.parsed.detection_source, 'conventions');
+      assert.match(r.parsed.command, /biome check/);
+      assert.doesNotMatch(r.parsed.command, /biome\.json/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test('files_count reflects filtered list', () => {
     const dir = mktmp();
     try {

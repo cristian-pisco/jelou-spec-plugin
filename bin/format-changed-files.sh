@@ -71,16 +71,25 @@ if [[ -n "${FORMAT_CONVENTIONS:-}" ]] && [[ -f "$FORMAT_CONVENTIONS" ]]; then
   # Look for lines like: `npm run format -- ` or `npx prettier --write`
   # inside a section whose heading mentions Format or Lint.
   CONV_CMD="$(awk '
-    /^#+ *(Format|Lint|Formatting|Linting)/ { in_section=1; next }
-    in_section && /^#+ / { in_section=0 }
-    in_section && /`[^`]+`/ {
-      match($0, /`[^`]+`/)
-      cmd = substr($0, RSTART+1, RLENGTH-2)
-      if (cmd ~ /(prettier|eslint|biome|rome|black|ruff|gofmt|rustfmt|format|lint)/) {
+  # Activate inside Formatting/Lint sections (case-sensitive headings as before).
+  /^#+ *(Format|Lint|Formatting|Linting)/ { in_section=1; next }
+  in_section && /^#+ / { in_section=0 }
+  # Scan every backtick token on the line — not just the first — so a config
+  # filename mentioned before the real command does not shadow it.
+  in_section {
+    s = $0
+    while (match(s, /`[^`]+`/)) {
+      cmd = substr(s, RSTART+1, RLENGTH-2)
+      s = substr(s, RSTART + RLENGTH)
+      # Accept only actual commands. A command starts with a known runner /
+      # formatter followed by whitespace and at least one argument. Bare config
+      # filenames (`.prettierrc`, `biome.json`, `.eslintrc.json`) fail this test.
+      if (cmd ~ /^(npm|npx|yarn|pnpm|bun|biome|prettier|eslint|rome|black|ruff|gofmt|rustfmt)[[:space:]]+[^[:space:]]/) {
         print cmd
         exit
       }
     }
+  }
   ' "$FORMAT_CONVENTIONS" 2>/dev/null || true)"
   if [[ -n "$CONV_CMD" ]]; then
     DETECTED_CMD="$CONV_CMD"
