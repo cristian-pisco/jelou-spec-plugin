@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.167] — 2026-05-25
+
+### Fixed
+- `bin/finalize-phase.sh` now stages and commits untracked-but-not-ignored files alongside tracked-modified ones. `git diff --name-only HEAD` alone missed brand-new files, forcing manual follow-up commits for phases that produced new test files or modules (observed on Phases 01/02/03a of real runs). The scope check still validates every file in the union against `FINALIZE_EXPECTED` — undeclared new files abort with `reason=unexpected_files_in_diff`. Three new unit tests cover declared-untracked, mixed modified+untracked, and undeclared-untracked-aborts.
+- `bin/format-changed-files.sh` CONVENTIONS.md parser no longer treats config filenames like `.prettierrc`, `biome.json`, or `.eslintrc.json` as the format command. The previous awk matched any backtick token containing a formatter substring; config filenames won by appearing earlier in the section (confirmed on real `jelou-apps` CONVENTIONS.md where `biome.json` shadowed `biome check`). The new awk scans every backtick token on each in-section line and requires the token to start with a known runner (`npm|npx|yarn|pnpm|bun|biome|prettier|eslint|rome|black|ruff|gofmt|rustfmt`) followed by whitespace and at least one argument. POSIX `[^[:space:]]` used instead of GNU `\S` for portability across BSD/busybox awk. Two new unit tests cover `.prettierrc` and `biome.json` (jelou-apps-shape) fixtures.
+
 ## [0.3.166] — 2026-05-24
 
 ### Added

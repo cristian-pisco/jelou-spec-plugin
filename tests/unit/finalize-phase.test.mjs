@@ -186,6 +186,25 @@ describe('finalize-phase.sh — scope check', () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  test('aborts when an untracked file is not declared in FINALIZE_EXPECTED', () => {
+    const dir = setupRepo();
+    try {
+      writeFileSync(join(dir, 'a.ts'), 'hello\nmod\n');
+      writeFileSync(join(dir, 'sneaky.ts'), 'oops\n');   // untracked, undeclared
+      const r = runScript({
+        ...BASE_ENV,
+        FINALIZE_SOURCE_PATH: dir,
+        FINALIZE_EXPECTED: 'a.ts',
+      });
+      assert.equal(r.code, 2);
+      assert.equal(r.parsed.status, 'abort');
+      assert.equal(r.parsed.reason, 'unexpected_files_in_diff');
+      assert.match(r.parsed.unexpected_files, /sneaky\.ts/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('finalize-phase.sh — happy path', () => {
@@ -221,6 +240,48 @@ describe('finalize-phase.sh — happy path', () => {
         FINALIZE_EXPECTED: 'a.ts\nb.ts',
       });
       assert.equal(r.code, 0, `expected ok, got: ${r.stdout}\n${r.stderr}`);
+      assert.equal(r.parsed.status, 'ok');
+      assert.equal(r.parsed.files_committed, '2');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('stages and commits an untracked new file declared in FINALIZE_EXPECTED', () => {
+    const dir = setupRepo();
+    try {
+      // new.ts is brand-new — never tracked before this phase
+      writeFileSync(join(dir, 'new.ts'), 'fresh\n');
+      const r = runScript({
+        ...BASE_ENV,
+        FINALIZE_SOURCE_PATH: dir,
+        FINALIZE_EXPECTED: 'new.ts',
+      });
+      assert.equal(r.code, 0, `expected ok, got:\n${r.stdout}\n${r.stderr}`);
+      assert.equal(r.parsed.status, 'ok');
+      assert.equal(r.parsed.files_committed, '1');
+      // Verify the file is actually in the commit, not just unstaged on disk.
+      const showed = git(dir, 'show', '--name-only', '--format=', 'HEAD')
+        .split('\n')
+        .map(l => l.trim())
+        .filter(Boolean);
+      assert.deepEqual(showed, ['new.ts']);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('handles a mix of modified and untracked files in one phase', () => {
+    const dir = setupRepo();
+    try {
+      writeFileSync(join(dir, 'a.ts'), 'hello\nmod\n');         // modified tracked
+      writeFileSync(join(dir, 'newSpec.ts'), 'spec\n');         // untracked new
+      const r = runScript({
+        ...BASE_ENV,
+        FINALIZE_SOURCE_PATH: dir,
+        FINALIZE_EXPECTED: 'a.ts\nnewSpec.ts',
+      });
+      assert.equal(r.code, 0, `expected ok, got:\n${r.stdout}\n${r.stderr}`);
       assert.equal(r.parsed.status, 'ok');
       assert.equal(r.parsed.files_committed, '2');
     } finally {
