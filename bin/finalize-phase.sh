@@ -84,7 +84,13 @@ fi
 
 # ----- Scope check ---------------------------------------------------------
 
-DIFF_FILES="$(git diff --name-only HEAD)"
+# Union of tracked-but-modified and untracked-but-not-ignored files.
+# git diff --name-only HEAD alone misses brand-new files; ls-files --others
+# captures them so new modules and test files are scoped and staged correctly.
+DIFF_FILES="$( {
+    git diff --name-only HEAD
+    git ls-files --others --exclude-standard
+  } | LC_ALL=C sort -u )"
 
 if [[ -z "$DIFF_FILES" ]]; then
   echo "status=abort"
