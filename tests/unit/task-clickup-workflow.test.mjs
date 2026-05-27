@@ -127,6 +127,82 @@ describe('OKR reference doc', () => {
   });
 });
 
+describe('task-clickup workflow — extended field coverage', () => {
+  const wf = read('jelou/workflows/task-clickup.md');
+
+  test('Step 3 mapping table includes the extended ClickUp fields', () => {
+    assert.match(wf, /OKR \(Tech\)\s*\|\s*labels/);
+    assert.match(wf, /Estado del diseño\s*\|\s*drop_down/);
+    assert.match(wf, /Proyecto\s*\|\s*drop_down/);
+    assert.match(wf, /QA Asignado\s*\|\s*users/);
+    assert.match(wf, /Cliente\s*\|\s*drop_down/);
+  });
+
+  test('Step 4d documents inference for OKR (Tech), Estado del diseño, Proyecto, QA Asignado, Cliente', () => {
+    assert.match(wf, /\*\*OKR \(Tech\)\*\*[\s\S]{0,400}KR-code prefix/);
+    assert.match(wf, /\*\*Estado del diseño\*\*[\s\S]{0,300}Solicitado/);
+    assert.match(wf, /\*\*Proyecto\*\*[\s\S]{0,400}affected services/);
+    assert.match(wf, /\*\*QA Asignado\*\*[\s\S]{0,200}Opt-in/);
+    assert.match(wf, /\*\*Cliente\*\*[\s\S]{0,200}Opt-in/);
+  });
+
+  test('Step 5e example payload includes the OKR (Tech) labels field and the extended fields', () => {
+    assert.match(wf, /<okr-tech-field-id>/);
+    assert.match(wf, /<okr-option-uuid-matching-KR-code>/);
+    assert.match(wf, /<qa-asignado-field-id>/);
+    assert.match(wf, /<estado-del-diseno-field-id>/);
+    assert.match(wf, /<proyecto-field-id>/);
+    assert.match(wf, /<cliente-field-id>/);
+  });
+
+  test('Step 8 field_mappings persists the extended fields and the OKR option map', () => {
+    assert.match(wf, /"OKR \(Tech\)":\s*"<field-id>"/);
+    assert.match(wf, /"Estado del diseño":\s*"<field-id>"/);
+    assert.match(wf, /"Proyecto":\s*"<field-id>"/);
+    assert.match(wf, /"QA Asignado":\s*"<field-id>"/);
+    assert.match(wf, /"Cliente":\s*"<field-id>"/);
+    assert.match(wf, /"okr_option_map":/);
+  });
+
+  test('subtasks inherit the extended custom-field set', () => {
+    assert.match(wf, /Subtasks inherit ALL parent custom fields[\s\S]{0,400}OKR \(Tech\)/);
+    assert.match(wf, /Subtasks inherit ALL parent custom fields[\s\S]{0,400}Estado del diseño/);
+    assert.match(wf, /Subtasks inherit ALL parent custom fields[\s\S]{0,400}Proyecto/);
+    assert.match(wf, /Subtasks inherit ALL parent custom fields[\s\S]{0,400}QA Asignado/);
+    assert.match(wf, /Subtasks inherit ALL parent custom fields[\s\S]{0,400}Cliente/);
+  });
+
+  test('Rules section forbids auto-setting human-curated date fields', () => {
+    assert.match(wf, /Fecha límite modificada/);
+    assert.match(wf, /Fecha de entrega al Cliente/);
+    assert.match(wf, /Never auto-set human-curated fields|NEVER.*human-only|owned by people, not the workflow/);
+  });
+
+  test('Rules require OKR in both description and the OKR (Tech) custom field', () => {
+    assert.match(wf, /OKR is mandatory\*\* in \*\*both\*\* the macro task description \*\*and\*\* the\s+`OKR \(Tech\)` custom field/);
+  });
+});
+
+describe('OKR reference doc — OKR (Tech) custom-field instructions', () => {
+  const okr = read('jelou/references/okr-mapping.md');
+
+  test('removes the false claim that the list has no OKR field', () => {
+    assert.doesNotMatch(okr, /the list does not have an OKR field/);
+  });
+
+  test('documents the dual write (description + custom field)', () => {
+    assert.match(okr, /The `OKR \(Tech\)` custom field \(type `labels`\)/);
+    assert.match(okr, /markdown_description/);
+  });
+
+  test('explains option resolution by KR-code prefix', () => {
+    assert.match(okr, /OKR \(Tech\) custom field — option resolution/);
+    assert.match(okr, /KR-code prefix|starts with the selected KR code/);
+    assert.match(okr, /single-element array/);
+    assert.match(okr, /do \*\*not\*\* hardcode|Never invent a UUID/);
+  });
+});
+
 describe('Story Points reference doc', () => {
   const sp = read('jelou/references/story-points-estimation.md');
 

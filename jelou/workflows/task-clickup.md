@@ -61,22 +61,33 @@ If MCP is already configured, this may be a transient ClickUp API error. Try re-
 ## Step 3 — Discover Custom Fields
 
 1. Use `clickup_get_list` with the target list ID to get list details including custom field definitions.
-2. Auto-map fields by name (case-insensitive match):
+2. Auto-map fields by name (case-insensitive, trims whitespace, removes diacritics for matching):
 
-| Plugin Field | ClickUp Field Name |
-|-------------|-------------------|
-| Team | Equipo |
-| Responsible | Responsable |
-| Requester | Solicitante |
-| Size | Talla |
-| Risk | Riesgo |
-| Project Type | Tipo proyecto |
-| Frontline | Front |
-| Needs Design | Necesita Diseno |
-| Sprint | Sprint |
+| Plugin Field | ClickUp Field Name | Type | Required | Notes |
+|-------------|-------------------|------|----------|-------|
+| Team | Equipo | labels | yes | |
+| Responsible | Responsable | users | yes | Dual write — see Step 4d / 5b. |
+| Requester | Solicitante | drop_down | yes | |
+| Size | Talla | drop_down | yes | |
+| Risk | Riesgo | drop_down | yes | |
+| Project Type | Tipo proyecto | drop_down | yes | |
+| Frontline | Front | drop_down | yes | |
+| Needs Design | Necesita Diseno | drop_down | yes | |
+| Sprint | Sprint | number | yes | |
+| OKR | OKR (Tech) | labels | yes | Option resolved by KR-code prefix — see `references/okr-mapping.md`. |
+| Design State | Estado del diseño | drop_down | conditional | Auto-set to "Solicitado" only when `Needs Design = Si`. |
+| Project Area | Proyecto | drop_down | conditional | Inferred from affected services / SPEC context. Skip if no confident match. |
+| QA Assignee | QA Asignado | users | opt-in | Set only when a QA assignee is provided (e.g., on hand-off to QA). |
+| Client | Cliente | drop_down | opt-in | Set only when the task is tied to a specific customer. |
 
-3. Persist discovered field IDs in `CLICKUP_TASK.json` under `field_mappings` for future runs.
-4. If a required field is not found, warn and continue — do not block the entire sync.
+3. Persist discovered field IDs in `CLICKUP_TASK.json` under `field_mappings`
+   for future runs. For `OKR (Tech)`, also persist the resolved KR-code → option
+   UUID lookup table (keyed by KR code) the first time the field is discovered,
+   so subsequent runs can write the OKR field without re-fetching list options.
+4. If a **required** field is not found, warn and continue — do not block the
+   entire sync. If a **conditional** or **opt-in** field is missing, skip
+   silently. The following fields are **NEVER** auto-set by the workflow
+   (human-only): `Fecha límite modificada`, `Fecha de entrega al Cliente`.
 5. **Sprint Points / Story Points are NOT custom fields.** Per the ClickUp
    REST API v2
    ([`/reference/createtask`](https://developer.clickup.com/reference/createtask),
@@ -173,6 +184,11 @@ the user as natural language (e.g., "1d 4h").
 | **Equipo, Solicitante** | From config defaults — ask user on first run via question, persist in CLICKUP_TASK.json |
 | **Responsable** | From config defaults. **Dual destination**: write the user ID to (a) the top-level `assignees` field on Create Task / Update Task, and (b) the `Responsable` custom field (type `users`) using the documented `{add, rem}` shape. See Step 5b/5c — skipping (a) leaves `assignees: []` on the task, which is what hides it from boards and "assigned to me" filters. |
 | **Sprint** | From TASKS.md sprint number |
+| **OKR (Tech)** | From Step 4a's selected KR. Resolve the option UUID by matching the KR-code prefix against the `OKR (Tech)` field's option labels — see `references/okr-mapping.md`. Pass as a single-element array (labels shape). Never hardcode UUIDs. |
+| **Estado del diseño** | Conditional. If `Necesita Diseno = Si` and no prior design state is recorded → set to `Solicitado`. If `Necesita Diseno = No` → leave empty. On subsequent updates, do **not** overwrite an existing value (humans curate this field). |
+| **Proyecto** | Inferred from the affected services in TASKS.md or the SPEC.md context. Use the following best-effort match against the `Proyecto` field options: service `chatbot-server` / runtime concerns → `Brain`; UI editor work → `Builder` (or `Builder (Legacy)` if pre-V3); marketplace features → `Marketplace`; module-specific tasks (e.g., "Nodo API", "AI Agent") → the matching option. If no confident match (single clear hit), skip — do not guess. |
+| **QA Asignado** | Opt-in. Only set when a QA assignee is explicitly provided (via question on hand-off, or via a `qa_assignee` default in `CLICKUP_TASK.json`). Same dual-write contract as Responsable is **not** needed — QA Asignado is the custom field only, not the top-level `assignees`. |
+| **Cliente** | Opt-in. Only set when the task is explicitly tied to a customer (mentioned in SPEC.md or asked via question). Resolve by case-insensitive name match against the `Cliente` field options. Skip on ambiguity. |
 
 ## Step 5 — Create or Update Macro Task
 
@@ -284,8 +300,29 @@ depends on the field type. Use the documented shapes literally:
 
 The Responsable custom field is type `users`; the Equipo and OKR (Tech)
 fields are `labels`; Talla, Riesgo, Tipo proyecto, Front, Necesita Diseno,
-Solicitante are `drop_down`; Sprint is `number`. Use the right shape for
-each.
+Solicitante, Estado del diseño, Proyecto, Cliente are `drop_down`; QA
+Asignado is `users` (same `{add, rem}` shape as Responsable, but written to
+the custom field only — no top-level `assignees` dual-write); Sprint is
+`number`. Use the right shape for each.
+
+Example payload covering the extended field set:
+
+```json
+"custom_fields": [
+  { "id": "<equipo-field-id>",              "value": ["<team-label-uuid>"] },
+  { "id": "<okr-tech-field-id>",            "value": ["<okr-option-uuid-matching-KR-code>"] },
+  { "id": "<responsable-field-id>",         "value": { "add": ["<user-id-str>"], "rem": [] } },
+  { "id": "<qa-asignado-field-id>",         "value": { "add": ["<qa-user-id-str>"], "rem": [] } },
+  { "id": "<estado-del-diseno-field-id>",   "value": "<solicitado-option-uuid>" },
+  { "id": "<proyecto-field-id>",            "value": "<proyecto-option-uuid>" },
+  { "id": "<cliente-field-id>",             "value": "<cliente-option-uuid>" }
+]
+```
+
+Omit any entry whose source field is not present in `field_mappings` or
+whose value the inference step in Step 4d resolved as empty. Never write
+`Fecha límite modificada` or `Fecha de entrega al Cliente` — those are
+human-curated.
 
 ### 5d. Verify time_estimate landed
 
@@ -373,9 +410,11 @@ For each user story file in `uh/`:
    the Responsable custom field with `{add, rem}` shape.
 3. **Subtasks inherit ALL parent custom fields**: Riesgo, Equipo, Tipo
    proyecto, Solicitante, Front, Talla, Responsable, Sprint, Necesita
-   Diseno. Sprint / Story Points are passed via the top-level `points`
-   parameter, not as a custom field — same value as the parent (or a
-   proportional fraction for subtasks).
+   Diseno, OKR (Tech), Estado del diseño, Proyecto, QA Asignado, Cliente.
+   Sprint / Story Points are passed via the top-level `points` parameter,
+   not as a custom field — same value as the parent (or a proportional
+   fraction for subtasks). For the OKR (Tech) labels field, reuse the
+   parent's resolved option UUID — do **not** re-resolve from list options.
 4. **Update existing**: Use `clickup_update_task` with `time_estimate` and any changed fields in a single call.
 5. **Verify** `time_estimate` on every subtask using the same protocol as
    Step 5d (call `clickup_get_task`, fall back to `clickup_update_task` once,
@@ -399,12 +438,24 @@ Write the updated sync state:
     "Tipo proyecto": "<field-id>",
     "Front": "<field-id>",
     "Necesita Diseno": "<field-id>",
-    "Sprint": "<field-id>"
+    "Sprint": "<field-id>",
+    "OKR (Tech)": "<field-id>",
+    "Estado del diseño": "<field-id>",
+    "Proyecto": "<field-id>",
+    "QA Asignado": "<field-id>",
+    "Cliente": "<field-id>"
+  },
+  "okr_option_map": {
+    "1.1": "<option-uuid>",
+    "1.2": "<option-uuid>",
+    "2.1": "<option-uuid>",
+    "...": "..."
   },
   "defaults": {
     "equipo": "<value>",
     "responsable": "<value>",
-    "solicitante": "<value>"
+    "solicitante": "<value>",
+    "qa_assignee": "<value-or-null>"
   },
   "macroTask": {
     "id": "<clickup-task-id>",
@@ -476,9 +527,15 @@ Present the sync results to the user:
   tasks at the ClickUp "1m" default when the trailing call was skipped.
 - **Verify time_estimate** after every create or update via Step 5d. Persist
   the verified value (not the intended value) to `CLICKUP_TASK.json`.
-- **OKR is mandatory** in the macro task description. Pick exactly one KR
-  from `jelou/references/okr-mapping.md` per Step 4a. Subtasks do not repeat
-  the OKR block.
+- **OKR is mandatory** in **both** the macro task description **and** the
+  `OKR (Tech)` custom field. Pick exactly one KR from
+  `jelou/references/okr-mapping.md` per Step 4a; resolve its option UUID by
+  matching the KR-code prefix on the field's option labels (see Step 5e and
+  `references/okr-mapping.md`). Subtasks inherit the parent's resolved
+  option UUID and do not repeat the markdown OKR block.
+- **Never auto-set human-curated fields**: `Fecha límite modificada` and
+  `Fecha de entrega al Cliente` are owned by people, not the workflow. Leave
+  them untouched even if they appear in the list's field definitions.
 - **Story Points / Talla** must follow the CUE + AI-first framework in
   `jelou/references/story-points-estimation.md`. N (files / PRs / repos)
   does not inflate SP. SP ≥ 13 means **DIVIDIR before syncing**.

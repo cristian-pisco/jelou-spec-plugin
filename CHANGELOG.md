@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.169] — 2026-05-27
+
+### Added
+- Step 3: extend the auto-mapping table with OKR (Tech), Estado del diseño, Proyecto, QA Asignado, Cliente (typed, criticality-tagged). Explicitly exclude human-only fields (Fecha límite modificada, Fecha de entrega al Cliente).
+- Step 4d: inference rules for the new fields. OKR (Tech) option is resolved at runtime by matching the KR-code prefix on the field's option labels (no hardcoded UUIDs).
+- Step 5e: extended example payload + per-type shape notes.
+- Step 7b: subtasks inherit the extended field set (no OKR re-resolution).
+- Step 8: persist field_mappings for the new fields + okr_option_map.
+- okr-mapping.md: drop the false claim that no OKR field exists; document the option-resolution pattern.
+- 12 new structural tests guard against regressions.
+
 ## [0.3.168] — 2026-05-25
 
 ### Added

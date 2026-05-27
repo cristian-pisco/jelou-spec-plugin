@@ -1,10 +1,15 @@
 # OKR Mapping — Jelou Tech 2026
 
 Every ClickUp task created by `/jlu-task-clickup` MUST be tied to exactly one Key
-Result. The mapping is embedded into the task's `markdown_description` (no
-custom field is set — the list does not have an OKR field). Use the table
-below to pick the KR; if more than one fits, pick the one closest to the
-task's primary intent.
+Result. The KR is written to **two** places on the macro task:
+
+1. The `markdown_description` (human-readable block — see "Embedding format"
+   below).
+2. The `OKR (Tech)` custom field (type `labels`) — required for dashboards,
+   filters, and quarterly reporting in ClickUp.
+
+Use the table below to pick the KR; if more than one fits, pick the one closest
+to the task's primary intent.
 
 ## Objetivo 1 — Escalar Brain OS para soportar el crecimiento PLG
 
@@ -96,3 +101,24 @@ Example:
 
 For subtasks: do **not** repeat the OKR block — subtasks inherit the parent
 context. The macro task is the canonical place.
+
+## OKR (Tech) custom field — option resolution
+
+The `OKR (Tech)` field is type `labels`. Its option labels in ClickUp follow
+the convention `<KR-code> <label>` (e.g., `2.1 Features`, `5.3 Usage-based
+billing`). Resolve the option UUID at runtime — do **not** hardcode:
+
+1. Read the OKR (Tech) field from `clickup_get_list` (Step 3 of the workflow).
+2. Find the option whose `label` starts with the selected KR code followed by
+   a space (e.g., for KR `2.1`, match the option labeled `2.1 Features`).
+3. Pass the matched option's `id` as a single-element array — the field is
+   multi-select, but each task is tied to exactly one KR.
+
+```json
+{ "id": "<okr-tech-field-id>", "value": ["<matched-option-uuid>"] }
+```
+
+If the KR-code prefix has no matching option, surface a warning in Step 9 and
+fall back to the markdown_description embed only. Never invent a UUID.
+
+For subtasks: inherit the parent's resolved option UUID. Do not re-resolve.
