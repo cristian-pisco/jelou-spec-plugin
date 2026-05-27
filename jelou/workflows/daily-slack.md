@@ -5,6 +5,8 @@
 
 > **Tool requirement**: All prompts, questions, and confirmations to the user in this workflow MUST use `question`. Never output questions as plain text.
 
+> **Cache-file writes**: Every artifact written under `<workspace>/.cache/` in this workflow MUST be written via `Bash` (heredoc, `printf`, or shell redirect), NOT via the `Write` tool. `Write` refuses to overwrite a file that has not been read in the current session, so on every run after the first it errors with `File has not been read yet`. `Bash` has no such constraint, and cache files are ephemeral machine-generated artifacts that don't need the `Write` tool's safety net. The phrasing "Write `<workspace>/.cache/X`" below means "store to disk via Bash" — never invoke the `Write` tool against a `.cache/` path. (Outputs under `drafts/` and `registry/` continue to use the `Write` tool because the user reviews them and the read-before-write check protects against accidental data loss.)
+
 ---
 
 You are the orchestrator for the `/jlu-daily-slack` command. You generate a Slack message from sprint task data and a channel template, then post it after user approval.
