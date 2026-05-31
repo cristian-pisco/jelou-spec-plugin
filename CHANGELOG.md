@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.171] — 2026-05-31
+
+### Internal
+- design for E2E env opt-in + Playwright bootstrap
+
 ## [0.3.170] — 2026-05-27
 
 ### Fixed
