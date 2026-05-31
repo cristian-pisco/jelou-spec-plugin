@@ -215,11 +215,17 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
     # Mandatory: baseURL must come from env, not be hard-coded in playwright.config.ts.
     : "${E2E_BASE_URL:?missing E2E_BASE_URL — set it in .env.e2e (see references/e2e-environment.md)}"
 
-    # Anti-prod gate: refuse a production-looking target unless --allow-prod-target was passed.
-    # PLUGIN_ROOT is the plugin root resolved by the SKILL bootstrap (Phase 1).
-    TARGET_CLASS=$(node "$PLUGIN_ROOT/bin/classify-e2e-target.mjs" "$E2E_BASE_URL")
-    if [ "$TARGET_CLASS" = "prod" ] && [ -z "$ALLOW_PROD_TARGET" ]; then
-      echo "ERROR: E2E_BASE_URL points at production ('$E2E_BASE_URL')."
+    # Anti-prod gate (DEFAULT-DENY / fail-closed): only a target the classifier verifies as
+    # `safe` runs without --allow-prod-target. Any other class — `prod`, OR an empty/missing
+    # result because the classifier could not run — blocks. The test is `!= "safe"`, never
+    # `= "prod"`, so a broken invocation can never let a production target through silently.
+    # $PLUGIN_ROOT is the absolute plugin root resolved by the SKILL bootstrap (Phase 1); the
+    # orchestrator substitutes it here. `|| true` keeps a node failure from aborting under set -e;
+    # the empty TARGET_CLASS it yields still fails the `!= "safe"` test and blocks.
+    TARGET_CLASS=$(node "$PLUGIN_ROOT/bin/classify-e2e-target.mjs" "$E2E_BASE_URL" 2>/dev/null || true)
+    if [ "$TARGET_CLASS" != "safe" ] && [ -z "$ALLOW_PROD_TARGET" ]; then
+      echo "ERROR: E2E_BASE_URL points at production or an unverified target ('$E2E_BASE_URL'; class=${TARGET_CLASS:-unknown})."
+      echo "  Default-deny: only localhost / *.local / staging|dev|sandbox|qa|test targets run without override."
       echo "  Pass --allow-prod-target if this is intentional."
       exit 2
     fi
@@ -270,6 +276,8 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
     ```
 
 16. **Parse the JSON reporter output** for failures. Each failure has test title, file path, line, error, attached trace.zip path.
+
+    **Zero-test guard (never a false green).** Before treating the run as a pass, check how many tests the reporter actually collected (`stats.expected` plus any `unexpected`/`flaky`, or the presence of `suites`). If **zero tests were collected**, this is a configuration/spec-location problem — the playwright config `testDir` did not resolve to the generated specs — NOT a pass. Abort with `STATUS: BLOCKED`, reason `no_tests_collected`, and point the user at the `testDir` vs generated-spec-location mismatch. A green exit code on an empty run must never be reported as success.
 
 17. **Mid-suite crash detection.** If any test failed:
     ```
@@ -331,6 +339,7 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
 | E2E target points at prod, no override | 2 | "E2E_BASE_URL points at production `<url>`; pass `--allow-prod-target` if intentional" |
 | No Playwright infra, user declined bootstrap | 2 | "Playwright infra required; E2E mandatory for frontend changes" |
 | Bootstrap dependency install failed | 2 | "could not install `@playwright/test`; run `<cmd>` manually" |
+| Zero tests collected (config/spec-location mismatch) | 2 | "Playwright collected 0 tests; `testDir` did not resolve to the generated specs — not a pass" |
 | Required env var unset | 2 | "required env vars missing: <list>" + reference to e2e-environment.md |
 | External dependency unreachable | 2 | "external dependency unreachable: <VAR>=<URL>" (HEAD-check failed pre-flight) |
 | All tests green | 0 | clean summary |
