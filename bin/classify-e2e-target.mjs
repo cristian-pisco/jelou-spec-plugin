@@ -32,6 +32,10 @@ export function classifyTarget(raw) {
   }
   if (!host) return 'prod';
   const h = host.toLowerCase().replace(/^\[|\]$/g, ''); // strip IPv6 brackets
+  // Known gap: IPv4-mapped loopback (e.g. ::ffff:127.0.0.1, normalized by the URL
+  // parser to ::ffff:7f00:1) is NOT recognized and falls through to 'prod'. This is
+  // a rare form in browser E2E (Playwright normalizes loopback to localhost/127.0.0.1),
+  // and matching IPv4-mapped ranges broadly would risk false-allowing non-loopback addrs.
   if (h === 'localhost' || h === '127.0.0.1' || h === '::1') return 'safe';
   if (h.endsWith('.local')) return 'safe';
   if (SAFE_TOKEN_RE.test(h)) return 'safe';

@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.172] — 2026-05-31
+
+### Added
+- add classify-e2e-target helper (default-deny prod gate)
+
 ## [0.3.171] — 2026-05-31
 
 ### Internal
