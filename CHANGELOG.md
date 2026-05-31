@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.175] — 2026-05-31
+
+### Fixed
+- fail-closed anti-prod gate + zero-test false-green guard
+
 ## [0.3.174] — 2026-05-31
 
 ### Added
