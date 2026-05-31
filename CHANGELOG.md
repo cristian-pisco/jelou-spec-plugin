@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.173] — 2026-05-31
+
+### Internal
+- RED invariants for env opt-in + bootstrap contract
+
 ## [0.3.172] — 2026-05-31
 
 ### Added

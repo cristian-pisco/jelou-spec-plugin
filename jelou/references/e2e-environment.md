@@ -34,7 +34,27 @@ The Playwright run refuses to start unless these are set:
 
 | Variable | Purpose | Example |
 |----------|---------|---------|
-| `E2E_BASE_URL` | `playwright.config.ts` `use.baseURL`. All `page.goto('/x')` calls are resolved against it. | `http://localhost:3000` |
+| `E2E_BASE_URL` | `playwright.config.ts` `use.baseURL`. All `page.goto('/x')` calls are resolved against it. **Must be declared in `.env.e2e`** (see below). | `http://localhost:3000` |
+
+### `E2E_BASE_URL` must come from `.env.e2e` — never `.env`
+
+The app's own `.env` typically points at production (`apps.jelou.ai`, `workflows.jelou.ai`). To guarantee the E2E target is a deliberate choice and never inherited from the app config, `/jlu-ui-qa-run` requires `E2E_BASE_URL` to be declared in the E2E-specific `.env.e2e` overlay:
+
+```bash
+[ -f .env.e2e ] || { echo "ERROR: .env.e2e missing"; exit 2; }
+grep -qE '^[[:space:]]*E2E_BASE_URL=' .env.e2e || { echo "ERROR: .env.e2e must declare E2E_BASE_URL"; exit 2; }
+```
+
+Loading order is unchanged (`.env` then `.env.e2e` overlay) — only the *source* of `E2E_BASE_URL` is constrained. Per-flow vars may still live in either file.
+
+### Target classification (safe vs prod)
+
+After resolving `E2E_BASE_URL`, the workflow classifies it with `bin/classify-e2e-target.mjs <url>`, which prints `safe` or `prod`. The rule is **default-deny**: a host is `safe` only when it is obviously non-production —
+
+- host is `localhost`, `127.0.0.1`, `::1`, or ends in `.local`; or
+- a host segment (bounded by start/end or `.`/`-`) is one of `staging`, `dev`, `sandbox`, `qa`, `test`.
+
+Everything else — including `apps.jelou.ai` and `workflows.jelou.ai` — and any unparseable/empty input classifies as `prod`. A `prod` target aborts the run (exit 2) unless `--allow-prod-target` is passed.
 
 Per-flow vars are declared in the flow's `Env Vars` section (`user-flow.md`). The writer agent reads that section and the orchestrator validates each is set in the loaded environment before launching Playwright. Missing vars fail-fast with the variable name, not a cryptic 404 mid-run.
 
