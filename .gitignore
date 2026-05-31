@@ -15,3 +15,6 @@ test-results/
 
 # Tracing — workspace-local span store, never commit raw traces
 .traces/
+
+# Docs — design/spec/plan docs are kept local, not version-controlled
+docs/
