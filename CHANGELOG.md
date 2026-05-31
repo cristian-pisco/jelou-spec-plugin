@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.176] — 2026-05-31
+
+### Internal
+- gitignore docs/ and untrack design/spec/plan docs
+
 ## [0.3.175] — 2026-05-31
 
 ### Fixed
