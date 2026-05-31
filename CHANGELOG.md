@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.174] — 2026-05-31
+
+### Added
+- add MODE=bootstrap to jlu-ui-e2e-writer (scaffold Playwright infra)
+
 ## [0.3.173] — 2026-05-31
 
 ### Internal

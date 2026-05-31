@@ -9,6 +9,7 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
   - `--force` — override the pre-flight resource gate (use sparingly).
   - `--allow-shared-data` — required when any affected service has `dev.data_isolation: shared`.
   - `--allow-test-edits` — let the fix-loop edit `.spec.ts` files (default forbids this).
+  - `--allow-prod-target` — override the anti-prod E2E target gate (use sparingly; see Phase 3 step 15). Sets `ALLOW_PROD_TARGET=1` for the run.
   - `--workers=N` — Playwright worker count. Default 1. Refuses unsafe values unless both RAM and CPU gates pass (or `--force` is set).
 
 ## Process
@@ -65,7 +66,21 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
 
    b. **If at least one user-flow.md exists**, read them for `Service Boot Order`. Compute the union of declared boot orders across all UI-targeted flows. If two flows disagree on order, refuse: "conflicting boot order across flows: `<flow-a>` says `<X>`; `<flow-b>` says `<Y>`. Reconcile in the spec."
 
-   c. **If no user-flow.md exists**, do NOT exit. The spec is the source of truth — the workflow must derive scenarios from it regardless of whether `/jlu:refine-task` was previously invoked. Dispatch `jlu-ui-e2e-writer` once with `MODE=derive-from-spec` to:
+   b'. **Playwright infrastructure check + bootstrap gate.** Before any `jlu-ui-e2e-writer` dispatch for this UI service, resolve its active worktree (via `jelou/references/worktree-resolution.md`) and check whether Playwright infra exists:
+
+      - `@playwright/test` is present in the worktree's `package.json` (`dependencies` or `devDependencies`), AND
+      - a `playwright.config.{ts,js}` exists at the worktree root OR at `tests/e2e/`.
+
+      **If both present:** record the resolved config path (root vs `tests/e2e/`) as `PLAYWRIGHT_CONFIG` for Phase 3 step 15, then continue to step 7c.
+
+      **If either is missing:** run the bootstrap gate. Invoke `AskUserQuestion`:
+
+      > "`<UI_SERVICE_ID>` has no Playwright infrastructure. I will create in your repo: `tests/e2e/playwright.config.ts`, `tests/e2e/fixtures/auth.ts`, and add `@playwright/test` (devDependency) and install it. Proceed?"
+
+      - **Declined** → abort with `STATUS: BLOCKED`, exit 2: "Playwright infra required for `<UI_SERVICE_ID>`; E2E is mandatory for frontend changes."
+      - **Accepted** → dispatch `jlu-ui-e2e-writer` with `MODE=bootstrap` (passing `<TASK_DIR>`, `<UI_SERVICE_ID>`, `<UI_SERVICE_WORKTREE>`). The agent scaffolds the infra and then derives `user-flow.md` + specs (it falls through to `derive-from-spec`). If the agent reports `BLOCKED` (install failed) → abort with exit 2 and surface the manual install command it quoted. On success, set `PLAYWRIGHT_CONFIG=tests/e2e/playwright.config.ts` and mark this service's derivation **already done** — skip the separate `MODE=derive-from-spec` dispatch in step 7c.
+
+   c. **If no user-flow.md exists AND step 7b' did not already bootstrap this service**, do NOT exit. The spec is the source of truth — the workflow must derive scenarios from it regardless of whether `/jlu:refine-task` was previously invoked. (When step 7b' dispatched `MODE=bootstrap`, derivation already happened — skip this dispatch.) Dispatch `jlu-ui-e2e-writer` once with `MODE=derive-from-spec` to:
       - Read `<TASK_DIR>/SPEC.md` (Acceptance Criteria, Success Criteria, Functional Requirements that mention UI behavior).
       - Generate `<TASK_DIR>/services/<UI_SERVICE_ID>/user-flow.md` with the standard sections (Problem Statement, Affected UI Service, Routes, Steps, Service Boot Order, Env Vars, Auth Precondition).
       - The agent infers `Service Boot Order` from the union of `affected_services` plus any external endpoints mentioned in the spec; flags ambiguities for human review instead of guessing.
@@ -178,15 +193,36 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
     ```bash
     cd "$UI_WORKTREE"
 
+    # Opt-in env target: E2E_BASE_URL MUST be declared in .env.e2e, never inherited
+    # from the app's .env (which typically points at production). See references/e2e-environment.md.
+    if [ ! -f .env.e2e ]; then
+      echo "ERROR: .env.e2e missing for $UI_SERVICE. E2E never runs with the app's .env config."
+      echo "  Create .env.e2e and set E2E_BASE_URL. See references/e2e-environment.md."
+      exit 2
+    fi
+    if ! grep -qE '^[[:space:]]*E2E_BASE_URL=' .env.e2e; then
+      echo "ERROR: .env.e2e for $UI_SERVICE must declare E2E_BASE_URL explicitly."
+      exit 2
+    fi
+
     # Load .env (per docker-conventions.md it was copied into the worktree at task creation)
-    # and the optional .env.e2e overlay. set -a exports every assignment to child processes.
+    # then the .env.e2e overlay. set -a exports every assignment to child processes.
     set -a
     [ -f .env ]     && . ./.env
     [ -f .env.e2e ] && . ./.env.e2e
     set +a
 
     # Mandatory: baseURL must come from env, not be hard-coded in playwright.config.ts.
-    : "${E2E_BASE_URL:?missing E2E_BASE_URL — set it in .env or .env.e2e (see references/e2e-environment.md)}"
+    : "${E2E_BASE_URL:?missing E2E_BASE_URL — set it in .env.e2e (see references/e2e-environment.md)}"
+
+    # Anti-prod gate: refuse a production-looking target unless --allow-prod-target was passed.
+    # PLUGIN_ROOT is the plugin root resolved by the SKILL bootstrap (Phase 1).
+    TARGET_CLASS=$(node "$PLUGIN_ROOT/bin/classify-e2e-target.mjs" "$E2E_BASE_URL")
+    if [ "$TARGET_CLASS" = "prod" ] && [ -z "$ALLOW_PROD_TARGET" ]; then
+      echo "ERROR: E2E_BASE_URL points at production ('$E2E_BASE_URL')."
+      echo "  Pass --allow-prod-target if this is intentional."
+      exit 2
+    fi
 
     # Per-flow vars from user-flow.md Env Vars section. The writer agent persists this list to
     # $TASK_DIR/services/$UI_SERVICE/e2e/required-env.txt (one VAR_NAME per line); the orchestrator
@@ -219,7 +255,12 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
       done < "$TASK_DIR/services/$UI_SERVICE/e2e/external-endpoints.txt"
     fi
 
+    # PLAYWRIGHT_CONFIG was recorded in step 7b' (root config → empty; tests/e2e/ config → explicit path).
+    CONFIG_FLAG=""
+    [ -n "$PLAYWRIGHT_CONFIG" ] && [ "$PLAYWRIGHT_CONFIG" != "playwright.config.ts" ] && CONFIG_FLAG="--config=$PLAYWRIGHT_CONFIG"
+
     npx playwright test \
+      $CONFIG_FLAG \
       --workers=${WORKERS:-1} \
       --reporter=json \
       --output="$TASK_DIR/services/$UI_SERVICE/e2e/playwright-output" \
@@ -285,6 +326,11 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
 | Service ready_timeout | 2 | "<service> didn't reach ready in <X>s; check launch log" |
 | Mid-suite service crash | 2 | "service_crashed:<id>; last 50 lines of launch log" |
 | UI service missing `dev` block | 2 | "UI service `<id>` is missing a `dev` block" — E2E mandatory for frontend changes; add `stack` + `dev` to services.yaml |
+| `.env.e2e` missing | 2 | "`.env.e2e` missing; create it and set E2E_BASE_URL" + reference to e2e-environment.md |
+| `.env.e2e` does not declare `E2E_BASE_URL` | 2 | "declare E2E_BASE_URL in .env.e2e" |
+| E2E target points at prod, no override | 2 | "E2E_BASE_URL points at production `<url>`; pass `--allow-prod-target` if intentional" |
+| No Playwright infra, user declined bootstrap | 2 | "Playwright infra required; E2E mandatory for frontend changes" |
+| Bootstrap dependency install failed | 2 | "could not install `@playwright/test`; run `<cmd>` manually" |
 | Required env var unset | 2 | "required env vars missing: <list>" + reference to e2e-environment.md |
 | External dependency unreachable | 2 | "external dependency unreachable: <VAR>=<URL>" (HEAD-check failed pre-flight) |
 | All tests green | 0 | clean summary |
