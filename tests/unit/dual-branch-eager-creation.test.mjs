@@ -99,3 +99,24 @@ describe('new-task: creates + pushes staging up front', () => {
     assert.match(wf, /created from `origin\/alpha` and pushed at `\/jlu-new-task` Step 15c/);
   });
 });
+
+describe('create-pr: reuses the pre-created staging branch', () => {
+  const wf = read('jelou/workflows/create-pr.md');
+
+  test('5b.3 has a first-pick path that reuses the existing branch', () => {
+    assert.match(wf, /\*\*first-pick\*\*/);
+    assert.match(wf, /first cherry-pick onto the branch `\/jlu-new-task` pre-created/);
+  });
+
+  test('SYNC_MODE enumerates first-pick alongside rebuild/incremental/no-op', () => {
+    assert.match(wf, /SYNC_MODE ∈ \{rebuild, first-pick, incremental, no-op\}/);
+  });
+
+  test('worktree prep and push reuse the branch for first-pick + incremental', () => {
+    assert.match(wf, /SYNC_MODE ∈ \{first-pick, incremental\}/);
+  });
+
+  test('marker parser tolerates an empty production value', () => {
+    assert.match(wf, /empty `production` means no commits have been cherry-picked yet/);
+  });
+});

@@ -145,7 +145,7 @@ Read and cache task artifacts in one pass (single parallel tool-call message whe
    - Task title
    - Dual PR (from `## Branching → Dual PR`, default "no" if section is absent)
    - Setup Mode (from `## Branching → Mode`, default "worktree" if section is absent)
-   - Sync markers per service (from `## Branching → Sync markers`). Parse the block into a per-service map `{<service-id>: {alpha: <sha>, production: <sha>}}`. Default to an empty map if the block is absent. On a single-service task there is exactly one entry; on multi-service there is one entry per service. Legacy flat fields (`Last alpha SHA:`, `Last cherry-picked production SHA:`) still count as the single-service entry if they appear without the `Sync markers` block.
+   - Sync markers per service (from `## Branching → Sync markers`). Parse the block into a per-service map `{<service-id>: {alpha: <sha>, production: <sha>}}`. Default to an empty map if the block is absent. On a single-service task there is exactly one entry; on multi-service there is one entry per service. A marker written as `alpha=<sha>, production=` (empty production value, seeded by `/jlu-new-task` when it pre-creates the branch) parses to `{alpha: <sha>, production: ''}` — an empty `production` means no commits have been cherry-picked yet. Legacy flat fields (`Last alpha SHA:`, `Last cherry-picked production SHA:`) still count as the single-service entry if they appear without the `Sync markers` block.
 2. Read `<TASK_DIR>/SPEC.md`. Extract:
    - Title
    - Problem statement
@@ -286,18 +286,23 @@ CURRENT_PRODUCTION_SHA=$(git rev-parse production/<TASK_SLUG>)
 
 Look up this service's markers: `LAST_ALPHA_SHA = SYNC_MARKERS[<service-id>].alpha_sha` (may be empty), `LAST_CHERRYPICKED_PROD_SHA = SYNC_MARKERS[<service-id>].production_sha` (may be empty).
 
-Decision tree:
+Also detect whether a usable staging branch already exists:
+```bash
+STAGING_LOCAL_EXISTS=$(git rev-parse --verify staging/<TASK_SLUG> >/dev/null 2>&1 && echo yes)
+STAGING_REMOTE_EXISTS=$(git ls-remote --heads origin staging/<TASK_SLUG> | head -1)
+```
 
-- If `LAST_ALPHA_SHA` is empty OR `LAST_CHERRYPICKED_PROD_SHA` is empty → **rebuild** (first sync for this service). Cherry-pick range: `origin/<TRUNK>..production/<TASK_SLUG>`.
-- Else if `CURRENT_ALPHA_SHA != LAST_ALPHA_SHA` → **rebuild**. Cherry-pick range: `origin/<TRUNK>..production/<TASK_SLUG>`.
-- Else if `CURRENT_PRODUCTION_SHA == LAST_CHERRYPICKED_PROD_SHA` → **no-op candidate**. Before recording, verify the remote staging branch still exists:
-  ```bash
-  STAGING_REMOTE_EXISTS=$(git ls-remote --heads origin staging/<TASK_SLUG> | head -1)
-  ```
-  If `STAGING_REMOTE_EXISTS` is empty (branch was deleted externally since the last sync), downgrade to **rebuild** with range `origin/<TRUNK>..production/<TASK_SLUG>`. Otherwise record `STAGING_SYNC[<service-id>] = "no-op"` and skip to Step 6 for this service.
+Decision tree (evaluated top to bottom):
+
+- If `LAST_ALPHA_SHA` is empty AND neither `STAGING_LOCAL_EXISTS` nor `STAGING_REMOTE_EXISTS` → **rebuild** (legacy task, or `Dual PR` toggled on after creation). Cherry-pick range: `origin/<TRUNK>..production/<TASK_SLUG>`.
+- Else if `CURRENT_ALPHA_SHA != LAST_ALPHA_SHA` → **rebuild** (alpha moved since the branch was created or last synced). Cherry-pick range: `origin/<TRUNK>..production/<TASK_SLUG>`.
+- Else if `LAST_CHERRYPICKED_PROD_SHA` is empty → **first-pick** (first cherry-pick onto the branch `/jlu-new-task` pre-created; alpha unchanged). Reuse the existing staging branch. Cherry-pick range: `origin/<TRUNK>..production/<TASK_SLUG>`.
+- Else if `CURRENT_PRODUCTION_SHA == LAST_CHERRYPICKED_PROD_SHA` → **no-op candidate**. If `STAGING_REMOTE_EXISTS` is empty (branch was deleted externally since the last sync), downgrade to **rebuild** with range `origin/<TRUNK>..production/<TASK_SLUG>`. Otherwise record `STAGING_SYNC[<service-id>] = "no-op"` and skip to Step 6 for this service.
 - Else → **incremental**. Cherry-pick range: `<LAST_CHERRYPICKED_PROD_SHA>..production/<TASK_SLUG>`.
 
-Store for this service: `SYNC_MODE ∈ {rebuild, incremental, no-op}`, `CHERRY_PICK_RANGE`.
+`first-pick` and `incremental` both **reuse** the existing staging branch (worktree prep and push behave identically — see 5b.4 / 5b.7); `rebuild` recreates it from fresh `origin/alpha`.
+
+Store for this service: `SYNC_MODE ∈ {rebuild, first-pick, incremental, no-op}`, `CHERRY_PICK_RANGE`.
 
 ### 5b.4 — Prepare temp staging worktree
 
@@ -310,11 +315,15 @@ git branch -D staging/<TASK_SLUG> 2>/dev/null || true
 git worktree add -b staging/<TASK_SLUG> .worktrees/<TASK_SLUG>-staging-tmp origin/alpha
 ```
 
-For `SYNC_MODE = incremental`:
+For `SYNC_MODE ∈ {first-pick, incremental}` (reuse the existing staging branch):
 
 ```bash
-# Local staging branch exists from a previous run; add a worktree on it
-git worktree add .worktrees/<TASK_SLUG>-staging-tmp staging/<TASK_SLUG>
+# Prefer the local branch; if it is missing but the remote exists, recreate it tracking the remote
+if git rev-parse --verify staging/<TASK_SLUG> >/dev/null 2>&1; then
+  git worktree add .worktrees/<TASK_SLUG>-staging-tmp staging/<TASK_SLUG>
+else
+  git worktree add .worktrees/<TASK_SLUG>-staging-tmp -b staging/<TASK_SLUG> origin/staging/<TASK_SLUG>
+fi
 ```
 
 If either worktree add fails (e.g., temp worktree already exists), abort for this service:
@@ -373,12 +382,12 @@ For `SYNC_MODE = rebuild`:
 git push --force-with-lease origin staging/<TASK_SLUG>
 ```
 
-For `SYNC_MODE = incremental`:
+For `SYNC_MODE ∈ {first-pick, incremental}`:
 ```bash
 git push origin staging/<TASK_SLUG>
 ```
 
-If either push is rejected (non-fast-forward on incremental, or `--force-with-lease` detects an unexpected remote ref), abort per Option A logic. Clean up the temp worktree and preserve the local `staging/<TASK_SLUG>` branch — the push rejection is not a content problem, so the local branch is still valid.
+If either push is rejected (non-fast-forward on a reuse push, or `--force-with-lease` detects an unexpected remote ref), abort per Option A logic. Clean up the temp worktree and preserve the local `staging/<TASK_SLUG>` branch — the push rejection is not a content problem, so the local branch is still valid.
 
 For `SYNC_MODE = rebuild` (push-rejection means a force-push was refused because `--force-with-lease` saw an unexpected remote):
 ```bash
@@ -387,7 +396,7 @@ git branch -D staging/<TASK_SLUG> 2>/dev/null || true
 ```
 > Remote `staging/<TASK_SLUG>` has diverged unexpectedly for `<service-id>`. Inspect remote, reconcile, and re-run `/jlu-create-pr`.
 
-For `SYNC_MODE = incremental` (push-rejection means a fast-forward was not possible — typically someone pushed to `origin/staging/<TASK_SLUG>` externally):
+For `SYNC_MODE ∈ {first-pick, incremental}` (push-rejection means a fast-forward was not possible — typically someone pushed to `origin/staging/<TASK_SLUG>` externally):
 ```bash
 git worktree remove --force .worktrees/<TASK_SLUG>-staging-tmp
 # Do NOT delete local staging/<TASK_SLUG> — it is a valid branch; only the push was rejected.
@@ -420,7 +429,7 @@ git worktree remove .worktrees/<TASK_SLUG>-staging-tmp
 
 Keep the local `staging/<TASK_SLUG>` branch for future incremental runs.
 
-Record `STAGING_SYNC[<service-id>] = SYNC_MODE` (rebuild | incremental | no-op).
+Record `STAGING_SYNC[<service-id>] = SYNC_MODE` (rebuild | first-pick | incremental | no-op).
 
 ---
 
