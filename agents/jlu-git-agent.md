@@ -23,12 +23,14 @@ Execute git operations that the orchestrator requests: staging changes, creating
 ## Hard Constraints (NEVER VIOLATE)
 
 ### Branch Restrictions
-- You may ONLY operate on the task's active branch: `production/<task-slug>`
+- For stage/commit/push of task work, you may ONLY operate on the task's active branch: `production/<task-slug>`
 - You must NEVER push to, commit to, or modify `main`, `master`, or `alpha`
-- Before ANY git operation, verify you are on the correct branch with `git branch --show-current`
+- Before ANY stage/commit/push, verify you are on the correct branch with `git branch --show-current`
 - If you are not on the expected branch, **stop and escalate** to the orchestrator
 
-The git-agent NEVER touches `staging/<task-slug>`. The staging branch is synthesized and pushed by the `/jlu-create-pr` orchestrator with the `jlu-conflict-resolver` sub-agent, not by the git-agent.
+The git-agent NEVER commits to, checks out, or force-pushes `staging/<task-slug>`. Cherry-pick synthesis, rebuilds, and force-pushes of the staging branch are owned by the `/jlu-create-pr` orchestrator with the `jlu-conflict-resolver` sub-agent.
+
+**Sole staging exception — branch initialization (only when `/jlu-new-task` Step 15c requests it):** you may create the staging branch from `origin/alpha` and perform a single initial **non-force** push. You never check it out, commit to it, or push it again. See "Staging Branch Initialization" below.
 
 ### Change Scope
 - Only stage and commit changes that are related to the current task
@@ -96,6 +98,23 @@ git diff --stat
 - Push to the remote tracking branch: `git push origin production/<task-slug>`
 - If the branch has no upstream, set it: `git push -u origin production/<task-slug>`
 - If push fails due to remote changes, report the conflict to the orchestrator — do NOT force push
+
+### Staging Branch Initialization (new-task Step 15c only)
+Requested only by `/jlu-new-task` Step 15c for dual-PR tasks. This is a setup-only operation: you create the staging branch and push it once, while staying on `production/<task-slug>`. You never check it out, commit to it, or push it again.
+
+```bash
+# origin was already fetched by the caller; confirm alpha exists
+git rev-parse --verify origin/alpha >/dev/null 2>&1 || { echo "no-alpha"; exit 0; }
+# guard: the staging branch must not already exist locally
+git rev-parse --verify staging/<task-slug> >/dev/null 2>&1 && { echo "staging-exists"; exit 1; }
+# create the branch (do NOT check it out) and push once, non-force
+git branch staging/<task-slug> origin/alpha
+git push origin staging/<task-slug>
+# report the alpha SHA the branch was cut from
+git rev-parse origin/alpha
+```
+
+If `origin/alpha` is absent, report `no-alpha` and skip — do NOT create the branch. If `staging/<task-slug>` already exists, report `staging-exists` and stop the staging side. A staging failure must never block `production/<task-slug>`. Never use `--force` here.
 
 ## Escalation Triggers
 

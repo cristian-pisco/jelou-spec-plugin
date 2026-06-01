@@ -49,3 +49,29 @@ describe('git-conventions: staging created at new-task', () => {
     assert.match(gc, /`staging\/<slug>` creation \+ initial push \| `\/jlu-new-task` Step 15c/);
   });
 });
+
+describe('jlu-git-agent: bounded staging initialization', () => {
+  const src = read('agents/jlu-git-agent.md');
+  const mirror = read('.opencode/agents/jlu-git-agent.md');
+
+  test('drops the absolute "NEVER touches staging" prohibition', () => {
+    assert.doesNotMatch(src, /The git-agent NEVER touches `staging\/<task-slug>`/);
+    assert.doesNotMatch(mirror, /The git-agent NEVER touches `staging\/<task-slug>`/);
+  });
+
+  test('documents the sole staging exception: create from origin/alpha + non-force push', () => {
+    assert.match(src, /Staging Branch Initialization/);
+    assert.match(src, /git branch staging\/<task-slug> origin\/alpha/);
+    assert.match(src, /git push origin staging\/<task-slug>/);
+    assert.match(src, /never check it out, commit to it, or push it again/);
+  });
+
+  test('still forbids force-push and main/master/alpha', () => {
+    assert.match(src, /`git push --force` — NEVER/);
+    assert.match(src, /NEVER push to, commit to, or modify `main`, `master`, or `alpha`/);
+  });
+
+  test('opencode mirror carries the same staging-init language', () => {
+    assert.match(mirror, /Staging Branch Initialization/);
+  });
+});
