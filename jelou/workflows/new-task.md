@@ -353,7 +353,7 @@ Using `question`:
 
 > **"Will this task also need a PR to `alpha` (staging)?"**
 > - No — only a PR to trunk (default)
-> - Yes — two PRs: one to trunk (mandatory), one to alpha (synthesized at PR-creation time via cherry-pick with conflict resolver)
+> - Yes — two PRs: one to trunk (mandatory), one to alpha (staging branch created from origin/alpha now; commits cherry-picked at PR-creation time with conflict resolver)
 
 Store as `DUAL_PR` (boolean).
 
@@ -363,9 +363,9 @@ After storing `DUAL_PR`, **insert** the `## Branching` section into the existing
 ## Branching
 - Dual PR: <DUAL_PR yes|no>
 - Primary branch: production/<TASK_SLUG>
-- Secondary branch: staging/<TASK_SLUG>   (intended; synthesized at first /jlu-create-pr when Dual PR = yes)
+- Secondary branch: staging/<TASK_SLUG>   (created from origin/alpha and pushed at Step 15c when Dual PR = yes; commits arrive via cherry-pick at /jlu-create-pr)
 - Mode: (pending — chosen after spec approval)
-- Sync markers: (pending — populated at first dual-PR sync as `<service-id>: alpha=<sha>, production=<sha>`)
+- Sync markers: (pending — seeded at Step 15c with `<service-id>: alpha=<creation-sha>, production=`; production filled at first dual-PR sync)
 ```
 
 **Store**: `DUAL_PR`
@@ -644,6 +644,7 @@ Spawn a task subagent using `jlu-git-agent` with `MODEL_CONFIG.operational` (def
 - `CONFIRMED_SERVICES` (list)
 - `TASK_SLUG`
 - `SETUP_MODE` ∈ {`worktree`, `branch`}
+- `DUAL_PR` (boolean)
 - Per-service repo paths from `services.yaml`
 
 The subtask executes the following per-service algorithm.
@@ -708,9 +709,38 @@ In worktree mode, skip steps 4 and 5 — the main repo's HEAD and working-tree s
    If the branch already exists, abort this service: **"Branch `production/<TASK_SLUG>` already exists locally for `<service-id>`. Delete it or use a different slug."**
 2. Skip Docker phases entirely. No `.env` copy, no override file, no port allocation, no container bring-up.
 
+### Staging branch creation (Dual PR only)
+
+Runs per service only when `DUAL_PR = yes`. Independent of `SETUP_MODE` — `staging/<TASK_SLUG>` is always a plain local branch (no worktree, no checkout, no Docker), created via the git-agent's "Staging Branch Initialization" procedure:
+
+```bash
+git rev-parse --verify origin/alpha >/dev/null 2>&1 || echo "no-alpha"
+git rev-parse --verify staging/<TASK_SLUG> >/dev/null 2>&1 && echo "staging-exists"
+git branch staging/<TASK_SLUG> origin/alpha
+git push origin staging/<TASK_SLUG>
+CREATION_ALPHA_SHA=$(git rev-parse origin/alpha)
+```
+
+Aborts here are per-service and non-blocking — the trunk side always proceeds:
+- `origin/alpha` does not resolve → skip staging for this service: **"`<service-id>` has no `alpha` branch at origin. Staging branch not created; trunk side proceeds."**
+- `staging/<TASK_SLUG>` already exists locally → skip staging for this service: **"Branch `staging/<TASK_SLUG>` already exists locally for `<service-id>`. Delete it or use a different slug."**
+
+Record per service: `staging_branch` ∈ {`created`, `skipped-no-alpha`, `skipped-exists`} and `creation_alpha_sha` (when created).
+
+### Seed sync markers (Dual PR only)
+
+After the setup subtask returns, for each service where `staging_branch = created`, write its seed into `<TASK_DIR>/TASKS.md` → `## Branching` → `Sync markers` (create the block if absent), replacing the `(pending …)` line:
+
+```
+- Sync markers:
+  - <service-id>: alpha=<creation_alpha_sha>, production=
+```
+
+The empty `production=` value tells `/jlu-create-pr` that no commits have been cherry-picked yet (its 5b.3 "first-pick" path). Services with `skipped-no-alpha` or `skipped-exists` get no marker line.
+
 ### Record
 
-Record per service: `{ mode, production_branch, worktree_path (if worktree mode) }`. The orchestrator includes this in the final report (Step 16).
+Record per service: `{ mode, production_branch, worktree_path (if worktree mode), staging_branch (if Dual PR), creation_alpha_sha (if staging created) }`. The orchestrator includes this in the final report (Step 16).
 
 ### Error handling
 
@@ -745,8 +775,8 @@ Present the final summary:
 - Mode: <SETUP_MODE>
 - Dual PR: <DUAL_PR yes|no>
 - Branches created:
-  <service-id-1>: production/<TASK_SLUG>
-  <service-id-2>: production/<TASK_SLUG>
+  <service-id-1>: production/<TASK_SLUG>[, staging/<TASK_SLUG> (pushed)]
+  <service-id-2>: production/<TASK_SLUG>[, staging/<TASK_SLUG> (pushed)]
   ...
 
 ### Worktrees (Mode: worktree only)
@@ -776,7 +806,7 @@ If `SETUP_MODE = branch`: append to the report:
 
 If `DUAL_PR = yes`: append to the report:
 
-> Dual-PR enabled. The `staging/<TASK_SLUG>` branch will be synthesized automatically during `/jlu-create-pr` by cherry-picking from the latest `origin/alpha`, with conflicts resolved by the `jlu-conflict-resolver` sub-agent.
+> Dual-PR enabled. The `staging/<TASK_SLUG>` branch was created from `origin/alpha` and pushed for each affected service (skipped for any service lacking an `alpha` branch). Production commits are cherry-picked onto it at `/jlu-create-pr` — reusing the branch when `alpha` is unchanged, rebuilding from fresh `origin/alpha` when it moved — with conflicts resolved by the `jlu-conflict-resolver` sub-agent.
 
 ---
 
@@ -806,7 +836,7 @@ If `DUAL_PR = yes`: append to the report:
 | User stories dir | `.spec-workspace/specs/<dd-mm-yyyy>/<task-slug>/services/<service-id>/uh/` |
 | Worktree | `<service-repo>/.worktrees/<task-slug>` |
 | Branch (primary) | `production/<task-slug>` (in each affected service repo) |
-| Branch (alpha, opt-in) | `staging/<task-slug>` (synthesized at first `/jlu-create-pr` when Dual PR = yes) |
+| Branch (alpha, opt-in) | `staging/<task-slug>` (created from `origin/alpha` and pushed at `/jlu-new-task` Step 15c when Dual PR = yes; commits cherry-picked at `/jlu-create-pr`) |
 | Temp staging worktree | `<service-repo>/.worktrees/<task-slug>-staging-tmp` (ephemeral, dual-PR sync only) |
 
 ---

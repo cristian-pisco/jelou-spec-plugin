@@ -75,3 +75,27 @@ describe('jlu-git-agent: bounded staging initialization', () => {
     assert.match(mirror, /Staging Branch Initialization/);
   });
 });
+
+describe('new-task: creates + pushes staging up front', () => {
+  const wf = read('jelou/workflows/new-task.md');
+
+  test('15c creates staging from origin/alpha and pushes it', () => {
+    assert.match(wf, /git branch staging\/<TASK_SLUG> origin\/alpha/);
+    assert.match(wf, /git push origin staging\/<TASK_SLUG>/);
+  });
+
+  test('records the creation alpha SHA and seeds sync markers', () => {
+    assert.match(wf, /CREATION_ALPHA_SHA=\$\(git rev-parse origin\/alpha\)/);
+    assert.match(wf, /alpha=<creation_alpha_sha>, production=/);
+  });
+
+  test('report no longer says staging is synthesized at create-pr', () => {
+    assert.doesNotMatch(wf, /will be synthesized automatically during `\/jlu-create-pr`/);
+    assert.match(wf, /was created from `origin\/alpha` and pushed/);
+  });
+
+  test('quick-ref table marks staging as created at new-task', () => {
+    assert.doesNotMatch(wf, /`staging\/<task-slug>` \(synthesized at first `\/jlu-create-pr`/);
+    assert.match(wf, /created from `origin\/alpha` and pushed at `\/jlu-new-task` Step 15c/);
+  });
+});
