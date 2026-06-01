@@ -15,8 +15,8 @@ Every task creates a **mandatory** primary branch targeting trunk, and **optiona
 ### Secondary (opt-in) — `staging/<task-slug>`
 
 - Cut from `origin/alpha`.
-- **Not** created at task creation. Synthesized on-demand by `/jlu-create-pr` when `Dual PR: yes` is recorded in TASKS.md.
-- Commits arrive via cherry-pick from `production/<task-slug>`. Conflicts are resolved by the `jlu-conflict-resolver` sub-agent (sonnet) using SPEC + adjacent code.
+- **Created at task creation** by `/jlu-new-task` Step 15c (when `Dual PR: yes`), in each affected service repo, and pushed to the remote. At creation it is empty (identical to `alpha`) — no PR is opened until there are commits.
+- Commits arrive via cherry-pick from `production/<task-slug>` at `/jlu-create-pr`, which **reuses** the pre-created branch when `origin/alpha` is unchanged and **rebuilds** it from fresh `origin/alpha` when alpha has moved. Conflicts are resolved by the `jlu-conflict-resolver` sub-agent (sonnet) using SPEC + adjacent code.
 - PR targets `alpha`.
 
 ### Rules
@@ -49,7 +49,7 @@ No automatic worktree cleanup. `/jlu-report-task` identifies:
 
 ## Protected Branch Restrictions
 
-The git-agent is **strictly forbidden** from pushing to `main`, `master`, or `alpha`. Pushes to `staging/<slug>` are performed by the `/jlu-create-pr` orchestrator, not the git-agent.
+The git-agent is **strictly forbidden** from pushing to `main`, `master`, or `alpha`, and from force-pushing any branch. The git-agent performs exactly one `staging/<slug>` operation: the initial create-from-`origin/alpha` + non-force push at `/jlu-new-task` Step 15c. All later `staging/<slug>` pushes (cherry-pick syncs, force-with-lease rebuilds) are performed by the `/jlu-create-pr` orchestrator, not the git-agent.
 
 ## PR Strategy
 
@@ -60,8 +60,8 @@ The git-agent is **strictly forbidden** from pushing to `main`, `master`, or `al
 
 ### Secondary PR (opt-in, per task)
 
-- Branch: `staging/<task-slug>` → `alpha`.
-- Synthesized by `/jlu-create-pr` after the primary branch is pushed.
+- Branch: `staging/<task-slug>` → `alpha` (created at `/jlu-new-task`; see Branch Naming).
+- The alpha PR is opened by `/jlu-create-pr` after the primary branch is pushed and commits have been cherry-picked onto the staging branch.
 - Flow per service:
   1. Fetch origin.
   2. Rebuild-or-incremental decision from markers in TASKS.md (`Last alpha SHA`, `Last cherry-picked production SHA`).
@@ -84,7 +84,8 @@ Both PR bodies carry `> Part of dual-PR task. Sibling PR: <url>` above the `## P
 | `production/<slug>` creation | `/jlu-new-task` Step 15c | Setup subtask (via git-agent) |
 | Worktree creation (worktree mode) | `/jlu-new-task` Step 15c | Setup subtask (via git-agent) |
 | Staging + committing + pushing `production/<slug>` | Orchestrator (after phase) | git-agent |
-| `staging/<slug>` synthesis | `/jlu-create-pr` Step 5b | jlu-conflict-resolver + orchestrator |
+| `staging/<slug>` creation + initial push | `/jlu-new-task` Step 15c | Setup subtask (via git-agent) |
+| `staging/<slug>` cherry-pick sync / rebuild | `/jlu-create-pr` Step 5b | jlu-conflict-resolver + orchestrator |
 | Alpha PR push | `/jlu-create-pr` Step 5b.7 | Orchestrator (not git-agent) |
 | PR creation (primary + alpha) | `/jlu-create-pr` | Orchestrator + `gh` CLI |
 | Task closure (delete local branches, remove remote staging, close alpha PR if open) | `/jlu-close-task` | Orchestrator |
