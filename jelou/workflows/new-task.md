@@ -714,8 +714,8 @@ In worktree mode, skip steps 4 and 5 — the main repo's HEAD and working-tree s
 Runs per service only when `DUAL_PR = yes`. Independent of `SETUP_MODE` — `staging/<TASK_SLUG>` is always a plain local branch (no worktree, no checkout, no Docker), created via the git-agent's "Staging Branch Initialization" procedure:
 
 ```bash
-git rev-parse --verify origin/alpha >/dev/null 2>&1 || echo "no-alpha"
-git rev-parse --verify staging/<TASK_SLUG> >/dev/null 2>&1 && echo "staging-exists"
+git rev-parse --verify origin/alpha >/dev/null 2>&1 || { echo "no-alpha"; exit 0; }
+git rev-parse --verify staging/<TASK_SLUG> >/dev/null 2>&1 && { echo "staging-exists"; exit 1; }
 git branch staging/<TASK_SLUG> origin/alpha
 git push origin staging/<TASK_SLUG>
 CREATION_ALPHA_SHA=$(git rev-parse origin/alpha)

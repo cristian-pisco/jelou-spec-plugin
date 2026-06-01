@@ -48,6 +48,11 @@ describe('git-conventions: staging created at new-task', () => {
     assert.match(gc, /initial create-from-`origin\/alpha` \+ non-force push/);
     assert.match(gc, /`staging\/<slug>` creation \+ initial push \| `\/jlu-new-task` Step 15c/);
   });
+
+  test('Secondary PR flow summary names the first-pick mode', () => {
+    assert.match(gc, /Rebuild \/ first-pick \/ incremental decision/);
+    assert.match(gc, /fast-forward on first-pick or incremental/);
+  });
 });
 
 describe('jlu-git-agent: bounded staging initialization', () => {

@@ -64,10 +64,10 @@ The git-agent is **strictly forbidden** from pushing to `main`, `master`, or `al
 - The alpha PR is opened by `/jlu-create-pr` after the primary branch is pushed and commits have been cherry-picked onto the staging branch.
 - Flow per service:
   1. Fetch origin.
-  2. Rebuild-or-incremental decision from markers in TASKS.md (`Last alpha SHA`, `Last cherry-picked production SHA`).
+  2. Rebuild / first-pick / incremental decision from per-service `Sync markers` in TASKS.md (`alpha`, `production`). First-pick reuses the branch `/jlu-new-task` pre-created (alpha unchanged, nothing cherry-picked yet); rebuild recreates it from fresh `origin/alpha` (alpha moved).
   3. Create temp staging worktree `.worktrees/<slug>-staging-tmp`.
   4. Spawn `jlu-conflict-resolver` (sonnet) to cherry-pick and resolve conflicts.
-  5. Push (force-with-lease on rebuild, fast-forward on incremental).
+  5. Push (force-with-lease on rebuild, fast-forward on first-pick or incremental).
   6. Open/update alpha PR.
   7. Remove temp worktree.
 
