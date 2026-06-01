@@ -8,6 +8,16 @@ Also run: `node bin/sync-agents.mjs --check` to confirm `.opencode/agents/` is i
 
 If either fails, do not push. Fix the failure first. Never push with a red suite — `release after every push to main` means a broken push becomes a broken release.
 
+## Code style — no line-by-line comments
+
+When writing or editing code anywhere (this repo, generated PRs, agent output), do NOT
+add line-by-line comments that narrate what the code already says (`// increment i`,
+`// return the user`, `// arrange / act / assert`). Write self-documenting code: clear
+names over comments. The only comments allowed explain non-obvious *why* — a workaround,
+a business rule, a warning — never the *what*. Match the existing comment density of the
+file being edited; if a file has no comments, add none. This applies to commits and PRs:
+a diff full of explanatory inline comments is a defect, not documentation.
+
 ## Skill routing
 
 When the user's request matches an available skill, ALWAYS invoke it using the Skill

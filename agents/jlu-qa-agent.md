@@ -72,6 +72,7 @@ Run after each phase's Green step (tests passing). This is a static code review 
 - Check for missing error handling on new code paths
 - Check for console.log/print statements that should be proper logging
 - Check for commented-out code
+- Check for line-by-line / redundant comments that violate the No line-by-line comments rule in `subagent-base.md` (narration of what the code already says). Report as FAIL with the recommendation to delete them. Comments explaining non-obvious *why* are fine — do NOT flag them.
 
 #### 4. Function Length
 - Check all new or modified functions/methods
