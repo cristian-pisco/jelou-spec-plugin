@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.178] — 2026-06-01
+
+### Internal
+- staging branch created at new-task, not synthesized at create-pr
+
 ## [0.3.177] — 2026-06-01
 
 ### Internal
