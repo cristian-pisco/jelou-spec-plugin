@@ -142,3 +142,15 @@ describe('report-task: stale-branch net covers staging', () => {
     assert.match(wf, /dual-PR tasks created but never carried through/);
   });
 });
+
+describe('README: dual-PR section reflects eager creation', () => {
+  const readme = read('README.md');
+
+  test('no longer calls staging synthesized on-demand', () => {
+    assert.doesNotMatch(readme, /synthesized on-demand: cut from `origin\/alpha`/);
+  });
+
+  test('describes staging as created up-front and pushed', () => {
+    assert.match(readme, /created up-front by `\/jlu-new-task`: cut from `origin\/alpha` and pushed/);
+  });
+});
