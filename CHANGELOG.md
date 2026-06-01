@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.177] — 2026-06-01
+
+### Internal
+- centralize no-line-by-line-comments rule in subagent-base
+
 ## [0.3.176] — 2026-05-31
 
 ### Internal
