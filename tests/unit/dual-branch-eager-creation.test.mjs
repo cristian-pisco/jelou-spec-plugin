@@ -120,3 +120,16 @@ describe('create-pr: reuses the pre-created staging branch', () => {
     assert.match(wf, /empty `production` means no commits have been cherry-picked yet/);
   });
 });
+
+describe('close-task: tears down eagerly-pushed staging', () => {
+  const wf = read('jelou/workflows/close-task.md');
+
+  test('staging teardown runs whenever DUAL_PR = yes, not only when an alpha PR was recorded', () => {
+    assert.match(wf, /\*\*Staging branch teardown\*\* \(whenever `DUAL_PR = yes`\)/);
+    assert.match(wf, /the remote branch can exist even if `\/jlu-create-pr` never ran/);
+  });
+
+  test('handles the no-alpha-PR case explicitly', () => {
+    assert.match(wf, /no alpha PR was ever opened/);
+  });
+});
