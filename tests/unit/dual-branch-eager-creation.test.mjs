@@ -133,3 +133,12 @@ describe('close-task: tears down eagerly-pushed staging', () => {
     assert.match(wf, /no alpha PR was ever opened/);
   });
 });
+
+describe('report-task: stale-branch net covers staging', () => {
+  const wf = read('jelou/workflows/report-task.md');
+
+  test('stale branch-mode check verifies staging as well as production', () => {
+    assert.match(wf, /git -C <service-repo> rev-parse --verify staging\/<TASK_SLUG> 2>\/dev\/null/);
+    assert.match(wf, /dual-PR tasks created but never carried through/);
+  });
+});
