@@ -85,9 +85,9 @@ affected_services:
 ## Branching
 - **Dual PR**: yes | no
 - **Primary branch**: production/<task-slug>
-- **Secondary branch**: staging/<task-slug>  (intended; synthesized at first /jlu-create-pr when Dual PR = yes)
+- **Secondary branch**: staging/<task-slug>  (created from origin/alpha and pushed at /jlu-new-task Step 15c when Dual PR = yes; commits cherry-picked at /jlu-create-pr)
 - **Mode**: worktree | branch
-- **Sync markers**: per-service map, populated on the first `/jlu-create-pr` dual-PR sync
+- **Sync markers**: per-service map, seeded at /jlu-new-task Step 15c (`alpha=<creation-sha>, production=`) and overwritten on each `/jlu-create-pr` dual-PR sync
   - <service-id>: alpha=<sha>, production=<sha>
 
 ## Blockers

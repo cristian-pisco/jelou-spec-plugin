@@ -154,3 +154,17 @@ describe('README: dual-PR section reflects eager creation', () => {
     assert.match(readme, /created up-front by `\/jlu-new-task`: cut from `origin\/alpha` and pushed/);
   });
 });
+
+describe('jlu-tasks-agent: TASKS.md template reflects eager creation', () => {
+  const src = read('agents/jlu-tasks-agent.md');
+  const mirror = read('.opencode/agents/jlu-tasks-agent.md');
+
+  test('secondary-branch template is not described as synthesized at create-pr', () => {
+    assert.doesNotMatch(src, /synthesized at first \/jlu-create-pr/);
+    assert.doesNotMatch(mirror, /synthesized at first \/jlu-create-pr/);
+  });
+
+  test('secondary branch template says created at new-task', () => {
+    assert.match(src, /created from origin\/alpha and pushed at \/jlu-new-task Step 15c/);
+  });
+});
