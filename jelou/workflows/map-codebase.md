@@ -89,7 +89,7 @@ If this gate fails, ask the user for an explicit path and re-validate before pro
    b. Verify all 6 docs exist in `<OUTPUT_DIR>/` (ARCHITECTURE.md, STACK.md, STRUCTURE.md, CONVENTIONS.md, INTEGRATIONS.md, CONCERNS.md).
    c. If any doc is missing: set `ANALYSIS_MODE` = `full` and continue to Step 5.
    d. Run: `git -C <SOURCE_ROOT> diff <commit>..HEAD --stat`
-   e. If no changes: log "Codebase unchanged since last analysis (commit <commit>). Skipping." and skip to Step 8 (report).
+   e. If no changes: log "Codebase unchanged since last analysis (commit <commit>). Skipping." Run Step 7c (Ensure Registry Entry) so re-runs heal a missing registry entry, then skip to Step 9 (report).
    f. If changes exist: categorize changed files and set `ANALYSIS_MODE` = `incremental`.
 3. If `.last-analysis.json` does not exist: set `ANALYSIS_MODE` = `full` and continue to Step 5.
 
@@ -234,6 +234,36 @@ After all docs are verified, write the analysis marker to `<OUTPUT_DIR>/.last-an
 
 ---
 
+### 7c. Ensure Registry Entry (auto-register)
+
+> Fail-soft: if anything in this step errors, log a one-line warning, set `REGISTRY_ACTION` = `skipped (<reason>)`, and continue. Registration must never block the codebase docs deliverable.
+
+Mapping a service is an explicit statement that it belongs to the workspace, so the registry entry is written without asking (the stack is derived from the analysis itself).
+
+1. Read `<WORKSPACE_PATH>/registry/services.yaml`. If the file is missing, create it with an empty `services:` list.
+2. If an entry with `id: <service-id>` already exists:
+   - If its `path` no longer resolves to `SOURCE_ROOT`, update the `path` field and set `REGISTRY_ACTION` = `path-updated`.
+   - Otherwise set `REGISTRY_ACTION` = `already-registered` and continue.
+3. If no entry exists, build one:
+   a. **stack**: derive from `<OUTPUT_DIR>/STACK.md` (primary framework/language), normalized to a stack name (e.g., `nestjs`, `laravel`, `react`, `nextjs`, `vue`, `angular`, `go`, `rust`). If STACK.md is ambiguous, fall back to file heuristics in `SOURCE_ROOT` (`package.json`, `composer.json`, `go.mod`, `Cargo.toml`, `nest-cli.json`, `artisan`, `next.config.*`, `angular.json`, `vite.config.*`).
+   b. **path**: relative path from `WORKSPACE_PATH` to `SOURCE_ROOT` (e.g., `../service-auth`).
+   c. **docker** (optional): if `docker-compose.yml`, `docker-compose.yaml`, or `compose.yml` exists in `SOURCE_ROOT`, parse its `services:` keys. If there is exactly one service, or one whose name matches the `<service-id>` stem, use it with `compose_file` set to the file's repo-relative path and `port_env: APP_PORT`. If ambiguous, omit the `docker` block and note it for the Step 9 report.
+4. Append the entry to `services.yaml`:
+   ```yaml
+   - id: <service-id>
+     path: <relative-path-from-workspace>
+     stack: <derived-stack>
+     docker:                    # only when unambiguously detected
+       service: <compose-service-name>
+       compose_file: <relative-path>
+       port_env: APP_PORT
+   ```
+5. Set `REGISTRY_ACTION` = `registered`.
+
+**Store**: `REGISTRY_ACTION`
+
+---
+
 ## Step 8 — Glossary Candidate Extraction (background hook)
 
 > Fail-soft: if anything in this step errors, log a one-line warning and continue to Step 9. The 6 codebase docs are the primary deliverable; glossary candidates are a bonus.
@@ -296,6 +326,10 @@ Present a final summary to the user:
 - Checked: <N> cross-references
 - Issues found and fixed: <N>
 
+### Registry
+- <service-id>: <REGISTRY_ACTION — e.g., "registered in registry/services.yaml (stack: nestjs)", "already registered", "path updated", "skipped (<reason>)">
+- <if docker block was omitted as ambiguous: note which Compose services were found and suggest editing services.yaml>
+
 ### Glossary
 - New candidate terms: <added count from Step 8 merger output, or "skipped" if Step 8 was skipped>
 - Skipped: <skipped count from merger output> (already in promoted/dropped lists)
@@ -316,6 +350,7 @@ Present a final summary to the user:
 | Workspace directory cannot be resolved or created | Stop with clear message |
 | Source code root does not exist | Stop with path and suggestion |
 | Research agent fails | Report failure, offer retry for that agent only |
+| Registry entry write fails (Step 7c) | Log warning, report as `skipped` in summary, continue — never blocks the docs |
 
 ---
 
@@ -329,3 +364,4 @@ Present a final summary to the user:
 | Integrations doc | `.spec-workspace/services/<service-id>/codebase/INTEGRATIONS.md` |
 | Structure doc | `.spec-workspace/services/<service-id>/codebase/STRUCTURE.md` |
 | Concerns doc | `.spec-workspace/services/<service-id>/codebase/CONCERNS.md` |
+| Service registry entry | `.spec-workspace/registry/services.yaml` |

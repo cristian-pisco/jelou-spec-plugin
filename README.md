@@ -189,7 +189,7 @@ OpenCode command definitions live in `.opencode/commands/`. All commands use the
 
 | Command | Purpose |
 |---------|---------|
-| `/jlu-map-codebase` | Analyze a service with 2 parallel agents, generate 6 codebase knowledge files |
+| `/jlu-map-codebase` | Analyze a service with 2 parallel agents, generate 6 codebase knowledge files, auto-register the service in `services.yaml` |
 | `/jlu-ubiquitous-language [service-id]` | Curate the workspace's domain glossary; extract terms from code + spec/interview artifacts; review-then-save loop |
 | `/jlu-new-task` | Create a new task with spec, worktrees, and affected service detection |
 | `/jlu-refine-task` | Apply a targeted change to an approved spec via structured interview |
@@ -361,7 +361,7 @@ When creating a PR via `/jlu-create-pr`, a spec compliance review runs automatic
 Tasks opting into dual-PR (via the `/jlu-new-task` prompt "Also create a PR to `alpha`?") produce **two** PRs on `/jlu-create-pr`:
 
 - `production/<slug>` → trunk (the mandatory primary PR)
-- `staging/<slug>` → `alpha` (synthesized on-demand: cut from `origin/alpha`, with production commits cherry-picked on top by the `jlu-conflict-resolver` sub-agent)
+- `staging/<slug>` → `alpha` (created up-front by `/jlu-new-task`: cut from `origin/alpha` and pushed; production commits are cherry-picked on top at `/jlu-create-pr` by the `jlu-conflict-resolver` sub-agent — reused when `alpha` is unchanged, rebuilt from fresh `origin/alpha` when it moved)
 
 If the conflict resolver cannot resolve a merge conflict with confidence, the staging side aborts cleanly and offers the user three options: resolve manually, disable dual-PR, or abort.
 

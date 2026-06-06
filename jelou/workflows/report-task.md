@@ -63,13 +63,14 @@ For each match, report as a leaked worktree:
 
 ### Stale Branch-Mode Branches
 
-For tasks in `done` or `closed` state with `Mode: branch`, check for local `production/<TASK_SLUG>` branches still present in service repos:
+For tasks in `done` or `closed` state with `Mode: branch`, check for leftover local `production/<TASK_SLUG>` and `staging/<TASK_SLUG>` branches still present in service repos:
 
 ```bash
 git -C <service-repo> rev-parse --verify production/<TASK_SLUG> 2>/dev/null
+git -C <service-repo> rev-parse --verify staging/<TASK_SLUG> 2>/dev/null
 ```
 
-If present, report as a candidate for cleanup (not auto-removed).
+If either is present, report it as a candidate for cleanup (not auto-removed). The `staging/<TASK_SLUG>` branch may linger for dual-PR tasks created but never carried through `/jlu-create-pr` / `/jlu-close-task`.
 
 ## Step 5 — Consolidate Observability
 
