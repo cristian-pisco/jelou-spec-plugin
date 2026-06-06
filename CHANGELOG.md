@@ -2,6 +2,9 @@
 
 ## [0.3.180] — 2026-06-06
 
+### Added
+- PreToolUse guard denies uncapped test invocations (`hooks/hooks.json` + `bin/guard-test-commands.mjs`)
+
 ### Fixed
 - enforce test-runner worker caps across the TDD pipeline
 
