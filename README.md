@@ -681,6 +681,15 @@ Channel templates can be customized in `.spec-workspace/registry/slack/<channel>
 Global principles in `.spec-workspace/principles/ENGINEERING_PRINCIPLES.md` (philosophical).
 Per-service concrete rules in each service's `CONVENTIONS.md`.
 
+### Test Resource Guard
+
+Uncapped test runs spawn one worker per CPU core (Jest defaults to `cores − 1`; each ts-jest worker holds 0.5–2 GB) and have frozen dev machines hard enough to need a forced power-off. Two layers prevent this:
+
+1. **Prompt policy** — `jelou/references/subagent-base.md` "Test Execution Resource Limits": every agent runs explicit test files with a worker cap (`--maxWorkers=2`, `--runInBand`, `--workers=1`, etc.), never the bare package script, never watch mode, never coverage. Enforced by `tests/unit/resource-caps.test.mjs`.
+2. **Deterministic hook** (Claude Code only) — `hooks/hooks.json` wires `bin/guard-test-commands.mjs` as a `PreToolUse` guard on every Bash call. It denies uncapped jest/vitest/playwright invocations, bare `npm|pnpm|yarn test` (resolving what the script actually runs via `package.json`), watch mode, and coverage — and replies with the corrected command so the agent self-corrects. Safe scripts (mocha, `node --test`, already-capped runners) pass through untouched.
+
+To bypass the hook for a one-off manual run (humans only): `JLU_TEST_GUARD=off` in the environment. OpenCode has no hook support; it relies on the prompt policy alone.
+
 ## Documentation
 
 - **[Full Specification](./docs/archive/JELOU_SPEC_PROPOSAL.md)** — Archived historical design memo: 46 design decisions, artifact schemas, and interview transcript from initial design

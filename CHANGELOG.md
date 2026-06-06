@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.180] — 2026-06-06
+
+### Fixed
+- enforce test-runner worker caps across the TDD pipeline
+
 ## [0.3.179] — 2026-06-06
 
 ### Fixed
