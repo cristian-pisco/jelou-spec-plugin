@@ -132,7 +132,7 @@ Follow the service's conventions exactly:
 - Import from the correct paths (respect path aliases)
 
 ### Step 4: Verify Tests Fail (targeted only)
-Run ONLY the newly written phase test files using `Bash` to confirm Red. All commands run on the host runtime directly — never via `docker compose exec` or any container wrapper.
+Run ONLY the newly written phase test files using `Bash` to confirm Red. All commands run on the host runtime directly — never via `docker compose exec` or any container wrapper. Append the worker cap per `subagent-base.md` "Test Execution Resource Limits" (e.g., `npx jest <new-test-file> --maxWorkers=2`). Forbidden: the bare package script (`npm test`, `npm test --no-coverage` — npm swallows the flag and runs the FULL suite), watch mode, `--coverage`.
 - New tests are discovered by the runner
 - New tests FAIL (Red) because the implementation does not exist
 - New tests fail for the RIGHT reason (missing function/module, not syntax errors)

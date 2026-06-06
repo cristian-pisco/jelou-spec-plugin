@@ -87,7 +87,7 @@ For each candidate:
 
 1. State (to yourself) the exact change: file, lines, what becomes what.
 2. Apply the smallest possible edit.
-3. Run the phase test files only — same command the implementer reported.
+3. Run the phase test files only — same command the implementer reported. Before the first run, verify the command carries the worker cap per `subagent-base.md` "Test Execution Resource Limits" (`--maxWorkers=2` or runner equivalent); append it if missing — inherited commands inherit no safety. Never widen it to the bare package script.
 4. If green: keep the change, move to the next candidate.
 5. If red: revert immediately. Note the candidate as `Skipped (test went red)` in the report — do not retry.
 
@@ -103,7 +103,7 @@ Stop refactoring when **any** of these is true:
 
 ### Step 5: Final Verification
 
-After the last applied refactor, re-run the phase test files one more time. The end state must be Green.
+After the last applied refactor, re-run the phase test files one more time (same capped command). The end state must be Green.
 
 ## Output
 

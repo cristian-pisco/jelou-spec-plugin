@@ -90,7 +90,7 @@ Before writing any implementation code, read these files in order:
 
 ### Step 4: Run Tests
 Use `Bash` to run the tests. All test, lint, and build commands run on the host runtime directly — never via `docker compose exec` or any container wrapper.
-1. Run ONLY the test files from this phase — use the exact file paths from the test-writer's report. Example: `jest path/to/phase-test.spec.ts` or `pytest path/to/test_phase.py`
+1. Run ONLY the test files from this phase — use the exact file paths from the test-writer's report, and append the worker cap per `subagent-base.md` "Test Execution Resource Limits". Examples: `npx jest path/to/phase-test.spec.ts --maxWorkers=2` or `pytest path/to/test_phase.py`. Forbidden: bare `npm test`, `npm test --no-coverage` (npm swallows the flag and runs the FULL suite at default parallelism — this has frozen dev machines), any run without explicit file paths, watch mode, `--coverage`.
 2. All phase tests must PASS (Green)
 3. If any test fails, analyze and fix your implementation (not the test)
 4. After 2 failed fix attempts on the same test, switch to systematic debugging — see `jelou/references/systematic-debugging.md`. Do not attempt fix #3 without completing Phase 1 (root cause investigation). After 3 failed fixes, follow the three-strike rule: report `status: blocked` with the architectural hypothesis instead of attempting fix #4.
@@ -114,6 +114,7 @@ Before reporting to the orchestrator, verify:
 - [ ] I did not "improve" adjacent code, comments, or formatting outside the task scope.
 - [ ] If I chose between approaches, I picked the simpler one.
 - [ ] No function exceeds 100 lines.
+- [ ] Every test run I executed named explicit file paths and carried the worker cap (`--maxWorkers=2` / `--runInBand` or runner equivalent). I never ran the bare package test script.
 
 ## Handling Test Issues (Decision #5)
 

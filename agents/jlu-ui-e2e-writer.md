@@ -98,6 +98,8 @@ When dispatched with `MODE=bootstrap`, the UI service worktree has no Playwright
 
    export default defineConfig({
      testDir: '.',
+     fullyParallel: false,
+     workers: 1, // dev machines run the dev stack alongside E2E; /jlu-ui-qa-run raises this per-run via --workers
      use: {
        baseURL: requireEnv('E2E_BASE_URL'),
        trace: 'on-first-retry',
@@ -184,7 +186,7 @@ After writing `user-flow.md` to `<TASK_DIR>/services/<UI_SERVICE_ID>/user-flow.m
         URL patterns explicitly listed in `Out of Scope`.
    g. Verify the file compiles: run `tsc --noEmit` against just this file.
       Compile error → fix and retry up to 2 times; on third failure escalate BLOCKED.
-   h. Verify the test FAILS (does not pass spuriously): run `npx playwright test <file> --reporter=list`.
+   h. Verify the test FAILS (does not pass spuriously): run `npx playwright test <file> --reporter=list --workers=1`. Always pass `--workers=1` — Playwright defaults to one worker per 2 CPU cores, each booting its own Chromium.
       Test passes → escalate DONE_WITH_CONCERNS (test may be too weak or the UI may already exist).
 4. Write `required-env.txt` (union of every `Env Vars` variable name across emitted flows for this
    UI service, plus `E2E_BASE_URL`) and `external-endpoints.txt` (the subset whose `Source` points

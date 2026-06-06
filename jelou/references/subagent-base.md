@@ -26,6 +26,29 @@ The TDD pipeline never runs through Docker. Absolute, applies to every agent and
 
 All commands run on the host runtime directly (`node`, `pnpm`, `pytest`, `go test`, `tsc`, etc.). The service's dev container (if one exists) is for `/jlu-start-dev` only — not part of the test/build runtime. If you see references to `DOCKER_EXEC_PREFIX` in older docs, treat them as stale.
 
+## Test Execution Resource Limits
+
+Test runners default to one worker per CPU core, and each Jest/Vitest worker is a separate Node process holding 0.5–2 GB once ts-jest starts type-checking. On a many-core dev machine an uncapped run spawns 20+ workers, exhausts RAM, and freezes the host hard enough to need a forced power-off. This has happened on real runs. These rules are absolute for every test invocation, in every agent:
+
+1. **Never invoke the package test script bare.** `npm test`, `pnpm test`, `yarn test`, `npm run test:unit` with no file arguments run the FULL suite at default parallelism. Equally forbidden: `npm test --no-coverage` or any `npm test --<flag>` form — npm swallows flags it does not recognize instead of forwarding them to the runner (forwarding requires the `--` separator), so the command degenerates to the bare full suite. If you must go through the script, the only acceptable shape is `npm test -- <file paths> <worker cap>`.
+2. **Every invocation names explicit test file paths AND carries the runner's worker cap:**
+
+   | Runner | Required cap |
+   |--------|--------------|
+   | jest | `--maxWorkers=2`; single file → prefer `--runInBand` |
+   | vitest | `run --pool=threads --poolOptions.threads.minThreads=1 --poolOptions.threads.maxThreads=2` (the `run` subcommand is mandatory — bare `vitest` starts watch mode) |
+   | playwright | `--workers=1` |
+   | node:test | one file per invocation: `node --test <file>` |
+   | pytest | `-n 2` when `pytest-xdist` is installed; otherwise already single-process |
+   | go | `-p 2` |
+   | mocha | nothing — single-process by default |
+
+   Canonical forms: `npx jest <files> --maxWorkers=2` · `npm test -- <files> --maxWorkers=2`.
+3. **One heavy process at a time.** Never start a second test/build/lint run while one is executing — no `&`, no parallel Bash calls that each spawn a runner or compiler. Wait for the previous one to exit.
+4. **Never watch mode.** `--watch`, `--watchAll`, bare `vitest`, `tsc --watch` never exit; their resident workers starve the machine and hang your session waiting on a process that will not terminate.
+5. **Never coverage.** `--coverage`, `--cov`, `test:cov` multiply RAM via instrumentation. Coverage analysis is static — QA reads existing reports, nothing re-executes tests.
+6. **Inherited commands inherit no safety.** A command copied from CONVENTIONS.md, `package.json` scripts, or another agent's report gets the worker cap appended before you run it — verify, don't trust.
+
 ## Three-Strike Rule
 
 When fixing a failing test or build:

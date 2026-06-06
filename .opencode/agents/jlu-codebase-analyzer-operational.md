@@ -85,10 +85,12 @@ How to run a subset of tests by type or path. The AI must discover these from th
 
 | Filter | Command | Notes |
 |--------|---------|-------|
-| Run specific files only | `<command>` | e.g., `jest path/to/test.spec.ts` or `pytest path/to/test.py` |
-| Run unit tests only | `<command>` | e.g., `jest --testPathPattern=unit` or `pytest -m "not integration"` |
-| Run integration tests only | `<command>` | e.g., `jest --testPathPattern=integration` or `pytest -m integration` |
-| Run all tests | `<command>` | The standard full suite command |
+| Run specific files only | `<command>` | e.g., `jest path/to/test.spec.ts --maxWorkers=2` or `pytest path/to/test.py` |
+| Run unit tests only | `<command>` | e.g., `jest --testPathPattern=unit --maxWorkers=2` or `pytest -m "not integration"` |
+| Run integration tests only | `<command>` | e.g., `jest --testPathPattern=integration --maxWorkers=2` or `pytest -m integration` |
+| Run all tests | `<command>` | The standard full suite command (consumed by `/jlu-test-suite`, which injects its own workers=1 cap) |
+
+Record every subset command with its worker cap appended (`--maxWorkers=2` for jest, `run --pool=threads --poolOptions.threads.minThreads=1 --poolOptions.threads.maxThreads=2` for vitest, `-n 2` for pytest-xdist). Downstream agents copy these commands verbatim — an uncapped command documented here becomes an uncapped run that can freeze a dev machine.
 
 If the project has no explicit test type separation (no directories, no tags, no naming convention distinguishing unit from integration), document that and note: "Test filtering not available — all tests run together."
 

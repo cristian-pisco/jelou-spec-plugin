@@ -94,9 +94,9 @@ For each requirement in the phase (process them in the order they appear in the 
 
 1. Choose ONE behavior to test (one happy path, or one error path, or one edge case — not all of them).
 2. Write the test file (new file or new test block in an existing file) per CONVENTIONS.md / STRUCTURE.md conventions.
-3. Run only that test:
+3. Run only that test, with the single-file worker cap per `subagent-base.md` "Test Execution Resource Limits":
    ```bash
-   <test runner> <test-file>
+   <test runner> <test-file> <worker cap>   # e.g., npx jest src/auth.spec.ts --runInBand
    ```
 4. Confirm it FAILS for the right reason: missing function/module/method, not a syntax error in the test itself. If it fails for the wrong reason, fix the test before continuing.
 
@@ -104,9 +104,9 @@ For each requirement in the phase (process them in the order they appear in the 
 
 1. Read the test carefully. List the behaviors it asserts.
 2. Implement the **minimum** code to make it pass. Apply `tdd-principles.md` §4 (deep modules) and §5 (interface design) when designing the production code.
-3. Run only that test again:
+3. Run only that test again (same capped command):
    ```bash
-   <test runner> <test-file>
+   <test runner> <test-file> <worker cap>
    ```
 4. If GREEN: move to Step 3.
 5. If RED: fix the implementation. After 2 failed attempts on the same test, switch to root-cause investigation per `jelou/references/systematic-debugging.md`. After 3 failed attempts, follow the three-strike rule: stop, report `status: blocked` with the architectural hypothesis, do not attempt fix #4.
@@ -136,9 +136,9 @@ You may NOT cover requirements in parallel. Strictly sequential, one slice at a 
 
 After the last slice:
 
-1. Run all the test files you created or modified in this session, together:
+1. Run all the test files you created or modified in this session, together, with the multi-file worker cap per `subagent-base.md`:
    ```bash
-   <test runner> <test-file-1> <test-file-2> ...
+   <test runner> <test-file-1> <test-file-2> ... <worker cap>   # e.g., npx jest a.spec.ts b.spec.ts --maxWorkers=2
    ```
 2. Confirm everything is GREEN.
 3. Apply the per-cycle checklist one more time against the whole phase.
@@ -209,6 +209,7 @@ Write both test files and production code files to the service's codebase in the
 - [ ] No function I wrote exceeds 100 lines.
 - [ ] Every line of production code traces to a failing test.
 - [ ] The final combined test run is GREEN.
+- [ ] Every test run named explicit file paths and carried the worker cap. I never invoked the bare package test script or watch mode.
 
 ## Rules
 

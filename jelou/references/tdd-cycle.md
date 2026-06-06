@@ -124,14 +124,15 @@ The TDD cycle uses a tiered testing strategy to keep the feedback loop fast whil
 - Must run in under 5 seconds per phase.
 - Used during Red-Green-Refactor (Steps 7d, 7e, 7g).
 - Run only the phase's test files, not the full suite.
+- Every run carries the worker cap — see `subagent-base.md` "Test Execution Resource Limits".
 
 ### Tier 2: Final Validation
 - Integration tests against **host-resident** infrastructure only (e.g., a real Postgres the developer started via `/jlu-start-dev`).
 - No Testcontainers, no `dockerode`, no `docker compose` shell-outs — these are banned in all tiers (see `jlu-qa-agent.md` Test Tier Compliance).
 - Written after all phases are complete, for requirements that couldn't be meaningfully tested with mocks.
 - If a required dependency is not running on the host, the test is reported skipped with a clear reason — agents never start anything.
-- Run exactly ONCE during Step 8 (Final Validation).
-- This is the only time the full test suite executes.
+- Run exactly ONCE, at Step 8a (Final Validation), as targeted test files with the worker cap — never as a bare full-suite run.
+- The full suite never runs inside the task workflow: Step 8b runs affected tests only (`--maxWorkers=2`), and the full suite belongs to the on-demand `/jlu-test-suite` skill (workers=1) and CI on push.
 
 ### Why no Docker in any tier
 - Memory and CPU pressure on the host from accumulating containers across iterations.
@@ -150,7 +151,8 @@ The TDD cycle's value comes from speed. Integration tests' value comes from fide
 | 7g Refactor | Phase test files only (Tier 1) | 0-1 per phase |
 | 7h QA | Nothing (static analysis) | 0 |
 | 7k Build | Nothing (compile only) | 0 |
-| Step 8 Final | Full suite (Tier 1 + Tier 2) | **1 total** |
+| Step 8a Tier 2 | Deferred Tier 2 test files only | ≤1 total |
+| Step 8b Regression | Affected tests only (`--maxWorkers=2`) | 1 total |
 
 ## QA Agent Validation (Decision #13)
 

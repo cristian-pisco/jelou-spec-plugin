@@ -14,6 +14,8 @@ Parallel fan-out is optional, not mandatory. Use it only when the workflow-level
 
 Default local behavior is sequential (`=1`) to prevent CPU/RAM spikes on developer machines. Opt in to higher parallelism explicitly.
 
+When `PHASE_PARALLELISM > 1`, every concurrently dispatched agent must tighten its test runs to ONE worker (`--runInBand`, `maxThreads=1`, `-n 1`, `-p 1`): the per-agent cap of 2 workers in `subagent-base.md` "Test Execution Resource Limits" assumes a single agent running tests at a time. State this in each dispatched prompt.
+
 ### Deprecated throttles
 
 | Env var | Status | Why |

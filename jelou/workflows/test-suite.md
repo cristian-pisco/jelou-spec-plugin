@@ -121,7 +121,7 @@ If exit 2 fires, return that as the workflow's exit code.
 | RUNNER | Append to command |
 |--------|-------------------|
 | jest | `-- --runInBand` (the `--` separates npm args from jest args) |
-| vitest | `-- --pool=threads --poolOptions.threads.maxThreads=1` |
+| vitest | `-- --pool=threads --poolOptions.threads.minThreads=1 --poolOptions.threads.maxThreads=1` (without `minThreads`, vitest aborts when its default minimum exceeds the cap) |
 | mocha | (none — single-process by default) |
 | pytest + xdist | `-n 1` |
 | pytest (no xdist) | (none — single-process) |
