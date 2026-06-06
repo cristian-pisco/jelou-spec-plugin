@@ -189,7 +189,7 @@ OpenCode command definitions live in `.opencode/commands/`. All commands use the
 
 | Command | Purpose |
 |---------|---------|
-| `/jlu-map-codebase` | Analyze a service with 2 parallel agents, generate 6 codebase knowledge files |
+| `/jlu-map-codebase` | Analyze a service with 2 parallel agents, generate 6 codebase knowledge files, auto-register the service in `services.yaml` |
 | `/jlu-ubiquitous-language [service-id]` | Curate the workspace's domain glossary; extract terms from code + spec/interview artifacts; review-then-save loop |
 | `/jlu-new-task` | Create a new task with spec, worktrees, and affected service detection |
 | `/jlu-refine-task` | Apply a targeted change to an approved spec via structured interview |
