@@ -146,10 +146,10 @@ Before writing the final SPEC.md, verify:
 
 ## Step 4 — Present for Approval
 
-After writing, present the complete rewritten SPEC.md to the user using AskUserQuestion and ask for review. The user must explicitly approve before the task transitions to `planned` state. If the user wants changes, make them and re-present.
+After writing, print the SPEC.md location on its own line as an absolute path (terminals render it clickable), then ask for review using AskUserQuestion. **Never print the SPEC.md content in the terminal** — the user reviews the spec by opening the file in their editor. The user must explicitly approve before the task transitions to `planned` state. If the user wants changes, make them and re-present (print the path line again after each rewrite).
 
-When presenting for approval, provide:
-1. A brief executive summary of what the spec covers
+When asking for approval, provide:
+1. A brief executive summary of what the spec covers (never the spec body)
 2. A count of requirements (FR: X, NFR: Y) and success criteria (SC: Z)
 3. Any areas where you had to make judgment calls or where information was incomplete
 4. Ask clearly: "Do you approve this spec to move to `planned` status?"

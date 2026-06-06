@@ -571,13 +571,21 @@ Rules for writing:
 
 ### 14d — Present for Approval
 
-Using `question`, present the complete SPEC.md to the user:
-1. A brief executive summary of what the spec covers
-2. A count of requirements (FR: X, NFR: Y) and success criteria (SC: Z)
-3. Any areas where you had to make judgment calls or where information was incomplete
-4. Ask clearly: "Do you approve this spec to move to `planned` status?"
+> **Never print the SPEC.md content in the terminal.** The user reviews the spec by opening the file in their editor — the terminal carries only the file path and a short summary. Dumping the full spec into the conversation is a defect.
 
-If the user wants changes, make them and re-present. Loop until the user approves or explicitly stops.
+1. Print the spec location on its own line as an **absolute path** (terminals render it clickable):
+
+   ```
+   SPEC.md written: <absolute-TASK_DIR>/SPEC.md
+   ```
+
+2. Then, using `question`, ask for approval. The question contains only:
+   - A brief executive summary of what the spec covers (3-5 sentences, never the spec body)
+   - A count of requirements (FR: X, NFR: Y) and success criteria (SC: Z)
+   - Any areas where you had to make judgment calls or where information was incomplete
+   - Ask clearly: "Do you approve this spec to move to `planned` status?"
+
+If the user wants changes, make them and re-present (print the path line again after each rewrite). Loop until the user approves or explicitly stops.
 
 ---
 
@@ -758,13 +766,13 @@ Present the final summary:
 
 ### Task
 - Slug: <TASK_SLUG>
-- Path: <TASK_DIR>
+- Path: <absolute-TASK_DIR>
 - Sprint: <SPRINT_NUMBER>
 - Status: planned
 
 ### Artifacts
-- SPEC.md: <TASK_DIR>/SPEC.md (<N> sections)
-- TASKS.md: <TASK_DIR>/TASKS.md
+- SPEC.md: <absolute-TASK_DIR>/SPEC.md (<N> sections)
+- TASKS.md: <absolute-TASK_DIR>/TASKS.md
 
 ### Affected Services
 - <service-id-1> (primary)

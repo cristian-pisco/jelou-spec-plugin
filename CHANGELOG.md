@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.181] — 2026-06-06
+
+### Fixed
+- show clickable SPEC.md path at approval gate instead of dumping spec content
+
 ## [0.3.180] — 2026-06-06
 
 ### Added
