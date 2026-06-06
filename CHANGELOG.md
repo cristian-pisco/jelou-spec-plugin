@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.179] — 2026-06-06
+
+### Fixed
+- auto-register mapped service in services.yaml (Step 7c)
+
 ## [0.3.178] — 2026-06-01
 
 ### Internal
