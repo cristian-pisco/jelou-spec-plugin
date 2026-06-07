@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.3.186] — 2026-06-07
+
+### Added
+- pure helpers for OTP login, session probe and 401 collapse detection
+
+## [0.3.185] — 2026-06-07
+
+### Added
+- pure helpers for OTP login, session probe and 401 collapse detection
+
 ## [0.3.184] — 2026-06-07
 
 ### Fixed
