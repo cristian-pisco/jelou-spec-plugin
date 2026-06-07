@@ -14,6 +14,8 @@
 // Escape hatch for humans (never suggest it to agents): JLU_ENV_GUARD=off.
 
 import { pathToFileURL } from 'node:url';
+import { readFileSync } from 'node:fs';
+import { isAbsolute, resolve } from 'node:path';
 
 const POLICY = 'env hygiene: secrets in context have caused Usage Policy session kills';
 
@@ -24,6 +26,7 @@ const PRINTERS = new Set([
 ]);
 const GREPPERS = new Set(['grep', 'egrep', 'fgrep', 'rg']);
 const WRAPPERS = new Set(['sudo', 'command', 'nice', 'time', 'env']);
+const SOURCERS = new Set(['source', '.']);
 
 const allow = () => ({ decision: 'allow' });
 const deny = (reason) => ({ decision: 'deny', reason: `jlu env guard: ${reason}` });
@@ -100,7 +103,49 @@ function hasQuietishFlag(tokens) {
   });
 }
 
-export function classifyBashCommand(command) {
+// Sourcing an env file is allowed by the workflow contract (values land in the
+// shell env, not the transcript) — UNLESS the file has lines a POSIX `source`
+// would partially execute. `KEY=a|b` pipes to a command named after the secret
+// tail; `KEY=a b` runs `b`. Bash then echoes those value fragments as
+// "command not found" errors, which DO reach the transcript (observed
+// 2026-06-07, ui-qa-run: 3 fragments leaked, one a live key tail). The hook
+// validates file contents out-of-band and reports keys/line numbers only.
+export function findHazardousEnvLines(content) {
+  const hazards = [];
+  content.split('\n').forEach((line, idx) => {
+    if (/^\s*$/.test(line) || /^\s*#/.test(line)) return;
+    const m = /^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(line);
+    if (!m) {
+      hazards.push({ line: idx + 1, key: '(not KEY=VALUE — executed as a command)' });
+      return;
+    }
+    const value = m[2];
+    if (/^"[^"]*"$/.test(value) || /^'[^']*'$/.test(value)) return;
+    if (/[\s|&;<>`()]/.test(value)) hazards.push({ line: idx + 1, key: m[1] });
+  });
+  return hazards;
+}
+
+function classifySourcing(envArg, cwd) {
+  const path = stripQuotes(envArg);
+  const full = isAbsolute(path) ? path : resolve(cwd ?? process.cwd(), path);
+  let content;
+  try {
+    content = readFileSync(full, 'utf8');
+  } catch {
+    return allow();
+  }
+  const hazards = findHazardousEnvLines(content);
+  if (hazards.length === 0) return allow();
+  const where = hazards.map((h) => `line ${h.line} (${h.key})`).join(', ');
+  return deny(
+    `sourcing '${path}' would make bash execute fragments of unquoted values and echo them as ` +
+      `"command not found" errors into the transcript (${POLICY}). Malformed: ${where}. ` +
+      `Quote those values in place first (sed -i), then source. ${HOW_INSTEAD}.`,
+  );
+}
+
+export function classifyBashCommand(command, cwd) {
   if (typeof command !== 'string' || !/\.env/.test(command)) return allow();
 
   for (const segment of splitSegments(command)) {
@@ -110,6 +155,12 @@ export function classifyBashCommand(command) {
     const rest = tokens.slice(1);
     const envArgs = rest.filter(isEnvFile);
     if (envArgs.length === 0) continue;
+
+    if (SOURCERS.has(cmd)) {
+      const verdict = classifySourcing(envArgs[0], cwd);
+      if (verdict.decision === 'deny') return verdict;
+      continue;
+    }
 
     if (PRINTERS.has(cmd)) {
       return deny(
@@ -152,7 +203,7 @@ async function main() {
   if (payload?.tool_name === 'Read') {
     verdict = classifyRead(payload?.tool_input?.file_path);
   } else if (payload?.tool_name === 'Bash') {
-    verdict = classifyBashCommand(payload?.tool_input?.command);
+    verdict = classifyBashCommand(payload?.tool_input?.command, payload?.cwd);
   }
 
   if (verdict.decision === 'deny') {

@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.184] — 2026-06-07
+
+### Fixed
+- guard-env-reads validates sourced env files for fragment-leaking lines
+
 ## [0.3.183] — 2026-06-06
 
 ### Added
