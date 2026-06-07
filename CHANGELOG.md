@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.203] — 2026-06-07
+
+### Added
+- port cookie decrypt + userSessions upsert helpers
+
 ## [0.3.202] — 2026-06-07
 
 ### Added
