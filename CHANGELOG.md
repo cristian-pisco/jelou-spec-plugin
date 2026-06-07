@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.202] — 2026-06-07
+
+### Added
+- add SECRET_MISMATCH/MONGO_UNREACHABLE exit codes
+
 ## [0.3.201] — 2026-06-07
 
 ### Fixed

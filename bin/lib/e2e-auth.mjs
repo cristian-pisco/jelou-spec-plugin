@@ -14,6 +14,8 @@ export const EXIT = {
   OTP_TIMEOUT: 42,
   OTP_REJECTED: 43,
   LOGIN_FORM_NOT_FOUND: 44,
+  SECRET_MISMATCH: 45,
+  MONGO_UNREACHABLE: 46,
 };
 
 export function parseFlatYaml(text) {
