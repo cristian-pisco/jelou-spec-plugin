@@ -228,7 +228,7 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
        - `0` → re-run the probe; valid → continue to step 15.
        - `41` → print the 401 abort message (below) and exit `BLOCKED` (2).
        - `42`/`43` → report which OTP step failed; offer ONE retry of the whole gate; second failure → `BLOCKED`.
-       - `44` → enter the Feature-2 feedback loop (step 18c): ask the user where the login form lives (route, field hints), set `LOGIN_PATH` from the answer, retry (max 3 rounds).
+       - `44` → enter a bounded ask-the-user retry (same 3-round shape as step 18c, but self-contained — no fix-loop dispatch, no selectors.md persistence): ask the user where the login form lives (route, field hints), set `LOGIN_PATH` from the answer, retry (max 3 rounds).
 
     **401 abort message (verbatim, both here and in step 17b):**
 

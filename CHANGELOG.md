@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.199] — 2026-06-07
+
+### Fixed
+- canonical structured NEEDS_CONTEXT protocol line; clarify 14b retry vs 18c machinery
+
 ## [0.3.198] — 2026-06-07
 
 ### Internal

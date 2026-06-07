@@ -216,7 +216,7 @@ The first ten anti-patterns target test code that's wrong about the UI. This one
 
 ## 12. Skip-guards that mask not-found as missing-data
 
-`if ((await locator.count()) === 0) test.skip(true, "no data for test account")` converts a broken selector into a green report. A stale selector and an empty dataset are indistinguishable from the DOM — the 2026-06-07 datum run shipped a PASS while two success criteria had never executed. Absence must fail the test with the selector named in the message; the fix-loop and the user feedback loop (ui-qa-run step 18c) decide whether it is data, selector drift, or a real regression.
+`if ((await locator.count()) === 0) test.skip(true, "no data for test account")` converts a broken selector into a green report. A stale selector and an empty dataset are indistinguishable from the DOM — the 2026-06-07 datum run shipped a PASS while two success criteria (FR-3/SC-3) had never executed. Absence must fail the test with the selector named in the message; the fix-loop and the user feedback loop (ui-qa-run step 18c) decide whether it is data, selector drift, or a real regression.
 
 ## When the fix-loop sees these patterns
 

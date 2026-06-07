@@ -196,7 +196,7 @@ After writing `user-flow.md` to `<TASK_DIR>/services/<UI_SERVICE_ID>/user-flow.m
    h. (EXPECT=red only) Verify the test FAILS (does not pass spuriously): run `npx playwright test <file> --reporter=list --workers=1`. Always pass `--workers=1` — Playwright defaults to one worker per 2 CPU cores, each booting its own Chromium.
       Test passes → escalate DONE_WITH_CONCERNS (test may be too weak or the UI may already exist).
       (EXPECT=live) Skip this run — the orchestrator executes the suite immediately after this dispatch. Verify collection instead: `npx playwright test <file> --list` must report at least one test.
-   i. After writing each spec file: write e2e/selectors-used.txt with every selector and its source file:line.
+   i. After writing each spec file: write e2e/selectors-used.txt with every selector and its source file:line (one `<selector>\t<source-file:line>` per line, per the provenance rule).
 4. Write `required-env.txt` (union of every `Env Vars` variable name across emitted flows for this
    UI service, plus `E2E_BASE_URL`) and `external-endpoints.txt` (the subset whose `Source` points
    outside `Service Boot Order`). One variable name per line; trailing newline. Empty

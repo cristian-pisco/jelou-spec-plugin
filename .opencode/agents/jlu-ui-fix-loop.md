@@ -125,7 +125,7 @@ STATUS: BLOCKED reason=ambiguous details="<what's unclear>"
 STATUS: flagged reason=same_hunk_twice details="<file:line>"
 STATUS: flagged reason=anti_pattern details="<which pattern in the test>"
 STATUS: flagged reason=missing_declared_testid details="<testid name>"
-STATUS: NEEDS_CONTEXT details="<what you need>"
+STATUS: NEEDS_CONTEXT missing="<what you need>" tried="<selectors, if applicable>" looked_in="<files searched, if applicable>"
 ```
 
 The orchestrator parses this line and decides:
