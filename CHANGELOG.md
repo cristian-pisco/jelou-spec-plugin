@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.206] — 2026-06-07
+
+### Added
+- step 14c local session provisioning; scope the no-fabrication carve-out
+
 ## [0.3.205] — 2026-06-07
 
 ### Added

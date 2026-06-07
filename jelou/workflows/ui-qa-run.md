@@ -234,7 +234,30 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
 
     > ⛔ **No es posible realizar pruebas: el login está recibiendo Error HTTP 401.** Verifica TEST_EMAIL/TEST_PASSWORD en `.env.e2e` o el estado del servicio de auth.
 
-    **Forbidden under all circumstances:** dispatching the fix-loop for auth failures, inserting or patching session documents in any datastore (Mongo/MySQL/Redis), or editing auth-related env values to force a pass.
+    **Forbidden under all circumstances:** dispatching the fix-loop for auth failures, editing auth-related env values to force a pass, or inserting/patching session documents in any datastore to mask an auth failure. The **one** sanctioned datastore write is step 14c's local session provisioning, and only under its contract: it runs after a real login has already succeeded, derives every field solely by decrypting the real captured cookie (never invented), fails closed (reports, never fabricates), and is never a response to a 401. The fix-loop remains barred from all datastore session writes.
+
+14c. **Provision the local cookie-guard session (auto-detect; sanctioned write).** Runs after 14b yields a valid session — pre-existing or freshly logged in — and before Playwright. Replicates `jelou-apps/tools/dev-session-sync` for headless E2E: it decrypts the real `jelou_auth` cookie captured in `storageState`, upserts the session into local `logsM.userSessions`, and copies the cookie onto the `localhost` host so the suite reaches the local gateway without 401. See `jelou/references/auth-fixtures.md` § "Local cookie-guard session provisioning".
+
+    Auto-detect makes it a no-op unless the target is loopback, `COOKIE_SECRET` is set (in `.env.e2e`), and a `jelou_auth` cookie is present — so non-local or non-cookie-guarded flows skip cleanly. The env from 14b's `set -a` block is still in scope.
+
+    ```bash
+    SESSION_SYNC_RC=0
+    SESSION_SYNC_FAILED=""
+    SESSION_SYNC_OUT=$(node "$PLUGIN_ROOT/bin/e2e-session-sync.mjs" 2>&1) || SESSION_SYNC_RC=$?
+    case "$SESSION_SYNC_RC" in
+      0)  echo "$SESSION_SYNC_OUT" ;;                                  # SESSION_SYNC_OK or SESSION_SYNC_SKIP <reason>
+      45) SESSION_SYNC_FAILED="cookie decrypt failed — COOKIE_SECRET likely does not match the backend ($SESSION_SYNC_OUT)" ;;
+      46) SESSION_SYNC_FAILED="local Mongo unreachable at SESSION_SYNC_MONGO_URI ($SESSION_SYNC_OUT)" ;;
+      *)  SESSION_SYNC_FAILED="session provisioning misconfigured ($SESSION_SYNC_OUT)" ;;
+    esac
+    [ -n "$SESSION_SYNC_FAILED" ] && echo "⚠️  session-sync: $SESSION_SYNC_FAILED — continuing; the suite remains the source of truth."
+    ```
+
+    **Warn-and-continue (never block).** On any non-zero exit (`45`/`46`/`*`), report `SESSION_SYNC_FAILED` with detail and continue to step 15 — mirroring the extension's "alert and do nothing". Provisioning is idempotent: the upsert keys on `sessionId` and the localhost cookie is replaced, not appended, so re-runs are safe.
+
+    **Required env (`.env.e2e`):** `COOKIE_SECRET` (must match the backend). Optional: `SESSION_SYNC_MONGO_URI` (default `mongodb://127.0.0.1:27017`), `SESSION_SYNC_DB` (`logsM`), `SESSION_TTL_HOURS` (`12`), `SESSION_COOKIE_NAME` (`jelou_auth`), `JLU_MONGODB_MODULE` (driver-path override). Sourced in 14b's `set -a` block; secrets never printed.
+
+    **Still forbidden:** using this to mask an auth failure (see the carve-out above). It is gated on a *successful* login and fails closed.
 
 15. **Run Playwright** in the UI service's worktree. Source the UI service's `.env` (and optional `.env.e2e` overlay) so Playwright sees the same configuration the dev server is using; refuse to start if any env var declared in `user-flow.md` `Env Vars` is missing, and HEAD-check each URL whose source points outside `Service Boot Order`. See `jelou/references/e2e-environment.md` for the contract.
 
@@ -350,6 +373,7 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
     if [ "$(node "$PLUGIN_ROOT/bin/detect-auth-collapse.mjs" "$TASK_DIR/services/$UI_SERVICE/e2e/run.json")" = "auth_collapse" ]; then
       # 3+ consecutive 401-shaped failures — the session died. Fix-loop is forbidden here.
       # Print the step-14b 401 abort message and exit BLOCKED (2).
+      # If $SESSION_SYNC_FAILED is set (step 14c warned), append it so the cause is unambiguous.
       exit 2
     fi
     ```
@@ -475,3 +499,4 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
 - `agents/jlu-ui-fix-loop.md` — fix-loop agent
 - `jelou/workflows/ui-qa-cleanup.md` — recover from leaked state
 - `bin/e2e-session-probe.mjs` / `bin/e2e-login.mjs` / `bin/detect-auth-collapse.mjs` — auth gate drivers
+- `bin/e2e-session-sync.mjs` — step 14c local cookie-guard session provisioning (decrypt + `logsM.userSessions` upsert + localhost cookie)
