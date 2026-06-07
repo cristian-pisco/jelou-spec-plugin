@@ -65,6 +65,25 @@ Per-flow vars are declared in the flow's `Env Vars` section (`user-flow.md`). Th
 
 `TEST_EMAIL` / `TEST_PASSWORD` (used by the `storageState` fallback in `auth-fixtures.md`) are required only when the consumer's auth path uses the fallback; the default programmatic-login fixture does not need them.
 
+## Local cookie-guard session provisioning (optional)
+
+When the target is loopback and a flow routes through a local gateway whose downstream
+service validates `sessionId` against local Mongo, step 14c (`bin/e2e-session-sync.mjs`)
+provisions the session and copies `jelou_auth` onto the `localhost` host. It auto-detects
+and is a no-op otherwise. See `auth-fixtures.md` § "Local cookie-guard session provisioning".
+
+| Variable | Required | Default | Purpose |
+|----------|----------|---------|---------|
+| `COOKIE_SECRET` | for the feature | — | AES-256-GCM key material; must match the backend that issued the cookie |
+| `SESSION_SYNC_MONGO_URI` | no | `mongodb://127.0.0.1:27017` | local Mongo connection |
+| `SESSION_SYNC_DB` | no | `logsM` | db the validating service reads |
+| `SESSION_TTL_HOURS` | no | `12` | `userSessions.expiredAt` lifetime; clamped to a minimum of 1 |
+| `SESSION_COOKIE_NAME` | no | `jelou_auth` | auth cookie name |
+| `JLU_MONGODB_MODULE` | no | — | explicit path to an installed `mongodb` package if auto-resolve fails |
+
+These are sourced with the rest of the E2E env (`set -a; . ./.env; . ./.env.e2e; set +a`);
+`COOKIE_SECRET` is never printed (`guard-env-reads` still applies).
+
 ## `playwright.config.ts` requirements
 
 Consumer-owned, but must satisfy:

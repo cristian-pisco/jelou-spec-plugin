@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.207] — 2026-06-07
+
+### Internal
+- document local cookie-guard session provisioning + env vars
+
 ## [0.3.206] — 2026-06-07
 
 ### Added

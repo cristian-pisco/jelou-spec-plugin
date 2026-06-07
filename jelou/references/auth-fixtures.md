@@ -87,6 +87,33 @@ Exit codes: `41` auth rejected (the run aborts with the user-facing HTTP 401 mes
 
 **Hand-provisioned sessions are deprecated.** Inserting session documents directly into a datastore, or hand-copying cookies into storage state, is forbidden — it produced unreproducible auth chains with three independent expiry clocks (motivating incident, 2026-06-07). The TTL of an OTP-minted session is whatever the consumer's auth issues; the probe-first gate makes expiry a non-event (the next run just logs in again).
 
+## Local cookie-guard session provisioning
+
+Some local flows route `UI → api-gateway → workflows-service`, where the downstream
+service's CookieAuth guard validates the `sessionId` against **local** Mongo
+(`logsM.userSessions`). Login authenticates against prod, so `jelou_auth` lands on
+`Domain=.jelou.ai` and the browser never sends it to `localhost` — every cross-route call
+returns 401. In normal dev, `jelou-apps/tools/dev-session-sync` (a Chrome extension + a
+local agent) bridges this. Headless E2E has no extension, so step 14c (`bin/e2e-session-sync.mjs`)
+replicates it: after a successful login it decrypts the real captured `jelou_auth` cookie
+(AES-256-GCM, shared `COOKIE_SECRET`), upserts the session into `logsM.userSessions`, and
+copies the cookie onto the `localhost` host in `storageState`.
+
+This is the **one** sanctioned session write (see the `ui-qa-run.md` step 14b "Forbidden under all circumstances" carve-out). It is
+safe precisely because it is not fabrication:
+
+- It runs **only after a real login succeeded** — never as a response to a 401.
+- Every field (`sessionId`, `userId`, `companyId`) comes **solely** from decrypting the
+  real cookie; nothing is invented.
+- It **fails closed**: on a wrong `COOKIE_SECRET` (decrypt fails) or unreachable Mongo it
+  reports and continues — it never writes a guessed session.
+- It is **auto-detected and idempotent**: a no-op unless the target is loopback, the
+  secret is set, and an auth cookie is present; safe to re-run.
+
+Config lives in `.env.e2e` (see `e2e-environment.md`): `COOKIE_SECRET` (required for the
+feature) plus optional `SESSION_SYNC_MONGO_URI`, `SESSION_SYNC_DB`, `SESSION_TTL_HOURS`,
+`SESSION_COOKIE_NAME`, `JLU_MONGODB_MODULE`.
+
 ## Mandatory `.gitignore` entries
 
 Both the plugin and the consumer's repo MUST gitignore:
@@ -130,6 +157,9 @@ If the consumer's auth provider doesn't support short TTLs natively, the consume
 - **`signInAs` returns a 401:** test fails RED with the auth error visible. The fix-loop treats this as a backend contract issue (`STATUS: BLOCKED, reason: backend_contract`) and does NOT mutate UI source.
 - **Token TTL exceeded mid-suite:** the test that's running gets a 401 from a protected endpoint. The fix-loop's mid-suite crash detection (Premise 15) won't fire (the service is healthy), but the failure pattern is identifiable. M3 fix-loop heuristic: if 3+ tests in a row fail with auth-related errors, escalate `BLOCKED, reason: token_expired` and surface "regenerate fixtures and re-run."
 - **`.auth/` accidentally untracked but staged:** pre-commit guard rejects.
+- **Step 14c cookie decrypt fails (exit 45):** `COOKIE_SECRET` does not match the backend. Step 14c warns `SESSION_SYNC_FAILED` and continues — the suite stays the source of truth. Fix `COOKIE_SECRET` in `.env.e2e`; never fabricate a session.
+- **Step 14c local Mongo unreachable (exit 46):** `SESSION_SYNC_MONGO_URI` is wrong or down. Warn and continue; check the local Mongo port mapping and set `SESSION_SYNC_MONGO_URI`.
+- **Step 14c `mongodb` driver not resolvable (exit 2):** no install on the consumer. `npm install` in `tools/dev-session-sync/agent`, or set `JLU_MONGODB_MODULE` to an installed `mongodb` package path.
 
 ## Consumer onboarding checklist
 
