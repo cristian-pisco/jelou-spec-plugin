@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.198] — 2026-06-07
+
+### Internal
+- #12 skip-guards masking not-found as missing-data
+
 ## [0.3.197] — 2026-06-07
 
 ### Added

@@ -214,6 +214,10 @@ Each intercepted URL must be listed in the flow's `Out of Scope` section in `use
 
 The first ten anti-patterns target test code that's wrong about the UI. This one targets test code that hides whether the backend is wrong about the UI — a strictly worse failure mode, because the suite goes green during exactly the kind of contract drift it was supposed to catch.
 
+## 12. Skip-guards that mask not-found as missing-data
+
+`if ((await locator.count()) === 0) test.skip(true, "no data for test account")` converts a broken selector into a green report. A stale selector and an empty dataset are indistinguishable from the DOM — the 2026-06-07 datum run shipped a PASS while two success criteria had never executed. Absence must fail the test with the selector named in the message; the fix-loop and the user feedback loop (ui-qa-run step 18c) decide whether it is data, selector drift, or a real regression.
+
 ## When the fix-loop sees these patterns
 
 If the fix-loop encounters a test that violates one of these patterns (an arbitrary sleep, a CSS selector, a direct DB query, a `page.route().fulfill()` of a business endpoint), it treats the test itself as suspect. Per Premise 5, after one fix attempt that doesn't change the failure, the loop flags the test as "may be wrong" and stops. The user clears the flag manually after deciding whether the test or the code is broken.
