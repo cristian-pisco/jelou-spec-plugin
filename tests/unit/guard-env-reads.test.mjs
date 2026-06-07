@@ -159,6 +159,45 @@ describe('guard — sourcing malformed env files leaks value fragments', () => {
   });
 });
 
+describe('guard — inline cd before sourcing (resolve relative env against cd target)', () => {
+  // Observed 2026-06-07 (ui-qa-run acceptance): `cd <repo> && . ./.env` over a
+  // malformed .env leaked a key fragment because the guard resolved ./.env
+  // against the TOOL cwd (where the file did not exist → allowed) instead of
+  // the cd target. The guard must track a leading `cd` per segment.
+  const cdDir = mkdtempSync(join(tmpdir(), 'jlu-env-cd-'));
+  writeFileSync(join(cdDir, '.env'), 'GOOD=1\nAPI_KEY=6|secretTail\n');
+  const otherCwd = mkdtempSync(join(tmpdir(), 'jlu-env-other-'));
+
+  test('denies cd <abs> && source ./.env when file at cd target is malformed', () => {
+    const verdict = classifyBashCommand(`cd ${cdDir} && . ./.env`, otherCwd);
+    assert.equal(verdict.decision, 'deny');
+    assert.match(verdict.reason, /line 2 \(API_KEY\)/);
+  });
+
+  test('denies cd <abs>; source ./.env (semicolon-separated)', () => {
+    const verdict = classifyBashCommand(`cd ${cdDir}; set -a; . ./.env; set +a`, otherCwd);
+    assert.equal(verdict.decision, 'deny');
+  });
+
+  test('denies a multiline cd-then-source block (newline, not &&)', () => {
+    const verdict = classifyBashCommand(`cd ${cdDir}\nset -a\n. ./.env`, otherCwd);
+    assert.equal(verdict.decision, 'deny');
+  });
+
+  test('relative cd resolves against the passed cwd', () => {
+    const parent = join(cdDir, '..');
+    const base = cdDir.split('/').pop();
+    const verdict = classifyBashCommand(`cd ${base} && . ./.env`, parent);
+    assert.equal(verdict.decision, 'deny');
+  });
+
+  test('still allows when the cd target file sources cleanly', () => {
+    const clean = mkdtempSync(join(tmpdir(), 'jlu-env-clean-'));
+    writeFileSync(join(clean, '.env'), 'A=1\nB="6|ok"\n');
+    expectBashAllow(`cd ${clean} && . ./.env`);
+  });
+});
+
 describe('hooks.json — wiring', () => {
   const hooks = JSON.parse(readFileSync(join(ROOT, 'hooks', 'hooks.json'), 'utf8'));
   const pre = hooks.hooks.PreToolUse;

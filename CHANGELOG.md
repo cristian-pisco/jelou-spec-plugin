@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.201] — 2026-06-07
+
+### Fixed
+- track inline cd + split on newlines so cd-then-source can't bypass env validation
+
 ## [0.3.200] — 2026-06-07
 
 ### Fixed

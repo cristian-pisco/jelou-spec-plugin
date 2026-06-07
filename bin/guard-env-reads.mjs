@@ -68,7 +68,9 @@ function splitSegments(command) {
       continue;
     }
     if (ch === '"' || ch === "'") { quote = ch; current += ch; continue; }
-    if (ch === ';' || ch === '|' || (ch === '&' && command[i + 1] === '&')) {
+    // Newline is a command separator in bash, same as `;` — splitting on it lets
+    // a `cd` on one line scope a `source` on a later line (multiline tool calls).
+    if (ch === ';' || ch === '\n' || ch === '|' || (ch === '&' && command[i + 1] === '&')) {
       if (ch === '&') i += 1;
       if (ch === '|' && command[i + 1] === '|') i += 1;
       segments.push(current);
@@ -148,16 +150,31 @@ function classifySourcing(envArg, cwd) {
 export function classifyBashCommand(command, cwd) {
   if (typeof command !== 'string' || !/\.env/.test(command)) return allow();
 
+  // Track a leading `cd` per segment so a relative env path in a later segment
+  // resolves against the cd target, not the static tool cwd. Without this,
+  // `cd <repo> && . ./.env` slips past the sourcing check (./.env doesn't exist
+  // at the tool cwd → readFileSync throws → allow). A `cd` into a $VAR the hook
+  // cannot expand leaves effectiveCwd unchanged — that case stays unvalidated.
+  let effectiveCwd = cwd ?? process.cwd();
   for (const segment of splitSegments(command)) {
     const tokens = effectiveTokens(tokenize(segment));
     if (tokens.length === 0) continue;
     const cmd = stripQuotes(tokens[0]).split('/').pop();
     const rest = tokens.slice(1);
+
+    if (cmd === 'cd' && rest.length > 0) {
+      const target = stripQuotes(rest[0]);
+      if (target && target !== '-' && !target.startsWith('$') && !target.startsWith('~')) {
+        effectiveCwd = isAbsolute(target) ? target : resolve(effectiveCwd, target);
+      }
+      continue;
+    }
+
     const envArgs = rest.filter(isEnvFile);
     if (envArgs.length === 0) continue;
 
     if (SOURCERS.has(cmd)) {
-      const verdict = classifySourcing(envArgs[0], cwd);
+      const verdict = classifySourcing(envArgs[0], effectiveCwd);
       if (verdict.decision === 'deny') return verdict;
       continue;
     }
