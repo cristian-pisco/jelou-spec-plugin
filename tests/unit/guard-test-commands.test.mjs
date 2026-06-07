@@ -198,11 +198,11 @@ describe('guard — compound commands and false-positive safety', () => {
 describe('guard — plugin wiring', () => {
   test('hooks/hooks.json registers the guard on Bash PreToolUse', () => {
     const hooks = JSON.parse(readFileSync(join(ROOT, 'hooks/hooks.json'), 'utf8'));
-    const preToolUse = hooks.hooks.PreToolUse;
-    assert.equal(preToolUse.length, 1);
-    assert.equal(preToolUse[0].matcher, 'Bash');
-    assert.match(preToolUse[0].hooks[0].command, /guard-test-commands\.mjs/);
-    assert.match(preToolUse[0].hooks[0].command, /\$\{CLAUDE_PLUGIN_ROOT\}/);
+    const bash = hooks.hooks.PreToolUse.find((h) => h.matcher === 'Bash');
+    assert.ok(bash, 'Bash matcher must exist');
+    const guard = bash.hooks.find((h) => /guard-test-commands\.mjs/.test(h.command));
+    assert.ok(guard, 'guard-test-commands must be wired on Bash');
+    assert.match(guard.command, /\$\{CLAUDE_PLUGIN_ROOT\}/);
   });
 
   test('plugin manifest points at the hooks file', () => {

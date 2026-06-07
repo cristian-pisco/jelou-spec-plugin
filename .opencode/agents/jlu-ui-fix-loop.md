@@ -116,7 +116,7 @@ STATUS: NEEDS_CONTEXT details="<what you need>"
 ```
 
 The orchestrator parses this line and decides:
-- `DONE` → re-run the failing test → re-run the suite → next failure or green.
+- `DONE` → re-run ONLY the failing spec file. Green → next failure. The full suite runs exactly once at the end of the fix phase as a confirmation pass — never per fix.
 - `DONE_WITH_CONCERNS` → same as DONE; concerns are surfaced in the run report.
 - `BLOCKED` → abort the loop for this test. Surface in the run report with `reason`.
 - `flagged` → write to TASKS.md `flagged_tests` block (Premise 7), do not re-dispatch on this test.

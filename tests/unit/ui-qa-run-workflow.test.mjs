@@ -89,3 +89,75 @@ describe('jlu-ui-e2e-writer.md — bootstrap mode', () => {
     assert.match(agent, /tests\/e2e/);
   });
 });
+
+// Regressions found investigating the 2026-06-07 run (session 091e82e4): the
+// suite ran with on-first-retry + ad-hoc retries (doubling failing-test time),
+// the fix-loop agent was never dispatched (40+ min of unbounded inline
+// debugging), the 15-min breaker existed only as prose, and a full .env Read
+// poisoned the context into an API Usage Policy kill.
+describe('ui-qa-run.md — trace and reporter hygiene', () => {
+  const wf = read('jelou/workflows/ui-qa-run.md');
+
+  test('records traces on first failure, not on retry', () => {
+    assert.match(wf, /--trace=retain-on-failure/);
+    assert.doesNotMatch(wf, /--trace=on-first-retry/);
+  });
+
+  test('keeps stderr out of the JSON reporter output', () => {
+    assert.match(wf, /2> "\$TASK_DIR\/services\/\$UI_SERVICE\/e2e\/run\.stderr"/);
+    assert.doesNotMatch(wf, /run\.json" 2>&1/);
+  });
+
+  test('forbids printing env-file contents into the conversation', () => {
+    assert.match(wf, /Env hygiene/);
+    assert.match(wf, /grep -qE '\^VAR='/);
+  });
+});
+
+describe('ui-qa-run.md — fix-loop bounds are enforced, not prose', () => {
+  const wf = read('jelou/workflows/ui-qa-run.md');
+
+  test('arms a bash deadline and dispatch cap', () => {
+    assert.match(wf, /FIX_DEADLINE=\$\(\( \$\(date \+%s\) \+ 900 \)\)/);
+    assert.match(wf, /MAX_FIX_DISPATCHES=10/);
+    assert.match(wf, /CIRCUIT_BREAKER/);
+  });
+
+  test('mandates fixes via the fix-loop agent, never inline', () => {
+    assert.match(wf, /MUST NOT edit source or test files inline/);
+  });
+
+  test('re-runs only the failing spec per fix; full suite once at the end', () => {
+    assert.match(wf, /re-run ONLY the failing spec file/);
+    assert.match(wf, /full suite exactly once/);
+  });
+
+  test('failure table includes the circuit-breaker row', () => {
+    assert.match(wf, /Fix budget exhausted/);
+  });
+});
+
+describe('jlu-ui-e2e-writer.md — EXPECT contract', () => {
+  const agent = read('agents/jlu-ui-e2e-writer.md');
+  const wf = read('jelou/workflows/ui-qa-run.md');
+
+  test('writer documents EXPECT=red vs EXPECT=live', () => {
+    assert.match(agent, /<EXPECT>/);
+    assert.match(agent, /EXPECT=live/);
+  });
+
+  test('EXPECT=live skips the RED-verification run, verifies collection instead', () => {
+    assert.match(agent, /EXPECT=red only.*Verify the test FAILS/s);
+    assert.match(agent, /--list/);
+  });
+
+  test('ui-qa-run dispatches the writer with EXPECT=live (post-deploy)', () => {
+    assert.match(wf, /MODE=bootstrap` and `EXPECT=live/);
+    assert.match(wf, /MODE=derive-from-spec` and `EXPECT=live/);
+  });
+
+  test('scaffolded config records traces on failure without retries', () => {
+    assert.match(agent, /trace: 'retain-on-failure'/);
+    assert.doesNotMatch(agent, /trace: 'on-first-retry'/);
+  });
+});

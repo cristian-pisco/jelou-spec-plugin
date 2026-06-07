@@ -78,9 +78,9 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
       > "`<UI_SERVICE_ID>` has no Playwright infrastructure. I will create in your repo: `tests/e2e/playwright.config.ts`, `tests/e2e/fixtures/auth.ts`, and add `@playwright/test` (devDependency) and install it. Proceed?"
 
       - **Declined** → abort with `STATUS: BLOCKED`, exit 2: "Playwright infra required for `<UI_SERVICE_ID>`; E2E is mandatory for frontend changes."
-      - **Accepted** → dispatch `jlu-ui-e2e-writer` with `MODE=bootstrap` (passing `<TASK_DIR>`, `<UI_SERVICE_ID>`, `<UI_SERVICE_WORKTREE>`). The agent scaffolds the infra and then derives `user-flow.md` + specs (it falls through to `derive-from-spec`). If the agent reports `BLOCKED` (install failed) → abort with exit 2 and surface the manual install command it quoted. On success, set `PLAYWRIGHT_CONFIG=tests/e2e/playwright.config.ts` and mark this service's derivation **already done** — skip the separate `MODE=derive-from-spec` dispatch in step 7c.
+      - **Accepted** → dispatch `jlu-ui-e2e-writer` with `MODE=bootstrap` and `EXPECT=live` (passing `<TASK_DIR>`, `<UI_SERVICE_ID>`, `<UI_SERVICE_WORKTREE>`). This workflow is post-deploy — the UI exists, so the writer must skip its RED-verification run (the orchestrator runs the suite itself in step 15). The agent scaffolds the infra and then derives `user-flow.md` + specs (it falls through to `derive-from-spec`). If the agent reports `BLOCKED` (install failed) → abort with exit 2 and surface the manual install command it quoted. On success, set `PLAYWRIGHT_CONFIG=tests/e2e/playwright.config.ts` and mark this service's derivation **already done** — skip the separate `MODE=derive-from-spec` dispatch in step 7c.
 
-   c. **If no user-flow.md exists AND step 7b' did not already bootstrap this service**, do NOT exit. The spec is the source of truth — the workflow must derive scenarios from it regardless of whether `/jlu:refine-task` was previously invoked. (When step 7b' dispatched `MODE=bootstrap`, derivation already happened — skip this dispatch.) Dispatch `jlu-ui-e2e-writer` once with `MODE=derive-from-spec` to:
+   c. **If no user-flow.md exists AND step 7b' did not already bootstrap this service**, do NOT exit. The spec is the source of truth — the workflow must derive scenarios from it regardless of whether `/jlu:refine-task` was previously invoked. (When step 7b' dispatched `MODE=bootstrap`, derivation already happened — skip this dispatch.) Dispatch `jlu-ui-e2e-writer` once with `MODE=derive-from-spec` and `EXPECT=live` (post-deploy: the writer skips its RED-verification run) to:
       - Read `<TASK_DIR>/SPEC.md` (Acceptance Criteria, Success Criteria, Functional Requirements that mention UI behavior).
       - Generate `<TASK_DIR>/services/<UI_SERVICE_ID>/user-flow.md` with the standard sections (Problem Statement, Affected UI Service, Routes, Steps, Service Boot Order, Env Vars, Auth Precondition).
       - The agent infers `Service Boot Order` from the union of `affected_services` plus any external endpoints mentioned in the spec; flags ambiguities for human review instead of guessing.
@@ -265,15 +265,23 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
     CONFIG_FLAG=""
     [ -n "$PLAYWRIGHT_CONFIG" ] && [ "$PLAYWRIGHT_CONFIG" != "playwright.config.ts" ] && CONFIG_FLAG="--config=$PLAYWRIGHT_CONFIG"
 
+    # --trace=retain-on-failure: produces a trace.zip for every failing test on its FIRST
+    # run. Never use on-first-retry here — no retries are configured, so on-first-retry
+    # records nothing and the fix-loop goes blind; adding retries would double the wall
+    # clock of every failing test instead.
+    # stderr goes to run.stderr, NOT into run.json — merging them corrupts the JSON reporter output.
     npx playwright test \
       $CONFIG_FLAG \
       --workers=${WORKERS:-1} \
       --reporter=json \
       --output="$TASK_DIR/services/$UI_SERVICE/e2e/playwright-output" \
-      --trace=on-first-retry \
-      > "$TASK_DIR/services/$UI_SERVICE/e2e/run.json" 2>&1
+      --trace=retain-on-failure \
+      > "$TASK_DIR/services/$UI_SERVICE/e2e/run.json" \
+      2> "$TASK_DIR/services/$UI_SERVICE/e2e/run.stderr"
     EXIT_CODE=$?
     ```
+
+    **Env hygiene (enforced by the plugin's `guard-env-reads` hook).** Never `Read`, `cat`, or otherwise print `.env` / `.env.e2e` contents into the conversation — live secrets in the model context have triggered API-level Usage Policy rejections that kill the session. Check vars by name (`grep -qE '^VAR=' .env.e2e`), append with `printf ... >>`, modify with `sed -i`. Values stay in the shell.
 
 16. **Parse the JSON reporter output** for failures. Each failure has test title, file path, line, error, attached trace.zip path.
 
@@ -289,10 +297,37 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
         Skip the fix-loop entirely.
     ```
 
-18. **Dispatch fix-loop**. For each remaining failure:
-    - Run `bin/extract-trace.mjs <trace.zip>` to produce `trace-summary.json`.
-    - Dispatch `jlu-ui-fix-loop` agent with the summary, the failing test source, the SPEC.md context, and the UI service's worktree path.
-    - Apply bounds: 3 attempts/assertion, 15-min suite circuit-breaker, no test-file edits unless `--allow-test-edits`, no cross-service writes.
+18. **Dispatch fix-loop**. ALL fixes go through the `jlu-ui-fix-loop` agent — the orchestrator MUST NOT edit source or test files inline, run ad-hoc DB queries, or touch any worktree other than the UI service's. Inline fixing bypasses every bound below and has produced 40+ minute unbounded debugging sessions.
+
+    Arm the circuit breaker BEFORE the first dispatch (real enforcement, not prose):
+
+    ```bash
+    FIX_DEADLINE=$(( $(date +%s) + 900 ))   # 15-min budget for the whole fix phase
+    MAX_FIX_DISPATCHES=10                    # hard cap across all failures
+    DISPATCHES=0
+    ```
+
+    For each remaining failure:
+
+    a. **Check bounds first.** Before every dispatch:
+       ```bash
+       if [ "$(date +%s)" -ge "$FIX_DEADLINE" ] || [ "$DISPATCHES" -ge "$MAX_FIX_DISPATCHES" ]; then
+         echo "CIRCUIT_BREAKER: fix budget exhausted (${DISPATCHES} dispatches)"
+         # remaining failures → flagged in the run report; stop dispatching
+       fi
+       DISPATCHES=$(( DISPATCHES + 1 ))
+       ```
+    b. Run `bin/extract-trace.mjs <trace.zip>` to produce `trace-summary.json` (the trace exists on first failure thanks to `--trace=retain-on-failure`).
+    c. Dispatch `jlu-ui-fix-loop` with the summary, the failing test source, the SPEC.md context, and the UI service's worktree path. Per-assertion bound: 3 attempts. No test-file edits unless `--allow-test-edits`. No cross-service writes.
+    d. **On `DONE`: re-run ONLY the failing spec file** — never the full suite per fix:
+       ```bash
+       npx playwright test "$FAILING_SPEC" $CONFIG_FLAG --workers=1 --reporter=json \
+         --trace=retain-on-failure \
+         > "$TASK_DIR/services/$UI_SERVICE/e2e/refix.json" 2> "$TASK_DIR/services/$UI_SERVICE/e2e/refix.stderr"
+       ```
+       Still failing → next attempt (back to a). Green → next failure.
+
+    When every failure is individually green (or flagged/blocked), run the **full suite exactly once** (step 15 command) to confirm no cross-test regressions. New failures in that confirmation run do NOT re-enter the fix-loop — flag them in the run report; the budget is spent.
 
 19. **Teardown.** The EXIT trap fires regardless of success/error/SIGINT/SIGTERM:
     ```bash
@@ -342,6 +377,7 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
 | Zero tests collected (config/spec-location mismatch) | 2 | "Playwright collected 0 tests; `testDir` did not resolve to the generated specs — not a pass" |
 | Required env var unset | 2 | "required env vars missing: <list>" + reference to e2e-environment.md |
 | External dependency unreachable | 2 | "external dependency unreachable: <VAR>=<URL>" (HEAD-check failed pre-flight) |
+| Fix budget exhausted (15-min deadline or 10-dispatch cap) | 1 | "CIRCUIT_BREAKER: fix budget exhausted" — remaining failures flagged in the run report |
 | All tests green | 0 | clean summary |
 | Some failing or flagged | 1 | summary with file:line per failure |
 

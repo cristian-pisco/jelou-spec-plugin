@@ -44,6 +44,9 @@ The orchestrator dispatches you with:
 - `<TASK_DIR>` — absolute path to `.spec-workspace/specs/<date>/<task>/`
 - `<UI_SERVICE_ID>` — the UI service this dispatch targets (one dispatch per UI service when multiple are affected)
 - `<UI_SERVICE_WORKTREE>` — absolute path to the active worktree for the UI service (resolved by jelou-spec-plugin's `worktree-resolution.md` algorithm)
+- `<EXPECT>` — what a correct test should do when run (default: `red`). One of:
+  - `red` — TDD Red phase (`/jlu:execute-task`): the UI does not exist yet, so a correct test FAILS. Process step 3h verifies the failure.
+  - `live` — post-deploy QA (`/jlu-ui-qa-run`): the UI already exists, so a correct test PASSES. Skip step 3h's run entirely — the orchestrator runs the suite itself right after this dispatch; running it twice doubles the wall clock for nothing. Verify compilation (step 3g) and collection (`npx playwright test <file> --list`) only.
 - `<MODE>` — operation mode (default: `normal`). One of:
   - `normal` — `<TASK_DIR>/services/<UI_SERVICE_ID>/user-flow.md` already exists (authored during `/jlu:refine-task` or by hand). Skip to the per-flow extraction in Process step 1.
   - `derive-from-spec` — no `user-flow.md` exists yet. Read `SPEC.md` directly and generate `<TASK_DIR>/services/<UI_SERVICE_ID>/user-flow.md` first (see "Deriving user-flow.md from SPEC.md" below), then continue with the normal flow against the generated file. **E2E is mandatory for any UI service** — never refuse a `derive-from-spec` dispatch on the grounds that the spec didn't pre-author `user-flow.md`.
@@ -102,7 +105,9 @@ When dispatched with `MODE=bootstrap`, the UI service worktree has no Playwright
      workers: 1, // dev machines run the dev stack alongside E2E; /jlu-ui-qa-run raises this per-run via --workers
      use: {
        baseURL: requireEnv('E2E_BASE_URL'),
-       trace: 'on-first-retry',
+       // retain-on-failure: traces exist on the FIRST failing run. on-first-retry
+       // records nothing when retries=0 (the default here) and the fix-loop goes blind.
+       trace: 'retain-on-failure',
      },
    });
    ```
@@ -186,8 +191,9 @@ After writing `user-flow.md` to `<TASK_DIR>/services/<UI_SERVICE_ID>/user-flow.m
         URL patterns explicitly listed in `Out of Scope`.
    g. Verify the file compiles: run `tsc --noEmit` against just this file.
       Compile error → fix and retry up to 2 times; on third failure escalate BLOCKED.
-   h. Verify the test FAILS (does not pass spuriously): run `npx playwright test <file> --reporter=list --workers=1`. Always pass `--workers=1` — Playwright defaults to one worker per 2 CPU cores, each booting its own Chromium.
+   h. (EXPECT=red only) Verify the test FAILS (does not pass spuriously): run `npx playwright test <file> --reporter=list --workers=1`. Always pass `--workers=1` — Playwright defaults to one worker per 2 CPU cores, each booting its own Chromium.
       Test passes → escalate DONE_WITH_CONCERNS (test may be too weak or the UI may already exist).
+      (EXPECT=live) Skip this run — the orchestrator executes the suite immediately after this dispatch. Verify collection instead: `npx playwright test <file> --list` must report at least one test.
 4. Write `required-env.txt` (union of every `Env Vars` variable name across emitted flows for this
    UI service, plus `E2E_BASE_URL`) and `external-endpoints.txt` (the subset whose `Source` points
    outside `Service Boot Order`). One variable name per line; trailing newline. Empty
@@ -258,7 +264,7 @@ When unsure about a Playwright API (assertion syntax, fixture pattern, locator o
 
 Report status using one of:
 
-- **DONE** — All `user-flow.md` blocks for `<UI_SERVICE_ID>` produced one or more `*.spec.ts` files. All compile. All fail RED for the right reason. INDEX.md written.
+- **DONE** — All `user-flow.md` blocks for `<UI_SERVICE_ID>` produced one or more `*.spec.ts` files. All compile. All fail RED for the right reason (`EXPECT=red`) or all collect under `--list` (`EXPECT=live`). INDEX.md written.
 - **DONE_WITH_CONCERNS** — Tests written, but at least one passed unexpectedly (UI may already exist) OR a test was emitted with a CSS-selector workaround documented in a comment. List concerns.
 - **NEEDS_CONTEXT** — A required spec section is missing or a `data-testid` is undeclared. State exactly what is needed.
 - **BLOCKED** — Cannot make tests compile after 3 attempts; OR (`MODE=bootstrap`) the `@playwright/test` install failed. State what was tried and quote the exact manual install command.

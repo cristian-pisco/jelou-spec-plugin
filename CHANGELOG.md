@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.182] — 2026-06-06
+
+### Fixed
+- new PreToolUse guard (guard-env-reads.mjs) denies Read/cat/grep-without-q of .env* files; templates (.env.example etc) stay readable
+- --trace=retain-on-failure replaces on-first-retry (traces on first failure, no retry doubling); stderr split to run.stderr
+- fix phase armed with a bash 15-min deadline + 10-dispatch cap; fixes go only through jlu-ui-fix-loop; re-run only the failing spec per fix, full suite once at the end
+- writer EXPECT=red|live: post-deploy dispatches skip the RED-verification suite run and verify collection via --list instead
+
 ## [0.3.181] — 2026-06-06
 
 ### Fixed
