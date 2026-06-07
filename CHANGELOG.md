@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.193] — 2026-06-07
+
+### Internal
+- orchestrated OTP login as the sanctioned storageState path
+
 ## [0.3.192] — 2026-06-07
 
 ### Added

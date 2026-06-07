@@ -74,6 +74,19 @@ export default globalSetup;
 
 `TEST_EMAIL` / `TEST_PASSWORD` come from the local environment, never from a committed file.
 
+## Orchestrated OTP login (storageState regeneration for OTP-gated apps)
+
+When the consumer's login requires an emailed OTP (no `/api/test/login`, no test mode), the sanctioned way to (re)generate `storageState` is the plugin's auth gate (`/jlu-ui-qa-run` step 14b):
+
+1. `bin/e2e-session-probe.mjs` checks the stored session against `E2E_BASE_URL`.
+2. If invalid, `bin/e2e-login.mjs` performs the real login: fills `TEST_EMAIL`/`TEST_PASSWORD` (from `.env.e2e`, values never enter the conversation), reaches the OTP screen, prints `WAITING_OTP`, and polls `OTP_FILE`.
+3. The orchestrator reads the OTP from the user's Gmail via the MCP integration (mail pattern persisted in `.spec-workspace/e2e-auth.yaml`) — or asks the user to paste it — and writes it to `OTP_FILE`.
+4. The script completes the login and saves `storageState` to `E2E_STORAGE_STATE` (under `.auth/`, gitignored).
+
+Exit codes: `41` auth rejected (the run aborts with the user-facing HTTP 401 message) · `42` OTP never arrived · `43` OTP rejected · `44` login form not found (feeds the zero-assumptions feedback loop).
+
+**Hand-provisioned sessions are deprecated.** Inserting session documents directly into a datastore, or hand-copying cookies into storage state, is forbidden — it produced unreproducible auth chains with three independent expiry clocks (motivating incident, 2026-06-07). The TTL of an OTP-minted session is whatever the consumer's auth issues; the probe-first gate makes expiry a non-event (the next run just logs in again).
+
 ## Mandatory `.gitignore` entries
 
 Both the plugin and the consumer's repo MUST gitignore:
