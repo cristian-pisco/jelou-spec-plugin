@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.195] — 2026-06-07
+
+### Added
+- forbid not-found skips, require selector provenance and mounted-route verification
+
 ## [0.3.194] — 2026-06-07
 
 ### Fixed
