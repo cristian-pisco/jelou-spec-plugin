@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.196] — 2026-06-07
+
+### Added
+- forbid unproven missing-data verdicts; accept USER_FEEDBACK with bounded test edits
+
 ## [0.3.195] — 2026-06-07
 
 ### Added

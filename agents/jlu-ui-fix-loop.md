@@ -28,7 +28,8 @@ You do NOT loop yourself. The orchestrator owns the loop. You handle one fix at 
 - `<TRACE_SUMMARY_PATH>` — JSON produced by `bin/extract-trace.mjs`
 - `<ATTEMPT_NUMBER>` — 1, 2, or 3 (per Premise 5 per-assertion budget)
 - `<PRIOR_EDITS>` — array of `{file, hunk_hash}` entries from prior attempts on this same assertion (so you can detect "same hunk twice")
-- `<ALLOW_TEST_EDITS>` — boolean. Default false. If false, you MUST NOT modify any file under `tests/` or matching `*.spec.ts` / `*.test.ts`.
+- `<ALLOW_TEST_EDITS>` — boolean. Default false. If false, you MUST NOT modify any file under `tests/` or matching `*.spec.ts` / `*.test.ts` **on your own initiative**. Exception: when `<USER_FEEDBACK>` is present and answers a not-found question, you MAY edit the selector/locator lines of `<FAILING_TEST_PATH>` to apply that answer — the user's reply is the authorization. Feedback-driven edits are limited to locators and the assertions that reference them; never restructure the test.
+- `<USER_FEEDBACK>` — optional free text relayed by the orchestrator from the user, answering a previous `NEEDS_CONTEXT` from this loop (e.g., "el botón de favorito está en datum-databases-home-card.jsx, clase ml-auto"). When present, it is the highest-priority context: apply it before re-deriving anything yourself.
 
 ## What you read
 
@@ -53,6 +54,18 @@ Q1: Is the failure caused by a network response from a non-UI service?
     YES → STATUS: BLOCKED, reason: backend_contract.
           Do NOT write to UI source. The contract bug is upstream.
           Report: { failed_request, response_status, response_body_snippet }.
+
+Q1.5: Is the failure an element-not-found (locator timeout, count 0, toBeVisible timeout)?
+    YES → You may NOT conclude "missing data" unless you can PROVE the dataset is
+          empty (a datastore query or an API response in the trace showing zero
+          rows). Stale selectors and missing data look identical from the DOM.
+          - Proof of empty data → STATUS: BLOCKED, reason: backend_contract,
+            details: the evidence.
+          - No proof and no <USER_FEEDBACK> → STATUS: NEEDS_CONTEXT,
+            missing: "<element description>", tried: "<selectors>",
+            looked_in: "<component files searched>".
+          - <USER_FEEDBACK> present → apply it (locator edit per ALLOW_TEST_EDITS
+            exception), report DONE with the edited selector in the summary.
 
 Q2: Does the failing test violate any of the e2e-anti-patterns?
     Indicators: arbitrary waitForTimeout, CSS/XPath selector, direct DB query,
@@ -127,7 +140,7 @@ The orchestrator parses this line and decides:
 ## What you do NOT do
 
 - Run Playwright yourself. The orchestrator runs it. You apply edits and report.
-- Edit `*.spec.ts` / `*.test.ts` files unless `ALLOW_TEST_EDITS=true`.
+- Edit `*.spec.ts` / `*.test.ts` files unless `ALLOW_TEST_EDITS=true` or a `<USER_FEEDBACK>` answer authorizes a locator edit (see Inputs).
 - Edit `selectors.md` or `user-flow.md` — those are spec artifacts, not implementation.
 - Edit files outside `<UI_SERVICE_WORKTREE>` — refuse with `STATUS: BLOCKED reason=scope_violation`.
 - Run package installs, migrations, or any side-effect command. Pure source edits only.
