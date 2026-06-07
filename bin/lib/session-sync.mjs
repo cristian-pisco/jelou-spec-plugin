@@ -63,3 +63,52 @@ export function buildSessionUpdate(fields, ttlHours, now = new Date()) {
     options: { upsert: true },
   };
 }
+
+const DEFAULT_COOKIE_NAME = 'jelou_auth';
+
+function domainMatchesJelou(domain) {
+  const d = String(domain || '').replace(/^\./, '');
+  return d === 'jelou.ai' || d.endsWith('.jelou.ai');
+}
+
+export function extractAuthCookie(storageState, cookieName = DEFAULT_COOKIE_NAME) {
+  const cookies = storageState?.cookies;
+  if (!Array.isArray(cookies)) return null;
+  const hit = cookies.find((c) => c?.name === cookieName && c?.value && domainMatchesJelou(c?.domain));
+  return hit ? hit.value : null;
+}
+
+export function isLocalHost(url) {
+  let host;
+  try {
+    host = new URL(url).hostname;
+  } catch {
+    return false;
+  }
+  return host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
+}
+
+export function buildLocalCookie(name, value, baseUrl, ttlHours, nowMs) {
+  const u = new URL(baseUrl);
+  return {
+    name,
+    value,
+    domain: u.hostname,
+    path: '/',
+    expires: Math.floor((nowMs + ttlHours * 60 * 60 * 1000) / 1000),
+    httpOnly: false,
+    secure: u.protocol === 'https:',
+    sameSite: 'Lax',
+  };
+}
+
+export function shouldProvision({ baseUrl, secret, storageState, cookieName = DEFAULT_COOKIE_NAME }) {
+  if (!isLocalHost(baseUrl)) return { ok: false, reason: `target ${baseUrl} is not a loopback host` };
+  if (!secret) return { ok: false, reason: 'COOKIE_SECRET is not set' };
+  if (!extractAuthCookie(storageState, cookieName)) {
+    return { ok: false, reason: `no ${cookieName} cookie on a *.jelou.ai domain in storageState` };
+  }
+  return { ok: true, reason: 'ok' };
+}
+
+export { DEFAULT_COOKIE_NAME };

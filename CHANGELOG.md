@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.204] — 2026-06-07
+
+### Added
+- cookie extraction + loopback auto-detect helpers
+
 ## [0.3.203] — 2026-06-07
 
 ### Added

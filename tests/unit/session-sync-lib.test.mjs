@@ -14,6 +14,11 @@ import { createCipheriv, randomBytes } from 'node:crypto';
 import {
   decryptSessionCookie,
   buildSessionUpdate,
+  extractAuthCookie,
+  isLocalHost,
+  buildLocalCookie,
+  shouldProvision,
+  DEFAULT_COOKIE_NAME,
 } from '../../bin/lib/session-sync.mjs';
 
 // Mirrors tools/dev-session-sync/agent/test-utils.js so the roundtrip exercises
@@ -79,5 +84,76 @@ describe('buildSessionUpdate', () => {
 
   test('throws without a sessionId', () => {
     assert.throws(() => buildSessionUpdate({ userId: '1' }, 12));
+  });
+});
+
+const STATE = {
+  cookies: [
+    { name: 'jelou_auth', value: 'prod-token', domain: '.jelou.ai', path: '/' },
+    { name: '_ga', value: 'x', domain: 'localhost', path: '/' },
+    { name: 'jelou_auth', value: 'other', domain: '.other.com', path: '/' },
+  ],
+};
+
+describe('extractAuthCookie', () => {
+  test('returns the value of the jelou_auth cookie on a *.jelou.ai domain', () => {
+    assert.equal(extractAuthCookie(STATE), 'prod-token');
+  });
+
+  test('ignores other domains and tolerates a malformed state', () => {
+    assert.equal(extractAuthCookie({ cookies: [{ name: 'jelou_auth', value: 'v', domain: '.other.com' }] }), null);
+    assert.equal(extractAuthCookie(null), null);
+    assert.equal(extractAuthCookie({}), null);
+  });
+
+  test('honors a custom cookie name', () => {
+    const s = { cookies: [{ name: 'sid', value: 'v', domain: 'jelou.ai', path: '/' }] };
+    assert.equal(extractAuthCookie(s, 'sid'), 'v');
+  });
+});
+
+describe('isLocalHost', () => {
+  test('loopback hosts are local', () => {
+    assert.equal(isLocalHost('http://localhost:5173'), true);
+    assert.equal(isLocalHost('http://127.0.0.1:5173'), true);
+    assert.equal(isLocalHost('http://[::1]:5173'), true);
+  });
+
+  test('everything else and garbage is not local', () => {
+    assert.equal(isLocalHost('https://apps.jelou.ai'), false);
+    assert.equal(isLocalHost('not a url'), false);
+  });
+});
+
+describe('buildLocalCookie', () => {
+  test('host-only localhost cookie, secure follows the protocol', () => {
+    const c = buildLocalCookie('jelou_auth', 'prod-token', 'http://localhost:5173', 12, 1_000_000);
+    assert.equal(c.name, 'jelou_auth');
+    assert.equal(c.value, 'prod-token');
+    assert.equal(c.domain, 'localhost');
+    assert.equal(c.path, '/');
+    assert.equal(c.secure, false);
+    assert.equal(c.sameSite, 'Lax');
+    assert.equal(c.expires, Math.floor((1_000_000 + 12 * 3600 * 1000) / 1000));
+  });
+
+  test('https base url yields a secure cookie', () => {
+    assert.equal(buildLocalCookie('jelou_auth', 'v', 'https://localhost:5173', 12, 0).secure, true);
+  });
+});
+
+describe('shouldProvision', () => {
+  test('runs only for loopback + secret + present cookie', () => {
+    assert.equal(shouldProvision({ baseUrl: 'http://localhost:5173', secret: 's', storageState: STATE }).ok, true);
+  });
+
+  test('skips with a reason when any precondition is missing', () => {
+    assert.equal(shouldProvision({ baseUrl: 'https://apps.jelou.ai', secret: 's', storageState: STATE }).ok, false);
+    assert.equal(shouldProvision({ baseUrl: 'http://localhost:5173', secret: '', storageState: STATE }).ok, false);
+    assert.equal(shouldProvision({ baseUrl: 'http://localhost:5173', secret: 's', storageState: { cookies: [] } }).ok, false);
+  });
+
+  test('exposes the default cookie name', () => {
+    assert.equal(DEFAULT_COOKIE_NAME, 'jelou_auth');
   });
 });
