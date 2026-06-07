@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.197] — 2026-06-07
+
+### Added
+- interactive NEEDS_CONTEXT loop with 3-round bound, budget pause, feedback persistence
+
 ## [0.3.196] — 2026-06-07
 
 ### Added

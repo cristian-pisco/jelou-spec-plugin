@@ -384,6 +384,24 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
        ```
        Still failing → next attempt (back to a). Green → next failure.
 
+    e. **On `NEEDS_CONTEXT` — the interactive feedback loop (step 18c).**
+
+       Per-item state: `ASK_ROUNDS[<item>]` (0..3) where `<item>` is the `missing:` description.
+
+       1. Record `PAUSE_START=$(date +%s)`.
+       2. `AskUserQuestion`:
+          > "No encuentro **<missing>**. Busqué `<tried>` (derivado de `<looked_in>` / `selectors-used.txt`). ¿Dónde lo encuentro? (componente, ruta, o el selector correcto)"
+          Options: free-form answer (Other) · "Omitir este ítem" (flag now).
+       3. On answer: `FIX_DEADLINE=$(( FIX_DEADLINE + $(date +%s) - PAUSE_START ))` — the budget
+          clock measures agent work, not user reading time. The 10-dispatch cap still counts.
+       4. `ASK_ROUNDS[<item>]+=1`. If > 3 → flag the item BLOCKED in the run report with every
+          selector and answer attempted; stop asking for it.
+       5. Re-dispatch `jlu-ui-fix-loop` with the same inputs plus `USER_FEEDBACK=<answer>`.
+       6. On `DONE` → re-run only the failing spec (sub-step d). Green → **persist the lesson**:
+          - append the confirmed selector to `<TASK_DIR>/selectors.md` (the registry the writer honors);
+          - append a `> Feedback (ui-qa-run <ts>): <missing> → <answer>` note to the flow's `user-flow.md`.
+          Still failing → back to 1 with the new evidence.
+
     When every failure is individually green (or flagged/blocked), run the **full suite exactly once** (step 15 command) to confirm no cross-test regressions. New failures in that confirmation run do NOT re-enter the fix-loop — flag them in the run report; the budget is spent.
 
 19. **Teardown.** The EXIT trap fires regardless of success/error/SIGINT/SIGTERM:
@@ -398,6 +416,9 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
     ```
 
 20. **Write the run report** to `$TASK_DIR/services/$UI_SERVICE/e2e/run-$(date -u +%Y%m%dT%H%M%SZ).md`. Include pre-flight, boot order, per-test pass/fail/flagged, fix-loop activity, artifacts, summary.
+
+    Include a "Preguntas y feedback" section when step 18c fired: one row per question —
+    | # | Qué faltaba | Qué se intentó | Respuesta del usuario | Resultado |
 
 21. **Append to TASKS.md** Timeline:
     ```
