@@ -203,3 +203,37 @@ describe('e2e-login CLI', () => {
     assert.match(r.stderr, /login: missing E2E_BASE_URL/);
   });
 });
+
+describe('detect-auth-collapse CLI', () => {
+  test('prints auth_collapse for a 401-saturated report', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'collapse-'));
+    const report = {
+      suites: [{
+        specs: [{
+          tests: [{
+            results: [
+              { status: 'failed', error: { message: 'Received: 401' } },
+              { status: 'failed', error: { message: 'Unauthorized' } },
+              { status: 'failed', error: { message: '401 on /datum-legacy' } },
+            ],
+          }],
+        }],
+      }],
+    };
+    const p = join(dir, 'run.json');
+    writeFileSync(p, JSON.stringify(report));
+    const r = spawnSync('node', [join(ROOT, 'bin', 'detect-auth-collapse.mjs'), p], { encoding: 'utf8' });
+    assert.equal(r.status, 0);
+    assert.match(r.stdout, /^auth_collapse/);
+  });
+
+  test('prints ok for a mixed report and exits 2 on unreadable input', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'collapse-'));
+    const p = join(dir, 'run.json');
+    writeFileSync(p, JSON.stringify({ suites: [] }));
+    const ok = spawnSync('node', [join(ROOT, 'bin', 'detect-auth-collapse.mjs'), p], { encoding: 'utf8' });
+    assert.match(ok.stdout, /^ok/);
+    const bad = spawnSync('node', [join(ROOT, 'bin', 'detect-auth-collapse.mjs'), join(dir, 'nope.json')], { encoding: 'utf8' });
+    assert.equal(bad.status, 2);
+  });
+});

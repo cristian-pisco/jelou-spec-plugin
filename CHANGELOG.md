@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.191] — 2026-06-07
+
+### Added
+- mid-suite 401 collapse detector over playwright JSON report
+
 ## [0.3.190] — 2026-06-07
 
 ### Added
