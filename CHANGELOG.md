@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.200] — 2026-06-07
+
+### Fixed
+- cold-start self-heal reload + robust submit selector; doc localhost CORS gotcha
+
 ## [0.3.199] — 2026-06-07
 
 ### Fixed

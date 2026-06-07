@@ -57,6 +57,10 @@ After resolving `E2E_BASE_URL`, the workflow classifies it with `bin/classify-e2
 
 Everything else — including `apps.jelou.ai` and `workflows.jelou.ai` — and any unparseable/empty input classifies as `prod`. A `prod` target aborts the run (exit 2) unless `--allow-prod-target` is passed.
 
+#### `localhost` vs `127.0.0.1` — prefer the hostname the auth backend allowlists
+
+Both classify as `safe`, but they are **different browser origins** for CORS. When the app's auth backend (e.g. `dashboard-server`) only allows `http://localhost:<port>` in its CORS allowlist, a login POST from `http://127.0.0.1:<port>` is blocked (`net::ERR_FAILED`, no readable response) and the OTP step never fires — the run dead-ends with no clear error. Set `E2E_BASE_URL` to whichever hostname the auth backend accepts. Default to `localhost` unless you know the backend allowlists the IP form. (Observed 2026-06-07: the datum login dead-ended on `127.0.0.1` and worked verbatim on `localhost`.)
+
 Per-flow vars are declared in the flow's `Env Vars` section (`user-flow.md`). The writer agent reads that section and the orchestrator validates each is set in the loaded environment before launching Playwright. Missing vars fail-fast with the variable name, not a cryptic 404 mid-run.
 
 `TEST_EMAIL` / `TEST_PASSWORD` (used by the `storageState` fallback in `auth-fixtures.md`) are required only when the consumer's auth path uses the fallback; the default programmatic-login fixture does not need them.

@@ -23,6 +23,19 @@ import { EXIT, isLoggedOutUrl, waitForFile } from './lib/e2e-auth.mjs';
 
 const REQUIRED = ['E2E_BASE_URL', 'TEST_EMAIL', 'TEST_PASSWORD', 'E2E_STORAGE_STATE', 'OTP_FILE', 'UI_WORKTREE'];
 
+// Prefer the real submit control over a positional `form button` guess: a login
+// form's first button is often an SSO link or a password-visibility toggle, not
+// the submit. Fall back to an accessible-name match when no type=submit exists.
+const SUBMIT_NAME_RE = /iniciar sesi[oó]n|sign ?in|log ?in|continuar|continue|verificar|verify|confirmar|confirm|enviar|submit/i;
+async function clickSubmit(page) {
+  const byType = page.locator('button[type="submit"]').first();
+  if (await byType.isVisible().catch(() => false)) {
+    await byType.click();
+    return;
+  }
+  await page.getByRole('button', { name: SUBMIT_NAME_RE }).first().click();
+}
+
 async function main() {
   const env = process.env;
   for (const k of REQUIRED) {
@@ -55,7 +68,14 @@ async function main() {
 
     const email = page.locator('input[type="email"], input[name="email"], input[autocomplete="username"]').first();
     const password = page.locator('input[type="password"]').first();
-    const emailVisible = await email.waitFor({ state: 'visible', timeout: 20_000 }).then(() => true).catch(() => false);
+    // Cold dev servers (Vite first-load chunk compile) can leave the SPA un-hydrated
+    // past `load`; self-heal with one reload before declaring the form absent — same
+    // pattern the session probe and the generated specs use.
+    let emailVisible = await email.waitFor({ state: 'visible', timeout: 45_000 }).then(() => true).catch(() => false);
+    if (!emailVisible) {
+      await page.reload({ waitUntil: 'load' }).catch(() => {});
+      emailVisible = await email.waitFor({ state: 'visible', timeout: 45_000 }).then(() => true).catch(() => false);
+    }
     const passwordVisible = await password.isVisible().catch(() => false);
     if (!emailVisible || !passwordVisible) {
       console.error('login: email/password fields not found on the login page');
@@ -64,7 +84,7 @@ async function main() {
 
     await email.fill(env.TEST_EMAIL);
     await password.fill(env.TEST_PASSWORD);
-    await page.locator('button[type="submit"], form button').first().click();
+    await clickSubmit(page);
 
     const otpInput = page
       .locator('input[autocomplete="one-time-code"], input[name*="otp" i], input[name*="code" i], input[inputmode="numeric"]')
@@ -88,8 +108,7 @@ async function main() {
       }
       await otpInput.click();
       await page.keyboard.type(code.replace(/\D/g, ''), { delay: 80 });
-      const confirm = page.locator('button[type="submit"], form button').last();
-      if (await confirm.isVisible().catch(() => false)) await confirm.click();
+      await clickSubmit(page).catch(() => {});
       const loggedIn = await page
         .waitForURL((u) => !isLoggedOutUrl(String(u)), { timeout: 30_000 })
         .then(() => true)
