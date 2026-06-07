@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.3.188] — 2026-06-07
+
+### Added
+- session probe CLI classifies stored session as valid/invalid
+
+## [0.3.187] — 2026-06-07
+
+### Added
+- session probe CLI classifies stored session as valid/invalid
+
 ## [0.3.186] — 2026-06-07
 
 ### Added

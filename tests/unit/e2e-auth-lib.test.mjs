@@ -10,6 +10,11 @@ import { strict as assert } from 'node:assert';
 import { mkdtempSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { dirname } from 'node:path';
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 import {
   EXIT,
@@ -150,5 +155,23 @@ describe('waitForFile', () => {
   test('times out with null when the file never appears', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'e2e-auth-'));
     assert.equal(await waitForFile(join(dir, 'never'), 300, 50), null);
+  });
+});
+
+describe('e2e-session-probe CLI', () => {
+  test('exits 2 with a clear error when env is missing', () => {
+    const r = spawnSync('node', [join(ROOT, 'bin', 'e2e-session-probe.mjs')], { env: { PATH: process.env.PATH }, encoding: 'utf8' });
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /E2E_BASE_URL and UI_WORKTREE are required/);
+  });
+
+  test('prints invalid (exit 1) when no storage state exists', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'probe-'));
+    const r = spawnSync('node', [join(ROOT, 'bin', 'e2e-session-probe.mjs')], {
+      env: { PATH: process.env.PATH, E2E_BASE_URL: 'http://127.0.0.1:1', UI_WORKTREE: dir, E2E_STORAGE_STATE: join(dir, 'missing.json') },
+      encoding: 'utf8',
+    });
+    assert.equal(r.status, 1);
+    assert.match(r.stdout, /^invalid/);
   });
 });
