@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.183] — 2026-06-06
+
+### Added
+- multi-model jury with adversarial briefs and categorical verdicts
+
 ## [0.3.182] — 2026-06-06
 
 ### Fixed

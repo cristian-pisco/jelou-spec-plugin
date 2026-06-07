@@ -198,6 +198,7 @@ OpenCode command definitions live in `.opencode/commands/`. All commands use the
 | `/jlu-task-clickup` | (Phase 2) Create/update ClickUp macro task and subtasks via MCP |
 | `/jlu-report-task` | Executive summary with progress, blockers, and stale worktree detection |
 | `/jlu-load-context` | Load task context into a fresh session for Q&A |
+| `/jlu-council` | Convene a multi-model jury on an architecture idea — categorical `GO / GO_WITH_CONDITIONS / NO_GO` verdict with dissent preserved (Claude Code skill; OpenCode parity planned) |
 | `/jlu-create-pr [task-slug]` | Stage, commit, push, and create pull requests for all affected services |
 | `/jlu-daily-slack <sprint> #channel` | Generate and post a sprint-scoped daily summary to a Slack channel |
 | `/jlu-close-task` | Close task after PR merge — updates ClickUp, cleans worktrees |
@@ -411,6 +412,42 @@ After the candidate list is rendered, the orchestrator hands the selected candid
 Two key vocabularies stay distinct. **Architecture vocabulary** (Module, Interface, Seam, Adapter, Depth, Leverage, Locality — see [`jelou/references/architecture-language.md`](./jelou/references/architecture-language.md)) is enforced in candidate text and ADRs. **Domain vocabulary** comes from `<workspace>/glossary/UBIQUITOUS_LANGUAGE.md` (read-only); candidates name the concept (e.g. "the Order intake module"), never invented terms like "OrderHandler". If a concept isn't yet in the glossary, the candidate carries `missing_domain_term` and the final summary recommends running `/jlu-ubiquitous-language`.
 
 The skill is purely standalone — no auto-hooks into other workflows. The grilling loop is too conversational to bolt onto a batch command. Output: a transient report at `<workspace>/services/<id>/codebase/ARCHITECTURE_REVIEW.md` (overwritten on each run) and append-only ADRs at `<workspace>/decisions/`.
+
+## Council — Multi-Model Jury for Architecture Ideas
+
+`/jlu-council` convenes heterogeneous AI judges to refute a software architecture idea against your real codebase context, then synthesizes a categorical verdict: `GO | GO_WITH_CONDITIONS | NO_GO`. Judges read a curated case file (the 6 map-codebase knowledge files for the services you select, plus any `--context` files); briefs are adversarial — refute first, evidence required, dissent preserved as the headline of the report (never averaged away).
+
+```bash
+/jlu-council "migrate the router to gRPC"            # idea as text
+/jlu-council idea.md --context .spec-workspace/specs/<date>/<task>/SPEC.md
+```
+
+| Judge | Transport | Repo access |
+|---|---|---|
+| 4 OpenRouter models (distinct lineages: GPT, Gemini, Qwen/DeepSeek, Claude) | API, single-shot | Case file only (`expediente-only`) |
+| `codex` / `gemini` CLIs (optional extras) | Subprocess, sandboxed read-only | Agentic — explore the repo (`agéntico`) |
+
+**Onboarding:** export `OPENROUTER_API_KEY` (one secret covers the whole API roster). CLI extras join automatically when installed and authenticated; a failed judge never sinks the jury (`Promise.allSettled` envelopes). With a single surviving judge the report carries a `SIN SEÑAL CROSS-MODEL` banner; with zero case-file artifacts it carries `EXPEDIENTE VACÍO` plus a nudge to run `/jlu-map-codebase`.
+
+**Configuration** — `council.config.json` (resolved `cwd` → workspace root → built-in defaults, partial merge):
+
+```json
+{
+  "models": ["openai/gpt-5.1", "google/gemini-3-pro-preview", "qwen/qwen3-coder", "anthropic/claude-sonnet-4.5"],
+  "max_tokens": 2000,
+  "timeout_ms": 90000,
+  "cli_timeout_ms": 180000,
+  "data_collection": "deny",
+  "case_file_max_bytes": 102400,
+  "runs_dir": null
+}
+```
+
+Verify model ids against [openrouter.ai/models](https://openrouter.ai/models) — they drift. `data_collection: "deny"` restricts routing to providers with no-training policies. The case file is sent whole (no truncation); a pre-flight check aborts before any spend when it exceeds `case_file_max_bytes`.
+
+**Outputs:** every run persists to `<runs_dir>/<slug>/` — `prompt.md` (assembled brief), `<judge>.md` raw outputs, `manifest.json` (machine-readable envelopes + case-file inventory) and `COUNCIL_REPORT.md` (the arbiter's synthesis, in Spanish: verdict, dissent, Unique Insights, Attribution, per-judge table). `runs_dir` resolution: config value (point it at an Obsidian vault folder to make verdicts searchable in your knowledge base) → `<workspace>/.spec-workspace/council/` → `./council-runs/`. Counting `manifest.json` files measures real usage.
+
+An optional final phase renders a stakeholder one-pager via the [visual-explainer](https://github.com/nicobailon/visual-explainer) plugin when installed; publishing to a public URL always requires explicit per-run confirmation — the council never auto-publishes.
 
 ## Dev Environment Orchestrator (TMUX)
 

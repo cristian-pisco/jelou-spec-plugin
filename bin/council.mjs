@@ -1,0 +1,552 @@
+#!/usr/bin/env node
+// bin/council.mjs
+//
+// Fan-out engine for /jlu:council (design doc Revisión 5).
+// Pure judge dispatch: OpenRouter API judges (single-shot, expediente-only)
+// plus optional agentic CLI extras (codex, gemini). The workflow orchestrates
+// and arbitrates; this script only collects envelopes.
+//
+// Usage:
+//   node bin/council.mjs "<idea text | path-to-idea-file>" \
+//     [--context <path>]... [--services id1,id2]
+//
+// Stdout: single JSON document { run_dir, inventory, envelopes }.
+// Stderr: human messages + 30s heartbeat while CLI judges run.
+// Exit 0 when at least one judge returned ok; non-zero otherwise.
+
+import { spawn, execFileSync } from 'node:child_process';
+import {
+  readFileSync,
+  writeFileSync,
+  existsSync,
+  mkdirSync,
+  statSync,
+  accessSync,
+  constants as fsConstants,
+} from 'node:fs';
+import { join, dirname, resolve, basename } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+const BRIEF_REL = 'jelou/references/council-brief.md';
+
+// Default roster: four distinct training lineages (Premise 2). Model ids drift
+// over time — verify against https://openrouter.ai/models before first run or
+// pin your own in council.config.json.
+export const DEFAULTS = {
+  models: [
+    'openai/gpt-5.1',
+    'google/gemini-3-pro-preview',
+    'qwen/qwen3-coder',
+    'anthropic/claude-sonnet-4.5',
+  ],
+  max_tokens: 2000,
+  timeout_ms: 90_000,
+  cli_timeout_ms: 180_000,
+  data_collection: 'deny',
+  case_file_max_bytes: 102_400,
+  runs_dir: null,
+};
+
+const VERDICT_TOKENS = ['GO', 'GO_WITH_CONDITIONS', 'NO_GO'];
+
+const VERDICT_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['verdict', 'refutations', 'tradeoffs', 'conditions', 'evidence_from_repo'],
+  properties: {
+    verdict: { type: 'string', enum: VERDICT_TOKENS },
+    refutations: { type: 'array', items: { type: 'string' } },
+    tradeoffs: { type: 'array', items: { type: 'string' } },
+    conditions: { type: 'array', items: { type: 'string' } },
+    evidence_from_repo: { type: 'array', items: { type: 'string' } },
+  },
+};
+
+const MAP_CODEBASE_DOCS = [
+  'ARCHITECTURE.md',
+  'CONVENTIONS.md',
+  'CONCERNS.md',
+  'STACK.md',
+  'STRUCTURE.md',
+  'INTEGRATIONS.md',
+];
+
+const AGENTIC_PREAMBLE =
+  'IMPORTANT: do not invoke or delegate to any skills, tools, agents, or councils. ' +
+  'Provide your own analysis only. You may read files in this repository to gather ' +
+  'evidence, but you must not modify anything.';
+
+const API_PREAMBLE = 'You have no repository access. Judge strictly on the case file above.';
+
+export function generateSlug(text) {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 40)
+    .replace(/^-|-$/g, '');
+}
+
+export function wordCount(text) {
+  return text.trim().split(/\s+/).filter(Boolean).length;
+}
+
+export function sameFamilyAsArbiter(modelId) {
+  return /anthropic|claude/i.test(modelId);
+}
+
+export function loadConfig({ cwd, workspaceRoot }) {
+  const candidates = [cwd, workspaceRoot]
+    .filter(Boolean)
+    .map((dir) => join(dir, 'council.config.json'));
+  for (const path of candidates) {
+    if (!existsSync(path)) continue;
+    let parsed;
+    try {
+      parsed = JSON.parse(readFileSync(path, 'utf8'));
+    } catch (err) {
+      throw new Error(`invalid JSON in ${path}: ${err.message}`);
+    }
+    return { ...DEFAULTS, ...parsed };
+  }
+  return { ...DEFAULTS };
+}
+
+export function findWorkspaceRoot(startDir, maxUp = 5) {
+  let dir = resolve(startDir);
+  for (let i = 0; i <= maxUp; i++) {
+    if (existsSync(join(dir, '.spec-workspace.json'))) return dir;
+    const parent = dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+  return null;
+}
+
+export function buildCaseFile({ ideaText, contextPaths = [], services = [], workspaceRoot }) {
+  const included = [];
+  const absent = [];
+  const sections = [];
+
+  const addFile = (name, path) => {
+    if (existsSync(path)) {
+      const content = readFileSync(path, 'utf8');
+      included.push({ name, path, bytes: statSync(path).size });
+      sections.push(`## ${name}\n\n${content}`);
+    } else {
+      absent.push({ name, reason: 'missing-file' });
+    }
+  };
+
+  if (!workspaceRoot) {
+    absent.push({ name: 'jlu-artifacts', reason: 'no-workspace' });
+  } else if (services.length === 0) {
+    absent.push({ name: 'jlu-artifacts', reason: 'no-services-selected' });
+  } else {
+    for (const service of services) {
+      for (const doc of MAP_CODEBASE_DOCS) {
+        addFile(`${service}/${doc}`, join(workspaceRoot, 'services', service, 'codebase', doc));
+      }
+    }
+  }
+
+  for (const ctx of contextPaths) {
+    addFile(basename(ctx), ctx);
+  }
+
+  const text = sections.join('\n\n');
+  return { text, inventory: { included, absent } };
+}
+
+export function preflight(caseFileText, maxBytes) {
+  const bytes = Buffer.byteLength(caseFileText, 'utf8');
+  if (bytes > maxBytes) {
+    throw new Error(
+      `case file is ${bytes} bytes, over the ${maxBytes} limit (case_file_max_bytes). ` +
+        'Deselect services, trim --context files, or raise the limit in council.config.json. ' +
+        'No judge was called.',
+    );
+  }
+  return bytes;
+}
+
+export function composeBrief({ template, idea, expediente, agentic }) {
+  const modo = agentic ? AGENTIC_PREAMBLE : API_PREAMBLE;
+  return template
+    .replaceAll('{IDEA}', idea)
+    .replaceAll('{EXPEDIENTE}', expediente || '(empty case file)')
+    .replaceAll('{MODO_AGENTICO}', modo);
+}
+
+export function parseJudgeJson(text) {
+  if (!text || !text.trim()) return { ok: false, reason: 'empty' };
+
+  const attempts = [text.trim()];
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenced) attempts.push(fenced[1].trim());
+  const first = text.indexOf('{');
+  const last = text.lastIndexOf('}');
+  if (first !== -1 && last > first) attempts.push(text.slice(first, last + 1));
+
+  for (const candidate of attempts) {
+    try {
+      const obj = JSON.parse(candidate);
+      if (obj && typeof obj === 'object' && VERDICT_TOKENS.includes(obj.verdict)) {
+        return { ok: true, verdict: obj };
+      }
+    } catch {
+      // try the next extraction strategy
+    }
+  }
+  return { ok: false, reason: 'malformed' };
+}
+
+export function buildCliCommand(kind, prompt, { isGitRepo }) {
+  if (kind === 'codex') {
+    const args = ['exec', prompt, '-s', 'read-only'];
+    if (!isGitRepo) args.push('--skip-git-repo-check');
+    return { cmd: 'codex', args };
+  }
+  if (kind === 'gemini') {
+    return { cmd: 'gemini', args: ['-p', prompt] };
+  }
+  throw new Error(`unknown CLI judge: ${kind}`);
+}
+
+export function killWithEscalation(proc, graceMs = 5000) {
+  proc.kill('SIGTERM');
+  const timer = setTimeout(() => {
+    try {
+      proc.kill('SIGKILL');
+    } catch {
+      // process already gone
+    }
+  }, graceMs);
+  if (typeof timer.unref === 'function') timer.unref();
+  proc.once('exit', () => clearTimeout(timer));
+}
+
+export function resolveRunsDir({ config, workspaceRoot, cwd }) {
+  if (config.runs_dir) return config.runs_dir;
+  if (workspaceRoot) return join(workspaceRoot, '.spec-workspace', 'council');
+  return join(cwd, 'council-runs');
+}
+
+export function makeRunDir(baseDir, slug) {
+  let dir = join(baseDir, slug);
+  if (existsSync(dir)) dir = `${dir}-${Date.now()}`;
+  mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+function defaultWhich(bin) {
+  return (process.env.PATH || '').split(':').some((dir) => {
+    try {
+      accessSync(join(dir, bin), fsConstants.X_OK);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+}
+
+export function detectJudges({ env = process.env, whichImpl = defaultWhich } = {}) {
+  return {
+    api: Boolean(env.OPENROUTER_API_KEY),
+    clis: ['codex', 'gemini'].filter((bin) => whichImpl(bin)),
+  };
+}
+
+function envelopeBase(judge, transport, startedAt) {
+  return {
+    judge,
+    transport,
+    status: 'ok',
+    verdict: null,
+    error: null,
+    elapsed_ms: Date.now() - startedAt,
+    word_count: 0,
+    same_family_as_arbiter: sameFamilyAsArbiter(judge),
+    label: transport === 'openrouter' ? 'expediente-only' : 'agéntico',
+  };
+}
+
+async function judgeViaOpenRouter(model, opts, withSchema = true) {
+  const { prompt, apiKey, baseUrl, timeoutMs, maxTokens, dataCollection, fetchImpl } = opts;
+  const startedAt = Date.now();
+  const body = {
+    model,
+    messages: [{ role: 'user', content: prompt }],
+    max_tokens: maxTokens,
+    provider: { data_collection: dataCollection },
+  };
+  if (withSchema) {
+    body.response_format = {
+      type: 'json_schema',
+      json_schema: { name: 'council_verdict', strict: true, schema: VERDICT_SCHEMA },
+    };
+  }
+
+  let res;
+  try {
+    res = await fetchImpl(`${baseUrl}/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${apiKey}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (err) {
+    const envelope = envelopeBase(model, 'openrouter', startedAt);
+    const timedOut = /abort|timeout/i.test(String(err?.name || err));
+    envelope.status = timedOut ? 'timeout' : 'http_error';
+    envelope.error = String(err?.message || err);
+    return envelope;
+  }
+
+  if (res.status === 400 && withSchema) {
+    return judgeViaOpenRouter(model, opts, false);
+  }
+
+  const envelope = envelopeBase(model, 'openrouter', startedAt);
+  if (!res.ok) {
+    envelope.status = 'http_error';
+    envelope.error = `HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`;
+    envelope.elapsed_ms = Date.now() - startedAt;
+    return envelope;
+  }
+
+  const json = await res.json().catch(() => null);
+  const content = json?.choices?.[0]?.message?.content ?? '';
+  envelope.word_count = wordCount(content);
+  envelope.raw = content;
+  const parsed = parseJudgeJson(content);
+  if (parsed.ok) {
+    envelope.verdict = parsed.verdict;
+  } else {
+    envelope.status = parsed.reason;
+    envelope.error = `judge output is ${parsed.reason}`;
+  }
+  envelope.elapsed_ms = Date.now() - startedAt;
+  return envelope;
+}
+
+export async function fanOutApi({
+  models,
+  prompt,
+  apiKey,
+  baseUrl = 'https://openrouter.ai/api',
+  timeoutMs = DEFAULTS.timeout_ms,
+  maxTokens = DEFAULTS.max_tokens,
+  dataCollection = DEFAULTS.data_collection,
+  fetchImpl = fetch,
+}) {
+  const opts = { prompt, apiKey, baseUrl, timeoutMs, maxTokens, dataCollection, fetchImpl };
+  const settled = await Promise.allSettled(models.map((m) => judgeViaOpenRouter(m, opts)));
+  return settled.map((result, i) => {
+    if (result.status === 'fulfilled') return result.value;
+    const envelope = envelopeBase(models[i], 'openrouter', Date.now());
+    envelope.status = 'http_error';
+    envelope.error = String(result.reason?.message || result.reason);
+    return envelope;
+  });
+}
+
+function isGitRepo(cwd) {
+  try {
+    execFileSync('git', ['rev-parse', '--is-inside-work-tree'], { stdio: 'pipe', cwd });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function runCliJudge(kind, prompt, { cwd, timeoutMs }) {
+  const startedAt = Date.now();
+  const { cmd, args } = buildCliCommand(kind, prompt, { isGitRepo: isGitRepo(cwd) });
+
+  return new Promise((resolvePromise) => {
+    const proc = spawn(cmd, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    proc.stdout.on('data', (d) => (stdout += d));
+    proc.stderr.on('data', (d) => (stderr += d));
+
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      killWithEscalation(proc, 5000);
+    }, timeoutMs);
+
+    proc.on('close', (code) => {
+      clearTimeout(timer);
+      const envelope = envelopeBase(kind, 'cli', startedAt);
+      envelope.raw = stdout;
+      envelope.stderr = stderr;
+      envelope.word_count = wordCount(stdout);
+      if (timedOut) {
+        envelope.status = 'timeout';
+        envelope.error = `killed after ${timeoutMs}ms`;
+      } else if (code !== 0) {
+        envelope.status = 'http_error';
+        envelope.error = `exit ${code}: ${stderr.slice(0, 300)}`;
+      } else {
+        const parsed = parseJudgeJson(stdout);
+        if (parsed.ok) envelope.verdict = parsed.verdict;
+        else {
+          envelope.status = parsed.reason;
+          envelope.error = `judge output is ${parsed.reason}`;
+        }
+      }
+      envelope.elapsed_ms = Date.now() - startedAt;
+      resolvePromise(envelope);
+    });
+
+    proc.on('error', (err) => {
+      clearTimeout(timer);
+      const envelope = envelopeBase(kind, 'cli', startedAt);
+      envelope.status = 'http_error';
+      envelope.error = String(err.message || err);
+      envelope.elapsed_ms = Date.now() - startedAt;
+      resolvePromise(envelope);
+    });
+  });
+}
+
+function parseArgs(argv) {
+  const args = argv.slice(2);
+  let idea = '';
+  const contextPaths = [];
+  let services = [];
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === '--context') {
+      contextPaths.push(args[++i]);
+    } else if (arg === '--services') {
+      services = (args[++i] || '').split(',').map((s) => s.trim()).filter(Boolean);
+    } else if (arg.startsWith('--')) {
+      throw new Error(`unknown option: ${arg}`);
+    } else if (!idea) {
+      idea = arg;
+    } else {
+      throw new Error(`unexpected argument: ${arg}`);
+    }
+  }
+
+  if (!idea || !idea.trim()) {
+    throw new Error('idea is required: pass the idea text or a path to a file containing it');
+  }
+  if (idea.length < 512 && /\.(md|txt)$/i.test(idea) && !existsSync(idea)) {
+    throw new Error(`idea file not found: ${idea}`);
+  }
+  if (existsSync(idea) && statSync(idea).isFile()) {
+    idea = readFileSync(idea, 'utf8');
+  }
+  return { idea, contextPaths, services };
+}
+
+async function main() {
+  const cwd = process.cwd();
+  let exitCode = 0;
+  try {
+    const { idea, contextPaths, services } = parseArgs(process.argv);
+    const workspaceRoot = findWorkspaceRoot(cwd);
+    const config = loadConfig({ cwd, workspaceRoot });
+
+    const { text: expediente, inventory } = buildCaseFile({
+      ideaText: idea,
+      contextPaths,
+      services,
+      workspaceRoot,
+    });
+    preflight(expediente, config.case_file_max_bytes);
+
+    const judges = detectJudges({});
+    if (!judges.api && judges.clis.length === 0) {
+      throw new Error(
+        'no judges available: export OPENROUTER_API_KEY for the API roster, ' +
+          'or install/authenticate codex or gemini for CLI judges.',
+      );
+    }
+
+    const template = readFileSync(join(ROOT, BRIEF_REL), 'utf8');
+    const apiBrief = composeBrief({ template, idea, expediente, agentic: false });
+    const cliBrief = composeBrief({ template, idea, expediente, agentic: true });
+
+    const runsBase = resolveRunsDir({ config, workspaceRoot, cwd });
+    mkdirSync(runsBase, { recursive: true });
+    const runDir = makeRunDir(runsBase, generateSlug(idea) || 'council-run');
+    writeFileSync(join(runDir, 'prompt.md'), apiBrief);
+
+    const work = [];
+    if (judges.api) {
+      work.push(
+        fanOutApi({
+          models: config.models,
+          prompt: apiBrief,
+          apiKey: process.env.OPENROUTER_API_KEY,
+          timeoutMs: config.timeout_ms,
+          maxTokens: config.max_tokens,
+          dataCollection: config.data_collection,
+        }),
+      );
+    }
+    for (const cli of judges.clis) {
+      work.push(runCliJudge(cli, cliBrief, { cwd, timeoutMs: config.cli_timeout_ms }).then((e) => [e]));
+    }
+
+    let heartbeat = null;
+    if (judges.clis.length > 0) {
+      const startedAt = Date.now();
+      heartbeat = setInterval(() => {
+        const s = Math.round((Date.now() - startedAt) / 1000);
+        process.stderr.write(`[${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}] council running (CLI judges active)\n`);
+      }, 30_000);
+      heartbeat.unref();
+    }
+
+    const settled = await Promise.allSettled(work);
+    if (heartbeat) clearInterval(heartbeat);
+    const envelopes = settled.flatMap((r) => (r.status === 'fulfilled' ? r.value : []));
+
+    for (const envelope of envelopes) {
+      const safe = envelope.judge.replace(/[^a-z0-9.-]/gi, '_');
+      writeFileSync(join(runDir, `${safe}.md`), envelope.raw ?? '');
+      if (envelope.stderr) writeFileSync(join(runDir, `${safe}.stderr`), envelope.stderr);
+      delete envelope.raw;
+      delete envelope.stderr;
+    }
+
+    const manifest = {
+      slug: basename(runDir),
+      timestamp: new Date().toISOString(),
+      config: { ...config, runs_dir: runsBase },
+      inventory,
+      envelopes,
+    };
+    writeFileSync(join(runDir, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
+
+    const okCount = envelopes.filter((e) => e.status === 'ok').length;
+    process.stderr.write(`council: ${okCount}/${envelopes.length} judges ok → ${runDir}\n`);
+    process.stdout.write(JSON.stringify({ run_dir: runDir, inventory, envelopes }) + '\n');
+
+    if (okCount === 0) {
+      process.stderr.write('council: zero judges returned ok — nothing to arbitrate.\n');
+      exitCode = 1;
+    }
+  } catch (err) {
+    process.stderr.write(`council error: ${err.message}\n`);
+    exitCode = 1;
+  }
+  process.exit(exitCode);
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main();
+}
