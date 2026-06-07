@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.194] — 2026-06-07
+
+### Fixed
+- auth gate env bootstrap, probe-misconfig abort, WAITING_OTP race, document E2E_STORAGE_STATE
+
 ## [0.3.193] — 2026-06-07
 
 ### Internal

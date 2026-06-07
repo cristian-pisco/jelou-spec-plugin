@@ -35,6 +35,7 @@ The Playwright run refuses to start unless these are set:
 | Variable | Purpose | Example |
 |----------|---------|---------|
 | `E2E_BASE_URL` | `playwright.config.ts` `use.baseURL`. All `page.goto('/x')` calls are resolved against it. **Must be declared in `.env.e2e`** (see below). | `http://localhost:3000` |
+| `E2E_STORAGE_STATE` | Path (worktree-relative or absolute) to the Playwright storageState the suite and the auth gate read/write. Lives under `.auth/` (gitignored). Consumed by `playwright.config.ts` and by `bin/e2e-session-probe.mjs` / `bin/e2e-login.mjs`. | `e2e/.auth/user.json` |
 
 ### `E2E_BASE_URL` must come from `.env.e2e` — never `.env`
 

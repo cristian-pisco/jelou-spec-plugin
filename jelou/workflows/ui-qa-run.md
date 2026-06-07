@@ -190,11 +190,24 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
 
 14b. **Auth gate — probe the session, log in via OTP when invalid.** Runs after boot (the target app must be up) and before Playwright. See `jelou/references/auth-fixtures.md` § "Orchestrated OTP login".
 
+    `UI_WORKTREE` is the worktree path resolved in step 12 — bind it explicitly before this block. Sourcing `.env`/`.env.e2e` here (same contract as step 15) provisions `E2E_BASE_URL`, `E2E_STORAGE_STATE`, and — via `set -a` — exports `TEST_EMAIL`/`TEST_PASSWORD` to the login child process without their values ever entering the conversation.
+
     ```bash
-    export UI_WORKTREE E2E_BASE_URL E2E_STORAGE_STATE
+    UI_WORKTREE="<worktree resolved in step 12>"
+    cd "$UI_WORKTREE"
+    set -a
+    [ -f .env ]     && . ./.env
+    [ -f .env.e2e ] && . ./.env.e2e
+    set +a
+    export UI_WORKTREE
+
     if node "$PLUGIN_ROOT/bin/e2e-session-probe.mjs"; then
       echo "auth gate: stored session valid — continuing"
     else
+      PROBE_EXIT=$?
+      if [ "$PROBE_EXIT" = "2" ]; then
+        echo "ERROR: auth gate misconfigured (probe exit 2) — check E2E_BASE_URL / UI_WORKTREE"; exit 2
+      fi
       AUTH_GATE=login_required
     fi
     ```
@@ -209,7 +222,7 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
        OTP_FILE="$OTP_FILE" node "$PLUGIN_ROOT/bin/e2e-login.mjs" > /tmp/jlu-login.out 2>&1 &
        LOGIN_PID=$!
        ```
-    4. When `/tmp/jlu-login.out` shows `WAITING_OTP`: read the OTP from Gmail via the MCP integration — `ToolSearch` for `mcp__claude_ai_Gmail__search_threads`, query `from:<otp_from> newer_than:1h`, take the newest thread, extract the code with `otp_code_regex`. Write it: `printf '%s' "$CODE" > "$OTP_FILE"`.
+    4. **Race the `WAITING_OTP` marker against early process death.** Poll `/tmp/jlu-login.out` for `WAITING_OTP` while also checking `kill -0 $LOGIN_PID`. If the process exits BEFORE printing the marker (immediate 44/41/2 — e.g., login form not found), skip straight to sub-step 6's exit-code branch. When `WAITING_OTP` appears: read the OTP from Gmail via the MCP integration — `ToolSearch` for `mcp__claude_ai_Gmail__search_threads`, query `from:<otp_from> newer_than:1h`, take the newest thread, extract the code with `otp_code_regex`. Write it: `printf '%s' "$CODE" > "$OTP_FILE"`.
     5. **Gmail fallback:** tools absent, search fails, or no mail within ~90s → `AskUserQuestion`: "No pude leer el OTP desde Gmail. Pégalo aquí." Write the user's answer to `$OTP_FILE`. No answer / code expired → kill the login process, abort `BLOCKED`.
     6. Wait for the login process and branch on its exit code:
        - `0` → re-run the probe; valid → continue to step 15.
