@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.205] — 2026-06-07
+
+### Added
+- provisioning driver — decrypt, upsert, localhost cookie
+
 ## [0.3.204] — 2026-06-07
 
 ### Added

@@ -10,6 +10,14 @@
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { createCipheriv, randomBytes } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+const DRIVER = join(ROOT, 'bin', 'e2e-session-sync.mjs');
 
 import {
   decryptSessionCookie,
@@ -155,5 +163,48 @@ describe('shouldProvision', () => {
 
   test('exposes the default cookie name', () => {
     assert.equal(DEFAULT_COOKIE_NAME, 'jelou_auth');
+  });
+});
+
+describe('e2e-session-sync CLI', () => {
+  test('exits 2 when required env is missing', () => {
+    const r = spawnSync('node', [DRIVER], { env: { PATH: process.env.PATH }, encoding: 'utf8' });
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /E2E_STORAGE_STATE and E2E_BASE_URL are required/);
+  });
+
+  test('skips (exit 0) for a non-loopback target without touching Mongo', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'session-sync-'));
+    const state = join(dir, 'state.json');
+    writeFileSync(state, JSON.stringify({ cookies: [{ name: 'jelou_auth', value: 'v', domain: '.jelou.ai', path: '/' }] }));
+    const r = spawnSync('node', [DRIVER], {
+      env: { PATH: process.env.PATH, E2E_STORAGE_STATE: state, E2E_BASE_URL: 'https://apps.jelou.ai', COOKIE_SECRET: 's' },
+      encoding: 'utf8',
+    });
+    assert.equal(r.status, 0);
+    assert.match(r.stdout, /^SESSION_SYNC_SKIP/);
+  });
+
+  test('skips (exit 0) when no auth cookie is present', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'session-sync-'));
+    const state = join(dir, 'state.json');
+    writeFileSync(state, JSON.stringify({ cookies: [] }));
+    const r = spawnSync('node', [DRIVER], {
+      env: { PATH: process.env.PATH, E2E_STORAGE_STATE: state, E2E_BASE_URL: 'http://localhost:5173', COOKIE_SECRET: 's' },
+      encoding: 'utf8',
+    });
+    assert.equal(r.status, 0);
+    assert.match(r.stdout, /^SESSION_SYNC_SKIP/);
+  });
+
+  test('never prints the cookie value or sessionId on the skip path', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'session-sync-'));
+    const state = join(dir, 'state.json');
+    writeFileSync(state, JSON.stringify({ cookies: [{ name: 'jelou_auth', value: 'SUPERSECRETVALUE', domain: '.jelou.ai', path: '/' }] }));
+    const r = spawnSync('node', [DRIVER], {
+      env: { PATH: process.env.PATH, E2E_STORAGE_STATE: state, E2E_BASE_URL: 'https://apps.jelou.ai', COOKIE_SECRET: 's' },
+      encoding: 'utf8',
+    });
+    assert.doesNotMatch(r.stdout + r.stderr, /SUPERSECRETVALUE/);
   });
 });
