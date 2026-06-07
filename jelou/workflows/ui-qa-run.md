@@ -188,6 +188,41 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
       On timeout: abort with STATUS: BLOCKED, reason: ready_timeout for <service>.
     ```
 
+14b. **Auth gate — probe the session, log in via OTP when invalid.** Runs after boot (the target app must be up) and before Playwright. See `jelou/references/auth-fixtures.md` § "Orchestrated OTP login".
+
+    ```bash
+    export UI_WORKTREE E2E_BASE_URL E2E_STORAGE_STATE
+    if node "$PLUGIN_ROOT/bin/e2e-session-probe.mjs"; then
+      echo "auth gate: stored session valid — continuing"
+    else
+      AUTH_GATE=login_required
+    fi
+    ```
+
+    When `AUTH_GATE=login_required`:
+
+    1. Verify `TEST_EMAIL` and `TEST_PASSWORD` are declared **by name** in `.env` / `.env.e2e` (`grep -qE '^TEST_EMAIL=' ...`). Missing → abort `STATUS: BLOCKED`, exit 2, naming the variables. Never print values (guard-env-reads enforces).
+    2. Read `.spec-workspace/e2e-auth.yaml` (flat keys: `otp_from`, `otp_subject_regex`, `otp_code_regex`). Missing file → ask the user ONCE via `AskUserQuestion` for the OTP mail's sender and subject pattern, then persist the file so future runs never re-ask.
+    3. Launch the login driver in the background and watch its stdout:
+       ```bash
+       OTP_FILE=$(mktemp -u /tmp/jlu-otp-XXXXXX)
+       OTP_FILE="$OTP_FILE" node "$PLUGIN_ROOT/bin/e2e-login.mjs" > /tmp/jlu-login.out 2>&1 &
+       LOGIN_PID=$!
+       ```
+    4. When `/tmp/jlu-login.out` shows `WAITING_OTP`: read the OTP from Gmail via the MCP integration — `ToolSearch` for `mcp__claude_ai_Gmail__search_threads`, query `from:<otp_from> newer_than:1h`, take the newest thread, extract the code with `otp_code_regex`. Write it: `printf '%s' "$CODE" > "$OTP_FILE"`.
+    5. **Gmail fallback:** tools absent, search fails, or no mail within ~90s → `AskUserQuestion`: "No pude leer el OTP desde Gmail. Pégalo aquí." Write the user's answer to `$OTP_FILE`. No answer / code expired → kill the login process, abort `BLOCKED`.
+    6. Wait for the login process and branch on its exit code:
+       - `0` → re-run the probe; valid → continue to step 15.
+       - `41` → print the 401 abort message (below) and exit `BLOCKED` (2).
+       - `42`/`43` → report which OTP step failed; offer ONE retry of the whole gate; second failure → `BLOCKED`.
+       - `44` → enter the Feature-2 feedback loop (step 18c): ask the user where the login form lives (route, field hints), set `LOGIN_PATH` from the answer, retry (max 3 rounds).
+
+    **401 abort message (verbatim, both here and in step 17b):**
+
+    > ⛔ **No es posible realizar pruebas: el login está recibiendo Error HTTP 401.** Verifica TEST_EMAIL/TEST_PASSWORD en `.env.e2e` o el estado del servicio de auth.
+
+    **Forbidden under all circumstances:** dispatching the fix-loop for auth failures, inserting or patching session documents in any datastore (Mongo/MySQL/Redis), or editing auth-related env values to force a pass.
+
 15. **Run Playwright** in the UI service's worktree. Source the UI service's `.env` (and optional `.env.e2e` overlay) so Playwright sees the same configuration the dev server is using; refuse to start if any env var declared in `user-flow.md` `Env Vars` is missing, and HEAD-check each URL whose source points outside `Service Boot Order`. See `jelou/references/e2e-environment.md` for the contract.
 
     ```bash
@@ -297,6 +332,15 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
         Skip the fix-loop entirely.
     ```
 
+17b. **Mid-suite auth collapse check.** Before dispatching any fix-loop:
+    ```bash
+    if [ "$(node "$PLUGIN_ROOT/bin/detect-auth-collapse.mjs" "$TASK_DIR/services/$UI_SERVICE/e2e/run.json")" = "auth_collapse" ]; then
+      # 3+ consecutive 401-shaped failures — the session died. Fix-loop is forbidden here.
+      # Print the step-14b 401 abort message and exit BLOCKED (2).
+      exit 2
+    fi
+    ```
+
 18. **Dispatch fix-loop**. ALL fixes go through the `jlu-ui-fix-loop` agent — the orchestrator MUST NOT edit source or test files inline, run ad-hoc DB queries, or touch any worktree other than the UI service's. Inline fixing bypasses every bound below and has produced 40+ minute unbounded debugging sessions.
 
     Arm the circuit breaker BEFORE the first dispatch (real enforcement, not prose):
@@ -371,6 +415,10 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
 | UI service missing `dev` block | 2 | "UI service `<id>` is missing a `dev` block" — E2E mandatory for frontend changes; add `stack` + `dev` to services.yaml |
 | `.env.e2e` missing | 2 | "`.env.e2e` missing; create it and set E2E_BASE_URL" + reference to e2e-environment.md |
 | `.env.e2e` does not declare `E2E_BASE_URL` | 2 | "declare E2E_BASE_URL in .env.e2e" |
+| Login HTTP 401 (gate or mid-suite collapse) | 2 | "⛔ No es posible realizar pruebas: el login está recibiendo Error HTTP 401..." — never auto-patch auth state |
+| OTP unreadable (Gmail down/missing mail) | 2 | asks user to paste the OTP; unanswered → BLOCKED |
+| Login form not found (exit 44) | 1/2 | enters the feedback loop (3 rounds), then BLOCKED |
+| TEST_EMAIL / TEST_PASSWORD undeclared | 2 | "declare TEST_EMAIL and TEST_PASSWORD in .env.e2e" |
 | E2E target points at prod, no override | 2 | "E2E_BASE_URL points at production `<url>`; pass `--allow-prod-target` if intentional" |
 | No Playwright infra, user declined bootstrap | 2 | "Playwright infra required; E2E mandatory for frontend changes" |
 | Bootstrap dependency install failed | 2 | "could not install `@playwright/test`; run `<cmd>` manually" |
@@ -392,3 +440,4 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
 - `bin/extract-trace.mjs` — trace.zip → trace-summary.json
 - `agents/jlu-ui-fix-loop.md` — fix-loop agent
 - `jelou/workflows/ui-qa-cleanup.md` — recover from leaked state
+- `bin/e2e-session-probe.mjs` / `bin/e2e-login.mjs` / `bin/detect-auth-collapse.mjs` — auth gate drivers

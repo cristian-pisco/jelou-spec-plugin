@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.192] — 2026-06-07
+
+### Added
+- auth gate with OTP login, 401 hard abort, mid-suite collapse check
+
 ## [0.3.191] — 2026-06-07
 
 ### Added
