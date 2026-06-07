@@ -21,6 +21,7 @@ import {
   parseFlatYaml,
   serializeFlatYaml,
   extractOtp,
+  isLoggedOutUrl,
   classifyProbeOutcome,
   detectAuthCollapse,
   collectFailureMessages,
@@ -73,6 +74,25 @@ describe('extractOtp', () => {
     assert.equal(extractOtp('no digits here'), null);
     assert.equal(extractOtp('1234', '('), null);
     assert.equal(extractOtp('', undefined), null);
+  });
+});
+
+describe('isLoggedOutUrl', () => {
+  test('login/otp/verification segments are logged-out routes', () => {
+    assert.equal(isLoggedOutUrl('http://x/login?next=%2F'), true);
+    assert.equal(isLoggedOutUrl('http://x/otp'), true);
+    assert.equal(isLoggedOutUrl('http://x/verification-code'), true);
+  });
+
+  test('post-login routes containing those words mid-segment are logged-in', () => {
+    assert.equal(isLoggedOutUrl('http://x/auth-callback'), false);
+    assert.equal(isLoggedOutUrl('http://x/settings/login-history'), false);
+    assert.equal(isLoggedOutUrl('http://x/datum/databases'), false);
+  });
+
+  test('tolerates bare paths and garbage', () => {
+    assert.equal(isLoggedOutUrl('/signin'), true);
+    assert.equal(isLoggedOutUrl(null), false);
   });
 });
 
@@ -173,5 +193,13 @@ describe('e2e-session-probe CLI', () => {
     });
     assert.equal(r.status, 1);
     assert.match(r.stdout, /^invalid/);
+  });
+});
+
+describe('e2e-login CLI', () => {
+  test('exits 2 naming the first missing env var', () => {
+    const r = spawnSync('node', [join(ROOT, 'bin', 'e2e-login.mjs')], { env: { PATH: process.env.PATH }, encoding: 'utf8' });
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /login: missing E2E_BASE_URL/);
   });
 });

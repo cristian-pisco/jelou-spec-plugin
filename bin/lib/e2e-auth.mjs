@@ -57,10 +57,26 @@ export function extractOtp(text, codeRegex) {
   return m[1] ?? m[0]; // regex without a capture group falls back to the full match
 }
 
-const LOGIN_ROUTE_RE = /\/(login|signin|auth)([/?#]|$)/i;
+// Segment-wise matching avoids the unanchored-substring trap: '/auth-callback'
+// and '/settings/login-history' are logged-in routes; '/auth', '/otp' and
+// '/verification-code' are not. 'verif' matches as a segment prefix to cover
+// verification/verificacion variants.
+export function isLoggedOutUrl(url) {
+  let pathname;
+  try {
+    pathname = new URL(url).pathname;
+  } catch {
+    pathname = String(url ?? '');
+  }
+  return pathname
+    .toLowerCase()
+    .split('/')
+    .filter(Boolean)
+    .some((seg) => ['login', 'signin', 'auth', 'otp'].includes(seg) || seg.startsWith('verif'));
+}
 
 export function classifyProbeOutcome({ finalUrl, apiStatuses = [] }) {
-  if (typeof finalUrl === 'string' && LOGIN_ROUTE_RE.test(finalUrl)) return 'invalid';
+  if (typeof finalUrl === 'string' && isLoggedOutUrl(finalUrl)) return 'invalid';
   if (apiStatuses.includes(401)) return 'invalid';
   return 'valid';
 }

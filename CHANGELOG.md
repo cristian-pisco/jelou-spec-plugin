@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.3.190] — 2026-06-07
+
+### Added
+- login driver with OTP file handshake and semantic exit codes
+
+## [0.3.189] — 2026-06-07
+
+### Added
+- login driver with OTP file handshake and semantic exit codes
+
 ## [0.3.188] — 2026-06-07
 
 ### Added
