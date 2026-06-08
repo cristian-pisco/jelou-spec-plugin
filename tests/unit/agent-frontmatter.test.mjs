@@ -9,6 +9,7 @@ import {
   transformFrontmatter,
   parseAgentFile,
   renderOpencodeAgent,
+  renderCodexAgent,
 } from '../../bin/lib/agent-frontmatter.mjs';
 
 describe('transformFrontmatter — Claude Code → OpenCode', () => {
@@ -76,5 +77,58 @@ describe('renderOpencodeAgent — round-trip', () => {
     const out = renderOpencodeAgent(raw);
     assert.match(out, /Line 1\.\n\nLine 2\./);
     assert.match(out, /## Heading\n\nLine 3/);
+  });
+});
+
+describe('renderCodexAgent — Claude Code → Codex TOML', () => {
+  test('emits name + description + developer_instructions, drops tools/model', () => {
+    const raw = `---\nname: jlu-test\ndescription: Test agent\ntools: Read\nmodel: sonnet\n---\n\nBody.\n`;
+    const out = renderCodexAgent(raw);
+    assert.equal(
+      out,
+      'name = "jlu-test"\ndescription = "Test agent"\ndeveloper_instructions = \'\'\'\nBody.\n\'\'\'\n',
+    );
+    assert.doesNotMatch(out, /tools/);
+    assert.doesNotMatch(out, /model/);
+    assert.doesNotMatch(out, /sonnet/);
+  });
+
+  test('preserves a body full of backslashes and quotes verbatim (literal string)', () => {
+    const body = 'Run `grep -nE \'^VAR=\'` and match /\\d+\\.\\d+/ then "quote" it.\n';
+    const raw = `---\nname: x\ndescription: d\n---\n\n${body}`;
+    const out = renderCodexAgent(raw);
+    assert.ok(out.includes("developer_instructions = '''\n"));
+    assert.ok(out.includes(body), 'body must be byte-preserved inside the literal string');
+    assert.doesNotMatch(out, /\\\\/, 'literal string must not introduce backslash escaping');
+  });
+
+  test('strips wrapping quotes from name and description', () => {
+    const raw = `---\nname: "jlu-q"\ndescription: "Quoted desc"\n---\n\nB.\n`;
+    const out = renderCodexAgent(raw);
+    assert.match(out, /^name = "jlu-q"\n/);
+    assert.match(out, /^description = "Quoted desc"\n/m);
+  });
+
+  test('escapes internal double-quotes in name/description (basic string)', () => {
+    const raw = `---\nname: x\ndescription: He said "hi"\n---\n\nB.\n`;
+    const out = renderCodexAgent(raw);
+    assert.match(out, /description = "He said \\"hi\\""/);
+  });
+
+  test('throws when name is missing', () => {
+    const raw = `---\ndescription: no name\n---\n\nB.\n`;
+    assert.throws(() => renderCodexAgent(raw), /name/);
+  });
+
+  test("throws when body contains ''' (literal-string delimiter)", () => {
+    const raw = `---\nname: x\ndescription: d\n---\n\nA python doc: '''text'''\n`;
+    assert.throws(() => renderCodexAgent(raw), /'''/);
+  });
+
+  test('omits description line when frontmatter has none', () => {
+    const raw = `---\nname: x\ntools: Read\n---\n\nB.\n`;
+    const out = renderCodexAgent(raw);
+    assert.doesNotMatch(out, /description =/);
+    assert.match(out, /^name = "x"\n/);
   });
 });

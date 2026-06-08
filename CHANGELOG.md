@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.208] — 2026-06-08
+
+### Added
+- renderCodexAgent (MD->TOML) + renderCodexPrompt; bin/sync-codex.mjs generates .codex/agents/*.toml and .codex/prompts/jlu-*.md from canonical sources (--check)
+- .codex/config.toml (context7 MCP, agents.max_depth=1), .codex/hooks.json reusing bin/guard-*.mjs verbatim (Codex PreToolUse contract matches Claude Code's), .codex-plugin/plugin.json, jelou/references/codex-runtime.md
+- bin/install-codex.sh and setup --host codex
+- jlu-council and jlu-ubiquitous-language commands (parity)
+- .opencode/plugins/guard.ts reuses the classifiers to enforce env-hygiene and worker-cap policies under OpenCode; install-opencode.sh ships the guard scripts
+
 ## [0.3.207] — 2026-06-07
 
 ### Internal

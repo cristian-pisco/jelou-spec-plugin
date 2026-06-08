@@ -1,0 +1,22 @@
+{
+  "_comment": "Codex PreToolUse guards. Codex passes {tool_name, tool_input.command, cwd} on stdin and reads back {hookSpecificOutput:{permissionDecision:'deny',permissionDecisionReason}} — the exact shape bin/guard-*.mjs already emit for Claude Code, so the guards are reused verbatim. Paths resolve from the git root because Codex runs hooks with the (unstable) session cwd. install-codex.sh rewrites these to absolute ~/.codex/bin paths for a global install.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "^Bash$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$(git rev-parse --show-toplevel)/bin/guard-test-commands.mjs\"",
+            "statusMessage": "jlu: checking test-command worker caps"
+          },
+          {
+            "type": "command",
+            "command": "node \"$(git rev-parse --show-toplevel)/bin/guard-env-reads.mjs\"",
+            "statusMessage": "jlu: checking for .env secret exposure"
+          }
+        ]
+      }
+    ]
+  }
+}

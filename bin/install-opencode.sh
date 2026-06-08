@@ -36,6 +36,13 @@ mkdir -p "$TARGET_DIR/jelou"
 cp -R "$PLUGIN_DIR/.opencode/." "$TARGET_DIR/.opencode/"
 cp -R "$PLUGIN_DIR/jelou/." "$TARGET_DIR/jelou/"
 
+# The OpenCode guard plugin (.opencode/plugins/guard.ts) imports the pure
+# classifiers from ../../bin/guard-*.mjs. Ship them so the import resolves
+# post-install (they depend only on Node built-ins).
+mkdir -p "$TARGET_DIR/bin"
+cp "$PLUGIN_DIR/bin/guard-test-commands.mjs" "$TARGET_DIR/bin/"
+cp "$PLUGIN_DIR/bin/guard-env-reads.mjs" "$TARGET_DIR/bin/"
+
 # Global OpenCode config uses root-level commands/ and agents/.
 # Keep those mirrors in sync when TARGET_DIR looks like OPENCODE_HOME.
 if [ -f "$TARGET_DIR/opencode.json" ]; then

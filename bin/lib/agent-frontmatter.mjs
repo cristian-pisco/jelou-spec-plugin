@@ -57,3 +57,42 @@ export function renderOpencodeAgent(raw) {
   lines.push('---');
   return `${lines.join('\n')}\n${body}`;
 }
+
+// Codex custom agents are TOML files (~/.codex/agents/ or .codex/agents/) with
+// `name`, `description`, `developer_instructions`. The markdown body becomes
+// `developer_instructions`. Claude Code's `tools` (CC tool names) and `model`
+// (sonnet/opus aliases) have no Codex meaning, so they're dropped — the Codex
+// agent inherits model/sandbox/mcp_servers from the parent session.
+
+function tomlBasicString(value) {
+  return `"${String(value)
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, '\\n')
+    .replace(/\t/g, '\\t')}"`;
+}
+
+export function renderCodexAgent(raw) {
+  const { frontmatter, body } = parseAgentFile(raw);
+  const name = unquote(frontmatter.name);
+  if (!name) throw new Error('Codex agent requires a `name` in frontmatter');
+
+  const instructions = body.replace(/^\n+/, '');
+  // TOML multi-line literal strings ('''…''') preserve backslashes and quotes
+  // verbatim — ideal for prompt bodies full of regex and \n. The only sequence
+  // they cannot contain is ''' itself; fail loud so a future author handles it.
+  if (instructions.includes("'''")) {
+    throw new Error(
+      `Codex agent '${name}' body contains ''' which breaks the TOML literal string. ` +
+        'Rewrite the body or extend renderCodexAgent to use an escaped basic string.',
+    );
+  }
+  const block = instructions.endsWith('\n') ? instructions : `${instructions}\n`;
+
+  const lines = [`name = ${tomlBasicString(name)}`];
+  if (frontmatter.description !== undefined) {
+    lines.push(`description = ${tomlBasicString(unquote(frontmatter.description))}`);
+  }
+  lines.push(`developer_instructions = '''\n${block}'''`);
+  return `${lines.join('\n')}\n`;
+}

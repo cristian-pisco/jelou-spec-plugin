@@ -21,6 +21,8 @@ jobs:
         run: node bin/extract-trace.mjs --version
       - name: Verify .opencode/agents is in sync with agents/
         run: node bin/sync-agents.mjs --check
+      - name: Verify .codex/ mirror is in sync (agents + prompts)
+        run: node bin/sync-codex.mjs --check
       - name: Run unit suite
         run: node --test tests/unit/*.test.mjs
 

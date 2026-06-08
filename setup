@@ -6,9 +6,12 @@ PLUGIN_DIR="$SCRIPT_DIR"
 
 INSTALL_CLAUDE="true"
 INSTALL_OPENCODE="true"
+INSTALL_CODEX="true"
 HOST_FILTERED="false"
 OPENCODE_TARGET="${OPENCODE_HOME:-$HOME/.config/opencode}"
+CODEX_TARGET="${CODEX_HOME:-$HOME/.codex}"
 NO_GLOBAL_OPENCODE="false"
+NO_GLOBAL_CODEX="false"
 declare -a OPENCODE_PROJECTS=()
 
 usage() {
@@ -19,18 +22,21 @@ Usage:
   ./setup [options]
 
 Options:
-  --host <claude|opencode>      Select install target (repeatable). Default: both.
+  --host <claude|opencode|codex> Select install target (repeatable). Default: all.
   --opencode-target <path>      Global OpenCode config path (default: ~/.config/opencode)
+  --codex-target <path>         Global Codex config path (default: ~/.codex)
   --project <path>              Also install OpenCode files into a project (repeatable)
   --no-opencode-global          Skip install into --opencode-target
+  --no-codex-global             Skip install into --codex-target
   -h, --help                    Show this help
 
 Examples:
   ./setup
   ./setup --host claude
-  ./setup --host claude --host opencode
+  ./setup --host claude --host opencode --host codex
   ./setup --host opencode --project /path/to/repo
-  ./setup --host opencode --no-opencode-global --project /path/to/repo
+  ./setup --host codex
+For a Codex project-local install: bin/install-codex.sh /path/to/repo
 USAGE
 }
 
@@ -41,13 +47,15 @@ while [ "$#" -gt 0 ]; do
       if [ "$HOST_FILTERED" = "false" ]; then
         INSTALL_CLAUDE="false"
         INSTALL_OPENCODE="false"
+        INSTALL_CODEX="false"
         HOST_FILTERED="true"
       fi
       case "$2" in
         claude) INSTALL_CLAUDE="true" ;;
         opencode) INSTALL_OPENCODE="true" ;;
+        codex) INSTALL_CODEX="true" ;;
         *)
-          echo "Error: --host must be one of: claude, opencode" >&2
+          echo "Error: --host must be one of: claude, opencode, codex" >&2
           exit 2
           ;;
       esac
@@ -67,6 +75,15 @@ while [ "$#" -gt 0 ]; do
       NO_GLOBAL_OPENCODE="true"
       shift
       ;;
+    --codex-target)
+      [ "$#" -lt 2 ] && { echo "Error: --codex-target requires a path" >&2; exit 2; }
+      CODEX_TARGET="$2"
+      shift 2
+      ;;
+    --no-codex-global)
+      NO_GLOBAL_CODEX="true"
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -79,12 +96,11 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-HOST_LABEL="both"
-if [ "$INSTALL_CLAUDE" = "true" ] && [ "$INSTALL_OPENCODE" = "false" ]; then
-  HOST_LABEL="claude"
-elif [ "$INSTALL_CLAUDE" = "false" ] && [ "$INSTALL_OPENCODE" = "true" ]; then
-  HOST_LABEL="opencode"
-fi
+declare -a ACTIVE_HOSTS=()
+[ "$INSTALL_CLAUDE" = "true" ] && ACTIVE_HOSTS+=("claude")
+[ "$INSTALL_OPENCODE" = "true" ] && ACTIVE_HOSTS+=("opencode")
+[ "$INSTALL_CODEX" = "true" ] && ACTIVE_HOSTS+=("codex")
+HOST_LABEL="${ACTIVE_HOSTS[*]}"
 
 echo "=== Jelou Spec Plugin Setup ==="
 echo "Plugin: $PLUGIN_DIR"
@@ -92,11 +108,11 @@ echo "Host:   $HOST_LABEL"
 echo
 
 if command -v node >/dev/null 2>&1 && [ -f "$PLUGIN_DIR/bin/sync-agents.mjs" ]; then
-  echo "Syncing OpenCode agent mirror..."
-  (cd "$PLUGIN_DIR" && node bin/sync-agents.mjs >/dev/null)
+  echo "Syncing runtime mirrors (OpenCode + Codex)..."
+  (cd "$PLUGIN_DIR" && node bin/sync-agents.mjs >/dev/null && node bin/sync-codex.mjs >/dev/null)
   echo "  done"
 else
-  echo "Syncing OpenCode agent mirror... skipped (node not found)"
+  echo "Syncing runtime mirrors... skipped (node not found)"
 fi
 
 if [ "$INSTALL_CLAUDE" = "true" ]; then
@@ -120,6 +136,12 @@ if [ "$INSTALL_OPENCODE" = "true" ]; then
       "$PLUGIN_DIR/bin/install-opencode.sh" "$project"
     done
   fi
+fi
+
+if [ "$INSTALL_CODEX" = "true" ] && [ "$NO_GLOBAL_CODEX" = "false" ]; then
+  echo
+  echo "Installing for Codex (global): $CODEX_TARGET"
+  CODEX_HOME="$CODEX_TARGET" "$PLUGIN_DIR/bin/install-codex.sh"
 fi
 
 echo

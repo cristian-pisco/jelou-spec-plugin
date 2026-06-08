@@ -35,6 +35,7 @@ VERSION_FILES = (
     "package.json",
     ".claude-plugin/plugin.json",
     ".claude-plugin/marketplace.json",
+    ".codex-plugin/plugin.json",
 )
 
 VERSION_RE = re.compile(r'"version"\s*:\s*"([^"]+)"')

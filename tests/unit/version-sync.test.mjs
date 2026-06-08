@@ -19,6 +19,7 @@ const VERSION_FILES = [
   'package.json',
   '.claude-plugin/plugin.json',
   '.claude-plugin/marketplace.json',
+  '.codex-plugin/plugin.json',
 ];
 
 const VERSION_RE = /"version"\s*:\s*"([^"]+)"/;
@@ -31,7 +32,7 @@ function readVersion(relPath) {
 }
 
 describe('version sync across manifest files', () => {
-  test('all three version files declare the same version', () => {
+  test('all manifest version files declare the same version', () => {
     const versions = Object.fromEntries(
       VERSION_FILES.map((f) => [f, readVersion(f)])
     );

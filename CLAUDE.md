@@ -4,9 +4,9 @@ Before pushing to `main` — directly or via merge — the unit test suite MUST 
 
 Run: `npm test` (equivalent to `node --test tests/unit/*.test.mjs`)
 
-Also run: `node bin/sync-agents.mjs --check` to confirm `.opencode/agents/` is in sync with `agents/`.
+Also run: `npm run check-sync` to confirm the runtime mirrors are in sync with their canonical sources — `.opencode/agents/` with `agents/` (OpenCode) and `.codex/agents/` + `.codex/prompts/` with `agents/` + `skills/` (Codex). After editing any `agents/*.md` or `skills/*/SKILL.md`, run `npm run sync` to regenerate both mirrors.
 
-If either fails, do not push. Fix the failure first. Never push with a red suite — `release after every push to main` means a broken push becomes a broken release.
+If any of these fails, do not push. Fix the failure first. Never push with a red suite — `release after every push to main` means a broken push becomes a broken release.
 
 ## Code style — no line-by-line comments
 

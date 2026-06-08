@@ -56,6 +56,20 @@ OpenCode normalization rules:
 
 OpenCode commands live in `.opencode/commands/jlu-<skill>.md` and resolve workflow files global-first from `~/.config/opencode/jelou/` before project-local fallbacks. Most commands dispatch `jelou/workflows/<skill>.md`; OpenCode-specific overrides may live under `jelou/workflows-opencode/`.
 
+## Codex CLI
+
+Commands use the same hyphen-prefixed name (`jlu-`) as OpenCode, exposed as Codex custom prompts.
+
+| Skill                  | Invocation                       |
+|------------------------|----------------------------------|
+| `new-task`             | `/jlu-new-task [desc]`           |
+| `execute-task`         | `/jlu-execute-task [slug]`       |
+| `map-codebase`         | `/jlu-map-codebase [service-id]` |
+| `create-pr`            | `/jlu-create-pr`                 |
+| … (all skills)         | `/jlu-<skill>`                   |
+
+Codex prompts live in `.codex/prompts/jlu-<skill>.md` and resolve workflow files global-first from `$CODEX_HOME/jelou/` (default `~/.codex/jelou/`) before project-local fallbacks. Codex subagents are TOML files in `.codex/agents/<agent>.toml`. Both are **generated** from canonical sources by `bin/sync-codex.mjs` — do not hand-edit. Install with `bin/install-codex.sh`. The Codex runtime contract (no structured `question`, `agents.max_depth = 1`) lives in `jelou/references/codex-runtime.md`.
+
 ## Agent dispatch
 
 Both runtimes load the same agent definitions from disk:
@@ -65,20 +79,23 @@ Both runtimes load the same agent definitions from disk:
 
 To update an agent, edit `agents/<agent>.md` and run `node bin/sync-agents.mjs`. CI fails if `node bin/sync-agents.mjs --check` reports drift.
 
-## Why two prefixes?
+## Why different prefixes?
 
-Claude Code namespaces plugin commands as `<plugin-name>:<skill-name>`. OpenCode uses flat command names. Rather than diverge skill names per runtime, the plugin keeps skill names canonical and ships two thin command shells (one per runtime) that both delegate into the shared workflow files.
+Claude Code namespaces plugin commands as `<plugin-name>:<skill-name>` (`jlu:`). OpenCode and Codex both use flat, hyphen-prefixed command names (`jlu-`). Rather than diverge skill names per runtime, the plugin keeps skill names canonical and ships thin per-runtime command shells (Claude Code skills, OpenCode commands, Codex prompts) that all delegate into the shared `jelou/workflows/*.md` files.
 
 ## Where things live
 
-| Concern              | Location                              |
-|----------------------|---------------------------------------|
-| Claude Code skills   | `skills/<skill>/SKILL.md`             |
-| OpenCode commands    | `.opencode/commands/jlu-<skill>.md`   |
-| Workflow content     | `jelou/workflows/<skill>.md`          |
-| Agent prompts (src)  | `agents/<agent>.md`                   |
-| Agent prompts (mirror)| `.opencode/agents/<agent>.md`        |
-| Shared references    | `jelou/references/<topic>.md`         |
-| Templates            | `jelou/templates/<artifact>.md`       |
-| Plugin manifest (CC) | `.claude-plugin/plugin.json`          |
-| Marketplace manifest | `.claude-plugin/marketplace.json`     |
+| Concern               | Location                              |
+|-----------------------|---------------------------------------|
+| Claude Code skills    | `skills/<skill>/SKILL.md`             |
+| OpenCode commands     | `.opencode/commands/jlu-<skill>.md`   |
+| Codex prompts (mirror)| `.codex/prompts/jlu-<skill>.md`       |
+| Workflow content      | `jelou/workflows/<skill>.md`          |
+| Agent prompts (src)   | `agents/<agent>.md`                   |
+| Agent prompts (OpenCode mirror)| `.opencode/agents/<agent>.md`|
+| Agent prompts (Codex mirror)| `.codex/agents/<agent>.toml`    |
+| Shared references     | `jelou/references/<topic>.md`         |
+| Templates             | `jelou/templates/<artifact>.md`       |
+| Plugin manifest (CC)  | `.claude-plugin/plugin.json`          |
+| Plugin manifest (Codex)| `.codex-plugin/plugin.json`          |
+| Marketplace manifest  | `.claude-plugin/marketplace.json`     |

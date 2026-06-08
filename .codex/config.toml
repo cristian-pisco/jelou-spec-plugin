@@ -1,0 +1,28 @@
+# Jelou Spec Plugin — Codex CLI project config.
+#
+# Project `.codex/config.toml` may only set keys that are NOT machine-local.
+# By Codex's design, `model`, `model_provider`, `approval_policy`, and
+# `sandbox_mode` cannot be set from a project layer — they live in the user's
+# `~/.codex/config.toml`. This file ships only the project-safe layers:
+# MCP servers, subagent limits, and the hooks feature flag.
+#
+# This project `.codex/` layer loads only when the user has marked the project
+# trusted: `[projects."<abs-path>"] trust_level = "trusted"` in ~/.codex/config.toml.
+# Hooks themselves are wired in `.codex/hooks.json` (loaded alongside this file).
+
+# context7 powers library-documentation lookups for the TDD subagents
+# (jlu-implementer, jlu-tdd-cycle, jlu-test-writer, jlu-refactor-agent).
+[mcp_servers.context7]
+command = "npx"
+args = ["-y", "@upstash/context7-mcp@latest"]
+
+[agents]
+# The execute-task orchestrator fans out one worker per affected service.
+max_threads = 6
+# Depth 1 = the orchestrator dispatches workers, workers do not re-dispatch.
+# This matches the plugin's flat orchestrator→worker model. Do not raise it
+# unless you have validated the cost/latency of nested fan-out.
+max_depth = 1
+
+[features]
+hooks = true
