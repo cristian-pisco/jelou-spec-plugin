@@ -14,6 +14,7 @@
 - **Workers = 1.** Mínimo absoluto. La skill garantiza que no satura CPU ni memoria; tarda lo que tenga que tardar.
 - **Reporte rico.** Cuando algo falla, el dev ve qué componente (Controller, Service, etc.) y dónde, no un mar de stack traces sin estructura.
 - **Sin auto-fix.** La skill valida. Las decisiones sobre fixes son del dev.
+- **Production-like vía orquestador.** Cuando `/jlu-production-like` la invoca, la infraestructura de desarrollo ya está levantada por el orquestador y los tests de integración corren contra el stack vivo. Standalone sigue corriendo en el host y solo avisa (Step 6d) si la infra es inalcanzable. Sin cambio de comportamiento.
 
 ---
 
