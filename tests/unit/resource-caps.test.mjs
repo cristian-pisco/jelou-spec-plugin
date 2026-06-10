@@ -141,6 +141,14 @@ describe('orchestrator workflows — capped invocations stay capped', () => {
     assert.match(uiQaRun, /--workers=\$\{WORKERS:-1\}/);
     assert.match(uiQaRun, /MAX_WORKERS_BY_CPU/);
   });
+
+  test('env-lifecycle carries the canonical CPU cap and RAM gate', () => {
+    const envLifecycle = read('jelou/references/env-lifecycle.md');
+    assert.match(envLifecycle, /MAX_WORKERS_BY_CPU=\$\(\( CPU_CORES \/ 2 \)\)/);
+    assert.match(envLifecycle, /"\$MAX_WORKERS_BY_CPU" -gt 4/);
+    assert.match(envLifecycle, /MemAvailable/);
+    assert.match(envLifecycle, /REQUIRED_MB=/);
+  });
 });
 
 describe('references — no stale full-suite guidance', () => {

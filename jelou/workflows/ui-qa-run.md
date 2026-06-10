@@ -11,6 +11,10 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
   - `--allow-test-edits` — let the fix-loop edit `.spec.ts` files (default forbids this).
   - `--allow-prod-target` — override the anti-prod E2E target gate (use sparingly; see Phase 3 step 15). Sets `ALLOW_PROD_TARGET=1` for the run.
   - `--workers=N` — Playwright worker count. Default 1. Refuses unsafe values unless both RAM and CPU gates pass (or `--force` is set).
+  - `--no-boot` — assume the dev infrastructure is already up and owned by the caller
+    (e.g. `/jlu-production-like`). Skips the pre-flight resource/port gate, the service
+    boot, and teardown (Phase 1 steps 8–10, Phase 3 step 14, and teardown). The auth gate,
+    Playwright run, fix-loop, and report still execute. Sets `NO_BOOT=1`.
 
 ## Process
 
@@ -87,74 +91,13 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
       - The agent infers `Env Vars` from references in the spec to env-controlled URLs/keys; flags missing inferences as `STATUS: NEEDS_CONTEXT`.
       Then return to step 7a and re-read the generated files. The orchestrator commits the generated `user-flow.md` to the task directory before proceeding so the artifact survives across runs.
 
-8. **Pre-flight resource check** (inline; no separate `bin/` script).
-   ```bash
-   WORKERS=${WORKERS:-1}
-   if ! [[ "$WORKERS" =~ ^[0-9]+$ ]] || [ "$WORKERS" -lt 1 ]; then
-     echo "ERROR: --workers must be an integer >= 1 (got '$WORKERS')."
-     exit 1
-   fi
-
-   OS=$(uname -s)
-   if [ "$OS" = "Linux" ] && grep -qiE 'microsoft|wsl' /proc/version 2>/dev/null; then
-     OS_VARIANT="WSL2"
-   else
-     OS_VARIANT="$OS"
-   fi
-
-   case "$OS_VARIANT" in
-     Linux|WSL2)
-       AVAIL_MB=$(awk '/MemAvailable/ {print $2 / 1024}' /proc/meminfo 2>/dev/null)
-       [ -z "$AVAIL_MB" ] && AVAIL_MB=$(awk '/MemFree/ {f=$2} /^Cached/ {c=$2} END {print (f+c) / 1024}' /proc/meminfo)
-       CPU_CORES=$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN)
-       ;;
-     Darwin)
-       PAGE_SIZE=$(sysctl -n hw.pagesize)
-       FREE_PAGES=$(vm_stat | awk '/Pages free/ {gsub(/\./,"",$3); print $3}')
-       SPEC_PAGES=$(vm_stat | awk '/Pages speculative/ {gsub(/\./,"",$3); print $3}')
-       INACTIVE_PAGES=$(vm_stat | awk '/Pages inactive/ {gsub(/\./,"",$3); print $3}')
-       AVAIL_MB=$(( (FREE_PAGES + SPEC_PAGES + INACTIVE_PAGES) * PAGE_SIZE / 1024 / 1024 ))
-       CPU_CORES=$(sysctl -n hw.logicalcpu)
-       ;;
-     *)
-       echo "ERROR: unsupported OS '$OS'. Linux + macOS + WSL2 supported. Windows-native is out of scope."
-       exit 1
-       ;;
-   esac
-
-   # CPU gate: reserve at least half the machine for services/OS. Hard cap at 4 workers.
-   MAX_WORKERS_BY_CPU=$(( CPU_CORES / 2 ))
-   [ "$MAX_WORKERS_BY_CPU" -lt 1 ] && MAX_WORKERS_BY_CPU=1
-   [ "$MAX_WORKERS_BY_CPU" -gt 4 ] && MAX_WORKERS_BY_CPU=4
-
-   if [ "$WORKERS" -gt "$MAX_WORKERS_BY_CPU" ] && [ -z "$FORCE" ]; then
-     echo "ERROR: requested --workers=$WORKERS exceeds CPU safety cap ($MAX_WORKERS_BY_CPU with $CPU_CORES logical cores)."
-     echo "  Use fewer workers or pass --force to override."
-     exit 1
-   fi
-
-   # RAM gate: base browser overhead + per-extra-worker overhead.
-   REQUIRED_MB=$(( SUM_DEV_RAM_ESTIMATES + 1300 + ((WORKERS - 1) * 700) ))
-
-   if [ "$AVAIL_MB" -lt "$REQUIRED_MB" ] && [ -z "$FORCE" ]; then
-      echo "ERROR: pre-flight resource check failed."
-      echo "  available: ${AVAIL_MB}MB"
-      echo "  required:  ${REQUIRED_MB}MB"
-      echo "  workers:   ${WORKERS} (cpu cap: ${MAX_WORKERS_BY_CPU})"
-      echo "  Close apps or pass --force to override."
-      exit 1
-   fi
-   ```
-
-9. **Pre-flight port-availability check.** For each affected service's port (from `dev.health_url` or `dev.ready_signal.port`), verify it's free:
-   ```bash
-   if lsof -iTCP:"$PORT" -sTCP:LISTEN -P -n 2>/dev/null | grep -q LISTEN; then
-     echo "ERROR: port $PORT is already bound. Run /jlu-ui-qa-cleanup or kill the holder manually."
-     exit 1
-   fi
-   ```
-
-10. **Data-isolation guard.** If any affected service has `dev.data_isolation: shared` and `--allow-shared-data` was NOT passed, refuse: "service `<id>` declares `data_isolation: shared`. Concurrent runs will corrupt data. Pass `--allow-shared-data` to override."
+8–10. **Pre-flight gate.** When `--no-boot` is NOT set, run `preflight_gate` per
+   `jelou/references/env-lifecycle.md` with `BROWSER_OVERHEAD_MB=1300` and `WORKERS`,
+   honoring `--force` and `--allow-shared-data`. The gate enforces the CPU cap
+   (`MAX_WORKERS_BY_CPU = CPU_CORES / 2`, capped at 4) and the RAM gate
+   (`SUM_DEV_RAM_ESTIMATES + 1300 + (WORKERS-1)*700`), then checks ports and
+   data-isolation. When `--no-boot` IS set, skip — the caller already gated and
+   the ports are intentionally bound by the caller's boot.
 
 ### Phase 2 — Resolve UI services and worktrees
 
@@ -175,18 +118,9 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
 
 ### Phase 3 — Boot, test, teardown (per UI service)
 
-14. **Boot affected services in declared order.**
-    ```
-    For each service in Service Boot Order:
-      Run dev.command (or derived `docker compose -f <compose_file> up -d <service>` when launcher: docker)
-      Capture stdout/stderr to <TASK_DIR>/services/<UI_SERVICE>/e2e/launch-<service>.log
-      Wait for readiness signal:
-        - health_url:    poll until 2xx response, or ready_timeout_s
-        - port_open:     TCP connect until success, or ready_timeout_s
-        - http_200:      poll until 2xx on port:path, or ready_timeout_s
-        - stdout_match:  tail launch log, regex-match pattern, or ready_timeout_s
-      On timeout: abort with STATUS: BLOCKED, reason: ready_timeout for <service>.
-    ```
+14. **Boot affected services in declared order.** When `--no-boot` is NOT set, run
+    `boot(Service Boot Order)` per `jelou/references/env-lifecycle.md`. When `--no-boot`
+    IS set, skip — infra is already up; proceed directly to the auth gate (step 14b).
 
 14b. **Auth gate — probe the session, log in via OTP when invalid.** Runs after boot (the target app must be up) and before Playwright. See `jelou/references/auth-fixtures.md` § "Orchestrated OTP login".
 
@@ -428,12 +362,17 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
 
     When every failure is individually green (or flagged/blocked), run the **full suite exactly once** (step 15 command) to confirm no cross-test regressions. New failures in that confirmation run do NOT re-enter the fix-loop — flag them in the run report; the budget is spent.
 
-19. **Teardown.** The EXIT trap fires regardless of success/error/SIGINT/SIGTERM:
+19. **Teardown.** The EXIT trap fires regardless of success/error/SIGINT/SIGTERM. When
+    `--no-boot` is NOT set, run `teardown(BOOTED)` per `jelou/references/env-lifecycle.md`
+    to stop each booted service. When `--no-boot` IS set, skip service teardown — the
+    caller owns the environment. The lock release always runs regardless of `--no-boot`:
     ```bash
     trap '
-      for svc in "${BOOTED[@]}"; do
-        eval "${TEARDOWN_CMD[$svc]}" >/dev/null 2>&1 || true
-      done
+      if [ -z "$NO_BOOT" ]; then
+        for svc in "${BOOTED[@]}"; do
+          eval "${TEARDOWN_CMD[$svc]}" >/dev/null 2>&1 || true
+        done
+      fi
       flock -u 9
       rm -f "$LOCK_FILE.pid"
     ' EXIT INT TERM
@@ -489,6 +428,7 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
 
 ## See also
 
+- `jelou/references/env-lifecycle.md` — shared pre-flight gate / boot / teardown contract (`preflight_gate`, `boot`, `teardown`)
 - `jelou/references/loading-context.md` — how the dispatched fix-loop loads its context
 - `jelou/references/dev-server-readiness.md` — per-stack ready signal cookbook
 - `jelou/references/auth-fixtures.md` — credential security contract
