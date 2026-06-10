@@ -34,9 +34,9 @@ No Testcontainers, no seed system: reuses `dev` blocks + `data_isolation: per-ru
    `{ scope, ui_services, backend_services, warnings }`. Print any `warnings`. On exit 1
    (empty/invalid), surface the message and stop.
 8. **Compute the Service Boot Order.**
-   - `full-backend`: the `backend_services` that declare a `dev` block. For backend
-     services without a `dev` block, note it and still run their `test-suite` later
-     (Open Question 2 in the spec).
+   - `full-backend`: the `backend_services` that declare a `dev` block. A backend
+     service without a `dev` block is noted and skipped at boot; its `test-suite` still
+     runs and surfaces the "infra unreachable" hint if its integration tests need the stack.
    - `fullstack`: the union of (a) each UI service's `user-flow.md` `Service Boot Order`
      (resolved as in `ui-qa-run.md` Phase 1 step 7) and (b) affected backend services with
      `dev` blocks. Reconcile boot-order conflicts with `ui-qa-run`'s rule (refuse on
