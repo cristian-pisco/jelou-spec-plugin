@@ -13,7 +13,7 @@ No Testcontainers, no seed system: reuses `dev` blocks + `data_isolation: per-ru
 ## Inputs
 
 - `ARG` — optional task slug (auto-detected from branch when omitted).
-- Flags: `--force`, `--allow-shared-data`, `--allow-prod-target`, `--workers N`.
+- Flags: `--force`, `--allow-shared-data`, `--allow-prod-target`, `--workers=N`.
 
 ## Process
 
