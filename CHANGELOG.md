@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.211] — 2026-06-10
+
+### Added
+- unified /jlu-production-like orchestrator (classify, boot once, delegate to ui-qa-run + test-suite)
+
 ## [0.3.210] — 2026-06-10
 
 ### Fixed
