@@ -30,17 +30,22 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BRIEF_REL = 'jelou/references/council-brief.md';
 
-// Default roster: four distinct training lineages (Premise 2). Model ids drift
-// over time — verify against https://openrouter.ai/models before first run or
-// pin your own in council.config.json.
+// Default roster: four distinct frontier reasoning lineages (Premise 2),
+// validated live against the OpenRouter catalog — each returns a schema-valid
+// verdict. qwen3.7-max was rejected: it ignores strict json_schema and drops
+// required fields, so its verdicts parse as malformed. Model ids drift — verify
+// against https://openrouter.ai/models before a run or pin your own in
+// council.config.json.
 export const DEFAULTS = {
   models: [
-    'openai/gpt-5.1',
-    'google/gemini-3-pro-preview',
-    'qwen/qwen3-coder',
-    'anthropic/claude-sonnet-4.5',
+    'openai/gpt-5.5',
+    'google/gemini-3.1-pro-preview',
+    'deepseek/deepseek-v4-pro',
+    'anthropic/claude-opus-4.8',
   ],
-  max_tokens: 2000,
+  // Reasoning tokens count against max_tokens; 2000 truncated verbose verdicts
+  // mid-JSON (→ malformed). 8000 leaves headroom for thinking + the full verdict.
+  max_tokens: 8000,
   timeout_ms: 90_000,
   cli_timeout_ms: 180_000,
   data_collection: 'deny',

@@ -82,6 +82,28 @@ describe('loadConfig', () => {
   });
 });
 
+describe('DEFAULTS roster invariants', () => {
+  test('four provider/model ids, all distinct lineages', () => {
+    assert.equal(DEFAULTS.models.length, 4);
+    for (const id of DEFAULTS.models) assert.match(id, /^[a-z0-9-]+\/[a-z0-9.\-:]+$/i);
+    const providers = DEFAULTS.models.map((id) => id.split('/')[0]);
+    assert.equal(new Set(providers).size, 4, 'heterogeneous lineages: no provider repeats');
+  });
+
+  test('exactly one judge shares the arbiter family (Anthropic)', () => {
+    assert.equal(DEFAULTS.models.filter(sameFamilyAsArbiter).length, 1);
+  });
+
+  test('does not regress to known-broken ids', () => {
+    assert.ok(!DEFAULTS.models.includes('google/gemini-3-pro-preview'), '404 on OpenRouter');
+    assert.ok(!DEFAULTS.models.includes('qwen/qwen3-coder'), 'not a reasoning model');
+  });
+
+  test('max_tokens leaves headroom for reasoning + verdict', () => {
+    assert.ok(DEFAULTS.max_tokens >= 4000, '2000 truncated verbose verdicts mid-JSON');
+  });
+});
+
 describe('findWorkspaceRoot', () => {
   test('finds .spec-workspace.json up to 5 parents, else null', () => {
     const root = tmp();

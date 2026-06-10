@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.210] — 2026-06-10
+
+### Fixed
+- frontier reasoning roster + reasoning-token headroom
+
 ## [0.3.209] — 2026-06-10
 
 ### Added

@@ -459,7 +459,7 @@ The skill is purely standalone — no auto-hooks into other workflows. The grill
 
 | Judge | Transport | Repo access |
 |---|---|---|
-| 4 OpenRouter models (distinct lineages: GPT, Gemini, Qwen/DeepSeek, Claude) | API, single-shot | Case file only (`expediente-only`) |
+| 4 OpenRouter models (distinct frontier reasoning lineages: GPT, Gemini, DeepSeek, Claude) | API, single-shot | Case file only (`expediente-only`) |
 | `codex` / `gemini` CLIs (optional extras) | Subprocess, sandboxed read-only | Agentic — explore the repo (`agéntico`) |
 
 **Onboarding:** export `OPENROUTER_API_KEY` (one secret covers the whole API roster). CLI extras join automatically when installed and authenticated; a failed judge never sinks the jury (`Promise.allSettled` envelopes). With a single surviving judge the report carries a `SIN SEÑAL CROSS-MODEL` banner; with zero case-file artifacts it carries `EXPEDIENTE VACÍO` plus a nudge to run `/jlu-map-codebase`.
@@ -468,8 +468,8 @@ The skill is purely standalone — no auto-hooks into other workflows. The grill
 
 ```json
 {
-  "models": ["openai/gpt-5.1", "google/gemini-3-pro-preview", "qwen/qwen3-coder", "anthropic/claude-sonnet-4.5"],
-  "max_tokens": 2000,
+  "models": ["openai/gpt-5.5", "google/gemini-3.1-pro-preview", "deepseek/deepseek-v4-pro", "anthropic/claude-opus-4.8"],
+  "max_tokens": 8000,
   "timeout_ms": 90000,
   "cli_timeout_ms": 180000,
   "data_collection": "deny",
@@ -478,7 +478,7 @@ The skill is purely standalone — no auto-hooks into other workflows. The grill
 }
 ```
 
-Verify model ids against [openrouter.ai/models](https://openrouter.ai/models) — they drift. `data_collection: "deny"` restricts routing to providers with no-training policies. The case file is sent whole (no truncation); a pre-flight check aborts before any spend when it exceeds `case_file_max_bytes`.
+Verify model ids against [openrouter.ai/models](https://openrouter.ai/models) — they drift, and pick models that honor strict `json_schema` (the roster above is validated for this). Frontier reasoning models spend completion tokens on hidden thinking that counts against `max_tokens`, so keep it generous (≥ 8000) or verbose verdicts truncate mid-JSON and parse as malformed. `data_collection: "deny"` restricts routing to providers with no-training policies. The case file is sent whole (no truncation); a pre-flight check aborts before any spend when it exceeds `case_file_max_bytes`.
 
 **Outputs:** every run persists to `<runs_dir>/<slug>/` — `prompt.md` (assembled brief), `<judge>.md` raw outputs, `manifest.json` (machine-readable envelopes + case-file inventory) and `COUNCIL_REPORT.md` (the arbiter's synthesis, in Spanish: verdict, dissent, Unique Insights, Attribution, per-judge table). `runs_dir` resolution: config value (point it at an Obsidian vault folder to make verdicts searchable in your knowledge base) → `<workspace>/.spec-workspace/council/` → `./council-runs/`. Counting `manifest.json` files measures real usage.
 
