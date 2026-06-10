@@ -56,7 +56,7 @@ running together.
   Each task bullet is `` `[<%>]` <url|name> ``; meet bullets are the user's text verbatim. Sub-buckets with no items are omitted entirely. The percentage is **always numeric** — never a status string. Mapping rules: closed → 100, anything in `status_percentages` (e.g. "pending to production" → 90, "in qa" → 80) → mapped value, in-progress → subtask ratio. Because `meetings` is folded into this placeholder, the template body MUST NOT also include a separate `{{meetings}}` placeholder — that would duplicate the input.
 - `{{not_achieved_goals}}` — tasks whose percentage did not advance. Format per task: `<name> — <auto-extracted reason>\n<url>`
 - `{{short_term_goals}}` — sprint tasks with a due date. Format per task: `` `[<YYYY-MM-DD>]` <url|name> ``. Closed-like tasks render with the **entire line** wrapped in `~~...~~` (date and link together). Open tasks may include a status note: `` `[<YYYY-MM-DD>]` <url|name> — _<status note>_ `` (e.g., "pendiente a producción · PR repo#123 abierto").
-- `{{tasks_by_status}}` — **every** sprint task owned by you, grouped by current status. Renders a bold header per status (`**Internal QA**`, `**In Progress**`, `**Pending To Production**`, …) followed by `` `[<%>]` <url|name> `` for each task in that group. Groups are sorted by descending max percentage; within a group, tasks sort by descending percentage then by name. Use this section when you want a static "status board" view in addition to the delta-driven `{{achieved_goals}}` / `{{not_achieved_goals}}`. Tasks without a `status_name` are omitted (the renderer cannot label them).
+- `{{tasks_by_status}}` — **every** sprint task owned by you, grouped by current status. Renders a bold header per status (`**Internal QA**`, `**In Progress**`, `**Pending To Production**`, …) followed by `` `[<%>]` <url|name> `` for each task in that group. Groups are sorted by descending max percentage; within a group, tasks sort by descending percentage then by name. Use this section when you want a static "status board" view in addition to the delta-driven `{{achieved_goals}}` / `{{not_achieved_goals}}`. Tasks without a `status_name` are omitted (the renderer cannot label them). When `max_closed_shown` is set (see below), the `Closed`/closed-like group is instead ranked by recency (`date_closed` descending) and trimmed to that many tasks; open / in-progress groups are never capped.
 
 On the very first run for a channel (no prior published draft), `{{achieved_goals}}`
 renders the first-run banner instead of an empty string.
@@ -97,6 +97,16 @@ This is what makes "achieved since yesterday" robust to multiple daily
 updates per calendar day. Set to a smaller value (e.g. `12`) for teams that
 publish a midday and an EOD daily.
 
+### `max_closed_shown` (number)
+
+Caps the `Closed`/closed-like group in `{{tasks_by_status}}` to the N
+most-recently-closed tasks (ranked by `date_closed` descending). The full sprint
+backlog can accumulate dozens of closed items over a sprint; this keeps the
+status board scannable by showing only the latest completions. Open and
+in-progress groups are never trimmed. Leave the field unset for no cap (the
+group keeps every closed task, sorted by percentage then name — the prior
+behavior).
+
 ### `preview_channel` (string)
 
 Where the workflow posts a *preview* of the composed body before publishing
@@ -114,6 +124,7 @@ channel. Leave the field unset to skip the preview round-trip.
 channel: "#dailies"
 preview_channel: "@cristian.pisco"
 cutoff_hours: 24
+max_closed_shown: 3
 closed_like_statuses:
   - "pending to production por feature flag"
 status_percentages:

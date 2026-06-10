@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.209] — 2026-06-10
+
+### Added
+- max_closed_shown channel-template field caps the Closed/closed-like group in {{tasks_by_status}} to the N most-recently-closed tasks (by date_closed); absent means no cap, preserving the full status board
+- renderer ranks closed groups by recency only when the cap is set; open and in-progress groups are never capped
+- thread date_closed through render-data all_tasks; document the field in the workflow and the channel template
+
 ## [0.3.208] — 2026-06-08
 
 ### Added

@@ -32,14 +32,16 @@ You are the orchestrator for the `/jlu-daily-slack` command. You generate a Slac
    - `closed_like_statuses` (optional array of ClickUp status names treated as done)
    - `status_percentages` (optional object mapping status name → 0-100 percentage; e.g. `"pending to production": 90`, `"in qa": 80`)
    - `cutoff_hours` (optional number, default `24`) — how far back to look for tasks closed within the recent window when surfacing `achieved`
+   - `max_closed_shown` (optional number) — cap the `Closed`/closed-like group in `{{tasks_by_status}}` to the N most-recently-closed tasks (by `date_closed`). Absent ⇒ no cap (full status board, as before).
    - `preview_channel` (optional Slack channel or DM target like `#preview-dailies` or `@username`)
 
    Parse the body as the message template.
 3. If missing, stop with: "No template found for #<channel>. Create one at `<workspace>/registry/slack/<channel>.md`. See `jelou/templates/slack-channel.md` for the format."
-4. Write three cache files for downstream scripts:
+4. Write four cache files for downstream scripts:
    - `<workspace>/.cache/closed-like-statuses.json` — JSON array of `closed_like_statuses` values (use `[]` if the key is absent).
    - `<workspace>/.cache/status-percentages.json` — JSON object of `status_percentages` (use `{}` if absent).
    - `<workspace>/.cache/cutoff-ms.txt` — single-line file with the epoch-ms cutoff = `Date.now() − cutoff_hours·3600000`.
+   - `<workspace>/.cache/max-closed-shown.txt` — single-line file with the `max_closed_shown` number, or an empty file when the key is absent (the renderer reads empty/non-numeric as "no cap").
 5. **Markdown sanity check.** The body MUST use standard markdown (`**bold**`, `~~strike~~`, `_italic_`) — the plugin Slack tool renders single-asterisk as italic, not bold. If the body still uses single-asterisk headings (`*Question?*`), warn the user via `question`: "The template uses Slack mrkdwn (`*bold*`) which renders italic via the plugin Slack tool. Convert to standard markdown (`**bold**`)?". On confirm, rewrite the file in-place; on decline, continue.
 
 ## Step 4 — Resolve User Identity
@@ -206,7 +208,7 @@ Build `<workspace>/.cache/render-data.json`:
   "achieved": [{"name": "...", "url": "...", "percentage": <int>, "task_type": "<Issue|Improvement|Task|...>"}, ...],
   "not_achieved": [{"name": "...", "url": "...", "reason": "..."}, ...],
   "short_term": [{"name": "...", "url": "...", "due_date": "<iso-or-null>", "status_type": "<closed|open|custom|...>", "status_name": "<human status string>", "status_note": "<short note for non-closed items>"}, ...],
-  "all_tasks": [{"name": "...", "url": "...", "percentage": <int>, "status_type": "...", "status_name": "..."}, ...],
+  "all_tasks": [{"name": "...", "url": "...", "percentage": <int>, "status_type": "...", "status_name": "...", "date_closed": <epoch-ms-or-null>}, ...],
   "meetings": "<raw multi-line text from manual-fields.json, one meet per line>"
 }
 ```
@@ -217,15 +219,18 @@ Build `<workspace>/.cache/render-data.json`:
 - `status_type` and `status_name` so the renderer can strike through closed tasks AND any custom status listed in `closed_like_statuses` (the strikethrough wraps the **entire line** — date and link together).
 - `status_note` (only for non-closed items) so the renderer appends ` — _<note>_` to give the reader context (pending prod, on hold reason, in QA, etc.). Closed-like items ignore `status_note`.
 
-`all_tasks` is the **entire** union (every task in the sprint that survived discovery), regardless of `due_date` or bucket. It drives the `{{tasks_by_status}}` placeholder which groups tasks by their current `status_name` and shows the daily reader where every sprint item lives — not just deltas. Use the normalized `percentage` from Step 8 (post `status_percentages` and `closed_like_statuses` mapping) so each badge stays a numeric `[N%]`.
+`all_tasks` is the **entire** union (every task in the sprint that survived discovery), regardless of `due_date` or bucket. It drives the `{{tasks_by_status}}` placeholder which groups tasks by their current `status_name` and shows the daily reader where every sprint item lives — not just deltas. Use the normalized `percentage` from Step 8 (post `status_percentages` and `closed_like_statuses` mapping) so each badge stays a numeric `[N%]`. Pass `date_closed` through (epoch-ms or null) so the renderer can rank the closed group by recency when `max_closed_shown` is set.
 
 `meetings` is the verbatim string from `manual-fields.json` (one meet per line, e.g. `:repeat: Daily`). When the field is missing, empty, or whitespace-only the renderer omits the Meets sub-bucket entirely. The renderer parses lines itself — do **not** pre-format. Because meetings are folded into `{{achieved_goals}}`, the template body MUST NOT include a separate `{{meetings}}` placeholder; rendering it twice would duplicate the user's input.
 
 ```bash
 node <plugin-root>/bin/daily-slack-render.mjs \
   --data <workspace>/.cache/render-data.json \
-  --closed-like-statuses <workspace>/.cache/closed-like-statuses.json
+  --closed-like-statuses <workspace>/.cache/closed-like-statuses.json \
+  --max-closed "$(cat <workspace>/.cache/max-closed-shown.txt)"
 ```
+
+`--max-closed` caps the `Closed`/closed-like group in `{{tasks_by_status}}` to the N most recently closed tasks (by `date_closed`). An empty or non-numeric value means no cap, so channels without `max_closed_shown` keep the full board.
 
 Capture stdout JSON: `{achieved_goals, not_achieved_goals, short_term_goals, tasks_by_status}`.
 

@@ -568,6 +568,102 @@ describe('daily-slack-render — tasks_by_status grouping', () => {
   });
 });
 
+describe('daily-slack-render — tasks_by_status closed cap (--max-closed)', () => {
+  function runWith(data, { closedLike, maxClosed } = {}) {
+    const dir = mkdtempSync(join(tmpdir(), 'daily-slack-render-'));
+    const dataPath = join(dir, 'data.json');
+    writeFileSync(dataPath, JSON.stringify(data));
+    const args = [SCRIPT, '--data', dataPath];
+    if (closedLike !== undefined) {
+      const closedPath = join(dir, 'closed-like.json');
+      writeFileSync(closedPath, JSON.stringify(closedLike));
+      args.push('--closed-like-statuses', closedPath);
+    }
+    if (maxClosed !== undefined) args.push('--max-closed', String(maxClosed));
+    return spawnSync('node', args, { encoding: 'utf8' });
+  }
+
+  const closedTasks = (n) =>
+    Array.from({ length: n }, (_, i) => ({
+      name: `C${i}`,
+      url: `u${i}`,
+      percentage: 100,
+      status_type: 'closed',
+      status_name: 'Closed',
+      date_closed: 1700000000000 + i * 86400000,
+    }));
+
+  test('caps the Closed group to the N most recent by date_closed (desc)', () => {
+    const data = { first_run: false, achieved: [], not_achieved: [], short_term: [], all_tasks: closedTasks(5) };
+    const out = JSON.parse(runWith(data, { maxClosed: 3 }).stdout);
+    assert.equal(
+      out.tasks_by_status,
+      '**Closed**\n`[100%]` <u4|C4>\n`[100%]` <u3|C3>\n`[100%]` <u2|C2>'
+    );
+  });
+
+  test('does not cap non-closed groups', () => {
+    const tasks = ['O0', 'O1', 'O2', 'O3'].map((name, i) => ({
+      name,
+      url: `o${i}`,
+      percentage: 0,
+      status_type: 'open',
+      status_name: 'open',
+    }));
+    const data = { first_run: false, achieved: [], not_achieved: [], short_term: [], all_tasks: tasks };
+    const out = JSON.parse(runWith(data, { maxClosed: 3 }).stdout);
+    assert.equal(
+      out.tasks_by_status,
+      '**Open**\n`[0%]` <o0|O0>\n`[0%]` <o1|O1>\n`[0%]` <o2|O2>\n`[0%]` <o3|O3>'
+    );
+  });
+
+  test('absent --max-closed leaves the Closed group uncapped (back-compat)', () => {
+    const data = { first_run: false, achieved: [], not_achieved: [], short_term: [], all_tasks: closedTasks(5) };
+    const out = JSON.parse(runWith(data).stdout);
+    const itemLines = out.tasks_by_status.split('\n').filter((l) => l.startsWith('`'));
+    assert.equal(itemLines.length, 5);
+  });
+
+  test('caps closed-like custom-status groups too, most recent first', () => {
+    const data = {
+      first_run: false,
+      achieved: [],
+      not_achieved: [],
+      short_term: [],
+      all_tasks: [
+        { name: 'P0', url: 'p0', percentage: 100, status_type: 'custom', status_name: 'pending to production', date_closed: 200 },
+        { name: 'P1', url: 'p1', percentage: 100, status_type: 'custom', status_name: 'pending to production', date_closed: 300 },
+        { name: 'P2', url: 'p2', percentage: 100, status_type: 'custom', status_name: 'pending to production', date_closed: 100 },
+      ],
+    };
+    const out = JSON.parse(runWith(data, { closedLike: ['pending to production'], maxClosed: 2 }).stdout);
+    assert.equal(
+      out.tasks_by_status,
+      '**Pending To Production**\n`[100%]` <p1|P1>\n`[100%]` <p0|P0>'
+    );
+  });
+
+  test('sorts closed tasks with null date_closed last under the cap', () => {
+    const data = {
+      first_run: false,
+      achieved: [],
+      not_achieved: [],
+      short_term: [],
+      all_tasks: [
+        { name: 'NoDate', url: 'u0', percentage: 100, status_type: 'closed', status_name: 'Closed', date_closed: null },
+        { name: 'Older', url: 'u1', percentage: 100, status_type: 'closed', status_name: 'Closed', date_closed: 100 },
+        { name: 'Newer', url: 'u2', percentage: 100, status_type: 'closed', status_name: 'Closed', date_closed: 200 },
+      ],
+    };
+    const out = JSON.parse(runWith(data, { maxClosed: 2 }).stdout);
+    assert.equal(
+      out.tasks_by_status,
+      '**Closed**\n`[100%]` <u2|Newer>\n`[100%]` <u1|Older>'
+    );
+  });
+});
+
 describe('daily-slack-render — IO and validation errors', () => {
   test('exits 2 with usage message when no args', () => {
     const r = spawnSync('node', [SCRIPT], { encoding: 'utf8' });

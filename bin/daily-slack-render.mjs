@@ -27,12 +27,22 @@ function parseArgs(argv) {
   for (let i = 2; i < argv.length; i++) {
     if (argv[i] === '--data') args.data = argv[++i];
     else if (argv[i] === '--closed-like-statuses') args.closedLike = argv[++i];
+    else if (argv[i] === '--max-closed') args.maxClosed = argv[++i];
   }
   if (!args.data) {
     console.error('error: --data <path> is required');
     process.exit(2);
   }
   return args;
+}
+
+// Parses the optional `--max-closed` value. Absent, empty, non-numeric, or
+// non-positive values mean "no cap" (Infinity) so channels that don't opt in
+// keep the full status board.
+function parseMaxClosed(raw) {
+  if (raw == null || String(raw).trim() === '') return Infinity;
+  const n = Number.parseInt(String(raw).trim(), 10);
+  return Number.isFinite(n) && n > 0 ? n : Infinity;
 }
 
 const FIRST_RUN_BANNER = '_Primer reporte del sprint — sin línea base para comparar._';
@@ -123,6 +133,16 @@ function titleCase(s) {
     .join(' ');
 }
 
+// `date_closed` arrives as epoch-ms (number or numeric string) or null.
+// Normalize to a number for recency sorting; missing/invalid → -Infinity so
+// undated closed tasks sink below dated ones.
+function closedAt(t) {
+  const v = t?.date_closed;
+  if (v == null) return -Infinity;
+  const n = typeof v === 'number' ? v : Number(v);
+  return Number.isFinite(n) ? n : -Infinity;
+}
+
 // Groups every task in the sprint union by `status_name` and renders each
 // group under a bold header so the daily reader sees, at a glance, where
 // every task currently lives — not just the deltas. Tasks without a
@@ -131,7 +151,13 @@ function titleCase(s) {
 // Group order: descending max percentage, ties broken alphabetically by
 // display label. Within a group: descending percentage, ties broken by
 // case-insensitive task name.
-function renderTasksByStatus(all_tasks) {
+//
+// When `maxClosed` is finite, closed-like groups (status_type closed OR a
+// status_name listed in `closedLike`) are instead sorted by `date_closed`
+// descending — most recently completed first — and truncated to the cap.
+// Channels that don't set the cap (maxClosed === Infinity) keep the full,
+// percentage-sorted closed group, so the behavior is opt-in per channel.
+function renderTasksByStatus(all_tasks, closedLike, maxClosed = Infinity) {
   if (!Array.isArray(all_tasks) || all_tasks.length === 0) return '';
   const groups = new Map();
   for (const t of all_tasks) {
@@ -140,12 +166,13 @@ function renderTasksByStatus(all_tasks) {
     const key = raw.toLowerCase();
     let g = groups.get(key);
     if (!g) {
-      g = { label: titleCase(raw), max: -1, tasks: [] };
+      g = { label: titleCase(raw), max: -1, closedLike: false, tasks: [] };
       groups.set(key, g);
     }
     const pct = Number.isFinite(t.percentage) ? t.percentage : 0;
     if (pct > g.max) g.max = pct;
-    g.tasks.push({ name: t.name, url: t.url, percentage: pct });
+    if (isClosedLike(t, closedLike)) g.closedLike = true;
+    g.tasks.push({ name: t.name, url: t.url, percentage: pct, date_closed: closedAt(t) });
   }
   const ordered = [...groups.values()].sort((a, b) => {
     if (b.max !== a.max) return b.max - a.max;
@@ -153,11 +180,14 @@ function renderTasksByStatus(all_tasks) {
   });
   return ordered
     .map((g) => {
+      const capped = g.closedLike && Number.isFinite(maxClosed);
       const sorted = g.tasks.sort((a, b) => {
+        if (capped && b.date_closed !== a.date_closed) return b.date_closed - a.date_closed;
         if (b.percentage !== a.percentage) return b.percentage - a.percentage;
         return String(a.name).toLowerCase().localeCompare(String(b.name).toLowerCase());
       });
-      const lines = sorted.map((t) => `\`[${t.percentage}%]\` ${slackLink(t.url, t.name)}`).join('\n');
+      const shown = capped ? sorted.slice(0, maxClosed) : sorted;
+      const lines = shown.map((t) => `\`[${t.percentage}%]\` ${slackLink(t.url, t.name)}`).join('\n');
       return `**${g.label}**\n${lines}`;
     })
     .join('\n\n');
@@ -186,14 +216,14 @@ function renderShortTerm(short_term, closedLike) {
 }
 
 function main() {
-  const { data, closedLike } = parseArgs(process.argv);
+  const { data, closedLike, maxClosed } = parseArgs(process.argv);
   const d = parseJsonOrDie(readOrDie(data, '--data'), '--data');
   const closedLikeStatuses = loadClosedLikeStatuses(closedLike);
   const out = {
     achieved_goals: renderAchieved(d.achieved || [], !!d.first_run, d.meetings),
     not_achieved_goals: renderNotAchieved(d.not_achieved || []),
     short_term_goals: renderShortTerm(d.short_term || [], closedLikeStatuses),
-    tasks_by_status: renderTasksByStatus(d.all_tasks || []),
+    tasks_by_status: renderTasksByStatus(d.all_tasks || [], closedLikeStatuses, parseMaxClosed(maxClosed)),
   };
   process.stdout.write(JSON.stringify(out) + '\n');
 }
