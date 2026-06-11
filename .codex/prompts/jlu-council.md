@@ -1,5 +1,5 @@
 ---
-description: "Use to convene a multi-model jury on a software architecture idea — heterogeneous judges refute it against the real repo and issue a GO/GO_WITH_CONDITIONS/NO_GO verdict."
+description: "Use to convene a multi-model jury on a software architecture idea — a deliberation session where heterogeneous judges refute it round after round until the user and jury reach consensus (GO/GO_WITH_CONDITIONS/NO_GO), then hands a cleared idea off exclusively to /jlu-new-task."
 argument-hint: "<idea text | path-to-idea-file> [--context <path>] [--services a,b]"
 ---
 Resolve the workflow file in this order, and use the first one that exists:

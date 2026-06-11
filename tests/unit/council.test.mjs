@@ -16,6 +16,7 @@ import { EventEmitter } from 'node:events';
 
 import {
   DEFAULTS,
+  VERDICT_SCHEMA,
   generateSlug,
   wordCount,
   sameFamilyAsArbiter,
@@ -29,8 +30,10 @@ import {
   killWithEscalation,
   resolveRunsDir,
   makeRunDir,
+  resolveRoundDir,
   detectJudges,
   fanOutApi,
+  parseArgs,
 } from '../../bin/council.mjs';
 
 const tmp = () => mkdtempSync(join(tmpdir(), 'council-test-'));
@@ -188,7 +191,7 @@ describe('composeBrief', () => {
 });
 
 describe('parseJudgeJson', () => {
-  const good = { verdict: 'NO_GO', refutations: ['r'], tradeoffs: [], conditions: [], evidence_from_repo: [] };
+  const good = { verdict: 'NO_GO', refutations: ['r'], tradeoffs: [], conditions: [], evidence_from_repo: [], uncertainties: [] };
 
   test('parses raw JSON', () => {
     const res = parseJudgeJson(JSON.stringify(good));
@@ -250,6 +253,54 @@ describe('killWithEscalation', () => {
   });
 });
 
+describe('parseArgs flag validation', () => {
+  const run = (...flags) => parseArgs(['node', 'council.mjs', 'an idea', ...flags]);
+
+  test('rejects a flag with no value instead of swallowing the next token', () => {
+    assert.throws(() => run('--context'), /--context requires a value/);
+    assert.throws(() => run('--session-dir'), /--session-dir requires a value/);
+    assert.throws(() => run('--context', '--services'), /--context requires a value/);
+  });
+
+  test('--round must be a positive integer with a value', () => {
+    assert.throws(() => run('--round', 'abc'), /--round must be a positive integer/);
+    assert.throws(() => run('--round', '0'), /--round must be a positive integer/);
+    assert.throws(() => run('--round'), /--round requires a value/);
+  });
+
+  test('parses a multi-round session invocation', () => {
+    const parsed = run('--session-dir', '/tmp/s', '--round', '3', '--services', 'a,b');
+    assert.equal(parsed.sessionDir, '/tmp/s');
+    assert.equal(parsed.round, 3);
+    assert.deepEqual(parsed.services, ['a', 'b']);
+    assert.equal(parsed.idea, 'an idea');
+  });
+
+  test('defaults: no session dir, round 1', () => {
+    const parsed = run();
+    assert.equal(parsed.sessionDir, null);
+    assert.equal(parsed.round, 1);
+  });
+});
+
+describe('VERDICT_SCHEMA', () => {
+  test('requires uncertainties so blind judges flag what they cannot verify', () => {
+    assert.ok(VERDICT_SCHEMA.required.includes('uncertainties'), 'uncertainties is required');
+    assert.ok(VERDICT_SCHEMA.properties.uncertainties, 'uncertainties is a declared property');
+    assert.equal(VERDICT_SCHEMA.properties.uncertainties.type, 'array');
+    assert.equal(VERDICT_SCHEMA.additionalProperties, false, 'strict schema, no extra fields');
+  });
+});
+
+describe('resolveRoundDir', () => {
+  test('groups every round under one session dir as round-<n>', () => {
+    const session = '/vault/council/my-idea';
+    assert.equal(resolveRoundDir({ sessionDir: session, round: 1 }), join(session, 'round-1'));
+    assert.equal(resolveRoundDir({ sessionDir: session, round: 3 }), join(session, 'round-3'));
+    assert.equal(resolveRoundDir({ sessionDir: session }), join(session, 'round-1'), 'defaults to round 1');
+  });
+});
+
 describe('resolveRunsDir / makeRunDir', () => {
   test('config.runs_dir wins, then workspace, then cwd fallback', () => {
     const cwd = tmp();
@@ -295,6 +346,7 @@ describe('fanOutApi against a mocked OpenRouter (E2E-lite)', () => {
     tradeoffs: ['cost'],
     conditions: ['add tests'],
     evidence_from_repo: ['case file'],
+    uncertainties: [],
   };
   let server;
   let baseUrl;
@@ -345,7 +397,11 @@ describe('fanOutApi against a mocked OpenRouter (E2E-lite)', () => {
       prompt: 'brief',
       apiKey: 'sk-test',
       baseUrl,
-      timeoutMs: 400,
+      // Headroom, not speed: only mock/slow should time out (it never responds). Under a
+      // loaded event loop a tight budget lets the responsive mocks (esp. the 429) lose the
+      // race to AbortSignal and misclassify as 'timeout'. 2s keeps mock/slow bounded while
+      // the others reliably win.
+      timeoutMs: 2000,
       maxTokens: 100,
       dataCollection: 'deny',
     });

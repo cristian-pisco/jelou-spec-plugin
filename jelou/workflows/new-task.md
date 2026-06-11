@@ -174,8 +174,26 @@ After service registration (or if already registered):
 ## Step 3 — Prompt for Task Details
 
 1. **Task description**:
-   - If provided as the command argument, use it as the seed.
-   - If not provided, ask the user:
+   - **Council seed detection (run first).** A `/jlu-council` session that reached consensus
+     writes a self-sufficient seed at
+     `<WORKSPACE_PATH>/.spec-workspace/council/<slug>/new-task-seed.md` (or, with no workspace,
+     `<cwd>/council-runs/<slug>/new-task-seed.md`). This is the council's fresh-window handoff:
+     the full task context lives on disk so it can be reloaded into a clean session.
+     a. If the command argument names or points at a `new-task-seed.md` path, read that file directly.
+     b. Otherwise glob both council roots — `<WORKSPACE_PATH>/.spec-workspace/council/*/new-task-seed.md`
+        and `<cwd>/council-runs/*/new-task-seed.md` — for seeds NOT yet consumed (no sibling
+        `new-task-seed.consumed.md`). `<WORKSPACE_PATH>` is the `workspace` field resolved in Step 1, so
+        this matches exactly where `/jlu-council` writes. 2-pass: shortlist filenames, read only the chosen one.
+     c. If one or more pending seeds exist and none was passed explicitly, ask via `question`
+        (most recent first, labelled by idea + timestamp) whether to seed from the council outcome
+        or start fresh.
+   - **When a council seed is selected:** read it; set `TASK_DESCRIPTION` from its refined idea;
+     fold its accepted conditions, surviving trade-offs and in-scope services into the interview
+     prefill/hints so the interview is short and grounded; keep its `COUNCIL_REPORT.md` pointer for
+     reference; then mark the seed consumed by renaming it to `new-task-seed.consumed.md` so it is
+     never re-offered.
+   - Else if provided as the command argument, use it as the seed.
+   - Else, ask the user:
      > "Describe the task you want to create:"
 2. **Sprint number**:
    - Infer a recommended sprint from the latest `- Sprint:` value found in existing `TASKS.md` files under `<WORKSPACE_PATH>/specs/`.

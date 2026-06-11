@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.212] — 2026-06-11
+
+### Added
+- council runs as a multi-round deliberation session looping to user+jury consensus, then routes exclusively to /jlu-new-task (never superpowers/GSD/gstack)
+- judges declare unverifiable facts in a new uncertainties field instead of assuming; the arbiter researches each via Perplexity/web and folds findings into the deliberation before the next round
+- fresh-context handoff: a self-sufficient new-task seed is written and auto-detected by /jlu-new-task in a new session, reloading full task context into a clean window
+- engine: --session-dir/--round group rounds under one session dir, parseArgs rejects missing flag values
+
 ## [0.3.211] — 2026-06-10
 
 ### Added

@@ -17,5 +17,7 @@ Command arguments: $ARGUMENTS
 Current directory is the project working directory.
 
 Use `question` for user prompts (OpenCode equivalent of question).
+For the workflow's uncertainty research (§4.3), use OpenCode's web search (or Perplexity if connected); if no web tool is available, declare the uncertainty unresolved — never assume.
+On consensus the only onward command is `/jlu-new-task` — never route to another plugin.
 Execute the workflow inline — you are the arbiter; the design forbids delegating the synthesis to a sub-agent.
 Always reference commands with the `jlu-` prefix (never `jlu:`).

@@ -55,16 +55,22 @@ export const DEFAULTS = {
 
 const VERDICT_TOKENS = ['GO', 'GO_WITH_CONDITIONS', 'NO_GO'];
 
-const VERDICT_SCHEMA = {
+// `uncertainties` is the hinge of the deliberation loop: judges have no live
+// web access, so instead of assuming a fact they cannot verify they declare it
+// here. The arbiter researches each one between rounds and folds the answer
+// back into the case file. Required (empty array when none) so strict-schema
+// judges always emit the field.
+export const VERDICT_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['verdict', 'refutations', 'tradeoffs', 'conditions', 'evidence_from_repo'],
+  required: ['verdict', 'refutations', 'tradeoffs', 'conditions', 'evidence_from_repo', 'uncertainties'],
   properties: {
     verdict: { type: 'string', enum: VERDICT_TOKENS },
     refutations: { type: 'array', items: { type: 'string' } },
     tradeoffs: { type: 'array', items: { type: 'string' } },
     conditions: { type: 'array', items: { type: 'string' } },
     evidence_from_repo: { type: 'array', items: { type: 'string' } },
+    uncertainties: { type: 'array', items: { type: 'string' } },
   },
 };
 
@@ -247,6 +253,14 @@ export function makeRunDir(baseDir, slug) {
   return dir;
 }
 
+// A consensus session spans several rounds; --session-dir pins them all under
+// one folder (round-1, round-2, …) so the transcript reads in order and the
+// arbiter can re-inject prior rounds as context. Without --session-dir the
+// engine keeps its single-shot per-invocation slug dir (backward compatible).
+export function resolveRoundDir({ sessionDir, round = 1 }) {
+  return join(sessionDir, `round-${round}`);
+}
+
 function defaultWhich(bin) {
   return (process.env.PATH || '').split(':').some((dir) => {
     try {
@@ -423,18 +437,43 @@ function runCliJudge(kind, prompt, { cwd, timeoutMs }) {
   });
 }
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const args = argv.slice(2);
   let idea = '';
   const contextPaths = [];
   let services = [];
+  let sessionDir = null;
+  let round = 1;
+
+  // A flag's value must exist and must not be another flag. Without this a
+  // trailing `--context` (or `--context --services`) silently swallows a flag
+  // or pushes `undefined`, which only blows up later in buildCaseFile — and a
+  // valueless `--session-dir` would silently downgrade the run to single-shot.
+  const takeValue = (i, flag) => {
+    const value = args[i + 1];
+    if (value === undefined || value.startsWith('--')) {
+      throw new Error(`option ${flag} requires a value`);
+    }
+    return value;
+  };
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === '--context') {
-      contextPaths.push(args[++i]);
+      contextPaths.push(takeValue(i, '--context'));
+      i++;
     } else if (arg === '--services') {
-      services = (args[++i] || '').split(',').map((s) => s.trim()).filter(Boolean);
+      services = takeValue(i, '--services').split(',').map((s) => s.trim()).filter(Boolean);
+      i++;
+    } else if (arg === '--session-dir') {
+      sessionDir = takeValue(i, '--session-dir');
+      i++;
+    } else if (arg === '--round') {
+      round = Number.parseInt(takeValue(i, '--round'), 10);
+      if (!Number.isInteger(round) || round < 1) {
+        throw new Error('--round must be a positive integer');
+      }
+      i++;
     } else if (arg.startsWith('--')) {
       throw new Error(`unknown option: ${arg}`);
     } else if (!idea) {
@@ -453,14 +492,14 @@ function parseArgs(argv) {
   if (existsSync(idea) && statSync(idea).isFile()) {
     idea = readFileSync(idea, 'utf8');
   }
-  return { idea, contextPaths, services };
+  return { idea, contextPaths, services, sessionDir, round };
 }
 
 async function main() {
   const cwd = process.cwd();
   let exitCode = 0;
   try {
-    const { idea, contextPaths, services } = parseArgs(process.argv);
+    const { idea, contextPaths, services, sessionDir, round } = parseArgs(process.argv);
     const workspaceRoot = findWorkspaceRoot(cwd);
     const config = loadConfig({ cwd, workspaceRoot });
 
@@ -484,9 +523,17 @@ async function main() {
     const apiBrief = composeBrief({ template, idea, expediente, agentic: false });
     const cliBrief = composeBrief({ template, idea, expediente, agentic: true });
 
-    const runsBase = resolveRunsDir({ config, workspaceRoot, cwd });
-    mkdirSync(runsBase, { recursive: true });
-    const runDir = makeRunDir(runsBase, generateSlug(idea) || 'council-run');
+    let runsBase;
+    let runDir;
+    if (sessionDir) {
+      runsBase = sessionDir;
+      runDir = resolveRoundDir({ sessionDir, round });
+      mkdirSync(runDir, { recursive: true });
+    } else {
+      runsBase = resolveRunsDir({ config, workspaceRoot, cwd });
+      mkdirSync(runsBase, { recursive: true });
+      runDir = makeRunDir(runsBase, generateSlug(idea) || 'council-run');
+    }
     writeFileSync(join(runDir, 'prompt.md'), apiBrief);
 
     const work = [];
@@ -529,7 +576,8 @@ async function main() {
     }
 
     const manifest = {
-      slug: basename(runDir),
+      slug: basename(sessionDir || runDir),
+      round,
       timestamp: new Date().toISOString(),
       config: { ...config, runs_dir: runsBase },
       inventory,
@@ -538,8 +586,8 @@ async function main() {
     writeFileSync(join(runDir, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
 
     const okCount = envelopes.filter((e) => e.status === 'ok').length;
-    process.stderr.write(`council: ${okCount}/${envelopes.length} judges ok → ${runDir}\n`);
-    process.stdout.write(JSON.stringify({ run_dir: runDir, inventory, envelopes }) + '\n');
+    process.stderr.write(`council: round ${round} — ${okCount}/${envelopes.length} judges ok → ${runDir}\n`);
+    process.stdout.write(JSON.stringify({ run_dir: runDir, round, inventory, envelopes }) + '\n');
 
     if (okCount === 0) {
       process.stderr.write('council: zero judges returned ok — nothing to arbitrate.\n');

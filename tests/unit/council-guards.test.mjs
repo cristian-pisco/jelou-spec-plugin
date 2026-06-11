@@ -42,6 +42,18 @@ describe('council brief — jelou/references/council-brief.md', () => {
     const brief = mustRead('jelou/references/council-brief.md');
     assert.match(brief, /do not invoke or delegate to any skills, tools, agents, or councils/i);
   });
+
+  test('forbids assuming facts and demands an uncertainties field instead', () => {
+    const brief = mustRead('jelou/references/council-brief.md');
+    assert.match(brief, /do not assume/i);
+    assert.match(brief, /uncertainties/);
+    assert.match(brief, /no live web access/i);
+  });
+
+  test('tells judges to read the accumulating deliberation as established ground', () => {
+    const brief = mustRead('jelou/references/council-brief.md');
+    assert.match(brief, /Deliberation so far/i);
+  });
 });
 
 describe('council workflow — jelou/workflows/council.md', () => {
@@ -104,6 +116,58 @@ describe('council workflow — jelou/workflows/council.md', () => {
     assert.match(wf, /agéntico/);
     assert.match(wf, /expediente-only/);
   });
+
+  test('runs a multi-round deliberation loop to consensus', () => {
+    const wf = mustRead('jelou/workflows/council.md');
+    assert.match(wf, /consensus/i);
+    assert.match(wf, /round/i);
+    assert.match(wf, /repeat to consensus|until.*consensus/i);
+  });
+
+  test('caps the loop so it always terminates', () => {
+    const wf = mustRead('jelou/workflows/council.md');
+    assert.match(wf, /round cap|hard cap/i);
+  });
+
+  test('arbiter researches judge uncertainties via web/Perplexity and never assumes', () => {
+    const wf = mustRead('jelou/workflows/council.md');
+    assert.match(wf, /uncertaint/i);
+    assert.match(wf, /Perplexity/);
+    assert.match(wf, /web search/i);
+    assert.match(wf, /never assume|assumes/i);
+  });
+
+  test('onward routing is exclusive to /jlu-new-task and forbids other plugins', () => {
+    const wf = mustRead('jelou/workflows/council.md');
+    assert.match(wf, /jlu-new-task/);
+    assert.match(wf, /exclusiv/i);
+    assert.match(wf, /superpowers/i);
+    assert.match(wf, /gstack/i);
+    assert.match(wf, /GSD/);
+  });
+
+  test('hands off via a self-sufficient seed so new-task can start in a fresh context window', () => {
+    const wf = mustRead('jelou/workflows/council.md');
+    assert.match(wf, /new-task-seed\.md/);
+    assert.match(wf, /self-sufficient/i);
+    assert.match(wf, /fresh (window|session|context)/i);
+    assert.match(wf, /cannot run inside a sub-agent/i);
+  });
+
+  test('persists arbiter research to deliberation.md before the user question', () => {
+    const wf = mustRead('jelou/workflows/council.md');
+    assert.match(wf, /Researched facts/);
+    assert.match(wf, /deliberation\.md/);
+  });
+});
+
+describe('new-task council-seed bridge — jelou/workflows/new-task.md', () => {
+  test('auto-detects a pending council seed and reloads it into a fresh window', () => {
+    const wf = mustRead('jelou/workflows/new-task.md');
+    assert.match(wf, /new-task-seed\.md/);
+    assert.match(wf, /council/i);
+    assert.match(wf, /new-task-seed\.consumed\.md/);
+  });
 });
 
 describe('council skill — skills/council/SKILL.md', () => {
@@ -116,6 +180,20 @@ describe('council skill — skills/council/SKILL.md', () => {
   test('preloads AskUserQuestion via ToolSearch like sibling skills', () => {
     const skill = mustRead('skills/council/SKILL.md');
     assert.match(skill, /select:AskUserQuestion/);
+  });
+
+  test('grants the arbiter web research and the new-task handoff tools', () => {
+    const skill = mustRead('skills/council/SKILL.md');
+    assert.match(skill, /WebSearch/);
+    assert.match(skill, /- Skill/);
+    assert.match(skill, /new-task/);
+  });
+
+  test('binds onward routing exclusively to new-task and bans other plugins', () => {
+    const skill = mustRead('skills/council/SKILL.md');
+    assert.match(skill, /ONLY onward routing/i);
+    assert.match(skill, /superpowers/i);
+    assert.match(skill, /gstack/i);
   });
 });
 
