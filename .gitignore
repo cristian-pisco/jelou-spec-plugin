@@ -16,5 +16,8 @@ test-results/
 # Tracing — workspace-local span store, never commit raw traces
 .traces/
 
+# Council — local run output (reports, manifests, per-judge envelopes), never committed
+council-runs/
+
 # Docs — design/spec/plan docs are kept local, not version-controlled
 docs/
