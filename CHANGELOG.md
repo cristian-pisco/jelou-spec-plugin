@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.213] — 2026-06-13
+
+### Added
+- docker-exec launcher + auto-derived dev blocks; auth captcha fallback + thread-id Gmail OTP read
+
 ## [0.3.212] — 2026-06-11
 
 ### Added

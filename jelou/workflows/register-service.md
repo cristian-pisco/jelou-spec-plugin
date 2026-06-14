@@ -76,10 +76,14 @@ Two `question` calls:
 
 ## Step 7 — Ask for command
 
-Use `question` (free-text). Default depends on runtime:
+Use `question` (free-text). Default depends on runtime. **Use the detected package manager
+from Step 4 (`inferDefaults.packageManager`) — never hardcode `npm`.** Its run prefix is
+`npm run` / `yarn` / `pnpm` / `bun run`; the script name is the service's dev script
+(`start:dev` for NestJS, `dev` for Vite/Next). Booting a yarn command on an npm project (or
+vice-versa) is a real failure.
 
 - `host`: `suggestedCommand` from inference, or empty.
-- `docker-compose`: `docker compose -f {compose_file} up -d && docker compose -f {compose_file} exec {compose_service} npm run start:dev` (use the compose values from Step 6).
+- `docker-compose`: `docker compose -f {compose_file} up -d && docker compose -f {compose_file} exec {compose_service} {run-prefix} {dev-script}` (use the compose values from Step 6 and the detected package manager). Example for an npm/NestJS service: `… exec app npm run start:dev`.
 
 ## Step 8 — Ask for env_file
 

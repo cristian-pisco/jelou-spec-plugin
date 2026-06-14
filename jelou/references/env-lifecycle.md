@@ -71,12 +71,56 @@ Data-isolation guard — if any service declares `dev.data_isolation: shared` an
 
 ## `boot(service_boot_order)`
 
-For each service in order:
+Every service in the boot order MUST have a `dev` block (declared, or just-derived-and-persisted
+by the orchestrator — see `production-like.md` Phase 1). **Booting an unregistered service by
+improvising a launcher/command is forbidden** — guessing `yarn` on an npm project is the exact
+failure this contract prevents.
+
+**Boot and teardown share one shell.** The boot routine, the test execution, and the teardown
+trap all run in the **same** long-lived shell — the one that holds the lock fd (`exec 9>…; flock`)
+and registers `trap … EXIT INT TERM`. This matters for `docker-exec`: a backgrounded
+`docker compose exec` keeps the in-container dev server alive only while its host-side client
+process lives, so boot must not run in a separate Bash invocation from the suite.
+
+Boot records what it starts in the two arrays the teardown trap consumes (`declare -A` them in
+this shell, alongside the trap):
+- `BOOTED+=(<service>)` — order, for teardown iteration.
+- `TEARDOWN_CMD[<service>]="<per-launcher teardown command>"` — what to run to stop it.
+
+A service is added to these arrays **only when this run actually started it** — so a `docker-exec`
+service that boot found already serving is never torn down by this run.
+
+For each service in order, branch on `dev.launcher`:
 
 ```
-Run dev.command (or derived `docker compose -f <compose_file> up -d <service>` when launcher: docker)
-Capture stdout/stderr to <LOG_DIR>/launch-<service>.log
-Wait for readiness:
+launcher: docker
+  docker compose -f <compose_file> up -d <service>            # derived from the docker block
+  Capture to <LOG_DIR>/launch-<service>.log. Wait for readiness (below).
+  BOOTED+=(<service>); TEARDOWN_CMD[<service>]="docker compose -f <compose_file> stop <service>"
+
+launcher: docker-exec        # idle dev container (CMD sleep infinity); app is exec'd in
+  docker compose -f <compose_file> up -d <service>            # idempotent; brings the idle container up
+  # Idempotency probe — is the dev server ALREADY running? Probe liveness independently of
+  # ready_signal.type: a stdout_match signal has no log to tail before the exec, so it can never
+  # report "already up". Use an in-container process check (preferred) or a host-port probe:
+  #   docker compose -f <compose_file> exec -T <service> pgrep -f '<proc-from-dev.teardown>'  >/dev/null 2>&1
+  If already running → skip the exec AND skip the BOOTED/TEARDOWN registration (this run did not
+    start it; leave it as found). Still wait for readiness (below) to confirm it's serving.
+  Else:
+    docker compose -f <compose_file> exec -T <service> sh -lc '<dev.command>' \
+      > <LOG_DIR>/launch-<service>.log 2>&1 &                 # start the dev server INSIDE the container
+    BOOTED+=(<service>); TEARDOWN_CMD[<service>]="<dev.teardown>"   # registered ONLY because we started it
+  Wait for readiness (below) from the HOST (the container's mapped port / the captured log).
+
+launcher: npm | make | shell
+  set -a; for f in dev.env_files (default [.env, .env.e2e]): [ -f "$f" ] && . "./$f"; set +a
+  Run `<dev.command>` in the worktree, backgrounded. Capture to <LOG_DIR>/launch-<service>.log.
+  Wait for readiness (below).
+  BOOTED+=(<service>); TEARDOWN_CMD[<service>]="<dev.teardown>"
+```
+
+Readiness (all launchers):
+```
   health_url    -> poll until 2xx, or ready_timeout_s
   port_open     -> TCP connect until success, or ready_timeout_s
   http_200      -> poll until 2xx on port:path, or ready_timeout_s
@@ -84,16 +128,41 @@ Wait for readiness:
 On timeout: abort with STATUS: BLOCKED, reason: ready_timeout for <service>.
 ```
 
+For `docker-exec`, readiness is host-side: `http_200`/`port_open` use the **mapped host port**;
+`stdout_match` tails the captured exec log. The app's root route often 404s (NestJS), so prefer
+`stdout_match` (e.g. `Nest application successfully started`) over `http_200` on `/`. (The
+idempotency probe above is a *separate*, type-independent liveness check — not the readiness
+signal — precisely because a `stdout_match` signal has no log to read before the exec.)
+
 One container per service. Services declaring `data_isolation: per-run` get a fresh
 state on boot — this is the frugal isolation model; do NOT layer extra containers.
 
 ## `teardown(booted_services)`
 
-Deterministic, on every exit path (`trap '<teardown>' EXIT INT TERM`):
+Deterministic, on every exit path. The trap iterates the `BOOTED[]` array boot populated and runs
+each service's registered `TEARDOWN_CMD[<service>]` (so a `docker-exec` service boot found already
+serving — and never added — is correctly left running):
+
+```bash
+trap '
+  for svc in "${BOOTED[@]}"; do
+    eval "${TEARDOWN_CMD[$svc]}" >/dev/null 2>&1 || true
+  done
+  # … lock release …
+' EXIT INT TERM
+```
+
+The per-launcher `TEARDOWN_CMD` boot registers:
 
 ```bash
 # launcher: docker
-cd <worktree> && docker compose -f <compose_file> stop <service>
+docker compose -f <compose_file> stop <service>
+
+# launcher: docker-exec
+# Stop ONLY the dev process this run started; never `docker compose down`/`rm` — these are
+# long-lived dev containers the developer owns. Registered (per boot) only when this run execed.
+<dev.teardown>                                                 # e.g. docker compose -f <cf> exec -T <svc> pkill -f 'nest start'
+
 # launcher: npm | make | shell
 <dev.teardown>
 ```

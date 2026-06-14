@@ -101,6 +101,38 @@ dev:
 
 NestJS apps usually expose `/health` via `@nestjs/terminus`. If the consumer doesn't have it set up, the implementer adds it during GREEN — it's a 5-line change.
 
+### NestJS in an idle dev container (`launcher: docker-exec`)
+
+The common Jelou backend pattern: `Dockerfile.dev` ends in `CMD sleep infinity`, the source is
+volume-mounted, and the dev server is started **inside** the already-running container. Use
+`docker-exec`, not `docker` (which would only `up -d` the idle container and never start the app).
+
+```yaml
+dev:
+  launcher: docker-exec
+  docker:
+    service: app
+    compose_file: docker-compose.yml
+  command: npm run start:dev        # detected from the lockfile — NOT assumed (yarn ≠ npm)
+  teardown: docker compose -f docker-compose.yml exec -T app pkill -f 'nest start' || true
+  ready_signal:
+    type: stdout_match              # checked against the captured exec log
+    pattern: "Nest application successfully started"
+  ready_timeout_s: 90               # nest start --watch + swc compile is slow on cold cache
+  ram_estimate_mb: 350
+  data_isolation: none
+```
+
+**Why `stdout_match`, not `http_200` on `/`:** a NestJS app with no root controller returns
+`404` on `/`, so an `http_200` health check on `/` would *never* pass and the boot would time
+out even though the app is up. Match the bootstrap log line instead. `nest start --watch` and
+`nest start -b swc -w` both print `[NestApplication] Nest application successfully started`
+once the server is listening. (`port_open` also lies here — the container's port is mapped
+before the Node process binds it.)
+
+If the app *does* expose a health route, `health_url: http://localhost:<mapped-host-port>/health`
+(the **host** port, e.g. `8787`, not the container's `8080`) is the stronger signal.
+
 ### Laravel (PHP)
 
 ```yaml

@@ -10,7 +10,8 @@
 //      UI_WORKTREE; optional LOGIN_PATH (default /login), OTP_WAIT_S (180).
 // Exit codes (see lib EXIT): 0 ok · 41 auth rejected / HTTP 401 ·
 //      42 OTP never arrived · 43 OTP rejected · 44 login form not found ·
-//      2 misconfig.
+//      47 blocked by captcha/Turnstile (→ orchestrator uses the consumer capture
+//      flow) · 2 misconfig.
 //
 // Secrets: TEST_PASSWORD is read from the environment and typed into the
 // browser; it is never printed. Do not add logging of field values.
@@ -34,6 +35,26 @@ async function clickSubmit(page) {
     return;
   }
   await page.getByRole('button', { name: SUBMIT_NAME_RE }).first().click();
+}
+
+// Cloudflare Turnstile / reCAPTCHA / hCaptcha widgets. A *visible* challenge is
+// what blocks a headless login — the orchestrator falls back to the consumer's
+// capture flow (real Chrome + human) on EXIT.CAPTCHA_BLOCKED rather than
+// misreporting "form not found" or burning OTP retries.
+const CAPTCHA_SELECTORS = [
+  'iframe[src*="challenges.cloudflare.com"]',
+  '.cf-turnstile',
+  'iframe[title*="Cloudflare"]',
+  'iframe[src*="recaptcha"]',
+  '.g-recaptcha',
+  'iframe[src*="hcaptcha.com"]',
+  '.h-captcha',
+];
+async function captchaPresent(page) {
+  for (const sel of CAPTCHA_SELECTORS) {
+    if (await page.locator(sel).first().isVisible().catch(() => false)) return true;
+  }
+  return false;
 }
 
 async function main() {
@@ -78,6 +99,12 @@ async function main() {
     }
     const passwordVisible = await password.isVisible().catch(() => false);
     if (!emailVisible || !passwordVisible) {
+      // A full-page Cloudflare/captcha interstitial replaces the login form: route
+      // to the capture fallback, not the "where is the login form?" feedback loop.
+      if (await captchaPresent(page)) {
+        console.error('login: blocked by a captcha/Turnstile challenge before the login form');
+        return finish(EXIT.CAPTCHA_BLOCKED);
+      }
       console.error('login: email/password fields not found on the login page');
       return finish(EXIT.LOGIN_FORM_NOT_FOUND);
     }
@@ -95,6 +122,13 @@ async function main() {
     ]).catch(() => 'stuck');
 
     if (outcome === 'stuck') {
+      // An invisible Turnstile that decides to challenge surfaces here (post-submit,
+      // neither OTP nor dashboard). Distinguish it from a credential rejection so the
+      // orchestrator can hand off to the consumer's capture flow.
+      if (await captchaPresent(page)) {
+        console.error('login: blocked by a captcha/Turnstile challenge after submit');
+        return finish(EXIT.CAPTCHA_BLOCKED);
+      }
       console.error(sawAuthReject ? 'login: credentials rejected (HTTP 401)' : 'login: neither OTP screen nor dashboard appeared');
       return finish(sawAuthReject ? EXIT.AUTH_REJECTED : EXIT.LOGIN_FORM_NOT_FOUND);
     }

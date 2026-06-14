@@ -13,8 +13,16 @@ import { pairSpans } from '../../bin/lib/trace/aggregate.mjs';
 
 const FIX = 'tests/fixtures/trace/rules-sample.jsonl';
 
+// Rebase fixture timestamps onto "now" so the 24h-lookback rules (immediate_flag)
+// stay time-stable: the fixture's span range is ~1h, far under any window, so
+// shifting every ts by (now - maxTs) preserves durations while landing the
+// newest span at ~now and the blocked span inside the 24h window.
 function loadPairs() {
-  return pairSpans([...readSpans(FIX)]);
+  const spans = [...readSpans(FIX)];
+  const maxTs = Math.max(...spans.map((s) => Date.parse(s.ts)));
+  const offset = Date.now() - maxTs;
+  for (const s of spans) s.ts = new Date(Date.parse(s.ts) + offset).toISOString();
+  return pairSpans(spans);
 }
 
 describe('RULES constants', () => {

@@ -14,8 +14,8 @@ services:
       compose_file: docker-compose.yml  # relative to repo root; default
       port_env: APP_PORT           # env var for the exposed port; default
     dev:                           # optional — required by /jlu-ui-qa-run; absence = service is skipped by E2E orchestration
-      launcher: docker             # docker | npm | make | shell
-      command: npm run dev         # required when launcher != docker; derived from `docker` when launcher: docker
+      launcher: docker             # docker | docker-exec | npm | make | shell
+      command: npm run dev         # required when launcher != docker; runs INSIDE the container when launcher: docker-exec
       teardown: pkill -f 'npm run dev'   # required when launcher != docker; derived from `docker` when launcher: docker
       health_url: http://localhost:4001/health  # OR ready_signal below
       ready_signal:
@@ -40,8 +40,8 @@ services:
 | `docker.compose_file` | string | no | Path to the Compose file relative to the repo root. Default: `docker-compose.yml`. |
 | `docker.port_env` | string | no | Environment variable name for the exposed host port. Default: `APP_PORT`. |
 | `dev` | object | no | Dev-server orchestration block. Required by the UI QA workflow's `/jlu-ui-qa-run`; ignored by other workflows. Services without a `dev` block are skipped by E2E orchestration. See `jelou/references/dev-block-schema.md` for the full contract. |
-| `dev.launcher` | enum | conditional | `docker` \| `npm` \| `make` \| `shell`. Required if `dev` is present. When `docker`, `command`/`teardown`/port are derived from the sibling `docker` block. |
-| `dev.command` | string | conditional | Boot command. Required when `launcher != docker`. |
+| `dev.launcher` | enum | conditional | `docker` \| `docker-exec` \| `npm` \| `make` \| `shell`. Required if `dev` is present. When `docker`, `command`/`teardown`/port are derived from the sibling `docker` block. `docker-exec` is for idle dev containers (`CMD sleep infinity`): boot `up -d`s the container then execs `command` inside it. |
+| `dev.command` | string | conditional | Boot command. Required when `launcher != docker`. For `docker-exec`, runs **inside** the container (must use the service's real package manager). |
 | `dev.teardown` | string | conditional | Shutdown command. Required when `launcher != docker`. |
 | `dev.health_url` | string | conditional | HTTP URL polled for 2xx response as the readiness signal. Either this or `ready_signal` is required. |
 | `dev.ready_signal` | object | conditional | Alternative to `health_url`. Either this or `health_url` is required. |
@@ -86,6 +86,23 @@ services:
       ram_estimate_mb: 600
       data_isolation: none
 
+  - id: datum-service
+    path: ../datum-service
+    stack: nestjs
+    dev:                            # idle dev container: `up -d` then exec the dev server in
+      launcher: docker-exec
+      docker:
+        service: app
+        compose_file: docker-compose.yml
+      command: npm run start:dev    # package-manager-detected, never assumed
+      teardown: docker compose -f docker-compose.yml exec -T app pkill -f 'nest start' || true
+      ready_signal:
+        type: stdout_match
+        pattern: "Nest application successfully started"
+      ready_timeout_s: 90
+      ram_estimate_mb: 350
+      data_isolation: none
+
   - id: service-payments
     path: ../service-payments
     stack: laravel
@@ -99,4 +116,4 @@ services:
 - Paths are relative to the `.spec-workspace/` directory.
 - Relationships between services (API calls, events, shared schemas) are not stored here. They are discovered by reading each service's `INTEGRATIONS.md` under `.spec-workspace/services/<service-id>/codebase/`.
 - If a spec or codebase doc references a service not in the registry, the plugin warns and offers to register it (Decision #39).
-- The `dev` block is consumed by the UI QA workflow for E2E test orchestration. Other jelou workflows ignore it. Services without a `dev` block remain valid; they are simply skipped when E2E orchestration runs.
+- The `dev` block is consumed by the UI QA workflow for E2E test orchestration. Other jelou workflows ignore it. Services without a `dev` block remain valid; `/jlu-ui-qa-run` skips a non-UI service that lacks one, while `/jlu-production-like` derives and (with your OK) persists one for any boot-order service that is missing it (step 8b) instead of skipping.

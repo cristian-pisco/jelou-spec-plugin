@@ -38,6 +38,7 @@ describe('EXIT codes', () => {
       LOGIN_FORM_NOT_FOUND: 44,
       SECRET_MISMATCH: 45,
       MONGO_UNREACHABLE: 46,
+      CAPTCHA_BLOCKED: 47,
     });
   });
 });

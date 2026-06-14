@@ -80,10 +80,38 @@ When the consumer's login requires an emailed OTP (no `/api/test/login`, no test
 
 1. `bin/e2e-session-probe.mjs` checks the stored session against `E2E_BASE_URL`.
 2. If invalid, `bin/e2e-login.mjs` performs the real login: fills `TEST_EMAIL`/`TEST_PASSWORD` (from `.env.e2e`, values never enter the conversation), reaches the OTP screen, prints `WAITING_OTP`, and polls `OTP_FILE`.
-3. The orchestrator reads the OTP from the user's Gmail via the MCP integration (mail pattern persisted in `.spec-workspace/e2e-auth.yaml`) — or asks the user to paste it — and writes it to `OTP_FILE`.
+3. The orchestrator reads the OTP from the user's Gmail via the MCP integration (mail pattern persisted in `.spec-workspace/e2e-auth.yaml`). The live-validated sequence (against Jelou's 2FA mail): `mcp__claude_ai_Gmail__search_threads` (`from:<otp_from> newer_than:1h`) → take the newest thread's **`threads[].id`** (the THREAD id — passing a `messages[].id` to `get_thread` returns "Requested entity was not found", the precise bug that forced the manual paste before) → `get_thread(threadId, FULL_CONTENT)` → extract `otp_code_regex` from the **newest message's `plaintextBody`** (`.messages[-1].plaintextBody`; `search_threads` returns only a subset of messages and may omit the newest, the code is in the body not the snippet, and `htmlBody` carries decorative 6-digit noise). Large threads are saved to a file the orchestrator reads. If no fresh mail within ~90s, ask the user to paste. See `ui-qa-run.md` step 14b sub-step 4.
 4. The script completes the login and saves `storageState` to `E2E_STORAGE_STATE` (under `.auth/`, gitignored).
 
-Exit codes: `41` auth rejected (the run aborts with the user-facing HTTP 401 message) · `42` OTP never arrived · `43` OTP rejected · `44` login form not found (feeds the zero-assumptions feedback loop).
+Exit codes: `41` auth rejected (the run aborts with the user-facing HTTP 401 message) · `42` OTP never arrived · `43` OTP rejected · `44` login form not found (feeds the zero-assumptions feedback loop) · `47` blocked by a captcha/Turnstile challenge (the orchestrator hands off to the consumer capture provider below — never a headless bypass, never a prod-target fallback).
+
+## Captcha-gated login: consumer capture provider
+
+Some apps gate login behind Cloudflare Turnstile / reCAPTCHA, which a headless `e2e-login.mjs`
+cannot pass (it exits `47`). The sanctioned fallback is the consumer's own real-Chrome capture
+flow — a human solves the challenge once — declared in `services.yaml` under the UI service:
+
+```yaml
+auth_capture:
+  launch:  yarn e2e:chrome      # opens a real Chrome (remote-debugging) at E2E_BASE_URL for manual login
+  capture: yarn e2e:capture     # extracts the logged-in session into E2E_STORAGE_STATE (Playwright storageState)
+```
+
+Contract:
+
+- Both commands MUST honor `E2E_BASE_URL` — the capture is for the **localhost** run. A
+  production-origin session (cookies scoped to `.jelou.ai`) cannot authenticate a localhost
+  suite; capturing against prod to dodge the captcha is the exact failure this contract forbids.
+  If the consumer's `e2e:chrome` hardcodes a prod URL, parametrize it on `E2E_BASE_URL` before
+  declaring it here.
+- `capture` writes the same `storageState` path (`E2E_STORAGE_STATE`, under `.auth/`, gitignored)
+  the probe and the suite read — so after capture the orchestrator just re-runs
+  `bin/e2e-session-probe.mjs` to confirm validity, then proceeds.
+- This is human-in-the-loop by design. The plugin never solves a captcha programmatically and
+  never falls back to a production target to avoid one.
+
+When no `auth_capture` is declared, the orchestrator asks the user to add one (or supply a
+freshly-captured session for `E2E_BASE_URL`); with neither, the run is `BLOCKED`.
 
 **Hand-provisioned sessions are deprecated.** Inserting session documents directly into a datastore, or hand-copying cookies into storage state, is forbidden — it produced unreproducible auth chains with three independent expiry clocks (motivating incident, 2026-06-07). The TTL of an OTP-minted session is whatever the consumer's auth issues; the probe-first gate makes expiry a non-event (the next run just logs in again).
 

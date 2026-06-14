@@ -156,17 +156,71 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
        OTP_FILE="$OTP_FILE" node "$PLUGIN_ROOT/bin/e2e-login.mjs" > /tmp/jlu-login.out 2>&1 &
        LOGIN_PID=$!
        ```
-    4. **Race the `WAITING_OTP` marker against early process death.** Poll `/tmp/jlu-login.out` for `WAITING_OTP` while also checking `kill -0 $LOGIN_PID`. If the process exits BEFORE printing the marker (immediate 44/41/2 — e.g., login form not found), skip straight to sub-step 6's exit-code branch. When `WAITING_OTP` appears: read the OTP from Gmail via the MCP integration — `ToolSearch` for `mcp__claude_ai_Gmail__search_threads`, query `from:<otp_from> newer_than:1h`, take the newest thread, extract the code with `otp_code_regex`. Write it: `printf '%s' "$CODE" > "$OTP_FILE"`.
-    5. **Gmail fallback:** tools absent, search fails, or no mail within ~90s → `AskUserQuestion`: "No pude leer el OTP desde Gmail. Pégalo aquí." Write the user's answer to `$OTP_FILE`. No answer / code expired → kill the login process, abort `BLOCKED`.
+    4. **Race the `WAITING_OTP` marker against early process death.** Poll `/tmp/jlu-login.out`
+       for `WAITING_OTP` while checking `kill -0 $LOGIN_PID`. If the process exits BEFORE the
+       marker (immediate `44`/`41`/`47`/`2`), skip straight to sub-step 6's exit-code branch.
+       When `WAITING_OTP` appears, **read the OTP from Gmail** (this exact sequence is
+       live-validated against Jelou's 2FA mail — follow it, it avoids the two traps that made the
+       manual paste necessary before):
+       a. `ToolSearch` `select:mcp__claude_ai_Gmail__search_threads,mcp__claude_ai_Gmail__get_thread`.
+       b. `mcp__claude_ai_Gmail__search_threads` `q: from:<otp_from> newer_than:1h` (add
+          `subject:` terms from `otp_subject_regex` to disambiguate). Take the **newest thread**
+          and note its **`threads[].id`** — the THREAD id. **Never pass `threads[].messages[].id`
+          (a message id) to `get_thread` — that returns "Requested entity was not found"; this is
+          the exact bug that broke the previous run.**
+       c. Try `otp_code_regex` against the thread's `snippet`/`subject` first — but Jelou's mail
+          puts the code only in the BODY, so this usually MISSES. Do not stop here.
+       d. Call `mcp__claude_ai_Gmail__get_thread` with `threadId = <threads[].id>` and
+          `messageFormat: FULL_CONTENT`. `search_threads` returns only a SUBSET of a thread's
+          messages and may OMIT the newest, so use the thread's **newest message** (`.messages[-1]`),
+          NOT the message the search listed. Extract `otp_code_regex` from that message's
+          **`plaintextBody`** (clean — one code), NOT `htmlBody` (carries decorative 6-digit noise)
+          and NOT the snippet. If the thread is large the tool saves the result to a file and
+          returns its path — extract from the file (`jq -r '.messages[-1].plaintextBody'`).
+       e. **Freshness:** confirm `.messages[-1].date` is at/after this login attempt. If the newest
+          message predates it, the OTP email hasn't landed — re-run search/get_thread every ~10s
+          for up to ~90s. Never reuse an older code (stale codes from prior attempts are rejected).
+       f. Write the code: `printf '%s' "$CODE" > "$OTP_FILE"`.
+    5. **Gmail fallback:** Gmail tools absent, search/`get_thread` failed, or no fresh mail within
+       ~90s → `AskUserQuestion`: "No pude leer el OTP desde Gmail. Pégalo aquí." Write the user's
+       answer to `$OTP_FILE`. No answer / code expired → kill the login process, abort `BLOCKED`.
     6. Wait for the login process and branch on its exit code:
        - `0` → re-run the probe; valid → continue to step 15.
        - `41` → print the 401 abort message (below) and exit `BLOCKED` (2).
        - `42`/`43` → report which OTP step failed; offer ONE retry of the whole gate; second failure → `BLOCKED`.
        - `44` → enter a bounded ask-the-user retry (same 3-round shape as step 18c, but self-contained — no fix-loop dispatch, no selectors.md persistence): ask the user where the login form lives (route, field hints), set `LOGIN_PATH` from the answer, retry (max 3 rounds).
+       - `47` → **captcha/Turnstile fallback** — the headless login can't pass the challenge. Do
+         NOT retry headless and do NOT silently abort: hand off to the consumer's real-Chrome
+         capture flow per "Captcha → consumer capture fallback" below.
 
     **401 abort message (verbatim, both here and in step 17b):**
 
     > ⛔ **No es posible realizar pruebas: el login está recibiendo Error HTTP 401.** Verifica TEST_EMAIL/TEST_PASSWORD en `.env.e2e` o el estado del servicio de auth.
+
+    **Captcha → consumer capture fallback (EXIT 47).** When the local login is captcha-gated
+    (Cloudflare Turnstile / reCAPTCHA), the sanctioned path is the consumer's own real-Chrome
+    capture — a human solves the challenge — NOT a headless bypass. The captured session MUST be
+    against `E2E_BASE_URL` (the localhost run); a production-origin `storageState` cannot
+    authenticate a localhost suite (its cookies are scoped to `.jelou.ai`), and falling back to a
+    prod target to dodge the captcha is forbidden.
+
+    1. Resolve the consumer's capture contract: `auth_capture` under the UI service in
+       `services.yaml` (`auth_capture.launch` opens a real Chrome at `E2E_BASE_URL`;
+       `auth_capture.capture` writes `storageState` to `E2E_STORAGE_STATE`). If there is no
+       `auth_capture` block, fall back to the npm scripts: `<capture>` from an `e2e:capture`
+       script and `<launch>` from a sibling `e2e:chrome`/`e2e:setup` script. You need **both** a
+       launch and a capture command to run sub-step 2; if only one resolves (e.g. `e2e:capture`
+       with no launch counterpart), treat the contract as **not declared** and go to sub-step 3.
+       See `jelou/references/auth-fixtures.md` § "Captcha-gated login: consumer capture provider".
+    2. **Declared:** `AskUserQuestion` — "El login local está protegido por captcha/Turnstile.
+       Abre el Chrome real con `<launch>`, inicia sesión manualmente (resuelve el captcha + 2FA)
+       **apuntando a `E2E_BASE_URL`**, y avísame." On "listo": run `<capture>` with `E2E_BASE_URL`
+       and `E2E_STORAGE_STATE` in its env, then re-run `bin/e2e-session-probe.mjs`. Valid →
+       continue to step 15. Still invalid → `BLOCKED` (capture targeted the wrong origin, or the
+       login didn't complete).
+    3. **Not declared:** `AskUserQuestion` asking the user to add an `auth_capture` block (point
+       to `auth-fixtures.md`) or provide a freshly-captured session for `E2E_BASE_URL`. No usable
+       session → `BLOCKED`. Never improvise a prod-targeted capture.
 
     **Forbidden under all circumstances:** dispatching the fix-loop for auth failures, editing auth-related env values to force a pass, or inserting/patching session documents in any datastore to mask an auth failure. The **one** sanctioned datastore write is step 14c's local session provisioning, and only under its contract: it runs after a real login has already succeeded, derives every field solely by decrypting the real captured cookie (never invented), fails closed (reports, never fabricates), and is never a response to a 401. The fix-loop remains barred from all datastore session writes.
 
@@ -415,6 +469,7 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
 | Login HTTP 401 (gate or mid-suite collapse) | 2 | "⛔ No es posible realizar pruebas: el login está recibiendo Error HTTP 401..." — never auto-patch auth state |
 | OTP unreadable (Gmail down/missing mail) | 2 | asks user to paste the OTP; unanswered → BLOCKED |
 | Login form not found (exit 44) | 1/2 | enters the feedback loop (3 rounds), then BLOCKED |
+| Captcha/Turnstile blocks headless login (exit 47) | 1/2 | hands off to the consumer real-Chrome capture flow (`auth_capture`) targeting `E2E_BASE_URL`; no usable session → BLOCKED. Never falls back to a prod target |
 | TEST_EMAIL / TEST_PASSWORD undeclared | 2 | "declare TEST_EMAIL and TEST_PASSWORD in .env.e2e" |
 | E2E target points at prod, no override | 2 | "E2E_BASE_URL points at production `<url>`; pass `--allow-prod-target` if intentional" |
 | No Playwright infra, user declined bootstrap | 2 | "Playwright infra required; E2E mandatory for frontend changes" |
