@@ -92,23 +92,37 @@ For each requirement in the phase (process them in the order they appear in the 
 
 ### Step 1 — RED
 
-1. Derive the requirement's **case matrix** before writing the first slice. Read the controller/DTO/type signature the requirement touches. For any requirement that validates or types input — request body fields, typed query parameters (pagination/filter/sort), or any field that references another field or entity by id — the matrix you work through across this requirement's slices is:
-   - one **success** slice (valid, type-correct input → expected result);
-   - one **rejection** slice per validation decorator / type constraint (a string where `@IsNumber()`/numeric is expected, a GUID/UUID where a numeric id is expected, an empty array where a populated collection is required, a missing required field, an out-of-range value) — each asserting the 4xx and the error shape;
+**Before the first slice, derive the requirement's case matrix from the INPUT CONTRACT — not from the happy path.** Do this as a concrete procedure, never from memory of the spec prose:
+
+a. **Locate the input surface** the requirement touches. Open the controller method and the validation layer it binds: the DTO (`*.dto.*` with `class-validator` decorators), the schema (Zod/Joi/`@nestjs/mapped-types`), the validation pipe, and the typed query parameters. If — and only if — the requirement accepts no input and resolves no cross-field reference, mark it **exempt** and name the exemption in your report. Exemption is a decision you justify after reading the surface, never a default.
+
+b. **Enumerate every validation rule on that surface — this list IS your rejection list.** Write down, one per line, each `@IsNumber`/`@IsUUID`/`@IsString`/`@IsArray`/`@IsBoolean`/`@IsNotEmpty`/`@Min`/`@Max`/`@Length`/`@Matches`/`@ValidateNested` decorator (or its Zod/Joi equivalent), the field it guards, and every field that references another field or entity by id. A field typed `number`/`string`/`uuid` with no decorator still carries a **type constraint** — count it. Absence of a visible `@Is*` is not evidence the field is unvalidated; read the type.
+
+c. **Assemble the case matrix** from (b):
+   - one **success** slice — valid, type-correct input → expected result;
+   - one **rejection** slice per validation decorator / type constraint from your list — feed it a violating value (a string where `@IsNumber()` is expected, a GUID/UUID where a numeric id is expected, an empty array where a populated collection is required, a missing `@IsNotEmpty` field, an out-of-range value) and assert the documented 4xx **and** the error shape;
    - one **realistic** slice that populates every cross-field reference the endpoint resolves (a filter that names a real column by id, collections exercised non-empty — never the `columns: []` minimal stub);
    - **boundary** slices where they apply (empty collection AND its populated counterpart, min/max, missing optional).
-   Vertical slicing still holds: you author and turn GREEN these slices **one at a time**, never two reds at once — the matrix is the list you work through, not a license to write many tests up front. Requirements with no validated/typed input and no cross-field reference are **exempt**; name the exemption in your report.
-2. Write the test file (new file or new test block in an existing file) per CONVENTIONS.md / STRUCTURE.md conventions.
-3. Run only that test, with the single-file worker cap per `subagent-base.md` "Test Execution Resource Limits":
+
+d. **Work the matrix one slice at a time.** Vertical slicing still holds: author and turn GREEN one slice, then the next — never two reds at once. The matrix is the list you work through, not a license to write many tests up front.
+
+> **Worked example — the bug this prevents.** A `create database` endpoint binds `CreateFilterColumnRefDto { @IsNumber() id }`. The happy path sends one text column and no filter → GREEN, but never populates a filter that references a column. In production the UI auto-generates an options filter that references the column by its GUID **string**, hitting `@IsNumber() id` → 400. Step (b) surfaces the `@IsNumber() id` decorator; step (c) turns it into a rejection slice ("GUID string into `id` → 400") **and** a realistic slice that populates the filter with a real column reference. A suite that only ran the happy path would have shipped the 400.
+
+Then, for the current slice:
+
+1. Write the slice's test file (new file or new test block in an existing file) per CONVENTIONS.md / STRUCTURE.md conventions.
+2. Run only that test, with the single-file worker cap per `subagent-base.md` "Test Execution Resource Limits":
    ```bash
    <test runner> <test-file> <worker cap>   # e.g., npx jest src/auth.spec.ts --runInBand
    ```
-4. Confirm it FAILS for the right reason: missing function/module/method, not a syntax error in the test itself. If it fails for the wrong reason, fix the test before continuing.
+3. Confirm it FAILS for the right reason — and the right reason depends on the slice class:
+   - **success / realistic slice**: the endpoint/function does not exist yet (missing module/method), not a syntax error in the test itself.
+   - **rejection slice**: the violating payload is NOT yet refused — the endpoint returns success or the wrong status because the validation rule isn't wired. A rejection slice that is already GREEN on RED means the validator already exists (note it and move on) or the test asserts the wrong thing (fix it before continuing).
 
 ### Step 2 — GREEN
 
 1. Read the test carefully. List the behaviors it asserts.
-2. Implement the **minimum** code to make it pass. Apply `tdd-principles.md` §4 (deep modules) and §5 (interface design) when designing the production code.
+2. Implement the **minimum** code to make it pass. Apply `tdd-principles.md` §4 (deep modules) and §5 (interface design) when designing the production code. For a **rejection** slice, the minimum code is the validation itself — wire the missing decorator / guard / pipe so the violating payload is refused with the documented status; never special-case the test's literal value (e.g. `if (id === 'a-guid') throw`) to force green, which passes the test while leaving the real input space unvalidated.
 3. Run only that test again (same capped command):
    ```bash
    <test runner> <test-file> <worker cap>

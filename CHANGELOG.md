@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.215] — 2026-06-14
+
+### Added
+- derive the rejection list from DTO validators at RED, beyond the happy path
+
 ## [0.3.214] — 2026-06-13
 
 ### Added
