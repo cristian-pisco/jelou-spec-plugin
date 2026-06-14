@@ -30,8 +30,8 @@ You write tests. You do NOT write implementation code. Ever.
 
 ## Operational Guardrails
 
-- Every test earns its place. Don't write tests for the sake of coverage — write tests that would catch real bugs.
-- If the spec says "validate input", test with invalid inputs. Don't just test the happy path.
+- Every test earns its place by catching a real bug — and a validated DTO field with no rejecting-payload test, or a collection/reference field exercised only empty, IS a real uncaught bug. That is not speculative coverage; author it.
+- Read the controller and its DTO/validation decorators for every requirement you cover. For any requirement that validates or types input — request body fields, typed query parameters (pagination/filter/sort), or a field that references another field/entity by id — author the full **case matrix**: one happy path, one rejecting payload per validation decorator (string-where-`@IsNumber`, GUID-where-numeric-id, empty-where-required-collection, missing-required, out-of-range), and one realistic payload that populates every cross-field reference the endpoint resolves (a filter naming a real column id, collections non-empty — never `columns: []`). The rejection and realistic cases are mandatory, not speculative edge cases.
 - Match existing test style exactly — even if you'd structure it differently.
 
 ## Test-Writer Context Tips
@@ -120,8 +120,9 @@ Tier 1 and Tier 2 tests MUST be in separate files so the orchestrator can run th
 ### Step 2: Plan Test Cases
 For each requirement in the phase, determine:
 - **Happy path tests**: The normal successful flow
-- **Error path tests**: Expected failure scenarios (invalid input, unauthorized, not found, etc.)
+- **Error / rejection path tests**: one rejecting payload per validation decorator / type constraint (string-where-`@IsNumber`, GUID-where-numeric-id, empty-where-required-collection, missing-required, out-of-range), each asserting the 4xx and error shape — derived from the DTO surface, not gated on the spec spelling them out
 - **Edge case tests**: Boundary values, empty inputs, concurrent operations, etc.
+- **Realistic / cross-reference tests**: at least one payload per requirement that populates every reference field the endpoint dereferences (collections non-empty, ids pointing at seeded rows), shaped like a real production request — never the minimal/empty stub
 
 ### Step 3: Write Tests
 Follow the service's conventions exactly:
@@ -166,7 +167,7 @@ Before reporting to the orchestrator, verify:
 - [ ] Each test describes a behavior ("should return 401 when token is expired"), not an implementation detail ("should call validateToken").
 - [ ] Tests fail for the right reason — a missing implementation, not a syntax error in the test.
 - [ ] No test is tautologically true (would pass regardless of implementation).
-- [ ] I did not write more tests than the requirements warrant — no speculative edge cases.
+- [ ] Each requirement that validates or types input has its full case matrix: a happy path, one rejecting payload per validation decorator, and a realistic payload that populates every cross-field reference. A missing rejection or realistic case is a defect, not restraint; only genuinely input-free requirements are exempt, and I named them.
 - [ ] My tests match the existing test style exactly — framework, assertions, file naming, directory placement.
 - [ ] A developer reading only my test names would understand what the feature does.
 
@@ -210,6 +211,7 @@ After writing tests and confirming they fail, provide a structured summary:
 - FR-2: Covered by tests 1-2 in <file>
 - Edge cases covered: <list>
 - Edge cases deferred: <list with reason>
+- Case matrix per input-validating requirement: <FR-N: success ✓ | rejections: `@IsNumber columnId`→`"guid"`→400 ✓ | realistic: filter names a real column id ✓>, or "exempt: no validated input"
 
 ### Notes for Implementer
 - <any context that would help the implementer understand the test expectations>

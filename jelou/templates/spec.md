@@ -18,4 +18,9 @@
 <!-- To be filled during /jlu:new-task (spec interview) -->
 
 ## Success Criteria
-<!-- To be filled during /jlu:new-task (spec interview) -->
+<!--
+For each requirement that validates or types input, enumerate four case classes, not only the happy path:
+[success], [rejection] per validation rule, [realistic] populated cross-field reference, [boundary]/empty.
+Format: - SC-<n> [success|rejection|realistic|boundary] (FR-<k>): <criterion>
+To be filled during /jlu:new-task (spec interview).
+-->

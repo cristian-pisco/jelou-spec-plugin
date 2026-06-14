@@ -190,6 +190,8 @@ If `UNIT_EXIT == 0` AND `INT_EXIT == 0`:
 
 Exit 0. Skip Step 6.
 
+**`PASS` here means no suite FAILED — it is not a breadth verdict.** When invoked by `/jlu-production-like`, the orchestrator runs the Phase 4.5 coverage-breadth + realistic-payload gate over this service before the run is declared production-safe. Standalone, surface a one-line note in the report: `↪ green != broad: run /jlu-production-like for the coverage-breadth + realistic-payload gate.`
+
 ---
 
 ## Step 6 — Enriched failure report (only when something failed)
@@ -341,7 +343,7 @@ Temporary log files in `/tmp` are best-effort — failing to delete them is not 
 
 - **Single-service by design.** To validate multiple services in one task, invoke `/jlu-test-suite` once per service from each `cd`. V2 may add a `--all-affected` flag that reads TASKS.md.
 - **Workers fixed at 1.** Literal interpretation of "minimum workers". There is no env var override in V1 — if you need more parallelism, run the underlying runner directly.
-- **Coverage is out of scope.** Step 8c (QA) reads coverage reports statically; this skill never runs `--coverage` to keep RAM predictable.
+- **Coverage is out of scope; breadth is gated elsewhere.** Step 8c (QA) reads coverage reports statically; this skill never runs `--coverage` to keep RAM predictable. Line/branch coverage is out of scope, but **breadth** (did the cases span the validator/reference space?) is gated by `/jlu-production-like` Phase 4.5, not by `--coverage`.
 - **Sonnet+ recommended.** Step 6 (failure classification) reads test files and infers component types. Haiku can produce wrong classifications on projects with non-standard naming.
 - **CI parity.** This skill's results should match the CI for unit + integration; if they don't, suspect runner version drift or env vars set in CI that aren't in your shell.
 

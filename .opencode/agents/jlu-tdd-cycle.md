@@ -92,7 +92,12 @@ For each requirement in the phase (process them in the order they appear in the 
 
 ### Step 1 — RED
 
-1. Choose ONE behavior to test (one happy path, or one error path, or one edge case — not all of them).
+1. Derive the requirement's **case matrix** before writing the first slice. Read the controller/DTO/type signature the requirement touches. For any requirement that validates or types input — request body fields, typed query parameters (pagination/filter/sort), or any field that references another field or entity by id — the matrix you work through across this requirement's slices is:
+   - one **success** slice (valid, type-correct input → expected result);
+   - one **rejection** slice per validation decorator / type constraint (a string where `@IsNumber()`/numeric is expected, a GUID/UUID where a numeric id is expected, an empty array where a populated collection is required, a missing required field, an out-of-range value) — each asserting the 4xx and the error shape;
+   - one **realistic** slice that populates every cross-field reference the endpoint resolves (a filter that names a real column by id, collections exercised non-empty — never the `columns: []` minimal stub);
+   - **boundary** slices where they apply (empty collection AND its populated counterpart, min/max, missing optional).
+   Vertical slicing still holds: you author and turn GREEN these slices **one at a time**, never two reds at once — the matrix is the list you work through, not a license to write many tests up front. Requirements with no validated/typed input and no cross-field reference are **exempt**; name the exemption in your report.
 2. Write the test file (new file or new test block in an existing file) per CONVENTIONS.md / STRUCTURE.md conventions.
 3. Run only that test, with the single-file worker cap per `subagent-base.md` "Test Execution Resource Limits":
    ```bash
@@ -126,7 +131,7 @@ If any item fails, fix it now (before the next slice). The longer you wait, the 
 
 ### Step 4 — Decide whether to continue
 
-- Does the same requirement need additional tests (e.g., error paths, edge cases the spec calls out)? → Go back to Step 1 for the next behavior within this requirement.
+- Does the requirement's case matrix (from Step 1) still have an unwritten slice — a rejection per validation decorator, the realistic populated-reference payload, or a boundary case? → Go back to Step 1 for the next slice within this requirement. The matrix is derived from the DTO/type surface, NOT gated on whether SPEC.md spells the case out.
 - Are you done with this requirement? → Move to the next requirement in the phase. Go back to Step 1.
 - Have you covered every requirement? → Proceed to Final Verification.
 
@@ -171,6 +176,13 @@ Write both test files and production code files to the service's codebase in the
 | `path/to/test.spec.ts` | 4 | FR-1, FR-2 |
 | `path/to/test2.spec.ts` | 2 | FR-3 |
 
+### Case Matrix
+Per requirement that validates/types input or resolves a cross-field reference:
+| Requirement | Success | Rejections (decorator → payload) | Realistic (reference populated) | Exempt? |
+|---|---|---|---|---|
+| FR-1 | yes | `@IsNumber columnId` → `"a-guid"` → 400 | filter names a real column id | — |
+| FR-2 | — | — | — | exempt: no validated input |
+
 ### Files Modified
 | File | Action | Description |
 |------|--------|-------------|
@@ -204,6 +216,7 @@ Write both test files and production code files to the service's codebase in the
 - [ ] Every test was RED before I wrote its implementation, and GREEN after.
 - [ ] I did not write a test ahead of its implementation slice (no horizontal slicing).
 - [ ] I did not silently rewrite any test after seeing it fail; any rewrites are documented under `Test Rewrites` with a spec quote.
+- [ ] For every requirement that validates or types input or resolves a cross-field reference, my slices cover the full case matrix: a success path, one rejection per validation decorator, a realistic payload that populates every cross-field reference, and the boundary cases that apply. Any requirement I exempted is named with its reason.
 - [ ] I did not use Docker, Testcontainers, or any container-spawning library.
 - [ ] My code matches the existing codebase style — naming, imports, error handling, formatting.
 - [ ] No function I wrote exceeds 100 lines.

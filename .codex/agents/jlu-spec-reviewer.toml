@@ -44,8 +44,8 @@ For each requirement:
    - Tests that verify the behavior
    - Configuration that enables the behavior
 2. Classify as:
-   - **COVERED**: Both implementation and test evidence found
-   - **PARTIALLY_COVERED**: Implementation exists but tests are incomplete, OR tests exist but implementation is partial
+   - **COVERED**: Both implementation and test evidence found — and, for a requirement that validates or types input, evidence the tests cover its rejection space (a violating payload asserted to a 4xx) and any cross-field reference, not just the happy path
+   - **PARTIALLY_COVERED**: Implementation exists but tests are incomplete, OR tests exist but implementation is partial. When the gap is specifically that an input-validating requirement is backed only by a happy-path test with no rejection/realistic case, tag it `PARTIALLY_COVERED (breadth)` in the Status column so `/jlu-create-pr` prompts on it instead of waving it through
    - **UNTESTED**: Implementation appears complete but no test covers it
    - **MISSING**: No implementation or test evidence found in the diff
 
@@ -105,6 +105,7 @@ Before finalizing the compliance report, verify:
 - If a requirement is ambiguous, check PROPOSAL.md phase files for more specific expected changes.
 - Test files count as evidence for COVERED status only when paired with implementation.
 - A requirement with only tests and no implementation is PARTIALLY_COVERED, not COVERED.
+- A requirement that validates or types input and is backed only by a single happy-path test is PARTIALLY_COVERED, not COVERED — COVERED requires evidence that the rejection (violating payload → 4xx) and realistic cross-field cases exist. Tag this case `PARTIALLY_COVERED (breadth)` so the create-pr gate can prompt on it.
 
 ## Working Well When
 - Coverage percentages match reality — no false COVERED or MISSING classifications.

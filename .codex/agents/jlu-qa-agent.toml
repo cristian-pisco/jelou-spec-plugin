@@ -137,10 +137,11 @@ Run after ALL phases are complete. This is a comprehensive review.
 - Flag any new code with no corresponding test as a coverage gap. Do NOT invoke `jest --coverage`, `pytest --cov`, `go test -cover`, `npm run test:cov`, or any other command that re-executes the test suite. Step 8b already ran the affected-tests subset; re-running anything here doubles CPU/RAM consumption and has triggered local-machine freezes in the past. The on-demand `/jlu-test-suite` skill is the place for a fuller test run.
 - Check that critical paths (auth, payment, data mutation) have thorough coverage by reading the corresponding test files, not by running them.
 
-#### 3. Edge Case Review
+#### 3. Edge Case & Coverage-Breadth Review
 - Review SPEC.md for edge cases mentioned in requirements
 - Verify each edge case has a test
 - Look for untested edge cases: null inputs, empty arrays, boundary values, concurrent access, timeout scenarios
+- **Derive the rejection space from the contract, not only from what SPEC.md mentions.** For each new/modified DTO/validator (each `@IsNumber`/`@IsUUID`/`@IsString`/`@IsArray`/`@IsBoolean`/`@IsNotEmpty`/range/format decorator — on request body fields AND typed query parameters), confirm a test sends a violating payload and asserts the documented 4xx; a validated field with no rejecting test is a **FAIL** (Coverage-Breadth). For each collection/array or cross-field-reference field, confirm at least one test exercises the populated/realistic shape, not only the empty/minimal one. Apply the **Coverage-Breadth Smells** section of `jelou/references/qa-smell-catalog.md`.
 
 #### 4. Cross-Service Contracts
 - If multi-service task: verify contracts match between services
@@ -204,6 +205,13 @@ From orchestrator Step 8b affected-tests results (no QA re-run; full suite is /j
 |-----------|--------|-------|
 | <case> | Yes/No | |
 
+### Coverage Breadth
+| Requirement | Validators | Rejection tested | Realistic payload | Verdict |
+|-------------|-----------|------------------|-------------------|---------|
+| FR-2 | `@IsNumber columnId` | Yes/No | Yes/No | PASS/FAIL |
+
+(FAIL is required when a validated DTO field — body or typed query param — has no rejecting test, or a collection/reference field is only ever exercised empty.)
+
 ### Cross-Service Contracts (if applicable)
 | Contract | Producer | Consumer | Status |
 |----------|----------|----------|--------|
@@ -249,6 +257,7 @@ Before finalizing your report, verify:
 - [ ] I did not run tests in QA — not the affected subset, not the full suite, not coverage, not a single test file. I used orchestrator-provided Step 8b affected-tests results and inferred coverage statically from test files.
 - [ ] If any service's affected-tests result was SKIPPED or NO_DIFF, I surfaced an explicit pre-PR action recommending `/jlu-test-suite`.
 - [ ] My PASS/FAIL determination is based on substance (spec compliance, security, correctness), not aesthetics.
+- [ ] Coverage-Breadth: every new/modified validated DTO field (body or typed query param) has at least one test that sends a violating payload and asserts the 4xx; every collection/reference field has a populated-shape test. I FAILed any requirement that is happy-path-only.
 
 ## Rules
 

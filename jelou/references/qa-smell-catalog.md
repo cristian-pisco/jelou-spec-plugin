@@ -39,6 +39,20 @@ Review ALL new and modified files for unnecessary complexity:
 - **MEDIUM**: single-implementation abstraction, premature generalization, speculative code.
 - Do NOT flag patterns that match the codebase's established architecture.
 
+## Coverage-Breadth Smells (Final Validation only)
+
+A suite can be all-green and still production-thin — every test sends the same minimal happy-path payload. These are **presence-of-breadth** checks: read the test and fixture files; never run `--coverage` to satisfy them. **Derive the rejection space from the contract** (the DTO/validator surface), not only from what SPEC.md happens to mention.
+
+- **Happy-path-only coverage** — A requirement (FR/SC) that validates or rejects input is backed only by valid-input tests; no test sends a violating payload and asserts a 4xx/error. **HIGH** when the FR has any validation rule (a typed/required/format/range decorator, on a body field or a typed query parameter) with no rejecting test.
+- **Empty-collection-only fixtures** — A collection/array field is exercised only in its empty state (`[]`, `{}`, no rows) across all tests; the populated path is never asserted. **MEDIUM** (HIGH if the populated path is the production default).
+- **Single-type / minimal payloads (payload realism)** — Tests for an entity with typed or reference fields only ever send the default/minimal shape (single text field, null references); no test populates a non-default field type or a cross-field reference (the boolean-column→options-filter→GUID shape that 400s in production). **MEDIUM.**
+
+### Severity rules
+
+- **HIGH** (blocks pipeline): a validated DTO field with at least one validation rule and no rejecting test.
+- **MEDIUM**: empty-collection-only fixtures; single-type/minimal payloads where the populated path is not the production default.
+- Do NOT flag patterns that match the codebase's established architecture.
+
 ## Report Tables
 
 Use these structures in the Final Validation report:
@@ -53,6 +67,11 @@ Use these structures in the Final Validation report:
 | ID | Issue | Location | Severity | Simpler Alternative |
 |----|-------|----------|----------|---------------------|
 | OE-1 | <issue type> | `src/file.ts:10-80` | HIGH/MEDIUM | <simpler approach> |
+
+### Coverage Breadth
+| ID | Gap | Location | Severity | Missing case |
+|----|-----|----------|----------|--------------|
+| CB-1 | happy-path-only | `src/foo.dto.ts` validator vs `foo.spec.ts` | HIGH | string-into-`@IsNumber` rejection (400) |
 ```
 
 ## Examples

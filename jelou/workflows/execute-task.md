@@ -1008,7 +1008,7 @@ Pass the QA agent the captured Step 8b results (affected-tests verdict per servi
 - **Full coverage analysis**: Are all requirements from SPEC.md covered by tests? (read SPEC.md and test files; do not run them). Note: this is static — checking that every requirement has at least one test file asserting the behavior, not measuring runtime coverage percentages
 - **Pre-PR recommendation**: if any service's 8b result was SKIPPED (mocha, plugin-less pytest, or only config files changed), the QA agent surfaces a clear note in its report:
   > `Pre-PR action: run /jlu-test-suite from <service-path> before opening the pull request to confirm no regressions in the full suite.`
-- **Edge case review**: Were edge cases from the spec addressed?
+- **Edge case & coverage-breadth review**: Were edge cases from the spec addressed? AND — this is the fallback for phases where per-phase QA (7h) was skipped (trivial / additive / docs) — pass the QA agent the union of new/modified DTO/validator files across ALL phases (from each phase's `Files Modified`, including `DEFERRED_QA_PHASES` and trivial phases) and restate the Coverage-Breadth FAIL rule verbatim: a new/modified validated DTO field (request body or typed query parameter) with no test that sends a violating payload and asserts the 4xx is a FAIL, and a collection/reference field exercised only empty is a FAIL. The breadth gate must fire at 8c whenever 7h was skipped.
 - **Cross-service contract verification** (if multi-service): Do the services communicate correctly? Are contracts honored?
 - **Convention compliance**: Final check against CONVENTIONS.md
 - **Code smell detection**: Full structural review

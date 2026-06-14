@@ -197,7 +197,17 @@ Read and cache task artifacts in one pass (single parallel tool-call message whe
       A) Proceed with PR creation (known gaps, will address in follow-up)
       B) Abort PR creation (go implement missing requirements)
       ```
-   b. If all requirements are COVERED or PARTIALLY_COVERED: log the summary to terminal and continue.
+   b. If a requirement is tagged `PARTIALLY_COVERED (breadth)` — an input-validating requirement backed only by a happy-path test, with no rejection/realistic case — present it via question exactly like a MISSING gap (Options: A) Proceed with known thin coverage · B) Abort and add the rejection + realistic tests). Do NOT silently wave a breadth gap through.
+   c. Otherwise, if all requirements are COVERED or plain PARTIALLY_COVERED: log the summary to terminal and continue.
+6b. **Coverage-breadth check (static, scoped to changed DTOs — always runs, advisory).** This puts the `/jlu-production-like` Phase 4.5 breadth gate on the always-run PR path without booting anything. Compute the DTO/validator files changed in THIS task:
+   ```bash
+   cd <SERVICE_CWD> && git diff --name-only <DEFAULT_BRANCH>..production/<TASK_SLUG> | grep -E '\.(dto|schema)\.[jt]sx?$'
+   ```
+   If any changed DTO files exist, run the static auditor scoped to exactly those files (legacy untouched DTOs are never flagged):
+   ```bash
+   node <plugin-root>/bin/probe-coverage-breadth.mjs --service <SERVICE_CWD> $(printf -- '--dto %s ' <each changed dto>) --json
+   ```
+   On `verdict: thin` (exit 4), present the `uncovered_dimensions` via question — each is a validated field with no rejecting-payload test, or a collection/reference exercised only empty — and offer: A) Proceed (known thin coverage) · B) Abort and add the missing rejection/realistic tests (re-dispatch `jlu-test-writer` with `--allow-test-edits`). The auditor is a heuristic: advisory friction, never a hard block, consistent with the production-like PASS-THIN stance.
 7. Store the compliance report for inclusion in PR descriptions.
 
 **Store**: `COMPLIANCE_REPORT`

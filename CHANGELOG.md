@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.214] — 2026-06-13
+
+### Added
+- enforce per-requirement case matrix over happy-path-only coverage
+
 ## [0.3.213] — 2026-06-13
 
 ### Added

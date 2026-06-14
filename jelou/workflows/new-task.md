@@ -550,9 +550,18 @@ Technical, business, or timeline constraints that bound the solution.
 Explicitly excluded from this task — things that might seem related but are NOT part of this work.
 
 ## Success Criteria
-How to verify the task is complete. Concrete, testable conditions.
-- SC-1: <criterion>
-- SC-2: <criterion>
+How to verify the task is complete. Concrete, testable conditions. For EACH requirement that validates or types input — request body fields, typed query parameters (pagination/filter/sort), or a field that references another field/entity by id — the criteria MUST enumerate four case classes, not only the happy path. Label each criterion with its class and a back-reference to the requirement it verifies:
+
+`- SC-<n> [success|rejection|realistic|boundary] (FR-<k>): <criterion>`
+
+- **[success]** — valid, type-correct input produces the expected result.
+- **[rejection]** — one criterion per validation rule (each typed/required/format/range constraint), asserting a violating payload is refused with the documented 4xx and does not mutate state.
+- **[realistic]** — at least one criterion exercises a production-representative payload that populates every cross-field reference (collections non-empty, ids pointing at real rows), not the minimal/empty shape.
+- **[boundary]** — empty collection AND its populated counterpart, missing optional, min/max.
+
+A requirement that validates input but lists only a `[success]` criterion is incomplete. Requirements with no validated/typed input and no cross-field reference keep a single `[success]` criterion.
+- SC-1 [success] (FR-1): <criterion>
+- SC-2 [rejection] (FR-1): <criterion>
 ...
 
 ## Terms introduced by this spec
@@ -586,6 +595,8 @@ Rules for writing:
 - The spec must be directly usable by the proposal-agent to generate PROPOSAL.md without ambiguity
 - If `CANONICAL_TERMS` is empty (no glossary exists), OMIT the `## Terms introduced by this spec` section entirely from `SPEC.md`.
 - If `CANONICAL_TERMS` is non-empty, populate the `## Terms introduced by this spec` section with every domain term used in `SPEC.md` that is NOT in `CANONICAL_TERMS`. Apply the same domain-specificity filter as `agents/jlu-glossary-extractor.md` — skip generic programming nouns. If no terms qualify, write the section header followed by `<!-- No new domain terms introduced. -->`.
+
+**Case-Coverage self-check (before the spec may reach `status=planned`).** For every FR that validates or types input — request body, typed query parameters, or a cross-field reference — confirm the Success Criteria include at least one `[rejection]` criterion per validation rule and at least one `[realistic]` populated-reference criterion. The "that's enough" / "1-2 rounds" escape hatches (Principles, lines 17 and 20) do NOT waive this floor for a validated-input FR — if the user stops the interview early, write the missing `[rejection]` / `[realistic]` criteria from the validation rules you already gathered rather than shipping a happy-path-only spec. This is the spec-side expression of the case-matrix floor that `jlu-test-writer` and `jlu-tdd-cycle` enforce at the test layer.
 
 ### 14d — Present for Approval
 

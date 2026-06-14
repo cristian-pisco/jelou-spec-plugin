@@ -14,10 +14,12 @@ The **test-writer agent** writes tests first, before any implementation code exi
 
 - Tests are derived from the phase requirements (which trace back to SPEC.md).
 - Tests must fail when first run. A test that passes without implementation is either testing nothing or the feature already exists.
-- Tests should cover:
+- Tests MUST cover, per requirement that validates or types input (request body, typed query parameters, or a cross-field reference) — this is the **case-matrix floor** enforced by `jlu-test-writer` and `jlu-tdd-cycle`, derived from the DTO/type surface rather than from whether SPEC.md mentions the case:
   - **Success paths**: The expected behavior when inputs are valid.
-  - **Error paths**: The expected behavior when things go wrong (invalid input, missing resources, permission denied, network failures).
+  - **Error / rejection paths**: one rejecting payload per validation decorator or type constraint (string-where-`@IsNumber`, GUID-where-numeric-id, empty-where-required-collection, missing-required, out-of-range), each asserting the 4xx and error shape.
+  - **Realistic / cross-field paths**: at least one payload that populates every cross-field reference the requirement resolves; collections exercised non-empty, never the minimal stub.
   - **Edge cases**: Boundary conditions, empty inputs, concurrent access, maximum values.
+  Requirements with no validated/typed input and no cross-field reference are exempt.
 - Tests are documentation. They should read as behavioral specifications, not implementation details.
 
 The orchestrator confirms the tests fail (red) before proceeding.
@@ -102,7 +104,8 @@ When this happens:
 ### What Must Be Tested
 
 - **Success paths**: Happy path for each requirement.
-- **Error paths**: All expected failure modes (validation errors, not found, unauthorized, timeouts).
+- **Error / rejection paths**: All expected failure modes — and, for input-validating requirements, one rejecting payload per validation decorator/type constraint (derived from the DTO surface, not from what SPEC.md mentions), each asserting the 4xx.
+- **Realistic / cross-field paths**: At least one payload populating every cross-field reference the requirement resolves; collections exercised non-empty, never only the empty stub.
 - **Edge cases**: Boundary values, empty collections, null inputs, concurrent mutations.
 
 ### Multi-Service Closure (Section 14.3)

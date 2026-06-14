@@ -120,9 +120,18 @@ Technical, business, or timeline constraints that bound the solution.
 Explicitly excluded from this task — things that might seem related but are NOT part of this work.
 
 ## Success Criteria
-How to verify the task is complete. Concrete, testable conditions.
-- SC-1: <criterion>
-- SC-2: <criterion>
+How to verify the task is complete. Concrete, testable conditions. For EACH requirement that validates or types input — request body fields, typed query parameters (pagination/filter/sort), or a field that references another field/entity by id — the criteria MUST enumerate four case classes, not only the happy path. Label each criterion with its class and a back-reference to the requirement it verifies:
+
+`- SC-<n> [success|rejection|realistic|boundary] (FR-<k>): <criterion>`
+
+- **[success]** — valid, type-correct input produces the expected result.
+- **[rejection]** — one criterion per validation rule (each typed/required/format/range constraint), asserting a violating payload is refused with the documented 4xx and does not mutate state.
+- **[realistic]** — at least one criterion exercises a production-representative payload that populates every cross-field reference (collections non-empty, ids pointing at real rows), not the minimal/empty shape.
+- **[boundary]** — empty collection AND its populated counterpart, missing optional, min/max.
+
+A requirement that validates input but lists only a `[success]` criterion is incomplete. Requirements with no validated/typed input and no cross-field reference keep a single `[success]` criterion.
+- SC-1 [success] (FR-1): <criterion>
+- SC-2 [rejection] (FR-1): <criterion>
 ...
 ```
 
@@ -141,6 +150,7 @@ Before writing the final SPEC.md, verify:
 - [ ] No implicit assumptions — if I filled in a gap myself, I asked the user about it.
 - [ ] Constraints and out-of-scope are explicit. A developer won't accidentally build something excluded.
 - [ ] Success criteria are testable — an automated QA agent could verify each one.
+- [ ] **Case taxonomy is complete.** Every FR that validates or types input has a `[success]`, a `[rejection]` per validation rule, a `[realistic]` populated-reference, and a `[boundary]` criterion. No input-validating FR ships with only a happy-path SC.
 - [ ] **If a UI service is in scope, at least one Success Criterion describes a browser-level end-to-end flow.** The spec must NOT contain phrasing that defers E2E ("not required for MVP", "manual QA only"). If it does, rewrite that criterion as a concrete user-flow.
 - [ ] The spec doesn't contradict existing architecture or conventions from the codebase knowledge.
 
