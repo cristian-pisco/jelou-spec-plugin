@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { join as pjoin } from 'node:path';
 import { persistRound } from '../../bin/investigate.mjs';
 import { buildNoteContent } from '../../bin/investigate.mjs';
+import { renderParts } from '../../bin/investigate.mjs';
 import { fileURLToPath } from 'node:url';
 
 describe('slugify', () => {
@@ -240,6 +241,31 @@ describe('buildNoteContent', () => {
     const c = buildNoteContent({ existingContent: '## Round 1 — 2026-06-10 · perplexity\n\n**Respuesta:** old\n', exists: true, slug: 't', title: 'T', engine: 'fusion', today: '2026-06-16', question: 'q', answer: 'a', sources: [] });
     assert.match(c, /^---\n/);
     assert.match(c, /## Round 2 — 2026-06-16 · fusion/);
+  });
+});
+
+describe('renderParts (obs append support)', () => {
+  test('new note: fullNote with Round 1, engines [engine]', () => {
+    const p = renderParts({ existingContent: '', exists: false, slug: 't', title: 'T', engine: 'perplexity', today: '2026-06-15', question: 'q', answer: 'a', sources: [] });
+    assert.match(p.fullNote, /## Round 1 — 2026-06-15 · perplexity/);
+    assert.deepEqual(p.engines, ['perplexity']);
+    assert.match(p.roundBlock, /## Round 1 /);
+    assert.equal(p.updated, '2026-06-15');
+  });
+
+  test('resume: roundBlock is Round 2, engines merged, updated bumped', () => {
+    const first = renderParts({ existingContent: '', exists: false, slug: 't', title: 'T', engine: 'perplexity', today: '2026-06-15', question: 'q1', answer: 'a1', sources: [] }).fullNote;
+    const p = renderParts({ existingContent: first, exists: true, slug: 't', title: 'T', engine: 'fusion', today: '2026-06-16', question: 'q2', answer: 'a2', sources: [] });
+    assert.match(p.roundBlock, /## Round 2 — 2026-06-16 · fusion/);
+    assert.deepEqual(p.engines, ['perplexity', 'fusion']);
+    assert.equal(p.updated, '2026-06-16');
+    assert.doesNotMatch(p.roundBlock, /## Round 1 /);
+  });
+
+  test('resume with same engine does not duplicate it in engines', () => {
+    const first = renderParts({ existingContent: '', exists: false, slug: 't', title: 'T', engine: 'perplexity', today: '2026-06-15', question: 'q1', answer: 'a1', sources: [] }).fullNote;
+    const p = renderParts({ existingContent: first, exists: true, slug: 't', title: 'T', engine: 'perplexity', today: '2026-06-16', question: 'q2', answer: 'a2', sources: [] });
+    assert.deepEqual(p.engines, ['perplexity']);
   });
 });
 

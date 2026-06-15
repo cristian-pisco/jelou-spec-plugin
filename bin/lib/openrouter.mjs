@@ -12,7 +12,7 @@ export async function chatCompletion({
   apiKey,
   baseUrl = OPENROUTER_BASE_URL,
   timeoutMs,
-  maxTokens,
+  maxTokens = 8000,
   dataCollection = 'deny',
   responseFormat = null,
   fetchImpl = fetch,

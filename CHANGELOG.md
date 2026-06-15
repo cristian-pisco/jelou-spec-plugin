@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.227] — 2026-06-15
+
+### Fixed
+- obs resume via append+property:set, maxTokens default, render emits parts
+
 ## [0.3.226] — 2026-06-15
 
 ### Internal

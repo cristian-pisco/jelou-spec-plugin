@@ -146,11 +146,34 @@ export function buildNoteContent({ existingContent, exists, slug, title, engine,
       const round = renderRound({ n: nextRoundNumber(rest), today, engine, question, answer, sources });
       return `${bumpFrontmatter(head, { engine, today })}${rest}\n${round}`;
     }
+    // Recovery: a note that lost its frontmatter gets a fresh header; engines/created reset by design.
     const fm = renderFrontmatter({ title, slug, engines: [engine], today });
     return `${fm}${existingContent}\n${renderRound({ n: nextRoundNumber(existingContent), today, engine, question, answer, sources })}`;
   }
   const fm = renderFrontmatter({ title, slug, engines: [engine], today });
   return `${fm}\n${renderRound({ n: 1, today, engine, question, answer, sources })}`;
+}
+
+function currentEngines(head) {
+  const m = head.match(/engines: \[([^\]]*)\]/);
+  return m ? m[1].split(',').map((s) => s.trim()).filter(Boolean) : [];
+}
+
+export function renderParts(opts) {
+  const { existingContent, exists, engine, today, question, answer, sources } = opts;
+  const fullNote = buildNoteContent(opts);
+  let n = 1;
+  let engines = [engine];
+  if (exists && existingContent) {
+    const match = existingContent.match(FRONTMATTER_RE);
+    const head = match ? match[0] : '';
+    const rest = match ? existingContent.slice(head.length) : existingContent;
+    n = nextRoundNumber(rest);
+    const existing = currentEngines(head);
+    engines = existing.includes(engine) ? existing : [...existing, engine];
+  }
+  const roundBlock = renderRound({ n, today, engine, question, answer, sources });
+  return { fullNote, roundBlock, engines, updated: today };
 }
 
 export function persistRound(opts) {
@@ -199,7 +222,7 @@ async function main(argv) {
   }
   if (sub === 'render') {
     const payload = JSON.parse(readFileSync(flag(rest, '--payload'), 'utf8'));
-    process.stdout.write(buildNoteContent(payload));
+    process.stdout.write(JSON.stringify(renderParts(payload)));
     return 0;
   }
   process.stderr.write(`unknown subcommand: ${sub}\n`);

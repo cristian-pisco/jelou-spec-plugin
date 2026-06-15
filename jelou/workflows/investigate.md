@@ -26,10 +26,13 @@ Stateful research. One engine per invocation. Persist every round; never invent 
      `<plugin-root>/bin/investigate.mjs persist --payload <tmp.json>`.
    - **obs storage**: read the existing note when `exists` (`obs read file="<slug>"`) and put
      its full text in the payload as `existingContent` (empty string when new). Run
-     `<plugin-root>/bin/investigate.mjs render --payload <tmp.json>` to get the canonical
-     full note markdown, then write it to the vault with `obs` — `obs create` for a new note,
-     or overwrite the existing note's content for a resume. Always use the markdown `render`
-     emits verbatim so obs notes are byte-identical to local notes.
+     `<plugin-root>/bin/investigate.mjs render --payload <tmp.json>` → it returns JSON
+     `{ fullNote, roundBlock, engines, updated }`.
+     - New note (`!exists`): `obs create path="Resources/Investigations/<slug>.md" content="<fullNote>"`.
+     - Resume (`exists`): `obs append file="<slug>" content="<roundBlock>"`, then
+       `obs property:set file="<slug>" key=updated value="<updated>"` and
+       `obs property:set file="<slug>" key=engines value="[<engines joined by ', '>]"`.
+     Use the markdown verbatim so obs notes match local notes.
 5. **Report.** Show the answer, the sources (or `sin fuentes — no verificado`), and the
    note path. If no research tool was available at all, say so and persist
    `sin resolver — sin herramienta`. Never assume.
