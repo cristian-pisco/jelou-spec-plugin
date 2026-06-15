@@ -7,6 +7,10 @@ import { resolveNote } from '../../bin/investigate.mjs';
 import { createServer } from 'node:http';
 import { after } from 'node:test';
 import { runFusion } from '../../bin/investigate.mjs';
+import { mkdtempSync, readFileSync, existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join as pjoin } from 'node:path';
+import { persistRound } from '../../bin/investigate.mjs';
 
 describe('slugify', () => {
   test('lowercases, hyphenates, strips symbols, caps at 40', () => {
@@ -143,5 +147,32 @@ describe('runFusion against a mocked OpenRouter', () => {
     const r = await runFusion({ topic: '¿X?', apiKey: '', baseUrl, timeoutMs: 5000 });
     assert.equal(r.ok, false);
     assert.match(r.error, /OPENROUTER_API_KEY/);
+  });
+});
+
+describe('persistRound (local storage)', () => {
+  test('creates a new note with frontmatter + Round 1', () => {
+    const dir = mkdtempSync(pjoin(tmpdir(), 'inv-'));
+    const notePath = pjoin(dir, 'investigations', 't.md');
+    persistRound({
+      storage: 'local', notePath, exists: false,
+      slug: 't', title: 'T', engine: 'perplexity', today: '2026-06-15',
+      question: 'q', answer: 'a', sources: [{ title: 'D', url: 'https://d.test' }],
+    });
+    const body = readFileSync(notePath, 'utf8');
+    assert.match(body, /slug: t/);
+    assert.match(body, /## Round 1 — 2026-06-15 · perplexity/);
+  });
+
+  test('appends Round 2 to an existing note and bumps engines', () => {
+    const dir = mkdtempSync(pjoin(tmpdir(), 'inv-'));
+    const notePath = pjoin(dir, 'investigations', 't.md');
+    persistRound({ storage: 'local', notePath, exists: false, slug: 't', title: 'T', engine: 'perplexity', today: '2026-06-15', question: 'q1', answer: 'a1', sources: [] });
+    persistRound({ storage: 'local', notePath, exists: true, slug: 't', title: 'T', engine: 'fusion', today: '2026-06-16', question: 'q2', answer: 'a2', sources: [] });
+    const body = readFileSync(notePath, 'utf8');
+    assert.match(body, /engines: \[perplexity, fusion\]/);
+    assert.match(body, /## Round 1 /);
+    assert.match(body, /## Round 2 /);
+    assert.match(body, /updated: 2026-06-16/);
   });
 });

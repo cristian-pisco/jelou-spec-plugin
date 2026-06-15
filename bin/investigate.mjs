@@ -3,7 +3,9 @@
 // Engine-neutral logic + the Fusion HTTP call for /jlu:investigate.
 // Pure helpers are exported for unit testing; I/O (fetch, obs, fs) is injectable.
 
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { chatCompletion, OPENROUTER_BASE_URL } from './lib/openrouter.mjs';
 
 const VALID_ENGINES = ['perplexity', 'fusion'];
@@ -120,4 +122,73 @@ export async function runFusion({
     return { ok: false, status: result.timedOut ? 'timeout' : 'http_error', error: result.error };
   }
   return { ok: true, answer: result.content, sources: extractSources(result.json), raw: result.json };
+}
+
+function nextRoundNumber(body) {
+  const matches = [...body.matchAll(/^## Round (\d+) /gm)];
+  return matches.length ? Math.max(...matches.map((m) => Number(m[1]))) + 1 : 1;
+}
+
+export function persistRound(opts) {
+  const { storage, notePath, exists, slug, title, engine, today, question, answer, sources } = opts;
+
+  if (storage === 'local') {
+    if (exists && existsSync(notePath)) {
+      const body = readFileSync(notePath, 'utf8');
+      const n = nextRoundNumber(body);
+      const head = body.slice(0, body.indexOf('\n---', 4) + 4);
+      const bumped = bumpFrontmatter(head, { engine, today });
+      const rest = body.slice(head.length);
+      const round = renderRound({ n, today, engine, question, answer, sources });
+      writeFileSync(notePath, `${bumped}${rest}\n${round}`);
+    } else {
+      mkdirSync(dirname(notePath), { recursive: true });
+      const fm = renderFrontmatter({ title, slug, engines: [engine], today });
+      const round = renderRound({ n: 1, today, engine, question, answer, sources });
+      writeFileSync(notePath, `${fm}\n${round}`);
+    }
+    return { storage, notePath };
+  }
+
+  // obs storage is a CLI side effect driven by the skill, not pure logic.
+  throw new Error(`persistRound: unsupported storage ${storage} in pure path`);
+}
+
+function flag(argv, name) {
+  const i = argv.indexOf(name);
+  return i >= 0 ? argv[i + 1] : null;
+}
+
+function spawnSyncResult(cmd, args) {
+  const r = spawnSync(cmd, args, { encoding: 'utf8' });
+  return { status: r.status, stdout: r.stdout || '' };
+}
+
+async function main(argv) {
+  const [sub, ...rest] = argv;
+  if (sub === 'locate') {
+    const { topic } = parseArgs(rest);
+    const slug = slugify(topic);
+    const note = resolveNote({ slug, execImpl: spawnSyncResult, fsImpl: { existsSync }, cwd: process.cwd() });
+    process.stdout.write(JSON.stringify({ slug, ...note }));
+    return 0;
+  }
+  if (sub === 'fusion') {
+    const { topic } = parseArgs(rest);
+    const r = await runFusion({ topic, apiKey: process.env.OPENROUTER_API_KEY });
+    process.stdout.write(JSON.stringify(r));
+    return r.ok ? 0 : 1;
+  }
+  if (sub === 'persist') {
+    const payload = JSON.parse(readFileSync(flag(rest, '--payload'), 'utf8'));
+    persistRound(payload);
+    process.stdout.write(JSON.stringify({ ok: true, notePath: payload.notePath }));
+    return 0;
+  }
+  process.stderr.write(`unknown subcommand: ${sub}\n`);
+  return 2;
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main(process.argv.slice(2)).then((code) => process.exit(code));
 }

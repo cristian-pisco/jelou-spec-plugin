@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.222] — 2026-06-15
+
+### Added
+- persistRound + CLI dispatch (locate/fusion/persist)
+
 ## [0.3.221] — 2026-06-15
 
 ### Added
