@@ -26,6 +26,7 @@ import {
 } from 'node:fs';
 import { join, dirname, resolve, basename } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { chatCompletion } from './lib/openrouter.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BRIEF_REL = 'jelou/references/council-brief.md';
@@ -296,52 +297,28 @@ function envelopeBase(judge, transport, startedAt) {
 async function judgeViaOpenRouter(model, opts, withSchema = true) {
   const { prompt, apiKey, baseUrl, timeoutMs, maxTokens, dataCollection, fetchImpl } = opts;
   const startedAt = Date.now();
-  const body = {
-    model,
-    messages: [{ role: 'user', content: prompt }],
-    max_tokens: maxTokens,
-    provider: { data_collection: dataCollection },
-  };
-  if (withSchema) {
-    body.response_format = {
-      type: 'json_schema',
-      json_schema: { name: 'council_verdict', strict: true, schema: VERDICT_SCHEMA },
-    };
-  }
+  const responseFormat = withSchema
+    ? { type: 'json_schema', json_schema: { name: 'council_verdict', strict: true, schema: VERDICT_SCHEMA } }
+    : null;
 
-  let res;
-  try {
-    res = await fetchImpl(`${baseUrl}/v1/chat/completions`, {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${apiKey}`,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-  } catch (err) {
-    const envelope = envelopeBase(model, 'openrouter', startedAt);
-    const timedOut = /abort|timeout/i.test(String(err?.name || err));
-    envelope.status = timedOut ? 'timeout' : 'http_error';
-    envelope.error = String(err?.message || err);
-    return envelope;
-  }
+  const result = await chatCompletion({
+    model, prompt, apiKey, baseUrl, timeoutMs, maxTokens, dataCollection, responseFormat, fetchImpl,
+  });
 
-  if (res.status === 400 && withSchema) {
+  // A 400 with a strict json_schema means the model ignores it; retry as free text.
+  if (!result.ok && result.httpStatus === 400 && withSchema) {
     return judgeViaOpenRouter(model, opts, false);
   }
 
   const envelope = envelopeBase(model, 'openrouter', startedAt);
-  if (!res.ok) {
-    envelope.status = 'http_error';
-    envelope.error = `HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`;
+  if (!result.ok) {
+    envelope.status = result.timedOut ? 'timeout' : 'http_error';
+    envelope.error = result.error;
     envelope.elapsed_ms = Date.now() - startedAt;
     return envelope;
   }
 
-  const json = await res.json().catch(() => null);
-  const content = json?.choices?.[0]?.message?.content ?? '';
+  const content = result.content;
   envelope.word_count = wordCount(content);
   envelope.raw = content;
   const parsed = parseJudgeJson(content);

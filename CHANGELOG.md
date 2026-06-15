@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.217] — 2026-06-15
+
+### Internal
+- use shared chatCompletion transport
+
 ## [0.3.216] — 2026-06-15
 
 ### Added
