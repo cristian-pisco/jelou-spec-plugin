@@ -7,7 +7,7 @@ import { resolveNote } from '../../bin/investigate.mjs';
 import { createServer } from 'node:http';
 import { after } from 'node:test';
 import { runFusion } from '../../bin/investigate.mjs';
-import { mkdtempSync, readFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, readFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join as pjoin } from 'node:path';
 import { persistRound } from '../../bin/investigate.mjs';
@@ -107,6 +107,26 @@ describe('resolveNote', () => {
     const note = resolveNote({ slug: 's', execImpl: obsMissing, fsImpl: { existsSync: () => true }, cwd: '/w' });
     assert.equal(note.exists, true);
   });
+
+  test('obs present + matching filename listed → exists true', () => {
+    const exec = (cmd, args) => {
+      if (cmd === 'command') return { status: 0, stdout: '/usr/bin/obs' };
+      if (cmd === 'obs' && args[0] === 'files') return { status: 0, stdout: 'Resources/Investigations/grpc-vs-rest.md\nResources/Investigations/other.md' };
+      return { status: 0, stdout: '' };
+    };
+    const note = resolveNote({ slug: 'grpc-vs-rest', execImpl: exec, fsImpl: { existsSync: () => false }, cwd: '/w' });
+    assert.equal(note.exists, true);
+  });
+
+  test('obs present + only a substring-superset filename → exists false (no false positive)', () => {
+    const exec = (cmd, args) => {
+      if (cmd === 'command') return { status: 0, stdout: '/usr/bin/obs' };
+      if (cmd === 'obs' && args[0] === 'files') return { status: 0, stdout: 'Resources/Investigations/foo-grpc-vs-rest.md' };
+      return { status: 0, stdout: '' };
+    };
+    const note = resolveNote({ slug: 'grpc-vs-rest', execImpl: exec, fsImpl: { existsSync: () => false }, cwd: '/w' });
+    assert.equal(note.exists, false);
+  });
 });
 
 describe('runFusion against a mocked OpenRouter', () => {
@@ -174,5 +194,26 @@ describe('persistRound (local storage)', () => {
     assert.match(body, /## Round 1 /);
     assert.match(body, /## Round 2 /);
     assert.match(body, /updated: 2026-06-16/);
+  });
+
+  test('round number ignores "## Round N" appearing inside an answer body', () => {
+    const dir = mkdtempSync(pjoin(tmpdir(), 'inv-'));
+    const notePath = pjoin(dir, 'investigations', 't.md');
+    persistRound({ storage: 'local', notePath, exists: false, slug: 't', title: 'T', engine: 'perplexity', today: '2026-06-15', question: 'q', answer: 'see ## Round 99 below', sources: [] });
+    persistRound({ storage: 'local', notePath, exists: true, slug: 't', title: 'T', engine: 'fusion', today: '2026-06-16', question: 'q2', answer: 'a2', sources: [] });
+    const body = readFileSync(notePath, 'utf8');
+    assert.match(body, /## Round 2 — 2026-06-16 · fusion/);
+    assert.doesNotMatch(body, /## Round 100/);
+  });
+
+  test('resuming a note that lost its frontmatter prepends a fresh header', () => {
+    const dir = mkdtempSync(pjoin(tmpdir(), 'inv-'));
+    const notePath = pjoin(dir, 'investigations', 't.md');
+    mkdirSync(pjoin(dir, 'investigations'), { recursive: true });
+    writeFileSync(notePath, '## Round 1 — 2026-06-10 · perplexity\n\n**Respuesta:** old\n');
+    persistRound({ storage: 'local', notePath, exists: true, slug: 't', title: 'T', engine: 'fusion', today: '2026-06-16', question: 'q', answer: 'a', sources: [] });
+    const body = readFileSync(notePath, 'utf8');
+    assert.match(body, /^---\n/);
+    assert.match(body, /## Round 2 — 2026-06-16 · fusion/);
   });
 });

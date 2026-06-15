@@ -6,6 +6,7 @@
 import { join, dirname } from 'node:path';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
 import { chatCompletion, OPENROUTER_BASE_URL } from './lib/openrouter.mjs';
 
 const VALID_ENGINES = ['perplexity', 'fusion'];
@@ -59,7 +60,7 @@ export function bumpFrontmatter(fm, { engine, today }) {
     const engines = list.split(',').map((s) => s.trim()).filter(Boolean);
     if (!engines.includes(engine)) engines.push(engine);
     return `engines: [${engines.join(', ')}]`;
-  }).replace(/updated: .*/, `updated: ${today}`);
+  }).replace(/^updated: .*/m, `updated: ${today}`);
 }
 
 export function renderRound({ n, today, engine, question, answer, sources }) {
@@ -89,8 +90,13 @@ export function resolveNote({ slug, execImpl, fsImpl, cwd }) {
 
   if (obsOk) {
     const notePath = `${VAULT_REL}/${slug}.md`;
-    const found = execImpl('obs', ['search', `query=${slug}`]);
-    const exists = found.status === 0 && String(found.stdout).includes(slug);
+    const listed = execImpl('obs', ['files', `folder=${VAULT_REL}`]);
+    const target = `${slug}.md`;
+    const exists =
+      listed.status === 0 &&
+      String(listed.stdout)
+        .split(/\r?\n/)
+        .some((line) => line.trim().split('/').pop() === target);
     return { storage: 'obs', notePath, exists };
   }
 
@@ -124,34 +130,42 @@ export async function runFusion({
   return { ok: true, answer: result.content, sources: extractSources(result.json), raw: result.json };
 }
 
+const FRONTMATTER_RE = /^---\n[\s\S]*?\n---\n/;
+
 function nextRoundNumber(body) {
-  const matches = [...body.matchAll(/^## Round (\d+) /gm)];
+  const matches = [...body.matchAll(/^## Round (\d+) — .+ · /gm)];
   return matches.length ? Math.max(...matches.map((m) => Number(m[1]))) + 1 : 1;
 }
 
 export function persistRound(opts) {
   const { storage, notePath, exists, slug, title, engine, today, question, answer, sources } = opts;
 
-  if (storage === 'local') {
-    if (exists && existsSync(notePath)) {
-      const body = readFileSync(notePath, 'utf8');
-      const n = nextRoundNumber(body);
-      const head = body.slice(0, body.indexOf('\n---', 4) + 4);
-      const bumped = bumpFrontmatter(head, { engine, today });
+  if (storage !== 'local') {
+    // obs storage is a CLI side effect driven by the skill, not pure logic.
+    throw new Error(`persistRound: unsupported storage ${storage} in pure path`);
+  }
+
+  if (exists && existsSync(notePath)) {
+    const body = readFileSync(notePath, 'utf8');
+    const match = body.match(FRONTMATTER_RE);
+    const round = (rest, n) => renderRound({ n, today, engine, question, answer, sources });
+    if (match) {
+      const head = match[0];
       const rest = body.slice(head.length);
-      const round = renderRound({ n, today, engine, question, answer, sources });
-      writeFileSync(notePath, `${bumped}${rest}\n${round}`);
+      const bumped = bumpFrontmatter(head, { engine, today });
+      writeFileSync(notePath, `${bumped}${rest}\n${round(rest, nextRoundNumber(rest))}`);
     } else {
-      mkdirSync(dirname(notePath), { recursive: true });
+      // Existing note without frontmatter (hand-edited / obs-created): prepend a fresh header.
       const fm = renderFrontmatter({ title, slug, engines: [engine], today });
-      const round = renderRound({ n: 1, today, engine, question, answer, sources });
-      writeFileSync(notePath, `${fm}\n${round}`);
+      writeFileSync(notePath, `${fm}${body}\n${round(body, nextRoundNumber(body))}`);
     }
     return { storage, notePath };
   }
 
-  // obs storage is a CLI side effect driven by the skill, not pure logic.
-  throw new Error(`persistRound: unsupported storage ${storage} in pure path`);
+  mkdirSync(dirname(notePath), { recursive: true });
+  const fm = renderFrontmatter({ title, slug, engines: [engine], today });
+  writeFileSync(notePath, `${fm}\n${renderRound({ n: 1, today, engine, question, answer, sources })}`);
+  return { storage, notePath };
 }
 
 function flag(argv, name) {
@@ -189,6 +203,6 @@ async function main(argv) {
   return 2;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   main(process.argv.slice(2)).then((code) => process.exit(code));
 }

@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.223] — 2026-06-15
+
+### Fixed
+- harden resume path — filename match, frontmatter split, round counting
+
 ## [0.3.222] — 2026-06-15
 
 ### Added
