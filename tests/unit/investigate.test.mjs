@@ -11,6 +11,7 @@ import { mkdtempSync, readFileSync, existsSync, mkdirSync, writeFileSync } from 
 import { tmpdir } from 'node:os';
 import { join as pjoin } from 'node:path';
 import { persistRound } from '../../bin/investigate.mjs';
+import { fileURLToPath } from 'node:url';
 
 describe('slugify', () => {
   test('lowercases, hyphenates, strips symbols, caps at 40', () => {
@@ -215,5 +216,15 @@ describe('persistRound (local storage)', () => {
     const body = readFileSync(notePath, 'utf8');
     assert.match(body, /^---\n/);
     assert.match(body, /## Round 2 — 2026-06-16 · fusion/);
+  });
+});
+
+describe('investigate runtime trio', () => {
+  const root = fileURLToPath(new URL('../..', import.meta.url));
+  test('skill + workflow + opencode + codex prompt all present', () => {
+    assert.ok(existsSync(pjoin(root, 'skills/investigate/SKILL.md')));
+    assert.ok(existsSync(pjoin(root, 'jelou/workflows/investigate.md')));
+    assert.ok(existsSync(pjoin(root, '.opencode/commands/jlu-investigate.md')));
+    assert.ok(existsSync(pjoin(root, '.codex/prompts/jlu-investigate.md')));
   });
 });

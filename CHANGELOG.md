@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.224] — 2026-06-15
+
+### Added
+- skill + workflow + opencode command + codex prompt
+
 ## [0.3.223] — 2026-06-15
 
 ### Fixed
