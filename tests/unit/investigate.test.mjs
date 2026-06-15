@@ -11,6 +11,7 @@ import { mkdtempSync, readFileSync, existsSync, mkdirSync, writeFileSync } from 
 import { tmpdir } from 'node:os';
 import { join as pjoin } from 'node:path';
 import { persistRound } from '../../bin/investigate.mjs';
+import { buildNoteContent } from '../../bin/investigate.mjs';
 import { fileURLToPath } from 'node:url';
 
 describe('slugify', () => {
@@ -216,6 +217,29 @@ describe('persistRound (local storage)', () => {
     const body = readFileSync(notePath, 'utf8');
     assert.match(body, /^---\n/);
     assert.match(body, /## Round 2 — 2026-06-16 · fusion/);
+  });
+});
+
+describe('buildNoteContent', () => {
+  test('new note: frontmatter + Round 1', () => {
+    const c = buildNoteContent({ existingContent: '', exists: false, slug: 't', title: 'T', engine: 'perplexity', today: '2026-06-15', question: 'q', answer: 'a', sources: [] });
+    assert.match(c, /^---\n/);
+    assert.match(c, /## Round 1 — 2026-06-15 · perplexity/);
+  });
+
+  test('append with frontmatter: Round 2 + engines bumped', () => {
+    const first = buildNoteContent({ existingContent: '', exists: false, slug: 't', title: 'T', engine: 'perplexity', today: '2026-06-15', question: 'q1', answer: 'a1', sources: [] });
+    const second = buildNoteContent({ existingContent: first, exists: true, slug: 't', title: 'T', engine: 'fusion', today: '2026-06-16', question: 'q2', answer: 'a2', sources: [] });
+    assert.match(second, /engines: \[perplexity, fusion\]/);
+    assert.match(second, /## Round 1 /);
+    assert.match(second, /## Round 2 — 2026-06-16 · fusion/);
+    assert.match(second, /updated: 2026-06-16/);
+  });
+
+  test('append to a note that lost its frontmatter prepends a fresh header', () => {
+    const c = buildNoteContent({ existingContent: '## Round 1 — 2026-06-10 · perplexity\n\n**Respuesta:** old\n', exists: true, slug: 't', title: 'T', engine: 'fusion', today: '2026-06-16', question: 'q', answer: 'a', sources: [] });
+    assert.match(c, /^---\n/);
+    assert.match(c, /## Round 2 — 2026-06-16 · fusion/);
   });
 });
 

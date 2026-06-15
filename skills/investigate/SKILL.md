@@ -10,6 +10,7 @@ allowed-tools:
   - Grep
   - AskUserQuestion
   - ToolSearch
+  - WebSearch
 ---
 
 You are the orchestrator for the `/jlu-investigate` command.

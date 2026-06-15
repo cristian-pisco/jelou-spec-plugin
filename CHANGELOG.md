@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.225] — 2026-06-15
+
+### Fixed
+- bare-positional topic, canonical buildNoteContent for obs parity, payload spec, WebSearch tool
+
 ## [0.3.224] — 2026-06-15
 
 ### Added

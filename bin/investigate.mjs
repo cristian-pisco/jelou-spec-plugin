@@ -137,35 +137,33 @@ function nextRoundNumber(body) {
   return matches.length ? Math.max(...matches.map((m) => Number(m[1]))) + 1 : 1;
 }
 
-export function persistRound(opts) {
-  const { storage, notePath, exists, slug, title, engine, today, question, answer, sources } = opts;
-
-  if (storage !== 'local') {
-    // obs storage is a CLI side effect driven by the skill, not pure logic.
-    throw new Error(`persistRound: unsupported storage ${storage} in pure path`);
-  }
-
-  if (exists && existsSync(notePath)) {
-    const body = readFileSync(notePath, 'utf8');
-    const match = body.match(FRONTMATTER_RE);
-    const round = (rest, n) => renderRound({ n, today, engine, question, answer, sources });
+export function buildNoteContent({ existingContent, exists, slug, title, engine, today, question, answer, sources }) {
+  if (exists && existingContent) {
+    const match = existingContent.match(FRONTMATTER_RE);
     if (match) {
       const head = match[0];
-      const rest = body.slice(head.length);
-      const bumped = bumpFrontmatter(head, { engine, today });
-      writeFileSync(notePath, `${bumped}${rest}\n${round(rest, nextRoundNumber(rest))}`);
-    } else {
-      // Existing note without frontmatter (hand-edited / obs-created): prepend a fresh header.
-      const fm = renderFrontmatter({ title, slug, engines: [engine], today });
-      writeFileSync(notePath, `${fm}${body}\n${round(body, nextRoundNumber(body))}`);
+      const rest = existingContent.slice(head.length);
+      const round = renderRound({ n: nextRoundNumber(rest), today, engine, question, answer, sources });
+      return `${bumpFrontmatter(head, { engine, today })}${rest}\n${round}`;
     }
-    return { storage, notePath };
+    const fm = renderFrontmatter({ title, slug, engines: [engine], today });
+    return `${fm}${existingContent}\n${renderRound({ n: nextRoundNumber(existingContent), today, engine, question, answer, sources })}`;
   }
-
-  mkdirSync(dirname(notePath), { recursive: true });
   const fm = renderFrontmatter({ title, slug, engines: [engine], today });
-  writeFileSync(notePath, `${fm}\n${renderRound({ n: 1, today, engine, question, answer, sources })}`);
-  return { storage, notePath };
+  return `${fm}\n${renderRound({ n: 1, today, engine, question, answer, sources })}`;
+}
+
+export function persistRound(opts) {
+  const { storage, notePath, exists } = opts;
+  if (storage !== 'local') {
+    // obs storage is a CLI side effect driven by the skill via the render subcommand.
+    throw new Error(`persistRound: unsupported storage ${storage} in pure path`);
+  }
+  const existingContent = exists && existsSync(notePath) ? readFileSync(notePath, 'utf8') : '';
+  if (!existingContent) mkdirSync(dirname(notePath), { recursive: true });
+  const content = buildNoteContent({ ...opts, existingContent, exists: Boolean(existingContent) });
+  writeFileSync(notePath, content);
+  return { storage: 'local', notePath };
 }
 
 function flag(argv, name) {
@@ -197,6 +195,11 @@ async function main(argv) {
     const payload = JSON.parse(readFileSync(flag(rest, '--payload'), 'utf8'));
     persistRound(payload);
     process.stdout.write(JSON.stringify({ ok: true, notePath: payload.notePath }));
+    return 0;
+  }
+  if (sub === 'render') {
+    const payload = JSON.parse(readFileSync(flag(rest, '--payload'), 'utf8'));
+    process.stdout.write(buildNoteContent(payload));
     return 0;
   }
   process.stderr.write(`unknown subcommand: ${sub}\n`);
