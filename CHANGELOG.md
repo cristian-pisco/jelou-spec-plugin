@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.219] — 2026-06-15
+
+### Added
+- note frontmatter + round rendering
+
 ## [0.3.218] — 2026-06-15
 
 ### Added

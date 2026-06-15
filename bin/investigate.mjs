@@ -32,3 +32,46 @@ export function parseArgs(argv) {
   }
   return out;
 }
+
+export function renderFrontmatter({ title, slug, engines, today, status = 'open' }) {
+  return [
+    '---',
+    `title: ${title}`,
+    `slug: ${slug}`,
+    `status: ${status}`,
+    `engines: [${engines.join(', ')}]`,
+    `created: ${today}`,
+    `updated: ${today}`,
+    'tags: [investigation, research]',
+    'source: jlu-investigate',
+    '---',
+    '',
+  ].join('\n');
+}
+
+export function bumpFrontmatter(fm, { engine, today }) {
+  return fm.replace(/engines: \[([^\]]*)\]/, (_, list) => {
+    const engines = list.split(',').map((s) => s.trim()).filter(Boolean);
+    if (!engines.includes(engine)) engines.push(engine);
+    return `engines: [${engines.join(', ')}]`;
+  }).replace(/updated: .*/, `updated: ${today}`);
+}
+
+export function renderRound({ n, today, engine, question, answer, sources }) {
+  const lines = [
+    `## Round ${n} — ${today} · ${engine}`,
+    '',
+    `**Pregunta:** ${question}`,
+    '',
+    `**Respuesta:** ${answer}`,
+    '',
+    '**Fuentes:**',
+  ];
+  if (sources.length === 0) {
+    lines.push('- sin fuentes — no verificado');
+  } else {
+    for (const s of sources) lines.push(`- ${s.title} — ${s.url}`);
+  }
+  lines.push('');
+  return lines.join('\n');
+}
