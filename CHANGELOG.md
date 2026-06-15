@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.226] — 2026-06-15
+
+### Internal
+- README command row + usage section
+
 ## [0.3.225] — 2026-06-15
 
 ### Fixed

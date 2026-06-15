@@ -244,6 +244,7 @@ OpenCode command definitions live in `.opencode/commands/`. All commands use the
 | `/jlu-ui-qa-run [task-slug]` | Boot affected services and run the Playwright E2E suite with bounded auto-fix loop and RAM/CPU worker gates |
 | `/jlu-ui-qa-cleanup [task-slug]` | Recover from leaked dev servers, stale containers, or held lock files |
 | `/jlu-trace-report` | Query the workspace trace store: by-agent / by-phase / by-task / trends |
+| `/jlu-investigate "<question>" [--engine perplexity\|fusion]` | Stateful research/decision command. Runs one engine per call (default Perplexity; OpenRouter Fusion via `--engine fusion`), persists each investigation as a resumable Obsidian note (local-file fallback), resumes by topic slug. Not a debugger — use `/jlu-diagnose` for failures. |
 
 ### Test execution model
 
@@ -375,6 +376,35 @@ Step 7 (the failure-classification step) reads test files and infers component t
 // .spec-workspace.json
 { "models": { "code": "sonnet" } }
 ```
+
+### Investigate — stateful research
+
+`/jlu-investigate` runs a research engine, records the answer with its sources, and
+persists the investigation as a note you can resume later. It never invents a fact: an
+answer without sources is flagged unverified.
+
+**New investigation** (default engine: Perplexity)
+
+```bash
+/jlu-investigate "¿Conviene migrar el api-gateway de REST a gRPC?"
+```
+
+**Use Fusion** (OpenRouter multi-model deliberation)
+
+```bash
+/jlu-investigate "¿gRPC vs REST a escala?" --engine fusion
+```
+
+**Resume** — invoking the same topic appends a new round to the existing note
+
+```bash
+/jlu-investigate "¿gRPC vs REST a escala?" --engine fusion
+```
+
+Notes live in Obsidian at `Resources/Investigations/<slug>.md` (or `./investigations/<slug>.md`
+when the `obs` wrapper is unavailable). Each round records which engine ran, so comparing
+Fusion vs Perplexity happens across your corpus of notes over time. Close an investigation by
+setting `status: closed` in its frontmatter.
 
 ### Resource knobs
 
