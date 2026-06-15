@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.218] — 2026-06-15
+
+### Added
+- slugify + parseArgs
+
 ## [0.3.217] — 2026-06-15
 
 ### Internal
