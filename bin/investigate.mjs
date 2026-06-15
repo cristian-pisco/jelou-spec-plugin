@@ -4,6 +4,7 @@
 // Pure helpers are exported for unit testing; I/O (fetch, obs, fs) is injectable.
 
 import { join } from 'node:path';
+import { chatCompletion, OPENROUTER_BASE_URL } from './lib/openrouter.mjs';
 
 const VALID_ENGINES = ['perplexity', 'fusion'];
 
@@ -93,4 +94,30 @@ export function resolveNote({ slug, execImpl, fsImpl, cwd }) {
 
   const notePath = join(cwd, 'investigations', `${slug}.md`);
   return { storage: 'local', notePath, exists: fsImpl.existsSync(notePath) };
+}
+
+export function extractSources(json) {
+  const annotations = json?.choices?.[0]?.message?.annotations ?? [];
+  return annotations
+    .filter((a) => a.type === 'url_citation' && a.url_citation?.url)
+    .map((a) => ({ title: a.url_citation.title || a.url_citation.url, url: a.url_citation.url }));
+}
+
+export async function runFusion({
+  topic,
+  apiKey,
+  baseUrl = OPENROUTER_BASE_URL,
+  timeoutMs = 120000,
+  maxTokens = 8000,
+  model = 'openrouter/fusion',
+  fetchImpl = fetch,
+}) {
+  if (!apiKey) {
+    return { ok: false, status: 'config_error', error: 'OPENROUTER_API_KEY is not set — export it to use --engine fusion' };
+  }
+  const result = await chatCompletion({ model, prompt: topic, apiKey, baseUrl, timeoutMs, maxTokens, fetchImpl });
+  if (!result.ok) {
+    return { ok: false, status: result.timedOut ? 'timeout' : 'http_error', error: result.error };
+  }
+  return { ok: true, answer: result.content, sources: extractSources(result.json), raw: result.json };
 }

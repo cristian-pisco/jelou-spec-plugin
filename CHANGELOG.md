@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.221] — 2026-06-15
+
+### Added
+- runFusion + annotation source extraction
+
 ## [0.3.220] — 2026-06-15
 
 ### Added

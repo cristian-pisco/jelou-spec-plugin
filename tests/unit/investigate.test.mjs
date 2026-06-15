@@ -4,6 +4,9 @@ import { strict as assert } from 'node:assert';
 import { slugify, parseArgs } from '../../bin/investigate.mjs';
 import { renderFrontmatter, renderRound, bumpFrontmatter } from '../../bin/investigate.mjs';
 import { resolveNote } from '../../bin/investigate.mjs';
+import { createServer } from 'node:http';
+import { after } from 'node:test';
+import { runFusion } from '../../bin/investigate.mjs';
 
 describe('slugify', () => {
   test('lowercases, hyphenates, strips symbols, caps at 40', () => {
@@ -99,5 +102,46 @@ describe('resolveNote', () => {
   test('local existing note → exists true', () => {
     const note = resolveNote({ slug: 's', execImpl: obsMissing, fsImpl: { existsSync: () => true }, cwd: '/w' });
     assert.equal(note.exists, true);
+  });
+});
+
+describe('runFusion against a mocked OpenRouter', () => {
+  let server, baseUrl;
+  const start = () => new Promise((resolve) => {
+    server = createServer((req, res) => {
+      let body = ''; req.on('data', (c) => (body += c));
+      req.on('end', () => {
+        const { model } = JSON.parse(body);
+        if (model === 'openrouter/fusion') {
+          res.writeHead(200, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ choices: [{ message: {
+            content: 'fused answer',
+            annotations: [{ type: 'url_citation', url_citation: { title: 'Spec', url: 'https://s.test' } }],
+          } }] }));
+        } else { res.writeHead(500); res.end('boom'); }
+      });
+    });
+    server.listen(0, '127.0.0.1', () => { baseUrl = `http://127.0.0.1:${server.address().port}`; resolve(); });
+  });
+  after(() => server?.close());
+
+  test('ok → answer + sources from annotations', async () => {
+    await start();
+    const r = await runFusion({ topic: '¿X?', apiKey: 'k', baseUrl, timeoutMs: 5000 });
+    assert.equal(r.ok, true);
+    assert.equal(r.answer, 'fused answer');
+    assert.deepEqual(r.sources, [{ title: 'Spec', url: 'https://s.test' }]);
+  });
+
+  test('http error → structured envelope, never throws', async () => {
+    const r = await runFusion({ topic: '¿X?', apiKey: 'k', baseUrl, timeoutMs: 5000, model: 'broken' });
+    assert.equal(r.ok, false);
+    assert.equal(r.status, 'http_error');
+  });
+
+  test('missing api key → clear error', async () => {
+    const r = await runFusion({ topic: '¿X?', apiKey: '', baseUrl, timeoutMs: 5000 });
+    assert.equal(r.ok, false);
+    assert.match(r.error, /OPENROUTER_API_KEY/);
   });
 });
