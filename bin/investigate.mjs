@@ -3,6 +3,8 @@
 // Engine-neutral logic + the Fusion HTTP call for /jlu:investigate.
 // Pure helpers are exported for unit testing; I/O (fetch, obs, fs) is injectable.
 
+import { join } from 'node:path';
+
 const VALID_ENGINES = ['perplexity', 'fusion'];
 
 export function slugify(text) {
@@ -74,4 +76,21 @@ export function renderRound({ n, today, engine, question, answer, sources }) {
   }
   lines.push('');
   return lines.join('\n');
+}
+
+const VAULT_REL = 'Resources/Investigations';
+
+export function resolveNote({ slug, execImpl, fsImpl, cwd }) {
+  const probe = execImpl('command', ['-v', 'obs']);
+  const obsOk = probe.status === 0 && String(probe.stdout).trim().length > 0;
+
+  if (obsOk) {
+    const notePath = `${VAULT_REL}/${slug}.md`;
+    const found = execImpl('obs', ['search', `query=${slug}`]);
+    const exists = found.status === 0 && String(found.stdout).includes(slug);
+    return { storage: 'obs', notePath, exists };
+  }
+
+  const notePath = join(cwd, 'investigations', `${slug}.md`);
+  return { storage: 'local', notePath, exists: fsImpl.existsSync(notePath) };
 }

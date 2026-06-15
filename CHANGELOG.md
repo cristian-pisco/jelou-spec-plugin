@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.220] — 2026-06-15
+
+### Added
+- resolveNote storage detection + resume key
+
 ## [0.3.219] — 2026-06-15
 
 ### Added

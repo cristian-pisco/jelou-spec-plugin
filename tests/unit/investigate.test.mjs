@@ -3,6 +3,7 @@ import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { slugify, parseArgs } from '../../bin/investigate.mjs';
 import { renderFrontmatter, renderRound, bumpFrontmatter } from '../../bin/investigate.mjs';
+import { resolveNote } from '../../bin/investigate.mjs';
 
 describe('slugify', () => {
   test('lowercases, hyphenates, strips symbols, caps at 40', () => {
@@ -76,5 +77,27 @@ describe('renderRound', () => {
   test('zero sources renders the unverified marker', () => {
     const r = renderRound({ n: 1, today: '2026-06-15', engine: 'perplexity', question: 'q', answer: 'a', sources: [] });
     assert.match(r, /sin fuentes — no verificado/);
+  });
+});
+
+describe('resolveNote', () => {
+  const obsAvailable = (cmd) => (cmd === 'command' ? { status: 0, stdout: '/usr/bin/obs' } : { status: 0, stdout: '' });
+  const obsMissing = () => ({ status: 1, stdout: '' });
+
+  test('obs present → storage obs, vault path', () => {
+    const note = resolveNote({ slug: 'grpc-vs-rest', execImpl: obsAvailable, fsImpl: { existsSync: () => false }, cwd: '/w' });
+    assert.equal(note.storage, 'obs');
+    assert.equal(note.notePath, 'Resources/Investigations/grpc-vs-rest.md');
+  });
+
+  test('obs absent → storage local, cwd path', () => {
+    const note = resolveNote({ slug: 'grpc-vs-rest', execImpl: obsMissing, fsImpl: { existsSync: () => false }, cwd: '/w' });
+    assert.equal(note.storage, 'local');
+    assert.equal(note.notePath, '/w/investigations/grpc-vs-rest.md');
+  });
+
+  test('local existing note → exists true', () => {
+    const note = resolveNote({ slug: 's', execImpl: obsMissing, fsImpl: { existsSync: () => true }, cwd: '/w' });
+    assert.equal(note.exists, true);
   });
 });
