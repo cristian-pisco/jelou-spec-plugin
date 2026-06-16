@@ -21,3 +21,4 @@ council-runs/
 
 # Docs — design/spec/plan docs are kept local, not version-controlled
 docs/
+.gstack/
