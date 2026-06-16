@@ -664,6 +664,105 @@ describe('daily-slack-render — tasks_by_status closed cap (--max-closed)', () 
   });
 });
 
+describe('daily-slack-render — Issue bucket substring match', () => {
+  test('groups a "Issue Report" task_type under the Issues bucket', () => {
+    const data = {
+      first_run: false,
+      achieved: [{ name: 'Bug', url: 'u1', percentage: 100, task_type: 'Issue Report' }],
+      not_achieved: [],
+      short_term: [],
+    };
+    const out = JSON.parse(run(setup(data)).stdout);
+    assert.equal(out.achieved_goals, '- :ladybug: Issues\n   * `[100%]` <u1|Bug>');
+  });
+
+  test('keeps non-issue task types (Internal request, Roadmap) under Tareas', () => {
+    const data = {
+      first_run: false,
+      achieved: [
+        { name: 'A', url: 'u1', percentage: 100, task_type: 'Internal request' },
+        { name: 'B', url: 'u2', percentage: 90, task_type: 'Roadmap' },
+      ],
+      not_achieved: [],
+      short_term: [],
+    };
+    const out = JSON.parse(run(setup(data)).stdout);
+    assert.equal(
+      out.achieved_goals,
+      '- :clipboard: Tareas\n   * `[100%]` <u1|A>\n   * `[90%]` <u2|B>'
+    );
+  });
+});
+
+describe('daily-slack-render — short_term --drop-completed', () => {
+  function runDrop(data, closedLike) {
+    const dir = mkdtempSync(join(tmpdir(), 'daily-slack-render-'));
+    const dataPath = join(dir, 'data.json');
+    writeFileSync(dataPath, JSON.stringify(data));
+    const args = [SCRIPT, '--data', dataPath, '--drop-completed'];
+    if (closedLike !== undefined) {
+      const closedPath = join(dir, 'closed-like.json');
+      writeFileSync(closedPath, JSON.stringify(closedLike));
+      args.push('--closed-like-statuses', closedPath);
+    }
+    return spawnSync('node', args, { encoding: 'utf8' });
+  }
+
+  test('drops closed tasks entirely and keeps open ones', () => {
+    const data = {
+      first_run: false,
+      achieved: [],
+      not_achieved: [],
+      short_term: [
+        { name: 'Open', url: 'u1', due_date: '2026-04-30T00:00:00Z', status_type: 'open' },
+        { name: 'Done', url: 'u2', due_date: '2026-05-01T00:00:00Z', status_type: 'closed' },
+      ],
+    };
+    const out = JSON.parse(runDrop(data).stdout);
+    assert.equal(out.short_term_goals, '`[2026-04-30]` <u1|Open>');
+  });
+
+  test('drops closed-like custom statuses too', () => {
+    const data = {
+      first_run: false,
+      achieved: [],
+      not_achieved: [],
+      short_term: [
+        { name: 'PendProd', url: 'u1', due_date: '2026-04-30T00:00:00Z', status_type: 'custom', status_name: 'pending to production' },
+        { name: 'WIP', url: 'u2', due_date: '2026-05-01T00:00:00Z', status_type: 'custom', status_name: 'in progress' },
+      ],
+    };
+    const out = JSON.parse(runDrop(data, ['pending to production']).stdout);
+    assert.equal(out.short_term_goals, '`[2026-05-01]` <u2|WIP>');
+  });
+
+  test('all-closed short_term renders empty string under --drop-completed', () => {
+    const data = {
+      first_run: false,
+      achieved: [],
+      not_achieved: [],
+      short_term: [
+        { name: 'Done', url: 'u2', due_date: '2026-05-01T00:00:00Z', status_type: 'closed' },
+      ],
+    };
+    const out = JSON.parse(runDrop(data).stdout);
+    assert.equal(out.short_term_goals, '');
+  });
+
+  test('without --drop-completed, closed tasks still render struck through (back-compat)', () => {
+    const data = {
+      first_run: false,
+      achieved: [],
+      not_achieved: [],
+      short_term: [
+        { name: 'Done', url: 'u2', due_date: '2026-05-01T00:00:00Z', status_type: 'closed' },
+      ],
+    };
+    const out = JSON.parse(run(setup(data)).stdout);
+    assert.equal(out.short_term_goals, '~~`[2026-05-01]` <u2|Done>~~');
+  });
+});
+
 describe('daily-slack-render — IO and validation errors', () => {
   test('exits 2 with usage message when no args', () => {
     const r = spawnSync('node', [SCRIPT], { encoding: 'utf8' });

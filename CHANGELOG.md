@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.3.228] — 2026-06-16
+
+### Fixed
+- add bin/daily-slack-assemble.mjs: normalizes bare-string status into {status_name,status_type}, resolves task_type from the Tipo Proyecto dropdown, computes the percentage fallback, applies OR(assignee,Responsable), and merges plugin tasks — replaces the ad-hoc inline node/jq assembly that caused the [0%]-on-closed bug and env-var failures (Step 6c)
+- assemble can gather get_task payloads the harness dumps to disk via --hydrated-dir, removing the manual jq over tool-results/
+- hydrate only non-assignee tasks for the Responsable check; assignee-owned tasks use the light payload (6b.3 switches to clickup_filter_tasks)
+- render: --drop-completed drops finished items from short-term, honoring the convention and keeping the message under the 5000-char Slack budget
+- render: isIssue matches task_type substring so 'Issue Report' splits to Issues
+- step 7: fall back past an empty task_snapshots to the latest non-empty baseline
+
 ## [0.3.227] — 2026-06-15
 
 ### Fixed

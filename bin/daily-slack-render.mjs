@@ -18,6 +18,7 @@
 //
 // Usage:
 //   node bin/daily-slack-render.mjs --data <path> [--closed-like-statuses <path>]
+//     [--max-closed <n>] [--drop-completed]
 
 import { readOrDie, parseJsonOrDie } from './lib/daily-slack-helpers.mjs';
 import { isClosedLike, loadClosedLikeStatuses } from './lib/daily-slack-status.mjs';
@@ -28,6 +29,7 @@ function parseArgs(argv) {
     if (argv[i] === '--data') args.data = argv[++i];
     else if (argv[i] === '--closed-like-statuses') args.closedLike = argv[++i];
     else if (argv[i] === '--max-closed') args.maxClosed = argv[++i];
+    else if (argv[i] === '--drop-completed') args.dropCompleted = true;
   }
   if (!args.data) {
     console.error('error: --data <path> is required');
@@ -58,8 +60,11 @@ function slackLink(url, text) {
   return `<${url}|${text}>`;
 }
 
+// ClickUp task-type labels vary ("Issue", "Issue Report", "Bug / Issue"), so the
+// Issues bucket matches any task_type that *contains* "issue" (case-insensitive).
+// Everything else — including a missing task_type — falls into Tareas.
 function isIssue(task) {
-  return typeof task?.task_type === 'string' && task.task_type.toLowerCase() === 'issue';
+  return typeof task?.task_type === 'string' && task.task_type.toLowerCase().includes('issue');
 }
 
 function parseMeetingsLines(meetings) {
@@ -201,8 +206,14 @@ function renderTasksByStatus(all_tasks, closedLike, maxClosed = Infinity) {
 // see at a glance why the item is still on the radar (pending prod, on hold,
 // in QA). The note must be set by the orchestrator from ClickUp status +
 // recent comments; the renderer just italicizes it verbatim.
-function renderShortTerm(short_term, closedLike) {
-  const withDates = short_term.filter((t) => t.due_date);
+//
+// When `dropCompleted` is set, closed-like items are omitted entirely rather
+// than struck through. Short-term goals are "what's still pending", and a
+// sprint with many closed tasks would otherwise blow past Slack's message
+// length budget with struck-through noise the reader already sees elsewhere.
+function renderShortTerm(short_term, closedLike, dropCompleted = false) {
+  let withDates = short_term.filter((t) => t.due_date);
+  if (dropCompleted) withDates = withDates.filter((t) => !isClosedLike(t, closedLike));
   withDates.sort((a, b) => (a.due_date < b.due_date ? -1 : a.due_date > b.due_date ? 1 : 0));
   return withDates
     .map((t) => {
@@ -216,13 +227,13 @@ function renderShortTerm(short_term, closedLike) {
 }
 
 function main() {
-  const { data, closedLike, maxClosed } = parseArgs(process.argv);
+  const { data, closedLike, maxClosed, dropCompleted } = parseArgs(process.argv);
   const d = parseJsonOrDie(readOrDie(data, '--data'), '--data');
   const closedLikeStatuses = loadClosedLikeStatuses(closedLike);
   const out = {
     achieved_goals: renderAchieved(d.achieved || [], !!d.first_run, d.meetings),
     not_achieved_goals: renderNotAchieved(d.not_achieved || []),
-    short_term_goals: renderShortTerm(d.short_term || [], closedLikeStatuses),
+    short_term_goals: renderShortTerm(d.short_term || [], closedLikeStatuses, !!dropCompleted),
     tasks_by_status: renderTasksByStatus(d.all_tasks || [], closedLikeStatuses, parseMaxClosed(maxClosed)),
   };
   process.stdout.write(JSON.stringify(out) + '\n');

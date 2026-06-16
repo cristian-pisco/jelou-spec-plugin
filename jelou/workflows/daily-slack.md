@@ -68,7 +68,7 @@ For each included task, record `clickup_id` (= `macroTask.id`), `source: "plugin
 
 ### 6b. ClickUp gap-fill
 
-The available ClickUp MCP exposes only `clickup_get_tasks(listId|listName, ...)` — there is no workspace-wide filter and no native `assignees` / `custom_fields` filter on this tool. The OR over (assignees, Responsable) MUST therefore be enforced after fetching the full sprint list and post-filtering.
+The available ClickUp MCP exposes `clickup_filter_tasks(list_ids, ...)`, which filters server-side by `assignees`, `statuses`, and date ranges — but **not** by custom field. So the assignee half of `OR(assignees, Responsable)` is answerable straight from the list payload (it includes `assignees`), while the Responsable half still requires per-task hydration (6b.4) and post-filtering.
 
 **6b.1 — Resolve the sprint list ID.**
 - First, scan the plugin tasks collected in 6a: take the `list_id` from any one of their `CLICKUP_TASK.json` files. All tasks in the same sprint share the same list, so the first hit is sufficient.
@@ -79,58 +79,50 @@ The available ClickUp MCP exposes only `clickup_get_tasks(listId|listName, ...)`
 - If unavailable (no plugin task), call `clickup_get_list(listId=<sprint-list-id>)` and find the custom field whose `name == "Responsable"`; use its `id`.
 
 **6b.3 — Page through the sprint list.**
-Call `clickup_get_tasks(listId=<sprint-list-id>, subtasks=false, page=<n>)` starting at `page: 0`. Concatenate the results from each page into a single array. Stop when a page returns fewer items than the previous page or returns an empty array. Do **not** pass a `statuses` filter — we want both open and closed tasks.
+Call `clickup_filter_tasks(list_ids=[<sprint-list-id>], subtasks=false, include_closed=true, page=<n>)` starting at `page: 0`. Concatenate the results from each page into a single array. Stop when a page returns fewer items than the previous page or returns an empty array. Pass `include_closed=true` and do **not** pass a `statuses` filter — we want both open and closed tasks.
 
-The list endpoint omits `custom_fields` from each task payload, so this concatenated array cannot be filtered by Responsable on its own — it only fixes the list of task IDs in the sprint.
+The list payload includes `id`, `name`, `url`, `status` (bare string), `assignees`, `due_date`, and `date_closed`, but omits `custom_fields`. It therefore answers the assignee half of ownership directly; the Responsable half is resolved by the targeted hydration in 6b.4.
 
-**6b.4 — Hydrate every task in the sprint list.**
-The Responsable filter in 6b.5 needs `custom_fields`, which only `clickup_get_task(id)` returns. Fan out one `clickup_get_task(<id>)` call **in parallel** for every task in the concatenated list — issue all calls in a single multi-tool message, never one-at-a-time. Collect the responses into a single array and write it to `<workspace>/.cache/sprint-list-tasks.json` (this hydrated file replaces the raw list dump everywhere downstream).
+**6b.4 — Hydrate only the non-assignee tasks.**
+Write the concatenated 6b.3 list verbatim to `<workspace>/.cache/sprint-list-tasks.json`. This light dump already carries `id`, `name`, `url`, `status` (a bare string, e.g. `"Closed"` — **not** a `{status, type}` object), `assignees`, `due_date`, and `date_closed` for every sprint task.
 
-This per-list-task fetch also serves Step 6c: Step 6c reads from the same hydrated file instead of issuing a second round of `clickup_get_task` calls.
+Ownership is `OR(assignee, Responsable)`. The **assignee** half is already answered by the light dump (its `assignees` array — no fetch needed). The **Responsable** half needs `custom_fields`, which only `clickup_get_task(<id>, include:["custom_fields"])` returns — and each such call is ~150K chars (it bundles every dropdown's full `type_config`), so it exceeds the MCP token limit and the harness auto-dumps the payload to a file under the session `tool-results/` directory, returning only a short error to you. That dump is expected and fine — Step 6c reads the files directly; never try to read these payloads into context.
 
-**6b.5 — Post-filter via the discover script.**
-Build `<workspace>/.cache/plugin-task-ids.json`: a JSON array of every `clickup_id` collected in 6a.
+Therefore hydrate **only the tasks where `user_id` is NOT already in `assignees`** — those are the only ones whose ownership is still unknown. Fan out one `clickup_get_task(<id>, include:["custom_fields"])` per such task, all in a single multi-tool message, never one-at-a-time. Do **not** hydrate tasks the user already assigns: that per-task fetch is the single biggest time sink in this workflow, and their ownership is already settled by the light dump.
+
+> **Trade-off (deliberate).** Assignee-owned tasks are not hydrated, so their `task_type` resolves to `null` (→ Tareas bucket) and their `percentage` comes from the status invariants (closed-like → 100, `status_percentages` → mapped, else 0) rather than a subtask ratio. This is the intended cost of skipping the heavy fetch for tasks the user already owns; closed and status-mapped tasks — the vast majority — are unaffected. If you need the granular subtask ratio for an in-progress assignee task, hydrate it too and it flows through unchanged.
+
+### 6c. Assemble `current-tasks.json` via `bin/daily-slack-assemble.mjs`
+**Do not hand-build this file.** Ad-hoc inline `node`/`jq` assembly is where the status-shape bug (`[0%]` on closed tasks) and `process.env`-not-exported failures came from. The assembler is deterministic and unit-tested.
+
+First, build `<workspace>/.cache/plugin-tasks.json`: a JSON array of the **plugin** task objects from 6a, each already shaped as a current-task entry — `{clickup_id, name, url, percentage, status_type, status_name, task_type, due_date, date_closed, date_updated, source: "plugin", slug, pr_urls}`. For plugin tasks compute `percentage` as `(closed_subtasks / total_subtasks) × 100`, upgraded to `100` when `gh pr view <url> --json state` reports all PRs merged (fan every `gh pr view` out in parallel from one Bash command via `xargs -P` or `&`/`wait`). Override `name` with the SPEC.md first heading when available. Plugin tasks that are absent from the sprint list (rare) still belong here.
+
+Resolve the `Tipo Proyecto` custom-field UUID (`--tipo-field-id`) the same way as 6b.2: from a plugin task's `field_mappings` if present, else via `clickup_get_custom_fields(list_id=<sprint-list-id>)` matching the field named `Tipo Proyecto`. Omit the flag entirely if the field doesn't exist.
 
 ```bash
-node <plugin-root>/bin/daily-slack-discover.mjs \
-  --tasks <workspace>/.cache/sprint-list-tasks.json \
+node <plugin-root>/bin/daily-slack-assemble.mjs \
+  --list <workspace>/.cache/sprint-list-tasks.json \
+  --hydrated-dir <tool-results-dir-from-the-6b.4-dump-paths> \
   --user-id <user_id-from-step-4> \
   --responsable-field-id <responsable-field-uuid-from-6b.2> \
-  --plugin-ids <workspace>/.cache/plugin-task-ids.json
+  --tipo-field-id <tipo-proyecto-field-uuid> \
+  --plugin-tasks <workspace>/.cache/plugin-tasks.json \
+  --closed-like-statuses <workspace>/.cache/closed-like-statuses.json \
+  --status-percentages <workspace>/.cache/status-percentages.json \
+  > <workspace>/.cache/current-tasks.json
 ```
 
-The script returns a JSON array of clickup-only stubs (`{clickup_id, name, url, source: "clickup-only", slug: null, pr_urls: []}`) for tasks where `assignees` contains `user_id` OR the Responsable custom field references `user_id`, with plugin IDs already excluded. Append these stubs to the union task set.
+The assembler applies `OR(assignee, Responsable)` (assignees from `--list`, Responsable from the hydrated payloads), normalizes the bare-string `status` into `{status_name, status_type}` (deriving `closed`/`open`/`custom` from the name when no `status.type` object is present), resolves `task_type` from the `Tipo Proyecto` dropdown, computes the in-progress `percentage` fallback (closed-like → 100, `status_percentages` → mapped, subtask ratio, else 0), excludes plugin ids from the clickup-only set, and appends the plugin tasks verbatim. `--hydrated-dir` is the session `tool-results/` directory the 6b.4 dump paths point at; the assembler reads only the `get_task` payloads there (newest per id) and ignores everything else. If a small sprint returned the `get_task` payloads inline instead of dumping them, write them to one array and pass `--hydrated <file>` (alone or alongside `--hydrated-dir`).
 
-> **Why hydrate before filtering.** The raw `clickup_get_tasks(listId=…)` payload omits `custom_fields`, so a discover script that filters on Responsable will silently drop every task where the user is Responsable-only (not on `assignees`). 6b.4 hydrates the list with full task objects so the OR filter in 6b.5 actually evaluates Responsable.
-
-### 6c. Per-task data fetch
-The hydrated `<workspace>/.cache/sprint-list-tasks.json` written in 6b.4 already contains the full task object for every clickup-only task in the union. **Do not issue a second round of `clickup_get_task` calls for those IDs** — read them from the hydrated file. For plugin tasks (`source: "plugin"` from 6a) that are not present in the sprint list (rare — plugin tasks normally live in the same list), fan out additional `clickup_get_task` calls in parallel and merge the results.
-
-From each task object, extract:
-- `name` (from ClickUp; for plugin tasks, override with the SPEC.md first heading if available)
-- `status.type` (record as `status_type`)
-- `status.status` (record as `status_name` — the human-readable status string used by `closed_like_statuses` and `status_percentages`)
-- `task_type` (ClickUp custom task-type label — `"Issue"`, `"Improvement"`, `"Task"`, etc.; drives the `{{achieved_goals}}` Issues vs Tareas split downstream). Missing or empty values are treated as non-Issue.
-- `due_date`
-- `date_closed` (epoch ms; `null` for non-closed tasks) — used by the bucketer's cutoff logic
-- `date_updated` (epoch ms) — useful for status-transition heuristics
-- `subtasks` (for percentage calculation)
-
-Calculate `percentage` (in-progress fallback only — `bin/daily-slack-bucket.mjs` re-normalizes against `closed_like_statuses` and `status_percentages` downstream, so the order is: closed-like → 100, mapped-status → mapped value, else this fallback):
-- Plugin tasks: `(closed_subtasks / total_subtasks) × 100`. If `gh pr view <url> --json state` reports all PRs merged, the bucketer's status mapping for the resulting "closed" status will land at 100 anyway. Issue every `gh pr view` invocation in parallel — fan all of them out from a single Bash command using `xargs -P` (or `&`/`wait`), never one PR at a time.
-- ClickUp-only tasks: `(closed_subtasks / total_subtasks) × 100`; no PR upgrade. If no subtasks, 0.
-
-Note: closed-like tasks (`status_type === 'closed'` OR `status_name` listed in `closed_like_statuses`) are normalized to `percentage: 100` downstream. Tasks whose `status_name` matches a key in `status_percentages` are normalized to the mapped value (e.g. "pending to production" → 90, "in qa" → 80). The orchestrator's per-task calculation here is the in-progress fallback; the bucketer enforces the status-driven invariants.
-
-Build `<workspace>/.cache/current-tasks.json`: an array of `{clickup_id, name, url, percentage, status_type, status_name, task_type, due_date, date_closed, date_updated, source, slug, pr_urls}`.
+> **Why hydrate before assembling.** The light `clickup_filter_tasks` payload omits `custom_fields`, so ownership-by-Responsable can't be evaluated from it — every Responsable-only task would be silently dropped. 6b.4 hydrates exactly the non-assignee tasks so the OR filter actually sees Responsable.
 
 ## Step 7 — Resolve Cutoff and Snapshot
 
 1. Glob `<workspace>/drafts/slack/*-<channel>.md`.
 2. For each file, read frontmatter; filter by `status: published`.
-3. Pick the entry with the latest `published_at`.
-4. If found, write its `task_snapshots` map to `<workspace>/.cache/snapshot-<sprint>-<channel>.json`. Cutoff timestamp = `published_at`.
-5. If none found, no snapshot file is created. Cutoff = null (first-run).
+3. Pick the entry with the latest `published_at`. Its `published_at` is the cutoff timestamp regardless of which snapshot you end up using below.
+4. Choose the baseline snapshot: use the latest published report's `task_snapshots` map. **If that map is empty or missing** (a known gap from older runs that published without persisting it), fall back to the most recent published report whose `task_snapshots` map is non-empty, and use ITS map as the baseline (keep the latest report's `published_at` as the cutoff). Write the chosen map to `<workspace>/.cache/snapshot-<sprint>-<channel>.json`.
+5. Only when NO published report carries a non-empty `task_snapshots` map: create no snapshot file and treat the run as first-run (cutoff = null). Do not let an empty snapshot from the latest report alone trigger first-run — that would collapse every closed task into `achieved`.
 
 ## Step 8 — Bucket via `bin/daily-slack-bucket.mjs`
 
@@ -216,7 +208,7 @@ Build `<workspace>/.cache/render-data.json`:
 `achieved` carries `task_type` through from the bucketer so the renderer can split items into the `:ladybug: Issues` and `:clipboard: Tareas` sub-buckets under `{{achieved_goals}}`. Anything whose `task_type` matches `"issue"` (case-insensitive) lands under Issues; everything else — including tasks with no `task_type` at all — lands under Tareas.
 
 `short_term` is built from the union task set (any task with a `due_date`). Pass through:
-- `status_type` and `status_name` so the renderer can strike through closed tasks AND any custom status listed in `closed_like_statuses` (the strikethrough wraps the **entire line** — date and link together).
+- `status_type` and `status_name` so the renderer can detect closed tasks AND any custom status listed in `closed_like_statuses`. With `--drop-completed` (below) those completed items are **dropped** from the short-term list entirely — short-term goals are "what's still pending", recent completions already show under `{{achieved_goals}}` and the board, and dropping them keeps the message under Slack's ~5000-char budget.
 - `status_note` (only for non-closed items) so the renderer appends ` — _<note>_` to give the reader context (pending prod, on hold reason, in QA, etc.). Closed-like items ignore `status_note`.
 
 `all_tasks` is the **entire** union (every task in the sprint that survived discovery), regardless of `due_date` or bucket. It drives the `{{tasks_by_status}}` placeholder which groups tasks by their current `status_name` and shows the daily reader where every sprint item lives — not just deltas. Use the normalized `percentage` from Step 8 (post `status_percentages` and `closed_like_statuses` mapping) so each badge stays a numeric `[N%]`. Pass `date_closed` through (epoch-ms or null) so the renderer can rank the closed group by recency when `max_closed_shown` is set.
@@ -227,10 +219,13 @@ Build `<workspace>/.cache/render-data.json`:
 node <plugin-root>/bin/daily-slack-render.mjs \
   --data <workspace>/.cache/render-data.json \
   --closed-like-statuses <workspace>/.cache/closed-like-statuses.json \
-  --max-closed "$(cat <workspace>/.cache/max-closed-shown.txt)"
+  --max-closed "$(cat <workspace>/.cache/max-closed-shown.txt)" \
+  --drop-completed
 ```
 
 `--max-closed` caps the `Closed`/closed-like group in `{{tasks_by_status}}` to the N most recently closed tasks (by `date_closed`). An empty or non-numeric value means no cap, so channels without `max_closed_shown` keep the full board.
+
+`--drop-completed` removes closed-like items from `{{short_term_goals}}` instead of striking them through. Short-term is the pending-work list, so completed items are noise there — and on a sprint with many closed tasks the struck-through lines alone would blow the ~5000-char Slack budget (forcing a recompose). Recent completions still surface under `{{achieved_goals}}` and `{{tasks_by_status}}`.
 
 Capture stdout JSON: `{achieved_goals, not_achieved_goals, short_term_goals, tasks_by_status}`.
 
