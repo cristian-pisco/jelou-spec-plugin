@@ -1,0 +1,52 @@
+# Workflow: list-tasks
+
+> Orchestrator workflow for `/jlu-list-tasks [--status <state>] [--sprint <n>]`
+> Lists every local task created by `/jlu-new-task`. Read-only — never modifies any file.
+
+---
+
+You are the orchestrator for the `/jlu-list-tasks` command. Your job is to print a
+table of the local tasks in the active workspace so the user can see what exists at a
+glance. This is the multi-task counterpart to `/jlu-report-task` (which drills into one
+task) and `/jlu-load-context` (which reloads one task into a session).
+
+## Step 1 — Run the scanner
+
+The deterministic scan + parse lives in `bin/list-tasks.mjs`. It resolves the workspace
+itself (from `.spec-workspace.json` or a parent `.spec-workspace/specs/`), scans
+`specs/<date>/<slug>/`, and reads each task's `TASKS.md` (lifecycle state, sprint,
+affected services) and `SPEC.md` (title).
+
+Run, from the current working directory:
+
+```bash
+node "${PLUGIN_ROOT:-.}/bin/list-tasks.mjs" --cwd "$PWD"
+```
+
+Pass through any filters the user supplied as the command argument:
+- A `--status <state>` argument → append `--status <state>` (e.g. `implementing`, `planned`, `done`).
+- A bare lifecycle-state word (e.g. the user typed `/jlu-list-tasks done`) → treat it as `--status done`.
+
+If the command exits non-zero with a "no workspace found" error, the current directory is
+not inside a JLU workspace. Report that clearly and stop — suggest running the command
+from a service repo that has a `.spec-workspace.json`, or running `/jlu-new-task` first to
+create one. Do not fabricate a task list.
+
+## Step 2 — Present the table
+
+Print the scanner's table output directly (it is already a formatted, aligned table). Then
+add a one-line footer:
+
+```
+<N> task(s). Use /jlu-report-task <slug> for detail, or /jlu-load-context <slug> to resume one.
+```
+
+If a `--sprint <n>` filter was requested, the scanner does not filter by sprint itself —
+drop rows whose `Sprint` column does not match `<n>` before printing, and note the active
+filter in the footer.
+
+If the scan returns zero tasks, print the scanner's "No tasks found" line as-is and stop —
+do not invent placeholder rows.
+
+> **Read-only guarantee**: this workflow only reads files and runs the scanner. It never
+> writes, edits, or deletes anything in the workspace or service repos.

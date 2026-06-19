@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.229] — 2026-06-19
+
+### Added
+- add /jlu-list-tasks to tabulate local tasks created by /jlu-new-task
+
 ## [0.3.228] — 2026-06-16
 
 ### Fixed

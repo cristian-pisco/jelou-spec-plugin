@@ -232,6 +232,7 @@ OpenCode command definitions live in `.opencode/commands/`. All commands use the
 | `/jlu-extend-phase` | Add scope to an in-progress task via focused mini-interview |
 | `/jlu-task-clickup` | (Phase 2) Create/update ClickUp macro task and subtasks via MCP |
 | `/jlu-report-task` | Executive summary with progress, blockers, and stale worktree detection |
+| `/jlu-list-tasks [--status <state>] [--sprint <n>]` | List every local task created by `/jlu-new-task` — table of slug, title, lifecycle state, date, sprint, and affected services |
 | `/jlu-load-context` | Load task context into a fresh session for Q&A |
 | `/jlu-council` | Convene a multi-model jury on an architecture idea — categorical `GO / GO_WITH_CONDITIONS / NO_GO` verdict with dissent preserved (Claude Code skill; OpenCode parity planned) |
 | `/jlu-create-pr [task-slug]` | Stage, commit, push, and create pull requests for all affected services |
