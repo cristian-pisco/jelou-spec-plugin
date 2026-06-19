@@ -133,6 +133,26 @@ If exit 2 fires, return that as the workflow's exit code.
 
 ---
 
+## Step 4.5 — Exclude sibling worktrees from discovery (jest / vitest)
+
+`/jlu-new-task` (worktree mode) creates full checkouts at `<repo>/.worktrees/<slug>/`, each with its own `*.spec.ts`. Those directories are git-ignored — but **git-ignore does not stop jest/vitest discovery.** The runner walks the whole tree under its root; jest filters by `testPathIgnorePatterns` (default `['/node_modules/']`), not by `.gitignore`. So a full-suite run from a repo that has live worktrees scans stale specs from **other** tasks, inflating counts and adding cross-task failures. (The same backstop is enforced deterministically by the `guard-test-commands` PreToolUse hook — see `bin/guard-test-commands.mjs`.)
+
+**Apply only when `RUNNER ∈ {jest, vitest}` AND `<EFFECTIVE_PATH>/.worktrees/` exists on disk.** When `EFFECTIVE_PATH` is itself a worktree (`…/.worktrees/<slug>/`), sibling worktrees are not descendants — skip this step.
+
+1. **Jest.** The CLI `--testPathIgnorePatterns` **replaces** the config value (it does not merge) — passing only `.worktrees` would drop `node_modules` and any project-specific ignores. So read the existing patterns first, then append:
+   - Source the project's current `testPathIgnorePatterns` from whatever the `test` script resolves to: `package.json` `"jest".testPathIgnorePatterns`, or `jest.config.{js,ts,cjs,mjs,json}`, or the `--config <path>` the script points at.
+   - Default to `['/node_modules/']` if none is declared.
+   - Append `'/\.worktrees/'` and pass the merged array:
+     `--testPathIgnorePatterns '<existing-1>' '<existing-2>' … '/\.worktrees/'`
+2. **Vitest.** Same caveat: CLI `--exclude` replaces config `test.exclude`. Read `test.exclude` (default `['**/node_modules/**','**/dist/**','**/.idea/**','**/.git/**','**/.cache/**']`), append `'**/.worktrees/**'`, and pass the merged set (repeated `--exclude` flags, or the comma form your vitest version expects).
+3. If you cannot read the existing patterns, fall back to the runner defaults plus the worktree pattern and log: `Could not read existing ignore patterns; using runner defaults + .worktrees exclusion.`
+
+Append the resulting flag(s) to `UNIT_CMD`, `INTEGRATION_CMD`, and `ALL_CMD` (after the worker cap from Step 4).
+
+**Store**: the three commands, now carrying the worktree exclusion.
+
+---
+
 ## Step 5 — Execute the suites
 
 Run sequentially. Always log the exact command before invocation.

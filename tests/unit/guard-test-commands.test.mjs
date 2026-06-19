@@ -195,6 +195,71 @@ describe('guard — compound commands and false-positive safety', () => {
   });
 });
 
+describe('guard — full-suite scan with sibling worktrees', () => {
+  // A full-suite jest/vitest run scans the whole tree under its root. When the
+  // repo contains /jlu-new-task worktrees at <repo>/.worktrees/<slug>/, jest
+  // discovers their stale specs (git-ignore does NOT stop jest discovery).
+  // The guard denies the scan unless the command excludes .worktrees/.
+  const wtCtx = (present, cwd = '/svc') => ({
+    cwd,
+    resolveScript: (dir, name) => SCRIPTS[dir]?.[name] ?? null,
+    hasWorktrees: () => present,
+  });
+  const denyScan = (command, present, cwd) => {
+    const verdict = classifyCommand(command, wtCtx(present, cwd));
+    assert.equal(verdict.decision, 'deny', `expected deny for: ${command}`);
+    assert.match(verdict.reason, /worktree/i);
+    return verdict.reason;
+  };
+  const allowScan = (command, present, cwd) => {
+    const verdict = classifyCommand(command, wtCtx(present, cwd));
+    assert.equal(verdict.decision, 'allow', `expected allow for: ${command} (got: ${verdict.reason})`);
+  };
+
+  test('denies a capped full-suite jest run when .worktrees/ is present', () => {
+    denyScan('npm test -- --runInBand', true);
+    denyScan('npx jest --runInBand', true);
+    denyScan('npm run test:safe', true);
+  });
+
+  test('allows the same run once it excludes .worktrees/', () => {
+    allowScan("npm test -- --runInBand --testPathIgnorePatterns '/node_modules/' '/\\.worktrees/'", true);
+    allowScan("npx jest --runInBand --testPathIgnorePatterns '/\\.worktrees/'", true);
+  });
+
+  test('allows full-suite runs when no .worktrees/ directory exists', () => {
+    allowScan('npm test -- --runInBand', false);
+    allowScan('npx jest --runInBand', false);
+  });
+
+  test('exempts targeted runs (explicit spec file) even with worktrees present', () => {
+    allowScan('npx jest src/a.spec.ts --runInBand', true);
+    allowScan('npm test -- src/a.spec.ts --maxWorkers=2', true);
+  });
+
+  test('exempts --findRelatedTests (execute-task Step 8b form)', () => {
+    allowScan('npx jest --findRelatedTests src/a.ts --maxWorkers=2', true);
+  });
+
+  test('denies a capped full-suite vitest run with worktrees, allows when excluded', () => {
+    denyScan('npx vitest run --pool=threads --poolOptions.threads.minThreads=1 --poolOptions.threads.maxThreads=2', true);
+    allowScan("npx vitest run --exclude '**/.worktrees/**' --pool=threads --poolOptions.threads.minThreads=1 --poolOptions.threads.maxThreads=2", true);
+  });
+
+  test('resource-cap deny keeps priority over the worktree backstop', () => {
+    // Uncapped: the resource guard fires first; reason is about the worker cap,
+    // not worktrees — the agent must cap before the scan question matters.
+    const verdict = classifyCommand('npx jest', wtCtx(true));
+    assert.equal(verdict.decision, 'deny');
+    assert.match(verdict.reason, /worker cap|maxWorkers/);
+  });
+
+  test('does not flag non-jest test scripts (node --test, mocha)', () => {
+    allowScan('npm test', true, '/plugin');
+    allowScan('npm test', true, '/mocha-svc');
+  });
+});
+
 describe('guard — plugin wiring', () => {
   test('hooks/hooks.json registers the guard on Bash PreToolUse', () => {
     const hooks = JSON.parse(readFileSync(join(ROOT, 'hooks/hooks.json'), 'utf8'));

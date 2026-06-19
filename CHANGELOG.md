@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.230] — 2026-06-19
+
+### Fixed
+- /jlu-test-suite Step 4.5: when EFFECTIVE_PATH contains .worktrees/, inject a worktree exclusion into the jest (testPathIgnorePatterns) / vitest (--exclude) command, merging existing patterns since the CLI flag replaces config
+- guard-test-commands hook now denies a cap-allowed full-suite jest/vitest/nx scan when .worktrees/ is on disk and the command carries no worktree exclusion; exempts --findRelatedTests, explicit spec-file targets, --testPathPattern(s), and already-excluded commands
+- root cause: git-ignore does not stop jest/vitest test discovery, so /jlu-new-task worktrees under <repo>/.worktrees/<slug>/ leaked stale specs from other tasks into the run
+
 ## [0.3.229] — 2026-06-19
 
 ### Added

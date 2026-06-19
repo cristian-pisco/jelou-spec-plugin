@@ -11,18 +11,23 @@
 // Stdout: permissionDecision JSON on deny; nothing on allow.
 // Escape hatch for humans (never suggest it to agents): JLU_TEST_GUARD=off.
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const POLICY = 'subagent-base.md "Test Execution Resource Limits"';
 const RUNNERS = new Set(['jest', 'vitest', 'playwright', 'mocha', 'pytest', 'tsc', 'nx']);
+// Runners whose full-suite form walks the whole tree under their root and will
+// discover specs inside sibling `.worktrees/<slug>/` checkouts. .gitignore does
+// NOT stop their discovery (jest uses testPathIgnorePatterns, not git).
+const SCANNERS = new Set(['jest', 'vitest', 'nx']);
 const WRAPPERS = new Set(['nice', 'ionice', 'time', 'env', 'cross-env', 'dotenv', 'npx', 'bunx', 'xvfb-run']);
 const PACKAGE_MANAGERS = new Set(['npm', 'pnpm', 'yarn', 'bun']);
 const MAX_SCRIPT_DEPTH = 3;
 
 const allow = () => ({ decision: 'allow' });
 const deny = (reason) => ({ decision: 'deny', reason: `jlu resource guard: ${reason}` });
+const denyScan = (reason) => ({ decision: 'deny', reason: `jlu worktree guard: ${reason}` });
 
 function tokenize(segment) {
   return segment.trim().split(/\s+/).filter(Boolean);
@@ -224,8 +229,70 @@ function classifyPackageManager(pm, rest, ctx, depth) {
   return deny(`\`${pm} ${script}\` resolves to an uncapped test runner — the full suite at one worker per CPU core has frozen this machine (npm also swallows flags passed without \`--\`, e.g. \`npm test --no-coverage\` runs the bare full suite). Run only the files you need with a worker cap: \`${example}\` or \`npx jest <files> --maxWorkers=2\` (${POLICY}).`);
 }
 
+// Resolve a Bash segment down to the underlying test runner and the args that
+// reach it. For a package-manager script (`npm test`), the runner is read from
+// package.json and the args are whatever is forwarded after `--`.
+function resolveInvocation(tokens, ctx) {
+  const eff = findEffectiveCommand(tokens);
+  if (eff.kind === 'runner') return { family: baseName(eff.runner), args: eff.rest };
+  if (eff.kind !== 'pm') return null;
+
+  const { pm, rest } = eff;
+  let j = 0;
+  if (rest[j] === 'run' || rest[j] === 'run-script') j += 1;
+  else if (['exec', 'dlx', 'x'].includes(rest[j])) {
+    const targetBase = rest[j + 1] ? baseName(rest[j + 1]) : '';
+    return RUNNERS.has(targetBase) ? { family: targetBase, args: rest.slice(j + 2) } : null;
+  }
+
+  const script = rest[j];
+  if (!script) return null;
+  if (RUNNERS.has(baseName(script))) return { family: baseName(script), args: rest.slice(j + 1) };
+  if (!/^tests?(:[\w-]+)?$/.test(script)) return null;
+
+  const content = ctx.resolveScript(ctx.dir, script);
+  if (!content) return null;
+  const match = content.match(/\b(jest|vitest|nx)\b/);
+  if (!match) return null;
+  return { family: match[1], args: forwardedTokens(pm, rest.slice(j + 1)) };
+}
+
+function isTestFileArg(token) {
+  return /\.(spec|test)\.[cm]?[jt]sx?$/.test(token.replace(/^['"]|['"]$/g, ''));
+}
+
+// Backstop for the recurring failure where /jlu-test-suite (or a hand-typed
+// `npm test`) runs the full suite from a repo that contains /jlu-new-task
+// worktrees, so jest/vitest discover and run stale specs from OTHER tasks.
+// Only fires when the run is a true full-tree scan AND a `.worktrees/` dir is
+// actually on disk AND the command does not already exclude it.
+function worktreeScanVerdict(tokens, ctx) {
+  const inv = resolveInvocation(tokens, ctx);
+  if (!inv || !SCANNERS.has(baseName(inv.family))) return allow();
+
+  const args = inv.args ?? [];
+  if (hasToken(args, /^--findRelatedTests$/)) return allow();
+  if (hasToken(args, /^--testPathPatterns?(=.*)?$/)) return allow();
+  if (args.some(isTestFileArg)) return allow();
+  if (args.some((t) => /worktrees?/i.test(t))) return allow();
+  if (!ctx.hasWorktrees(ctx.dir)) return allow();
+
+  const runner = baseName(inv.family);
+  const exclude = runner === 'vitest'
+    ? "--exclude '**/.worktrees/**'"
+    : "--testPathIgnorePatterns '/node_modules/' '/\\.worktrees/'";
+  return denyScan(
+    `a full ${runner} scan from a repo that contains \`.worktrees/\` will run stale specs from other tasks' `
+    + `worktrees — git-ignore does not stop test discovery. Exclude them (append \`${exclude}\`, preserving any `
+    + `project patterns since the CLI flag replaces config) or run specific spec files.`,
+  );
+}
+
 export function classifyCommand(command, ctx) {
   if (!/test|jest|vitest|playwright|pytest|tsc|mocha|nx /.test(command)) return allow();
+
+  const hasWorktrees = ctx.hasWorktrees
+    ?? ((d) => { try { return existsSync(join(d, '.worktrees')); } catch { return false; } });
 
   let dir = ctx.cwd;
   for (const segment of splitSegments(command)) {
@@ -244,6 +311,9 @@ export function classifyCommand(command, ctx) {
       verdict = classifyPackageManager(effective.pm, effective.rest, { ...ctx, dir }, 0);
     }
     if (verdict.decision === 'deny') return verdict;
+
+    const scan = worktreeScanVerdict(tokens, { ...ctx, dir, hasWorktrees });
+    if (scan.decision === 'deny') return scan;
   }
   return allow();
 }
