@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.236] — 2026-06-20
+
+### Added
+- remote bootstrap skeleton with dry-run plan
+
 ## [0.3.235] — 2026-06-20
 
 ### Fixed
