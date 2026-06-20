@@ -15,6 +15,13 @@ import { fileURLToPath } from 'node:url';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', '..', 'install.sh');
 
+// Absolute bash path: the missing-git test overrides PATH to /nonexistent,
+// which would also hide the `bash` binary from spawnSync's command lookup.
+// Resolving it once up front lets the child still launch so the script's own
+// `command -v git` is what fails — the behaviour under test.
+const BASH = spawnSync('command', ['-v', 'bash'], { encoding: 'utf8', shell: true })
+  .stdout.trim() || 'bash';
+
 function run(args = [], extraEnv = {}) {
   return spawnSync('bash', [SCRIPT, ...args], {
     encoding: 'utf8',
@@ -71,5 +78,16 @@ describe('install.sh — auto-detect', () => {
     const r = run([], { JLU_DETECT_OVERRIDE: ' ' });
     assert.notEqual(r.status, 0);
     assert.match(r.stderr, /no supported (CLI|tool)|pass --host/i);
+  });
+});
+
+describe('install.sh — dependency check', () => {
+  test('missing git exits non-zero with a clear message', () => {
+    const r = spawnSync(BASH, [SCRIPT, '--host', 'claude'], {
+      encoding: 'utf8',
+      env: { ...process.env, JLU_BOOTSTRAP_DRYRUN: '0', PATH: '/nonexistent' },
+    });
+    assert.notEqual(r.status, 0);
+    assert.match(r.stderr, /git is required|requires git/i);
   });
 });

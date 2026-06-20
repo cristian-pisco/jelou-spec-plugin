@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.239] — 2026-06-20
+
+### Added
+- clone-to-cache and delegate to setup
+
 ## [0.3.238] — 2026-06-20
 
 ### Added

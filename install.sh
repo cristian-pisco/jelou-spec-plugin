@@ -79,3 +79,30 @@ if [ "${JLU_BOOTSTRAP_DRYRUN:-0}" = "1" ]; then
   emit_plan
   exit 0
 fi
+
+require_dep() {
+  command -v "$1" >/dev/null 2>&1 || { echo "Error: $1 is required but not found on PATH." >&2; exit 4; }
+}
+
+require_dep git
+
+if [ -d "$JLU_HOME/.git" ]; then
+  echo "Updating cached plugin in $JLU_HOME ..."
+  git -C "$JLU_HOME" fetch --tags --quiet origin
+  git -C "$JLU_HOME" checkout --quiet "$REF"
+  git -C "$JLU_HOME" pull --ff-only --quiet origin "$REF" 2>/dev/null || true
+else
+  echo "Cloning plugin to $JLU_HOME ..."
+  tmp="$(mktemp -d)"
+  git clone --quiet "$REPO_URL" "$tmp/repo"
+  git -C "$tmp/repo" checkout --quiet "$REF"
+  mkdir -p "$(dirname "$JLU_HOME")"
+  mv "$tmp/repo" "$JLU_HOME"
+  rm -rf "$tmp"
+fi
+
+echo "Installing into: ${HOSTS[*]}"
+setup_args=()
+for h in "${HOSTS[@]}"; do setup_args+=(--host "$h"); done
+setup_args+=( ${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"} )
+exec "$JLU_HOME/setup" "${setup_args[@]}"
