@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.231] — 2026-06-20
+
+### Added
+- cap Testcontainers E2E to WORKERS policy
+
 ## [0.3.230] — 2026-06-19
 
 ### Fixed

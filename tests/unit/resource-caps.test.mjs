@@ -56,6 +56,14 @@ describe('subagent-base — canonical resource policy', () => {
   test('requires re-capping inherited commands', () => {
     assert.match(base, /Inherited commands inherit no safety/);
   });
+
+  test('caps Testcontainers E2E to the WORKERS policy with mandatory teardown', () => {
+    assert.match(base, /Testcontainers E2E/i);
+    assert.match(base, /concurrency = WORKERS/);
+    assert.match(base, /one dependency set at a time/i);
+    assert.match(base, /teardown .*before the next service/i);
+    assert.match(base, /no orphaned containers/i);
+  });
 });
 
 describe('test-running agents — reference the policy and carry caps', () => {

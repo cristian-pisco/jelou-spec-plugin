@@ -49,6 +49,12 @@ Test runners default to one worker per CPU core, and each Jest/Vitest worker is 
 5. **Never coverage.** `--coverage`, `--cov`, `test:cov` multiply RAM via instrumentation. Coverage analysis is static — QA reads existing reports, nothing re-executes tests.
 6. **Inherited commands inherit no safety.** A command copied from CONVENTIONS.md, `package.json` scripts, or another agent's report gets the worker cap appended before you run it — verify, don't trust.
 
+- **Testcontainers E2E (production-like only).** When `/jlu-production-like` runs a backend
+  E2E suite that spins up ephemeral dependency containers, concurrency = WORKERS (default 1):
+  run one service's E2E at a time, bring up one dependency set at a time, and run its
+  teardown of that dependency set before the next service. No orphaned containers may survive the run.
+  This is the only place Testcontainers is permitted; everywhere else the ban below applies.
+
 ## Three-Strike Rule
 
 When fixing a failing test or build:
