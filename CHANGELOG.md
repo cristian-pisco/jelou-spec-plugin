@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.238] — 2026-06-20
+
+### Added
+- auto-detect installed CLIs with --host override
+
 ## [0.3.237] — 2026-06-20
 
 ### Internal

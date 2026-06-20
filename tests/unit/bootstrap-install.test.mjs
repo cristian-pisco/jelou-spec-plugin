@@ -57,3 +57,19 @@ describe('install.sh — flags', () => {
     assert.equal(r.status, 2);
   });
 });
+
+describe('install.sh — auto-detect', () => {
+  test('detects the injected set when no --host given', () => {
+    const r = run([], { JLU_DETECT_OVERRIDE: 'claude codex' });
+    assert.match(r.stdout, /^PLAN: setup --host claude --host codex$/m);
+  });
+  test('explicit --host overrides detection', () => {
+    const r = run(['--host', 'opencode'], { JLU_DETECT_OVERRIDE: 'claude codex' });
+    assert.match(r.stdout, /^PLAN: setup --host opencode$/m);
+  });
+  test('zero hosts detected exits non-zero with guidance', () => {
+    const r = run([], { JLU_DETECT_OVERRIDE: ' ' });
+    assert.notEqual(r.status, 0);
+    assert.match(r.stderr, /no supported (CLI|tool)|pass --host/i);
+  });
+});

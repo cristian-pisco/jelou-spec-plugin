@@ -51,6 +51,30 @@ emit_plan() {
   echo "$line"
 }
 
+detect_hosts() {
+  if [ -n "${JLU_DETECT_OVERRIDE+x}" ]; then
+    # shellcheck disable=SC2206
+    local injected=( ${JLU_DETECT_OVERRIDE} )
+    [ "${#injected[@]}" -gt 0 ] && printf '%s\n' "${injected[@]}"
+    return 0
+  fi
+  { command -v claude   >/dev/null 2>&1 || [ -d "$HOME/.claude" ]; }                       && echo claude
+  { command -v codex    >/dev/null 2>&1 || [ -d "${CODEX_HOME:-$HOME/.codex}" ]; }          && echo codex
+  { command -v opencode >/dev/null 2>&1 || [ -d "${OPENCODE_HOME:-$HOME/.config/opencode}" ]; } && echo opencode
+  return 0
+}
+
+if [ "${#HOSTS[@]}" -eq 0 ]; then
+  while IFS= read -r _h; do
+    [ -n "$_h" ] && HOSTS+=("$_h")
+  done < <(detect_hosts)
+fi
+
+if [ "${#HOSTS[@]}" -eq 0 ]; then
+  echo "Error: no supported CLI detected (claude, codex, opencode). Pass --host explicitly." >&2
+  exit 3
+fi
+
 if [ "${JLU_BOOTSTRAP_DRYRUN:-0}" = "1" ]; then
   emit_plan
   exit 0
