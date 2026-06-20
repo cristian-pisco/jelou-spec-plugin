@@ -29,62 +29,50 @@ Follows the conventions established by [OpenSpec](https://github.com/Fission-AI/
 
 ## Installation (one command)
 
-### 1) Clone the plugin repository
+Install into every AI CLI detected on your machine (Claude Code, OpenCode, Codex):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/cristian-pisco/jelou-spec-plugin/main/install.sh | bash
+```
+
+Restrict to one tool, or pin a released version:
+
+```bash
+# Codex only
+curl -fsSL https://raw.githubusercontent.com/cristian-pisco/jelou-spec-plugin/main/install.sh | bash -s -- --host codex
+
+# Pin a tag
+curl -fsSL https://raw.githubusercontent.com/cristian-pisco/jelou-spec-plugin/main/install.sh | bash -s -- --ref v0.3.235
+```
+
+The installer clones the plugin to `~/.jelou-spec-plugin` (override with `JLU_HOME`) and runs `./setup`. Re-run the same command anytime to update.
+
+### From source (development)
 
 ```bash
 git clone https://github.com/cristian-pisco/jelou-spec-plugin.git
 cd jelou-spec-plugin
-```
+./setup            # or: ./setup --host claude --host opencode --host codex
 
-### 2) Install by host
-
-The `--host` flag supports only these values:
-- `claude`
-- `opencode`
-- `codex`
-
-Run one of these commands:
-
-```bash
-# Install/update all hosts (default)
-./setup
-
-# Claude Code only
-./setup --host claude
-
-# OpenCode only
-./setup --host opencode
-
-# Codex only (installs into ~/.codex)
-./setup --host codex
-
-# Explicitly several hosts
-./setup --host claude --host opencode --host codex
-```
-
-### 3) Optional: install into a specific OpenCode or Codex project
-
-```bash
-# OpenCode project-local
+# Install into a specific OpenCode/Codex project
 ./setup --host opencode --project /path/to/your-project
-
-# Codex project-local (.codex/ + jelou/ + AGENTS.md in the repo)
 bin/install-codex.sh /path/to/your-project
 ```
 
-### 4) Update later
+### Advanced: native marketplaces
 
-Use the exact same setup command after pulling:
+Claude Code and Codex can also install via their own marketplaces:
 
 ```bash
-git pull
-./setup
+# Claude Code
+claude plugin marketplace add cristian-pisco/jelou-spec-plugin
+claude plugin install jlu@jelou-spec-plugin
+
+# Codex
+codex plugin marketplace add cristian-pisco/jelou-spec-plugin   # then pick via /plugins
 ```
 
-What `./setup` does:
-- Regenerates `.opencode/agents` from canonical `agents/` before install
-- Installs/updates Claude fallback files in `~/.claude` (skills, agents, references)
-- Installs/updates OpenCode files in `~/.config/opencode` (global source of truth)
+OpenCode has no marketplace — use the one-liner above.
 
 ## Quick Start (OpenCode)
 

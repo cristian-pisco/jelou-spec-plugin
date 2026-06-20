@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.3.240] — 2026-06-20
+
+### Internal
+- lead with remote one-liner, keep source + native as alternatives
+
+## [0.3.239] — 2026-06-20
+
+### Added
+- clone-to-cache and delegate to setup
+
+## [0.3.238] — 2026-06-20
+
+### Added
+- auto-detect installed CLIs with --host override
+
+## [0.3.237] — 2026-06-20
+
+### Internal
+- cover flag parsing and passthrough
+
+## [0.3.236] — 2026-06-20
+
+### Added
+- remote bootstrap skeleton with dry-run plan
+
 ## [0.3.235] — 2026-06-20
 
 ### Fixed
