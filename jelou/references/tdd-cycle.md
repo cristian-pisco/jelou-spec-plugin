@@ -131,7 +131,7 @@ The TDD cycle uses a tiered testing strategy to keep the feedback loop fast whil
 
 ### Tier 2: Final Validation
 - Integration tests against **host-resident** infrastructure only (e.g., a real Postgres the developer started via `/jlu-start-dev`).
-- No Testcontainers, no `dockerode`, no `docker compose` shell-outs — these are banned in all tiers (see `jlu-qa-agent.md` Test Tier Compliance).
+- No Testcontainers, no `dockerode`, no `docker compose` shell-outs in any tier — these are banned in all TDD tiers (see `jlu-qa-agent.md` Test Tier Compliance). The only exception is the E2E path (`test/e2e/**`, `*.e2e-spec.ts`), which the TDD pipeline never runs — only `/jlu-production-like` does.
 - Written after all phases are complete, for requirements that couldn't be meaningfully tested with mocks.
 - If a required dependency is not running on the host, the test is reported skipped with a clear reason — agents never start anything.
 - Run exactly ONCE, at Step 8a (Final Validation), as targeted test files with the worker cap — never as a bare full-suite run.

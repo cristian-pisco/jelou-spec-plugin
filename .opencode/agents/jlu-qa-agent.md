@@ -79,7 +79,7 @@ Run after each phase's Green step (tests passing). This is a static code review 
 
 #### 5. Test Tier Compliance
 - Verify that Tier 1 test files do NOT import database connection utilities or other heavy infrastructure.
-- Verify that NO test file (any tier) imports Testcontainers, `dockerode`, or any library that spawns containers, and that no test or test helper shells out to `docker`, `docker compose`, or `podman`. Docker is not allowed in the TDD pipeline.
+- Verify that no test file outside the E2E path (`test/e2e/**`, `*.e2e-spec.ts`) imports Testcontainers, `dockerode`, or any library that spawns containers, and that no such test or helper shells out to `docker`, `docker compose`, or `podman`. Docker is banned in the TDD pipeline. The E2E path is the single exception — it is executed only by `/jlu-production-like`, never by the TDD pipeline, so finding Testcontainers there is allowed; finding it anywhere else is a FAIL.
 - If Tier 1 tests depend on real infrastructure, report as FAIL — the test-writer wrote the wrong tier.
 - If any tier imports or invokes Docker, report as FAIL regardless of tier.
 
@@ -104,7 +104,7 @@ Run after each phase's Green step (tests passing). This is a static code review 
 
 ### Test Tier Compliance
 - Tier 1 tests are infrastructure-free: PASS | <violations>
-- No Docker usage in any test (Testcontainers / docker exec / etc.): PASS | <violations>
+- No Docker usage outside the E2E path (Testcontainers / docker exec / etc.): PASS | <violations>
 
 ### TDD Principles Compliance (per `tdd-principles.md`)
 - Tests describe behavior, not implementation (§2): PASS | <violations>

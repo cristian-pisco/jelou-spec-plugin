@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.232] — 2026-06-20
+
+### Added
+- path-scoped Testcontainers carve-out for E2E
+
 ## [0.3.231] — 2026-06-20
 
 ### Added

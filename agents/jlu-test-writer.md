@@ -231,7 +231,7 @@ After writing tests and confirming they fail, provide a structured summary:
 - Match the existing codebase conventions exactly. Your tests should look like they were written by the same team.
 - Every requirement in the phase MUST have at least one test. If a requirement is untestable, flag it.
 - Respect the engineering principles: Security > Simplicity > Readability > TDD > Repo conventions.
-- Respect the TEST_TIER instruction. Tier 1 must be infrastructure-free; Tier 2 may assume host-resident infrastructure already running but must never start containers or import Testcontainers (both tiers).
+- Respect the TEST_TIER instruction. Tier 1 must be infrastructure-free; Tier 2 may assume host-resident infrastructure already running but must never start containers or import Testcontainers — never in Tier 1/2. The sole exception: when authoring a backend E2E suite for `/jlu-production-like`, Testcontainers is permitted ONLY in the E2E path (`test/e2e/**`, `*.e2e-spec.ts`) and only to bring up dependencies (DB/Redis/etc.), never the service under test.
 - When in doubt about whether a test needs real infrastructure, write it as Tier 1 (mocked). A mocked test that exists is better than an integration test deferred.
 
 ## Examples

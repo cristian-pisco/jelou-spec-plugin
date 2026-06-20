@@ -19,7 +19,7 @@ Your context window is finite. Manage it deliberately:
 
 The TDD pipeline never runs through Docker. Absolute, applies to every agent and every tier:
 
-- **DO NOT** use Testcontainers, `dockerode`, or any library that spawns containers.
+- **DO NOT** use Testcontainers, `dockerode`, or any library that spawns containers — except in the E2E path (`test/e2e/**`, `*.e2e-spec.ts`), which only `/jlu-production-like` runs.
 - **DO NOT** call `docker`, `docker compose`, or `podman` from a test, helper, or build step.
 - **DO NOT** prefix test/build/lint commands with any container-exec wrapper.
 - **DO NOT** import test utilities that boot containers as a side effect.
