@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.233] — 2026-06-20
+
+### Added
+- backend Testcontainers E2E phase + frontend reuse-or-reboot
+
 ## [0.3.232] — 2026-06-20
 
 ### Added

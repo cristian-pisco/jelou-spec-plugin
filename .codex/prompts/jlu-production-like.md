@@ -1,5 +1,5 @@
 ---
-description: "Use to run the full production-like test suite for a task — auto-detects fullstack vs full-backend, boots the dev infra once, delegates to ui-qa-run (UI) and test-suite (backend) against the live stack, then tears down. Triggers \"production-like\", \"run the full QA\", \"test the task end to end\", \"fullstack E2E\", \"full backend test\"."
+description: "Use to run the full production-like test suite for a task — auto-detects fullstack vs full-backend, boots the dev infra once, delegates to ui-qa-run (UI) and test-suite + a Testcontainers backend-E2E phase (backend) against the live stack, then tears down. Triggers \"production-like\", \"run the full QA\", \"test the task end to end\", \"fullstack E2E\", \"full backend test\"."
 argument-hint: "[task-slug]"
 ---
 Resolve the workflow file in this order, and use the first one that exists:

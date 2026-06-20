@@ -5,10 +5,10 @@ full-backend), owns the dev-environment lifecycle (boot once, teardown once via
 `jelou/references/env-lifecycle.md`), and delegates test EXECUTION to the existing
 skills — inline, never as sub-agents:
 
-- backend services → `/jlu-test-suite` (host unit+integration against the live stack)
+- backend services → `/jlu-test-suite` (host unit+integration) + a Testcontainers backend-E2E phase (dependencies only, real HTTP)
 - UI services      → `/jlu-ui-qa-run --no-boot` (auth + Playwright against the live stack)
 
-No Testcontainers, no seed system: reuses `dev` blocks + `data_isolation: per-run`.
+No seed system: reuses `dev` blocks + `data_isolation: per-run`. Testcontainers is permitted ONLY in the backend E2E path (`test/e2e/**`, `*.e2e-spec.ts`), dependencies-only, capped to `WORKERS` (see `subagent-base.md`).
 
 ## Inputs
 
@@ -92,6 +92,15 @@ No Testcontainers, no seed system: reuses `dev` blocks + `data_isolation: per-ru
     `$TASK_DIR/.production-like/launch-<service>.log`. On `ready_timeout` →
     `STATUS: BLOCKED` (teardown still runs via the trap).
 
+10b. **Health-check before boot (reuse-or-reboot).** For each service in the Service Boot Order,
+    before launching it run the readiness probe from `jelou/references/env-lifecycle.md`
+    (`http_200`/`port_open` on the mapped host port):
+    - **Healthy** → reuse the already-running process; do NOT add it to `BOOTED[]`, so teardown
+      never stops it (it belongs to the developer).
+    - **Unhealthy or absent** → boot it fresh with `data_isolation: per-run` and register it in
+      `BOOTED[]`/`TEARDOWN_CMD[]` so teardown reclaims it. This makes the run reproducible when no
+      live stack exists, and frugal when one does.
+
 ### Phase 3 — Backend execution
 
 11. For each service in `backend_services`: resolve its active worktree
@@ -99,6 +108,22 @@ No Testcontainers, no seed system: reuses `dev` blocks + `data_isolation: per-ru
     `/jlu-test-suite` **inline** (read `jelou/workflows/test-suite.md` and run it for that
     service). Its integration tests now hit the live booted stack. Record PASS/FAIL and the
     grouped failure report. Do NOT abort the run on failure — record and continue.
+
+### Phase 3.5 — Backend E2E (Testcontainers, dependencies only)
+
+11b. For each service in `backend_services`, **serially (concurrency = `WORKERS`, default 1)**:
+    1. Resolve its active worktree (`jelou/references/worktree-resolution.md`) and `cd` in.
+    2. Discover existing E2E suites by the path convention `test/e2e/**` / `*.e2e-spec.ts`.
+    3. **If E2E suites exist:** run them. The suite brings up **dependencies only** (DB/Redis/etc.)
+       via Testcontainers in ephemeral isolated containers; the service under test runs on the host
+       pointing at those containers and is exercised over real HTTP. Per the
+       `Testcontainers E2E` clause in `jelou/references/subagent-base.md`, bring up one dependency
+       set at a time and **tear it down before the next service** — no orphaned containers.
+    4. **If no E2E suites exist:** re-dispatch `jlu-test-writer` with `--allow-test-edits` and the
+       E2E target (write only under `test/e2e/**` / `*.e2e-spec.ts`, dependencies-only) to author
+       them, then re-run the suite once to confirm RED→GREEN. production-like remains a runner: it
+       never authors a test file itself.
+    5. Record PASS/FAIL; never abort the run on failure.
 
 ### Phase 4 — UI execution (fullstack only)
 
@@ -157,7 +182,7 @@ this file), so the live probe is safe to mutate.
 13. Run `teardown(booted)` per `jelou/references/env-lifecycle.md`. This is the trap action
     registered at boot and runs on every exit path (success, failure, abort).
 14. **Aggregate report.** Print: `scope`, services booted, a backend section (per-service
-    PASS/FAIL with `test-suite`'s grouped failures), a UI section (per-service PASS/FAIL),
+    PASS/FAIL with `test-suite`'s grouped failures, plus the Testcontainers backend-E2E PASS/FAIL), a UI section (per-service PASS/FAIL),
     and an overall verdict: `PASS` (all green AND the Phase 4.5 breadth gate clean),
     `PASS-THIN / NEEDS-BREADTH` (all suites green but the breadth gate found uncovered
     validator/reference dimensions — names them and the re-dispatch outcome; advisory, self-heals),

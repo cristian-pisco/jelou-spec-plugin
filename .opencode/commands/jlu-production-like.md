@@ -1,5 +1,5 @@
 ---
-description: Run the full production-like test suite for a task — auto-detect fullstack vs full-backend, boot dev infra once, delegate to ui-qa-run + test-suite against the live stack, then tear down
+description: Run the full production-like test suite for a task — auto-detect fullstack vs full-backend, boot dev infra once, delegate to ui-qa-run + test-suite + a Testcontainers backend-E2E phase against the live stack, then tear down
 agent: build
 ---
 Resolve workflow path in this order:
