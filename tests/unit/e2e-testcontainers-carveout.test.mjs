@@ -34,6 +34,7 @@ describe('Testcontainers carve-out — E2E path is the only exception', () => {
   test('subagent-base scopes the ban to non-E2E paths', () => {
     const base = read('jelou/references/subagent-base.md');
     assert.match(base, E2E_PATH);
+    assert.match(base, /production-like/);
   });
 
   test('tdd-cycle notes the E2E exception', () => {

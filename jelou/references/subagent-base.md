@@ -53,7 +53,7 @@ Test runners default to one worker per CPU core, and each Jest/Vitest worker is 
   E2E suite that spins up ephemeral dependency containers, concurrency = WORKERS (default 1):
   run one service's E2E at a time, bring up one dependency set at a time, and run its
   teardown of that dependency set before the next service. No orphaned containers may survive the run.
-  This is the only place Testcontainers is permitted; everywhere else the ban below applies.
+  This is the only place Testcontainers is permitted; everywhere else the ban in the `Docker is Forbidden` section applies.
 
 ## Three-Strike Rule
 

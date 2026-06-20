@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.235] — 2026-06-20
+
+### Fixed
+- correct ban pointer + step 10 reuse-or-reboot ordering
+
 ## [0.3.234] — 2026-06-20
 
 ### Internal

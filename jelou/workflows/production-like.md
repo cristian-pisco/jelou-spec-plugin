@@ -88,18 +88,19 @@ No seed system: reuses `dev` blocks + `data_isolation: per-run`. Testcontainers 
 
 ### Phase 2 — Boot once
 
-10. Run `boot(Service Boot Order)` per `jelou/references/env-lifecycle.md`, logging to
-    `$TASK_DIR/.production-like/launch-<service>.log`. On `ready_timeout` →
-    `STATUS: BLOCKED` (teardown still runs via the trap).
-
-10b. **Health-check before boot (reuse-or-reboot).** For each service in the Service Boot Order,
-    before launching it run the readiness probe from `jelou/references/env-lifecycle.md`
-    (`http_200`/`port_open` on the mapped host port):
+10. **Boot the Service Boot Order with a per-service reuse-or-reboot decision.** Run
+    `boot(Service Boot Order)` per `jelou/references/env-lifecycle.md`, logging to
+    `$TASK_DIR/.production-like/launch-<service>.log`. For each service in the order, the FIRST
+    action — **before launching it** — is the readiness probe from
+    `jelou/references/env-lifecycle.md` (`http_200`/`port_open` on the mapped host port), and the
+    probe decides whether the boot step launches it at all:
     - **Healthy** → reuse the already-running process; do NOT add it to `BOOTED[]`, so teardown
       never stops it (it belongs to the developer).
     - **Unhealthy or absent** → boot it fresh with `data_isolation: per-run` and register it in
       `BOOTED[]`/`TEARDOWN_CMD[]` so teardown reclaims it. This makes the run reproducible when no
       live stack exists, and frugal when one does.
+
+    On `ready_timeout` → `STATUS: BLOCKED` (teardown still runs via the trap).
 
 ### Phase 3 — Backend execution
 
