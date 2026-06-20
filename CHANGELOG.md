@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.241] — 2026-06-20
+
+### Added
+- add /jlu-update command to update the plugin from any runtime
+
 ## [0.3.240] — 2026-06-20
 
 ### Internal
