@@ -48,3 +48,12 @@ describe('production-like — frontend reuse', () => {
     assert.match(wf, /re-?boot|boot fresh/i);
   });
 });
+
+describe('e2e-environment — backend E2E deps model', () => {
+  test('documents Testcontainers dependencies-only for backend E2E', () => {
+    const env = read('jelou/references/e2e-environment.md');
+    assert.match(env, /backend E2E/i);
+    assert.match(env, /Testcontainers/);
+    assert.match(env, /dependenc(y|ies) only|service on the host/i);
+  });
+});

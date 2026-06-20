@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.234] — 2026-06-20
+
+### Internal
+- document backend E2E ephemeral-deps model
+
 ## [0.3.233] — 2026-06-20
 
 ### Added

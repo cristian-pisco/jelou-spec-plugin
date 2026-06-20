@@ -169,3 +169,14 @@ For services with `dev.data_isolation: shared` (per `dev-block-schema.md`), `--a
 - `jelou/references/dev-block-schema.md` — `env_files` declares which files the orchestrator sources before launching non-Docker dev servers.
 - `jelou/templates/spec-templates/user-flow.md` — `Env Vars` section that the writer reads and the orchestrator validates.
 - `jelou/workflows/ui-qa-run.md` — Phase 3 step 15 implements the `.env` source + var-existence check.
+
+## Backend E2E (production-like)
+
+`/jlu-production-like` runs a dedicated backend E2E phase that does NOT use the dev-block boot
+for its dependencies. Instead it brings up **dependencies only** (DB/Redis/etc.) via
+Testcontainers in ephemeral, isolated containers, runs the service under test **on the host**
+pointed at those containers, and exercises it over real HTTP. Suites live in the E2E path
+(`test/e2e/**`, `*.e2e-spec.ts`) — the single place Testcontainers is permitted. Concurrency is
+capped to `WORKERS` (default 1) with mandatory dependency-set teardown between services
+(`jelou/references/subagent-base.md`, `Test Execution Resource Limits`). This is additive: the
+unit+integration `/jlu-test-suite` run against the booted live stack is preserved.
