@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.240] — 2026-06-20
+
+### Internal
+- lead with remote one-liner, keep source + native as alternatives
+
 ## [0.3.239] — 2026-06-20
 
 ### Added
