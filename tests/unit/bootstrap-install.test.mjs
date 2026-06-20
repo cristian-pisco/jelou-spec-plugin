@@ -29,3 +29,31 @@ describe('install.sh — ref resolution', () => {
     assert.match(r.stdout, /^REF: main$/m);
   });
 });
+
+describe('install.sh — flags', () => {
+  test('--ref is honored', () => {
+    const r = run(['--host', 'codex', '--ref', 'v0.3.235']);
+    assert.match(r.stdout, /^REF: v0\.3\.235$/m);
+  });
+  test('single --host produces exactly that host', () => {
+    const r = run(['--host', 'codex']);
+    assert.match(r.stdout, /^PLAN: setup --host codex$/m);
+  });
+  test('multiple --host flags accumulate in order', () => {
+    const r = run(['--host', 'claude', '--host', 'opencode']);
+    assert.match(r.stdout, /^PLAN: setup --host claude --host opencode$/m);
+  });
+  test('passthrough flags are forwarded', () => {
+    const r = run(['--host', 'opencode', '--project', '/tmp/x']);
+    assert.match(r.stdout, /--project \/tmp\/x/);
+  });
+  test('invalid --host exits 2', () => {
+    const r = run(['--host', 'bogus']);
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /--host must be one of/);
+  });
+  test('unknown option exits 2', () => {
+    const r = run(['--frobnicate']);
+    assert.equal(r.status, 2);
+  });
+});

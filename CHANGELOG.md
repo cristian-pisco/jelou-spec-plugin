@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.237] — 2026-06-20
+
+### Internal
+- cover flag parsing and passthrough
+
 ## [0.3.236] — 2026-06-20
 
 ### Added
