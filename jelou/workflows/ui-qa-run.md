@@ -149,7 +149,13 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
     fi
     ```
 
-    When `AUTH_GATE=login_required`:
+    When `AUTH_GATE=login_required`, **log in automatically — never present a discretionary
+    menu.** An invalid/stale session is auto-refreshed by the sub-steps below; the orchestrator
+    MUST NOT raise an `AskUserQuestion` offering to "accept the stale session / pause for a manual
+    refresh / decide whether to refresh." That user's-call menu is forbidden — a stale session is
+    always closed by re-logging in here, not by asking the user. The only sanctioned prompts are
+    sub-step 2 (missing `e2e-auth.yaml`), sub-step 5 (Gmail paste fallback), and the exit-44 /
+    exit-47 branches in sub-step 6 — nothing else.
 
     1. Verify `TEST_EMAIL` and `TEST_PASSWORD` are declared **by name** in `.env` / `.env.e2e` (`grep -qE '^TEST_EMAIL=' ...`). Missing → abort `STATUS: BLOCKED`, exit 2, naming the variables. Never print values (guard-env-reads enforces).
     2. Read `.spec-workspace/e2e-auth.yaml` (flat keys: `otp_from`, `otp_subject_regex`, `otp_code_regex`). Missing file → ask the user ONCE via `AskUserQuestion` for the OTP mail's sender and subject pattern, then persist the file so future runs never re-ask.

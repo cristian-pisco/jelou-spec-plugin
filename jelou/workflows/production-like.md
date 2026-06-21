@@ -161,6 +161,19 @@ No seed system: reuses `dev` blocks + `data_isolation: per-run`. Testcontainers 
     because the Gmail MCP is session-bound; it is the ONLY execution the orchestrator
     performs.
 
+    **No discretionary auth-gate menu — auto-refresh, never "your call".** An invalid or
+    stale session is NEVER the user's decision to make. The orchestrator MUST run the local
+    OTP login driver (`bin/e2e-login.mjs`) automatically and regenerate the `storageState`;
+    it MUST NOT surface an `AskUserQuestion` offering to "accept the stale session / pause for
+    a manual refresh / choose whether to refresh" — presenting that choice is the exact defect
+    this guard forbids. `E2E_BASE_URL` and `TEST_EMAIL`/`TEST_PASSWORD` are known because the
+    14b block sources `.env.e2e`; never claim the target is unknown and never punt the refresh
+    to the user. The ONLY user prompts the gate may raise are the four already in `ui-qa-run.md`
+    step 14b: missing `e2e-auth.yaml` (one-time OTP sender/subject), the Gmail paste fallback,
+    login-form-not-found (exit 44), and a genuinely remote captcha capture (exit 47). A green
+    Success Criterion that fails live only because the session is stale is closed by refreshing
+    the session, not by asking the user to accept the gap.
+
 ### Phase 4 — UI execution (delegated; fullstack only)
 
 12. For each service in `ui_services`: dispatch `jlu-ui-qa-runner` (session already

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.253] — 2026-06-21
+
+### Fixed
+- production-like.md 11c: an invalid/stale session is never the user's call — auto-run bin/e2e-login.mjs and regenerate storageState; E2E_BASE_URL and credentials are known from the sourced .env.e2e; the only sanctioned prompts are the four already in ui-qa-run.md step 14b.
+- ui-qa-run.md 14b: log in automatically; bar the accept/pause/refresh menu.
+- guard test asserting both workflows forbid the discretionary menu.
+
 ## [0.3.252] — 2026-06-21
 
 ### Changed

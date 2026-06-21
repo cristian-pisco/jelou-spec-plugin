@@ -20,6 +20,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
 const uiwf = read('jelou/workflows/ui-qa-run.md');
+const prodlike = read('jelou/workflows/production-like.md');
 const env = read('jelou/references/env-lifecycle.md');
 const fixtures = read('jelou/references/auth-fixtures.md');
 
@@ -44,6 +45,26 @@ describe('auth gate — discards a foreign/undecryptable persisted session', () 
     assert.match(fixtures, /decrypt/i);
     assert.match(fixtures, /foreign|prod-captured/i);
     assert.match(fixtures, /discard|regenerate|fresh local login|treat (it )?as invalid/i);
+  });
+});
+
+describe('auth gate — an invalid session is auto-refreshed, never a discretionary "your call" menu', () => {
+  test('production-like 11c forbids the accept/pause/choose menu and mandates auto-login', () => {
+    assert.match(prodlike, /discretionary auth-gate menu/i);
+    assert.match(prodlike, /accept the stale session/i);
+    assert.match(prodlike, /automatically/i);
+    assert.match(prodlike, /bin\/e2e-login\.mjs/);
+  });
+
+  test('production-like 11c never punts the refresh to the user as "your call"', () => {
+    assert.match(prodlike, /your call/i);
+    assert.match(prodlike, /never punt the refresh\s+to the user/i);
+  });
+
+  test('ui-qa-run step 14b logs in automatically and bars the discretionary menu', () => {
+    assert.match(uiwf, /never present a discretionary\s*\n?\s*menu/i);
+    assert.match(uiwf, /accept the stale session/i);
+    assert.match(uiwf, /log in automatically/i);
   });
 });
 
