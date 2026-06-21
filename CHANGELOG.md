@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.250] — 2026-06-20
+
+### Added
+- shift-left UI E2E suite authoring into execute-task final validation
+
 ## [0.3.249] — 2026-06-20
 
 ### Internal

@@ -1036,6 +1036,28 @@ Log the validation results to terminal:
 
 No cleanup needed. The TDD pipeline never starts containers, so there is nothing to prune. If a dev container was running for `/jlu-start-dev`, leave it alone — its lifecycle is owned by that workflow.
 
+### Step 8d — Materialize the UI E2E suite from SPEC.md (shift-left)
+
+After backend validation passes, author the UI E2E suite for any affected frontend
+service so it ships with the change. A service is a **UI service** when its
+`services.yaml` `stack` ∈ {`react`, `nextjs`, `vue`, `angular`, `svelte`} (or its
+`description` matches `/(react|next\.?js|vue|angular|svelte|frontend|UI app)/i` for
+legacy registrations without a `stack`).
+
+For each affected UI service:
+
+1. Resolve its active worktree (`jelou/references/worktree-resolution.md`).
+2. If `services/<UI_SERVICE_ID>/user-flow.md` + generated specs already exist → no-op.
+3. Otherwise dispatch `jlu-ui-e2e-writer`: `MODE=bootstrap` when no Playwright infra
+   exists, else `MODE=derive-from-spec`; `EXPECT=red`. The writer reads `SPEC.md` and
+   emits `user-flow.md` + the complete suite (success + non-default-field +
+   reference-population + negative/rejection per its rule 4b).
+4. Commit the generated `user-flow.md` + specs to the task branch.
+
+This step authors only — it is **pre-deploy**: it does NOT boot a UI server and does
+NOT run Playwright (that happens post-deploy under `/jlu-production-like` /
+`/jlu-ui-qa-run`). It is a no-op when no UI service is affected.
+
 ---
 
 ## Step 9 — Success Path
