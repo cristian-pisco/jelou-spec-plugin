@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.246] — 2026-06-20
+
+### Internal
+- dispatch ui-qa-run execution body to jlu-ui-qa-runner
+
 ## [0.3.245] — 2026-06-20
 
 ### Added

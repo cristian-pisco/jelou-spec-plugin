@@ -15,6 +15,9 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
     (e.g. `/jlu-production-like`). Skips the pre-flight resource/port gate, the service
     boot, and teardown (Phase 1 steps 8–10, Phase 3 step 14, and teardown). The auth gate,
     Playwright run, fix-loop, and report still execute. Sets `NO_BOOT=1`.
+    Under `--no-boot` the caller (`/jlu-production-like`) has already materialized the
+    suite and completed the auth gate, so step 7 derivation is a no-op and the run body
+    is dispatched to `jlu-ui-qa-runner`.
 
 ## Process
 
@@ -246,6 +249,30 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
     **Required env (`.env.e2e`):** `COOKIE_SECRET` (must match the backend). Optional: `SESSION_SYNC_MONGO_URI` (default `mongodb://127.0.0.1:27017`), `SESSION_SYNC_DB` (`logsM`), `SESSION_TTL_HOURS` (`12`), `SESSION_COOKIE_NAME` (`jelou_auth`), `JLU_MONGODB_MODULE` (driver-path override). Sourced in 14b's `set -a` block; secrets never printed.
 
     **Still forbidden:** using this to mask an auth failure (see the carve-out above). It is gated on a *successful* login and fails closed.
+
+14d. **Dispatch the execution body to `jlu-ui-qa-runner`.** The auth gate (14b/14c) has
+    produced a valid session; the heavy execution body — the Playwright run, the
+    zero-test / minimal-input guards, crash + auth-collapse detection, the bounded
+    fix-loop (which dispatches `jlu-ui-fix-loop`), the confirmation pass, and the run
+    report — runs in the `jlu-ui-qa-runner` subagent, NOT inline in the orchestrator.
+    The orchestrator does NOT execute steps 15–22 itself; those steps below are the
+    canonical spec the runner follows. Dispatch `jlu-ui-qa-runner` with: `<TASK_DIR>`,
+    `<UI_SERVICE_ID>`, the worktree resolved in step 12, `<PLUGIN_ROOT>`, `<WORKERS>`,
+    the `PLAYWRIGHT_CONFIG` recorded in step 7b', and the `ALLOW_PROD_TARGET` /
+    `ALLOW_TEST_EDITS` flags.
+
+    Parse the runner's `STATUS:` line:
+    - `PASS` / `FAIL` → record per-test results from its report; continue.
+    - `BLOCKED` → surface the reason (`service_crashed` / `auth_collapse` /
+      `no_tests_collected`) and exit per the failure-modes table.
+    - `NEEDS_CONTEXT` → **the orchestrator brokers it**: `AskUserQuestion` with the
+      runner's `missing` / `tried` / `looked_in`, then re-dispatch `jlu-ui-qa-runner`
+      with `USER_FEEDBACK=<answer>`. The runner never asks the user itself.
+    - `ui_breadth_gaps` non-empty → route to `jlu-ui-e2e-writer`
+      (`MODE=derive-from-spec`, `--allow-test-edits`) for the named dimensions, then
+      re-dispatch the runner once to confirm RED→GREEN.
+
+#### Execution body — performed by `jlu-ui-qa-runner` (the orchestrator dispatches it; it does not run these inline)
 
 15. **Run Playwright** in the UI service's worktree. Source the UI service's `.env` (and optional `.env.e2e` overlay) so Playwright sees the same configuration the dev server is using; refuse to start if any env var declared in `user-flow.md` `Env Vars` is missing, and HEAD-check each URL whose source points outside `Service Boot Order`. See `jelou/references/e2e-environment.md` for the contract.
 
