@@ -44,6 +44,13 @@ If the output is `UP_TO_DATE` or `SKIPPED`, continue silently. Update-check fail
 
 ## Phase 2 — Execute Workflow
 
-Follow the workflow file you just read. Execute it **inline in this session** — do NOT spawn a sub-agent. The orchestrator delegates to `/jlu-ui-qa-run` and `/jlu-test-suite` inline; both require in-session execution (ui-qa-run has interactive OTP/bootstrap gates).
+Follow the workflow file you just read. The orchestrator is **thin**: it dispatches
+subagents for ALL execution (`jlu-test-suite-runner`, `jlu-backend-e2e-runner`,
+`jlu-ui-qa-runner`) and ALL authoring (`jlu-ui-e2e-writer`, `jlu-test-writer`). It
+retains only the dev-environment lifecycle (boot once / teardown), the OTP auth gate
+(Gmail is session-bound, so this stays in-session), `AskUserQuestion` brokering of any
+subagent `NEEDS_CONTEXT`, dispatch/routing, and result aggregation. It has **no test
+execution or authoring role**: never narrate a scope question, never fabricate a
+"deferred-manual" gate, never write a `.spec.ts` inline.
 
 The argument is `{argument}` (optional task slug; auto-detect from branch when omitted). The plugin root is the path resolved above. The current working directory is `{cwd}`.

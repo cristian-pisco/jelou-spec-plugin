@@ -81,3 +81,15 @@ describe('production-like — subagent-first orchestration', () => {
     assert.match(wf, /unconditional|never ask .*scope|no .*deferred-manual|Phase-10/i);
   });
 });
+
+describe('production-like SKILL — subagent-first contract', () => {
+  const skill = read('skills/production-like/SKILL.md');
+  test('replaces the inline mandate with subagent dispatch', () => {
+    assert.doesNotMatch(skill, /do NOT spawn a sub-?agent/i);
+    assert.match(skill, /dispatches?\s+subagents?|jlu-[\w-]+-runner/i);
+  });
+  test('retains only lifecycle, auth gate, brokering, routing, aggregation', () => {
+    assert.match(skill, /auth gate|OTP/i);
+    assert.match(skill, /no test execution or authoring role|never write a .?\.spec\.ts/i);
+  });
+});

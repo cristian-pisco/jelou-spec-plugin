@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.249] — 2026-06-20
+
+### Internal
+- subagent-first runtime contract in production-like SKILL
+
 ## [0.3.248] — 2026-06-20
 
 ### Internal
