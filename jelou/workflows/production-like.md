@@ -2,11 +2,11 @@
 
 Single production-like test orchestrator. Classifies the task (fullstack vs
 full-backend), owns the dev-environment lifecycle (boot once, teardown once via
-`jelou/references/env-lifecycle.md`), and delegates test EXECUTION to the existing
-skills — inline, never as sub-agents:
+`jelou/references/env-lifecycle.md`), and delegates test EXECUTION to runner
+subagents — it never runs a suite or authors a spec inline:
 
-- backend services → `/jlu-test-suite` (host unit+integration) + a Testcontainers backend-E2E phase (dependencies only, real HTTP)
-- UI services      → `/jlu-ui-qa-run --no-boot` (auth + Playwright against the live stack)
+- backend services → `jlu-test-suite-runner` (host unit+integration via `/jlu-test-suite`) + `jlu-backend-e2e-runner` (a Testcontainers backend-E2E phase, dependencies only, real HTTP)
+- UI services      → `jlu-ui-qa-runner` (`/jlu-ui-qa-run --no-boot`, Playwright against the live stack); the orchestrator owns only the OTP auth gate before it
 
 No seed system: reuses `dev` blocks + `data_isolation: per-run`. Testcontainers is permitted ONLY in the backend E2E path (`test/e2e/**`, `*.e2e-spec.ts`), dependencies-only, capped to `WORKERS` (see `subagent-base.md`).
 
@@ -33,6 +33,21 @@ No seed system: reuses `dev` blocks + `data_isolation: per-run`. Testcontainers 
 7. **Classify.** Run `node <plugin-root>/bin/classify-task-scope.mjs '<json>'` →
    `{ scope, ui_services, backend_services, warnings }`. Print any `warnings`. On exit 1
    (empty/invalid), surface the message and stop.
+7.5. **Materialize UI E2E artifacts (delegated, never inline).** For each service in
+   `ui_services` (from step 7), resolve its active worktree
+   (`jelou/references/worktree-resolution.md`) and check whether Playwright infra +
+   `services/<UI_SERVICE_ID>/user-flow.md` + the generated specs already exist.
+   - **Present →** no-op.
+   - **Missing →** dispatch `jlu-ui-e2e-writer` **once** (`MODE=bootstrap` when no
+     Playwright infra, else `MODE=derive-from-spec`; `EXPECT=live` — post-deploy: the
+     writer skips its RED-verification run, the orchestrator runs the suite later),
+     then commit the generated `user-flow.md` + specs to the task directory and
+     re-read. Derivation is **unconditional and silent**: never ask the user "¿cómo
+     acoto este run?", and never invent a "Phase-10 / deferred-manual / manual-E2E"
+     gate — no such gate exists.
+   After this step every UI service has a `user-flow.md`, so step 8 can compute the
+   fullstack boot order, and the suite pre-exists for Phase 4.
+
 8. **Compute the Service Boot Order.**
    - `full-backend`: the affected `backend_services` (each must end up with a `dev` block —
      step 8b resolves any that are missing).
@@ -102,67 +117,70 @@ No seed system: reuses `dev` blocks + `data_isolation: per-run`. Testcontainers 
 
     On `ready_timeout` → `STATUS: BLOCKED` (teardown still runs via the trap).
 
-### Phase 3 — Backend execution
+### Phase 3 — Backend execution (delegated)
 
-11. For each service in `backend_services`: resolve its active worktree
-    (`jelou/references/worktree-resolution.md`), `cd` into it, and execute
-    `/jlu-test-suite` **inline** (read `jelou/workflows/test-suite.md` and run it for that
-    service). Its integration tests now hit the live booted stack. Record PASS/FAIL and the
-    grouped failure report. Do NOT abort the run on failure — record and continue.
+11. For each service in `backend_services`: dispatch `jlu-test-suite-runner` with
+    `<SERVICE_ID>`, its resolved worktree, `<TASK_DIR>`, `<PLUGIN_ROOT>`, `<WORKERS>`.
+    Parse its `STATUS:` line; record PASS/FAIL + grouped failures + `breadth` gaps.
+    Do NOT abort the run on failure.
 
-### Phase 3.5 — Backend E2E (Testcontainers, dependencies only)
+### Phase 3.5 — Backend E2E (delegated)
 
-11b. For each service in `backend_services`, **serially (concurrency = `WORKERS`, default 1)**:
-    1. Resolve its active worktree (`jelou/references/worktree-resolution.md`) and `cd` in.
-    2. Discover existing E2E suites by the path convention `test/e2e/**` / `*.e2e-spec.ts`.
-    3. **If E2E suites exist:** run them. The suite brings up **dependencies only** (DB/Redis/etc.)
-       via Testcontainers in ephemeral isolated containers; the service under test runs on the host
-       pointing at those containers and is exercised over real HTTP. Per the
-       `Testcontainers E2E` clause in `jelou/references/subagent-base.md`, bring up one dependency
-       set at a time and **tear it down before the next service** — no orphaned containers.
-    4. **If no E2E suites exist:** re-dispatch `jlu-test-writer` with `--allow-test-edits` and the
-       E2E target (write only under `test/e2e/**` / `*.e2e-spec.ts`, dependencies-only) to author
-       them, then re-run the suite once to confirm RED→GREEN. production-like remains a runner: it
-       never authors a test file itself.
-    5. Record PASS/FAIL; never abort the run on failure.
+11b. For each service in `backend_services`, serially (concurrency = `WORKERS`):
+    dispatch `jlu-backend-e2e-runner` (it runs the Testcontainers dependencies-only
+    E2E suites under `test/e2e/**` / `*.e2e-spec.ts`). On `NO_E2E_SUITE`, route
+    authoring to `jlu-test-writer` (`--allow-test-edits`, E2E target `test/e2e/**`,
+    dependencies-only), then re-dispatch the runner once. Record PASS/FAIL; never abort.
 
-### Phase 4 — UI execution (fullstack only)
+### Phase 3.75 — Auth gate (orchestrator-owned)
 
-12. For each service in `ui_services`: execute `/jlu-ui-qa-run` **inline** with `--no-boot`
-    (read `jelou/workflows/ui-qa-run.md` and run its auth gate + Playwright + fix-loop +
-    report, skipping gate/boot/teardown). Pass `--allow-prod-target` and `--workers`
-    through. Record PASS/FAIL.
+11c. For each UI service, perform the auth gate inline per `ui-qa-run.md` steps
+    14b/14c: probe the session, log in via OTP (Gmail read / paste fallback) when
+    invalid, and provision the local cookie-guard session. This produces a valid
+    `storageState` the UI runner consumes. The OTP gate stays in the orchestrator
+    because the Gmail MCP is session-bound; it is the ONLY execution the orchestrator
+    performs.
+
+### Phase 4 — UI execution (delegated; fullstack only)
+
+12. For each service in `ui_services`: dispatch `jlu-ui-qa-runner` (session already
+    provisioned in 11c) with `--no-boot` semantics. Parse its `STATUS:`; on
+    `NEEDS_CONTEXT`, broker via `AskUserQuestion` and re-dispatch with `USER_FEEDBACK`;
+    on `ui_breadth_gaps`, route to `jlu-ui-e2e-writer` and re-dispatch once. Record
+    PASS/FAIL.
 
 ### Phase 4.5 — Coverage-breadth + realistic-payload gate (refuse the false green)
 
 A suite can be all-green and still production-thin — a one-happy-path test per requirement (a
 filter with `columns: []`, a 1-text-column E2E) exits 0 yet never sends the production payload that
 400s. This gate runs ONLY after Phases 3-4 reported all-green; it never re-classifies a suite that
-already FAILED. It **RUNS and PROBES — it never authors.** On a breadth gap it re-dispatches the
-upstream authors. The data stack is already up and isolated `data_isolation: per-run` (see the top of
-this file), so the live probe is safe to mutate.
+already FAILED. The orchestrator **consumes the runners' `breadth_gaps` / `ui_breadth_gaps` and
+routes them to `jlu-test-writer` / `jlu-ui-e2e-writer`; the orchestrator never probes or authors
+inline.** The data stack is already up and isolated `data_isolation: per-run` (see the top of this
+file), so the runners' live probes are safe to mutate.
 
-12b. **Static breadth audit.** For each service in `backend_services`, resolve its worktree and run:
-    `node <plugin-root>/bin/probe-coverage-breadth.mjs --service <worktree> --spec $TASK_DIR/SPEC.md --json`.
-    It parses the touched DTO/validator surface (files matching `*.dto.*`/`*.schema.*` or carrying
+12b. **Static breadth audit (runner-fed).** `jlu-test-suite-runner` already ran
+    `node <plugin-root>/bin/probe-coverage-breadth.mjs --service <worktree> --spec $TASK_DIR/SPEC.md --json`
+    for its service and returned the result on its `STATUS:` line. The orchestrator only reads those
+    returned `breadth` fields — it does NOT run the probe itself. The audit parses the touched
+    DTO/validator surface (files matching `*.dto.*`/`*.schema.*` or carrying
     `@IsNumber`/`@IsUUID`/`@IsString`/`@IsArray`/`@IsBoolean`/`@IsNotEmpty`/`@ValidateNested`
     decorators) against the authored cases (`*.spec.*`/`*.test.*`) and emits
-    `{ verdict, uncovered_dimensions, dto_fields_without_rejection, collections_only_empty, cross_field_refs_unpopulated }`.
-    It exits `4` when `verdict: thin` (a validated DTO field — request body or typed query parameter —
+    `{ verdict, uncovered_dimensions, dto_fields_without_rejection, collections_only_empty, cross_field_refs_unpopulated }`,
+    flagging `verdict: thin` (a validated DTO field — request body or typed query parameter —
     has no rejecting-payload test, or a collection/reference field is only ever exercised empty).
 
-12c. **Live realistic-payload probe (active reconnaissance, not authoring).** For each gap the audit
-    names, the integration stack is already booted (Phase 2) on isolated `per-run` data. Read the route
-    from the controller decorator the DTO binds to, then:
-    - send one **rejecting** payload per uncovered validator (a string into `@IsNumber`, a GUID into a
-      numeric id, an empty collection where one is required) and record the 4xx — a 4xx the green suite
-      never asserted is a CONFIRMED breadth gap (the exact GUID-string-into-`@IsNumber()`-field → 400 shape);
-    - send one **realistic success** payload that populates every cross-field reference (a filter naming
-      a real column id, collections non-empty) and record the 2xx — an UNCOVERED-SUCCESS gap when no
-      authored case sends it. Mutating success probes run ONLY against the isolated `per-run` dev data
-      this run booted; never against a shared or prod target (honor `--allow-prod-target` /
-      `--allow-shared-data` exactly as the boot gate does).
-    The probe never edits files and never persists tests — it only produces the case list for step 12e.
+12c. **Live realistic-payload probe (runner-owned, never the orchestrator).** The runners — not the
+    orchestrator — perform the live reconnaissance against the booted `per-run` stack: for each gap the
+    audit names they send one **rejecting** payload per uncovered validator (a string into `@IsNumber`, a
+    GUID into a numeric id, an empty collection where one is required) and record the 4xx — a 4xx the
+    green suite never asserted is a CONFIRMED breadth gap (the exact GUID-string-into-`@IsNumber()`-field →
+    400 shape); plus one **realistic success** payload that populates every cross-field reference (a
+    filter naming a real column id, collections non-empty) and record the 2xx — an UNCOVERED-SUCCESS gap
+    when no authored case sends it. Mutating success probes run ONLY against the isolated `per-run` dev
+    data this run booted; never against a shared or prod target (honor `--allow-prod-target` /
+    `--allow-shared-data` exactly as the boot gate does). The orchestrator consumes the resulting gap
+    list; it never probes, edits files, or persists tests.
 
 12d. **Verdict downgrade (advisory, never a hard fail).** If the audit verdict is `thin` OR the live
     probe confirmed any gap, the overall verdict is NOT `PASS`: emit `PASS-THIN / NEEDS-BREADTH` and, in
@@ -204,6 +222,14 @@ this file), so the live probe is safe to mutate.
 - A delegated `test-suite` / `ui-qa-run` failure → recorded, run continues, overall `FAIL`,
   teardown runs.
 - Lock contention → another `production-like` is active on this task; refuse.
+- **The orchestrator never executes tests and never authors specs.** All execution
+  is delegated to `jlu-test-suite-runner` / `jlu-backend-e2e-runner` /
+  `jlu-ui-qa-runner`; all authoring to `jlu-ui-e2e-writer` / `jlu-test-writer`. The
+  orchestrator MUST NOT write any `.spec.ts` itself — inline `prodlike-*.spec.ts`
+  probe specs are forbidden. Its only execution is the OTP auth gate (Phase 3.75).
+- **Suite derivation is unconditional and silent.** Never ask "¿cómo acoto este run?"
+  and never fabricate a "Phase-10 / deferred-manual / manual-E2E wall" — it does not
+  exist. A missing suite is materialized in step 7.5 by `jlu-ui-e2e-writer`.
 - All suites green but the Phase 4.5 breadth gate finds a validated DTO field with no rejecting-payload
   test, an only-empty collection, or an unpopulated cross-field reference → verdict `PASS-THIN /
   NEEDS-BREADTH`: it names the dimensions, re-dispatches `jlu-test-writer` / `jlu-ui-e2e-writer`

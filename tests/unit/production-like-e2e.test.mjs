@@ -57,3 +57,39 @@ describe('e2e-environment — backend E2E deps model', () => {
     assert.match(env, /dependenc(y|ies) only|service on the host/i);
   });
 });
+
+describe('production-like — subagent-first orchestration', () => {
+  test('materializes the UI suite before computing the boot order', () => {
+    assert.match(wf, /Materialize UI E2E artifacts/i);
+    const matIdx = wf.search(/Materialize UI E2E artifacts/i);
+    const bootOrderIdx = wf.search(/Compute the Service Boot Order/);
+    assert.ok(matIdx > -1 && bootOrderIdx > -1 && matIdx < bootOrderIdx,
+      'materialize step must appear before the boot-order computation');
+  });
+  test('dispatches the runner subagents instead of executing inline', () => {
+    assert.match(wf, /jlu-test-suite-runner/);
+    assert.match(wf, /jlu-backend-e2e-runner/);
+    assert.match(wf, /jlu-ui-qa-runner/);
+  });
+  test('hoists the auth gate into the orchestrator before the UI runner', () => {
+    assert.match(wf, /auth gate/i);
+    assert.match(wf, /storageState|cookie-guard|provision/i);
+  });
+  test('forbids inline authoring and fabricated scope questions', () => {
+    assert.match(wf, /prodlike-\*?\.spec\.ts|prodlike-/);
+    assert.match(wf, /never author|does not author|MUST NOT author/i);
+    assert.match(wf, /unconditional|never ask .*scope|no .*deferred-manual|Phase-10/i);
+  });
+});
+
+describe('production-like SKILL — subagent-first contract', () => {
+  const skill = read('skills/production-like/SKILL.md');
+  test('replaces the inline mandate with subagent dispatch', () => {
+    assert.doesNotMatch(skill, /do NOT spawn a sub-?agent/i);
+    assert.match(skill, /dispatches?\s+subagents?|jlu-[\w-]+-runner/i);
+  });
+  test('retains only lifecycle, auth gate, brokering, routing, aggregation', () => {
+    assert.match(skill, /auth gate|OTP/i);
+    assert.match(skill, /no test execution or authoring role|never write a .?\.spec\.ts/i);
+  });
+});

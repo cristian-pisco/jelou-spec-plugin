@@ -161,3 +161,12 @@ describe('jlu-ui-e2e-writer.md — EXPECT contract', () => {
     assert.doesNotMatch(agent, /trace: 'on-first-retry'/);
   });
 });
+
+describe('ui-qa-run — execution body dispatched to jlu-ui-qa-runner', () => {
+  const uiqa = read('jelou/workflows/ui-qa-run.md');
+  test('keeps the auth gate inline but delegates the run body to the runner', () => {
+    assert.match(uiqa, /jlu-ui-qa-runner/);
+    assert.match(uiqa, /auth gate/i);
+    assert.match(uiqa, /dispatch .*jlu-ui-qa-runner|delegate .*execution body/i);
+  });
+});

@@ -1,5 +1,50 @@
 # Changelog
 
+## [0.3.251] — 2026-06-20
+
+### Internal
+- renumber shift-left section to Step 8e to clear duplicate-ordinal collision
+
+## [0.3.250] — 2026-06-20
+
+### Added
+- shift-left UI E2E suite authoring into execute-task final validation
+
+## [0.3.249] — 2026-06-20
+
+### Internal
+- subagent-first runtime contract in production-like SKILL
+
+## [0.3.248] — 2026-06-20
+
+### Internal
+- thin subagent-first production-like orchestrator + pre-materialize UI suite
+
+## [0.3.247] — 2026-06-20
+
+### Fixed
+- correct stale orchestrator-runs-suite attribution in ui-qa-run step 7b'
+
+## [0.3.246] — 2026-06-20
+
+### Internal
+- dispatch ui-qa-run execution body to jlu-ui-qa-runner
+
+## [0.3.245] — 2026-06-20
+
+### Added
+- add jlu-ui-qa-runner subagent
+
+## [0.3.244] — 2026-06-20
+
+### Added
+- add jlu-backend-e2e-runner subagent
+
+## [0.3.243] — 2026-06-20
+
+### Added
+- add jlu-test-suite-runner subagent
+
 ## [0.3.242] — 2026-06-20
 
 ### Added
