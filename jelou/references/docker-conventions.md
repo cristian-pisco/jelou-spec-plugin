@@ -15,10 +15,25 @@ The TDD pipeline runs entirely on the host. Containers are reserved for the long
 | Tests (any tier) | Host | `npm test`, `pytest`, `go test ./...` |
 | Lint/format | Host | `npx eslint .`, `npx prettier --write` |
 | Build/CLI | Host | `npm run build`, `tsc --noEmit` |
-| Dependency install | Host | `npm install`, `pip install`, `go mod download` |
+| Dependency install | **Service runtime** | host for `runtime.type: host`; **inside the container** for `runtime.type: docker-compose` — always via `bin/install-dep.mjs` |
 | Dev server (long-running) | Container (when `docker.compose_file` is set) | `docker compose up -d <svc>` via `/jlu-start-dev` |
 
-**Rule of thumb**: anything that runs once and exits (tests, build, lint, install) runs on the host. Only the long-running dev process for a service with a `docker` block goes through Docker, and only when `/jlu-start-dev` boots it.
+**Rule of thumb**: anything that *reads* the dependency graph (tests, build, lint, format) runs on the host. Installing a dependency *mutates* the graph the running service consumes, so it must run wherever that service runs — the host for a host-runtime service, the container for a docker-compose-runtime service. Only the long-running dev process for a service with a `docker` block goes through Docker, and only when `/jlu-start-dev` boots it.
+
+## Installing Dependencies
+
+Never run a raw `npm install` / `yarn add` / `pnpm add` to add a package to a service. Always go through the helper:
+
+```bash
+node "${PLUGIN_ROOT:-.}/bin/install-dep.mjs" <service-name> <pkg>[@version] [<pkg> …] [--dev]
+```
+
+It reads the service's `runtime` block from `jlu-services.json` and:
+
+- **`runtime.type: host`** (or an unregistered service) → installs on the host, in the service directory. This is the unchanged default.
+- **`runtime.type: docker-compose`** → checks whether `compose_service` is running (`docker compose ps`), boots it idempotently with `docker compose up -d <service>` if it is not, then installs **inside the container** via the runtime's `exec_template` (default `docker compose -f {compose_file} exec {compose_service} {cmd}`).
+
+The package manager is detected from the lockfile (pnpm/yarn/bun/npm) — never assumed. This is the one place the TDD pipeline is allowed to exec into a container; see the carve-out in `subagent-base.md`.
 
 ## Port Allocation Algorithm
 

@@ -159,6 +159,7 @@ Before reporting, verify:
 - Stay within `Files Modified` — do not refactor pre-existing code that the implementer didn't touch.
 - Match the existing codebase style. Your refactor diff should be invisible in a style review.
 - Soft cap: 3 refactors per phase. If you want more, that's a signal to defer.
+- If a refactor needs a new package, install it via `node "${PLUGIN_ROOT:-.}/bin/install-dep.mjs" <service-name> <pkg> [--dev]` — never a raw `npm install`. It installs in the service's runtime (inside the container for a `runtime.type: docker-compose` service). See `jelou/references/docker-conventions.md` → "Installing Dependencies".
 
 ## Working Well When
 

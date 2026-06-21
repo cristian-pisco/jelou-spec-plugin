@@ -26,6 +26,8 @@ The TDD pipeline never runs through Docker. Absolute, applies to every agent and
 
 All commands run on the host runtime directly (`node`, `pnpm`, `pytest`, `go test`, `tsc`, etc.). The service's dev container (if one exists) is for `/jlu-start-dev` only — not part of the test/build runtime. If you see references to `DOCKER_EXEC_PREFIX` in older docs, treat them as stale.
 
+**Single carve-out — dependency install.** Adding a package is the one operation that targets the *running service's* runtime, not the host test runtime. For a service whose `jlu-services.json` `runtime.type` is `docker-compose`, the install must run inside the container (the container owns the package manager, Node version, and native-build toolchain). Never run a raw `npm install` to add a package — always go through `bin/install-dep.mjs`, which routes by runtime, boots the container if it is down, and installs in the right context. See `docker-conventions.md` → "Installing Dependencies". This does **not** loosen anything above: tests, build, lint, and format stay host-only.
+
 ## Test Execution Resource Limits
 
 Test runners default to one worker per CPU core, and each Jest/Vitest worker is a separate Node process holding 0.5–2 GB once ts-jest starts type-checking. On a many-core dev machine an uncapped run spawns 20+ workers, exhausts RAM, and freezes the host hard enough to need a forced power-off. This has happened on real runs. These rules are absolute for every test invocation, in every agent:

@@ -135,6 +135,8 @@ When dispatched with `MODE=bootstrap`, the UI service worktree has no Playwright
 
    If install fails (network, registry, permissions), report `BLOCKED` and quote the exact command so the user can run it manually. Do not proceed to derive on a failed install.
 
+   > **Why a host install here (not `bin/install-dep.mjs`)?** `@playwright/test` is test tooling whose runner process executes on the host — it drives the service through its mapped port. It is intentionally a host devDependency, even for a `runtime.type: docker-compose` service. The `bin/install-dep.mjs` helper is for packages the *running service* imports; do not route Playwright through it.
+
 After scaffolding succeeds, continue with the `derive-from-spec` flow below (generate `user-flow.md`, then the `*.spec.ts` files). The config you wrote satisfies the `baseURL = requireEnv('E2E_BASE_URL')` contract, so the later `playwright.config.ts` read in Process step 3d will not flag a hard-coded baseURL.
 
 ## Deriving user-flow.md from SPEC.md (mode: derive-from-spec)
