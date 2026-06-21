@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.248] — 2026-06-20
+
+### Internal
+- thin subagent-first production-like orchestrator + pre-materialize UI suite
+
 ## [0.3.247] — 2026-06-20
 
 ### Fixed
