@@ -99,6 +99,16 @@ If an integration test requires a running service process (NestJS, etc.), the de
 
 Do NOT run the full test suite. Regression checking happens once at final validation (Step 8). Running only phase tests keeps the TDD feedback loop fast and avoids booting heavy test infrastructure.
 
+### Installing a Dependency
+
+If making tests green requires a new package, **never** run a raw `npm install` / `yarn add` / `pnpm add` in the service directory. Always install through the helper:
+
+```bash
+node "${PLUGIN_ROOT:-.}/bin/install-dep.mjs" <service-name> <pkg>[@version] [--dev]
+```
+
+It routes the install to the service's runtime — host for a host-runtime service, **inside the container** (booting it first if down) for a `runtime.type: docker-compose` service — and detects the package manager from the lockfile. A host-side install on a containerized service installs into the wrong runtime. See `jelou/references/docker-conventions.md` → "Installing Dependencies".
+
 ### Step 5: Verify Minimum Code
 Review your implementation and ask:
 - Is there any code that isn't exercised by a test? Remove it.
