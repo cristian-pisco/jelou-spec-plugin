@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.247] — 2026-06-20
+
+### Fixed
+- correct stale orchestrator-runs-suite attribution in ui-qa-run step 7b'
+
 ## [0.3.246] — 2026-06-20
 
 ### Internal
