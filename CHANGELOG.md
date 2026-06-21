@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.245] — 2026-06-20
+
+### Added
+- add jlu-ui-qa-runner subagent
+
 ## [0.3.244] — 2026-06-20
 
 ### Added

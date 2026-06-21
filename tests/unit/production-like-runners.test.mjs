@@ -60,3 +60,24 @@ describe('jlu-backend-e2e-runner', () => {
     assert.match(md, /tear (it |them )?down|teardown .*before the next|no orphan/i);
   });
 });
+
+describe('jlu-ui-qa-runner', () => {
+  const md = read('agents/jlu-ui-qa-runner.md');
+  test('declares name, sonnet model, carries Agent but NOT AskUserQuestion', () => {
+    const fm = frontmatter(md);
+    assert.match(fm, /name:\s*jlu-ui-qa-runner/);
+    assert.match(fm, /model:\s*sonnet/);
+    assert.match(fm, /tools:.*\bAgent\b/);
+    assert.doesNotMatch(fm, /AskUserQuestion/);
+  });
+  test('assumes a valid session (no auth gate) and never boots', () => {
+    assert.match(md, /valid session|session .*already|skip .*auth|no auth gate/i);
+    assert.match(md, /do NOT boot|never boot|orchestrator .*boot/i);
+  });
+  test('runs Playwright, owns the bounded fix-loop, returns breadth + needs_context', () => {
+    assert.match(md, /Playwright/);
+    assert.match(md, /jlu-ui-fix-loop/);
+    assert.match(md, /minimal[- ]input|ui_breadth_gaps/i);
+    assert.match(md, /NEEDS_CONTEXT/);
+  });
+});
