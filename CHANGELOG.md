@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.254] — 2026-06-21
+
+### Fixed
+- env-lifecycle.md boot(): a frontend (build-time-baked env) is NEVER reused — always booted fresh with env_files (incl. .env.e2e) sourced via set -a.
+- production-like.md step 10: a ui_services frontend always reboots fresh, even when healthy; never reused.
+- ui-qa-run.md exit-47: the loopback-captcha diagnosis names the reused-frontend -bakes-prod trap and the VITE_TURNSTILE_ENABLED=false requirement.
+- e2e-environment.md: documents build-time inlining — .env.e2e must be injected into the dev-server env at serve start, not merely present.
+- guard tests for all four.
+
 ## [0.3.253] — 2026-06-21
 
 ### Fixed

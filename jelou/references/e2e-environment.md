@@ -28,6 +28,27 @@ set +a
 
 Both files are gitignored on the consumer side. The plugin never commits either.
 
+### Build-time env is baked at dev-server start — `.env.e2e` must be *injected*, not just present
+
+The block above loads `.env.e2e` into the **Playwright** process. That is enough for *runtime*
+config the test harness reads (`E2E_BASE_URL`, `E2E_STORAGE_STATE`, credentials). It is **not**
+enough for the **frontend bundle** the browser loads. A Vite/Nx frontend inlines its public env
+(`NX_*`, `VITE_*`, `NX_PUBLIC_*`) into the served JavaScript **at dev-server start** via the build
+config's `define` block, reading from `process.env` (seeded by `dotenv.config()`, which loads only
+`.env` / `.env.local` — **never `.env.e2e`**). So a `.env.e2e` override of a build-time var (e.g.
+`NX_REACT_APP_DASHBOARD_SERVER_BASE`, which `login v2` POSTs to, or `VITE_TURNSTILE_ENABLED`) takes
+effect **only** when the dev server is launched with `.env.e2e` already sourced into its
+environment. `dotenv.config()` does not overwrite an already-set `process.env` value, so exporting
+the overlay before launch (the boot launcher does `set -a; . ./.env; . ./.env.e2e; set +a`) wins.
+
+Consequence: a **reused** dev server — most often a developer's own `yarn dev`, which sourced only
+`.env` — has already baked the app's `.env` (production URLs, real Turnstile) and silently ignores
+a correct `.env.e2e`. The login then POSTs to prod and is rejected (HTTP 422 / Turnstile). For this
+reason the orchestrator **always boots a frontend fresh, never reuses one** (see `env-lifecycle.md`
+boot()) — only a fresh boot guarantees the bundle baked the E2E config. To point a local frontend's
+login at the local backend, set `NX_REACT_APP_DASHBOARD_SERVER_BASE` (and any sibling auth bases)
+to `localhost` and `VITE_TURNSTILE_ENABLED=false` in `.env.e2e`; the fresh boot does the rest.
+
 ## Required env vars
 
 The Playwright run refuses to start unless these are set:

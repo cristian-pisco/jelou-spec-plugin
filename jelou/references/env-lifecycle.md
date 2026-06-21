@@ -89,6 +89,20 @@ start time). Env vars are baked at dev-server start (e.g. a Vite API base URL), 
 healthy-but-**stale** process keeps serving the old env; if any `env_file` changed since boot,
 treat it as stale and reboot fresh.
 
+**A frontend (build-time-baked env) is NEVER reused — always boot it fresh.** A service whose
+`stack` is a frontend framework (`react`/`nextjs`/`vue`/`angular`/`svelte`) inlines its config
+(API base URLs, feature flags like Turnstile) into the served bundle at dev-server start — the
+build tool reads `.env`/`.env.local` and `process.env`, **not** the `.env.e2e` overlay. The mtime
+heuristic above only catches an `env_file` edited after *this run's* boot; it CANNOT detect the
+common case — a developer's own `yarn dev`, already running and "newer" than every `env_file`, that
+was started by `. ./.env` alone and **never sourced `.env.e2e`**. Reusing it silently runs the
+suite against a bundle baked with the app's `.env` (production URLs, real Turnstile): the login then
+POSTs to prod and is rejected (HTTP 422 / Turnstile) even though `.env.e2e` is correct on disk.
+So for a frontend service: stop any healthy process found, boot it fresh with `env_files`
+(incl. `.env.e2e`) sourced via `set -a` so the overlay lands in `process.env` before the dev server
+inlines it, and register it in `BOOTED[]` so teardown reclaims it. Only a fresh boot guarantees the
+bundle baked the E2E config.
+
 **Boot and teardown share one shell.** The boot routine, the test execution, and the teardown
 trap all run in the **same** long-lived shell — the one that holds the lock fd (`exec 9>…; flock`)
 and registers `trap … EXIT INT TERM`. This matters for `docker-exec`: a backgrounded

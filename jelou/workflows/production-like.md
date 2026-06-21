@@ -123,14 +123,20 @@ No seed system: reuses `dev` blocks + `data_isolation: per-run`. Testcontainers 
     `jelou/references/env-lifecycle.md` (`http_200`/`port_open` on the mapped host port), and the
     probe decides whether the boot step launches it at all:
     - **Healthy** → reuse the already-running process; do NOT add it to `BOOTED[]`, so teardown
-      never stops it (it belongs to the developer). **Exception — stale `env_files`:** for a
-      service whose launcher sources `env_files` (npm/make/shell — e.g. the Vite frontend),
-      reuse only if no `env_file` is newer than the running process (compare each `env_file`
-      mtime against the process start time, `ps -o lstart= -p <pid>`). A frontend **bakes** env
-      vars (e.g. its API base URL) at dev-server start, so a healthy-but-**stale** process keeps
-      serving the OLD env and silently talks to the wrong backend — the datum-legacy run's
-      "reused vite still pointing at prod" failure, where `.env.e2e` had changed since boot. If
-      any `env_file` changed since the process booted, treat it as stale and reboot (next bullet).
+      never stops it (it belongs to the developer). **Two exceptions force a fresh reboot:**
+      - *Stale `env_files`* (npm/make/shell launchers): reuse only if no `env_file` is newer than
+        the running process (compare each `env_file` mtime against the process start time,
+        `ps -o lstart= -p <pid>`).
+      - *A frontend service* (`<service> ∈ ui_services`): **never reuse — always reboot fresh**,
+        even when healthy and even when no `env_file` looks newer. A frontend **bakes** its config
+        (API base URLs, the Turnstile flag) into the served bundle at dev-server start, and the
+        mtime check cannot detect a developer's own `yarn dev` started without the `.env.e2e`
+        overlay — it is "newer" than every file yet baked the app's `.env` (production URLs + real
+        Turnstile). Reusing it runs the suite against a prod-pointing bundle whose login v2 POSTs
+        to prod and is rejected (HTTP 422 / Turnstile) — the datum-legacy failure, where the reused
+        Vite served prod even though `.env.e2e` was correct on disk. Stop the healthy process, boot
+        fresh (next bullet sources `.env.e2e` via `set -a`), and register it in `BOOTED[]`. See
+        `env-lifecycle.md` boot().
     - **Unhealthy, absent, or stale** → boot it fresh with `data_isolation: per-run` and register
       it in `BOOTED[]`/`TEARDOWN_CMD[]` so teardown reclaims it. This makes the run reproducible
       when no live stack exists, and frugal when one does.

@@ -206,8 +206,14 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
          the next run with a cookie the local stack cannot decrypt. Instead diagnose: the frontend's
          auth base URLs (e.g. `NX_REACT_APP_DASHBOARD_SERVER_BASE`, `NX_REACT_APP_API_GATEWAY_BASE_URL`)
          must point at the **local** login backend — confirm `.env.e2e` overrides them to `localhost`
-         **and** that the frontend was rebooted since (Vite bakes them at dev-server start), then
-         re-run the gate. Abort `BLOCKED` with that diagnosis. Only when `E2E_BASE_URL` is genuinely
+         **and** that the frontend was **booted fresh** since. A correct `.env.e2e` on disk is not
+         enough: the build tool (Vite/Nx) inlines `NX_*`/`VITE_*` from `.env`/`.env.local` +
+         `process.env` at dev-server start and **never reads `.env.e2e`**, so a **reused** dev server
+         (a developer's `yarn dev`) bakes the app's `.env` (prod) regardless. The overlay only takes
+         effect when the dev server is launched with `.env.e2e` sourced into its environment — which
+         is why a frontend is always booted fresh (see `env-lifecycle.md` boot()). Also confirm
+         `VITE_TURNSTILE_ENABLED=false` is in `.env.e2e` so the fresh bundle skips the client widget.
+         Abort `BLOCKED` with that diagnosis. Only when `E2E_BASE_URL` is genuinely
          **remote** (or `--allow-prod-target`) do the consumer real-Chrome capture flow below — do
          NOT retry headless and do NOT silently abort.
 
