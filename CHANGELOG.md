@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.251] — 2026-06-20
+
+### Internal
+- renumber shift-left section to Step 8e to clear duplicate-ordinal collision
+
 ## [0.3.250] — 2026-06-20
 
 ### Added

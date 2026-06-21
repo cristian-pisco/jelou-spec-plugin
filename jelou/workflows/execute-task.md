@@ -1036,7 +1036,7 @@ Log the validation results to terminal:
 
 No cleanup needed. The TDD pipeline never starts containers, so there is nothing to prune. If a dev container was running for `/jlu-start-dev`, leave it alone — its lifecycle is owned by that workflow.
 
-### Step 8d — Materialize the UI E2E suite from SPEC.md (shift-left)
+### Step 8e — Materialize the UI E2E suite from SPEC.md (shift-left)
 
 After backend validation passes, author the UI E2E suite for any affected frontend
 service so it ships with the change. A service is a **UI service** when its
