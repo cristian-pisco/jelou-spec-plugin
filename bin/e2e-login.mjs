@@ -21,6 +21,7 @@ import { join, dirname, isAbsolute, resolve } from 'node:path';
 import { mkdirSync } from 'node:fs';
 import process from 'node:process';
 import { EXIT, isLoggedOutUrl, waitForFile } from './lib/e2e-auth.mjs';
+import { applyEnvFiles } from './lib/env-files.mjs';
 
 const REQUIRED = ['E2E_BASE_URL', 'TEST_EMAIL', 'TEST_PASSWORD', 'E2E_STORAGE_STATE', 'OTP_FILE', 'UI_WORKTREE'];
 
@@ -59,6 +60,7 @@ async function captchaPresent(page) {
 
 async function main() {
   const env = process.env;
+  if (env.UI_WORKTREE) applyEnvFiles(env, env.UI_WORKTREE);
   for (const k of REQUIRED) {
     if (!env[k]) {
       console.error(`login: missing ${k}`);

@@ -14,9 +14,12 @@ import { join, isAbsolute, resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 import process from 'node:process';
 import { classifyProbeOutcome } from './lib/e2e-auth.mjs';
+import { applyEnvFiles } from './lib/env-files.mjs';
 
 async function main() {
-  const { E2E_BASE_URL, E2E_STORAGE_STATE, UI_WORKTREE } = process.env;
+  const UI_WORKTREE = process.env.UI_WORKTREE;
+  if (UI_WORKTREE) applyEnvFiles(process.env, UI_WORKTREE);
+  const { E2E_BASE_URL, E2E_STORAGE_STATE } = process.env;
   if (!E2E_BASE_URL || !UI_WORKTREE) {
     console.error('probe: E2E_BASE_URL and UI_WORKTREE are required');
     process.exit(2);

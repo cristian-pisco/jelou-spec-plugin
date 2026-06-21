@@ -28,6 +28,8 @@ set +a
 
 Both files are gitignored on the consumer side. The plugin never commits either.
 
+> **Never inject env by bash-sourcing the files.** The block above is illustrative of *order*, not the mechanism. A real `.env` routinely contains an unquoted value with shell-special characters (`KEY=foo bar&baz`); `set -a; . ./.env` then makes bash try to **execute** the fragment, and the `guard-env-reads` hook blocks the source outright to keep those fragments out of the transcript. When the source is skipped, the consumer (a dev server, a bin tool) silently runs with the wrong env. So the plugin's bin tools load env files with a **dotenv-style parser** (`bin/lib/env-files.mjs`), never `source`: the dev-server boot uses `bin/boot-dev-server.mjs` (see `env-lifecycle.md`), and `bin/e2e-{session-probe,login,session-sync}.mjs` self-load `.env`+`.env.e2e` from `UI_WORKTREE` at startup. The Playwright process itself loads via `playwright.config.ts` (`import 'dotenv/config'` or `npx dotenv -e .env -e .env.e2e`) — also a parser, not a shell.
+
 ### Build-time env is baked at dev-server start — `.env.e2e` must be *injected*, not just present
 
 The block above loads `.env.e2e` into the **Playwright** process. That is enough for *runtime*

@@ -140,8 +140,17 @@ launcher: docker-exec        # idle dev container (CMD sleep infinity); app is e
   Wait for readiness (below) from the HOST (the container's mapped port / the captured log).
 
 launcher: npm | make | shell
-  set -a; for f in dev.env_files (default [.env, .env.e2e]): [ -f "$f" ] && . "./$f"; set +a
-  Run `<dev.command>` in the worktree, backgrounded. Capture to <LOG_DIR>/launch-<service>.log.
+  # Inject env via a robust parser, NEVER bash `source`. `set -a; . ./.env` breaks on a real
+  # .env that has an unquoted value (bash tries to EXECUTE the fragment, e.g. line
+  # `KEY=foo bar&baz`) and the guard-env-reads hook blocks the source for exactly that reason.
+  # When the source is skipped, the dev server starts with only the app's baked `.env` — a Vite
+  # frontend then bakes prod API base URLs and IGNORES the `.env.e2e` overlay (the datum-legacy
+  # 422: login POSTed to api.apps.jelou.ai). bin/boot-dev-server.mjs parses dev.env_files
+  # (default [.env, .env.e2e], later overrides earlier) with a dotenv-style parser and execs the
+  # command with the merged env, so build-time vars bake the E2E config and no value reaches a shell.
+  node <plugin-root>/bin/boot-dev-server.mjs --worktree <worktree> \
+    --env-files "<dev.env_files joined by ','>" --cmd '<dev.command>' \
+    > <LOG_DIR>/launch-<service>.log 2>&1 &
   Wait for readiness (below).
   BOOTED+=(<service>); TEARDOWN_CMD[<service>]="<dev.teardown>"
 ```

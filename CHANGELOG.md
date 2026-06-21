@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.255] — 2026-06-21
+
+### Fixed
+- bin/lib/env-files.mjs: dependency-free dotenv-style parser + overlay loaders. Verified against the real jelou-apps .env+.env.e2e: parses all 78 keys incl. the malformed line 106, resolves the dashboard base to localhost.
+- bin/boot-dev-server.mjs: execs the dev command with the merged env (no shell source); env-lifecycle.md npm/make/shell launcher now uses it.
+- e2e-session-probe / e2e-login / e2e-session-sync self-load .env+.env.e2e from UI_WORKTREE via the parser, so they no longer depend on a caller bash-source.
+- ui-qa-run.md step 14b stops bash-sourcing; e2e-environment.md documents the parser-not-source rule.
+- tests: env-files parser/overlay + boot-dev-server injection/exit + wiring.
+
 ## [0.3.254] — 2026-06-21
 
 ### Fixed

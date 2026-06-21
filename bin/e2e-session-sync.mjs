@@ -30,6 +30,7 @@ import {
   shouldProvision,
   DEFAULT_COOKIE_NAME,
 } from './lib/session-sync.mjs';
+import { applyEnvFiles } from './lib/env-files.mjs';
 
 function resolveStoragePath(env) {
   const p = env.E2E_STORAGE_STATE;
@@ -71,6 +72,7 @@ function loadMongodb(env) {
 
 async function main() {
   const env = process.env;
+  if (env.UI_WORKTREE) applyEnvFiles(env, env.UI_WORKTREE);
   const storagePath = resolveStoragePath(env);
   if (!storagePath || !env.E2E_BASE_URL) {
     console.error('session-sync: E2E_STORAGE_STATE and E2E_BASE_URL are required');

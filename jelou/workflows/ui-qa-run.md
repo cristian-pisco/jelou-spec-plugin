@@ -127,16 +127,15 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
 
 14b. **Auth gate — probe the session, log in via OTP when invalid.** Runs after boot (the target app must be up) and before Playwright. See `jelou/references/auth-fixtures.md` § "Orchestrated OTP login".
 
-    `UI_WORKTREE` is the worktree path resolved in step 12 — bind it explicitly before this block. Sourcing `.env`/`.env.e2e` here (same contract as step 15) provisions `E2E_BASE_URL`, `E2E_STORAGE_STATE`, and — via `set -a` — exports `TEST_EMAIL`/`TEST_PASSWORD` to the login child process without their values ever entering the conversation.
+    `UI_WORKTREE` is the worktree path resolved in step 12 — bind and export it before this block. The auth drivers (`e2e-session-probe` / `e2e-login` / `e2e-session-sync`) **self-load** `.env`+`.env.e2e` from `UI_WORKTREE` via the dotenv-style parser (`bin/lib/env-files.mjs`), so `E2E_BASE_URL`, `E2E_STORAGE_STATE`, and `TEST_EMAIL`/`TEST_PASSWORD` reach the child without ever entering the conversation — and a `.env` with an unquoted value (which would break `bash source` and trip the guard-env-reads hook) is parsed cleanly. Do **not** `source` the env files here.
 
     ```bash
     UI_WORKTREE="<worktree resolved in step 12>"
     cd "$UI_WORKTREE"
-    set -a
-    [ -f .env ]     && . ./.env
-    [ -f .env.e2e ] && . ./.env.e2e
-    set +a
     export UI_WORKTREE
+    # No `set -a; . ./.env` — bash source breaks on unquoted values and the guard-env-reads
+    # hook blocks it; the drivers self-load env from UI_WORKTREE. Check vars by name with
+    # `grep -qE '^VAR=' .env.e2e` (the -q form is allowed by the hook).
 
     if node "$PLUGIN_ROOT/bin/e2e-session-probe.mjs"; then
       echo "auth gate: stored session valid — continuing"
