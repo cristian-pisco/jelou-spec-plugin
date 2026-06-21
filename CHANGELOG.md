@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.243] — 2026-06-20
+
+### Added
+- add jlu-test-suite-runner subagent
+
 ## [0.3.242] — 2026-06-20
 
 ### Added
