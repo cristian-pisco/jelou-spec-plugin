@@ -39,3 +39,24 @@ describe('jlu-test-suite-runner', () => {
     assert.match(md, /never author|do NOT author|does not author/i);
   });
 });
+
+describe('jlu-backend-e2e-runner', () => {
+  const md = read('agents/jlu-backend-e2e-runner.md');
+  test('declares name, sonnet model, Bash tool, no AskUserQuestion', () => {
+    const fm = frontmatter(md);
+    assert.match(fm, /name:\s*jlu-backend-e2e-runner/);
+    assert.match(fm, /model:\s*sonnet/);
+    assert.match(fm, /tools:.*\bBash\b/);
+    assert.doesNotMatch(fm, /AskUserQuestion/);
+  });
+  test('runs Testcontainers deps-only E2E and reports a missing suite', () => {
+    assert.match(md, /Testcontainers/);
+    assert.match(md, /dependenc(y|ies) only|deps-only/i);
+    assert.match(md, /test\/e2e\/\*\*|\*\.e2e-spec\.ts/);
+    assert.match(md, /NO_E2E_SUITE/);
+  });
+  test('never authors and never boots host app services', () => {
+    assert.match(md, /never author|do NOT author/i);
+    assert.match(md, /tear (it |them )?down|teardown .*before the next|no orphan/i);
+  });
+});

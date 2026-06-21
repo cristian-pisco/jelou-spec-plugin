@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.244] — 2026-06-20
+
+### Added
+- add jlu-backend-e2e-runner subagent
+
 ## [0.3.243] — 2026-06-20
 
 ### Added
