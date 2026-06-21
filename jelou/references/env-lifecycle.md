@@ -76,6 +76,19 @@ by the orchestrator — see `production-like.md` Phase 1). **Booting an unregist
 improvising a launcher/command is forbidden** — guessing `yarn` on an npm project is the exact
 failure this contract prevents.
 
+**The boot order includes `depends_on`.** Before booting, expand the order with each service's
+optional `depends_on` list (`dev-block-schema.md`) — its runtime/auth dependencies, e.g. a UI
+service's login backend and that backend's session-validation API — transitively, ordered before
+the dependents. These are booted like any other service; omitting them leaves a healthy stack
+returning `401` at request time (the dependents are up, the auth chain is not).
+
+**Reuse vs reboot is env-aware.** Boot probes each service first and reuses a healthy one without
+tearing it down — EXCEPT a service whose launcher sources `env_files` (npm/make/shell). For those,
+reuse only if no `env_file` is newer than the running process (`env_file` mtime vs the process
+start time). Env vars are baked at dev-server start (e.g. a Vite API base URL), so a
+healthy-but-**stale** process keeps serving the old env; if any `env_file` changed since boot,
+treat it as stale and reboot fresh.
+
 **Boot and teardown share one shell.** The boot routine, the test execution, and the teardown
 trap all run in the **same** long-lived shell — the one that holds the lock fd (`exec 9>…; flock`)
 and registers `trap … EXIT INT TERM`. This matters for `docker-exec`: a backgrounded
@@ -125,7 +138,11 @@ Readiness (all launchers):
   port_open     -> TCP connect until success, or ready_timeout_s
   http_200      -> poll until 2xx on port:path, or ready_timeout_s
   stdout_match  -> tail launch log, regex-match pattern, or ready_timeout_s
-On timeout: abort with STATUS: BLOCKED, reason: ready_timeout for <service>.
+On timeout: print the tail of <LOG_DIR>/launch-<service>.log (the crash reason) BEFORE aborting.
+  A boot-order service — especially a `depends_on` dependency rarely run locally — often dies on a
+  missing local-only env var (a login backend's AUTH_USERNAME/AUTH_PASSWORD; an API's elastic node
+  / signing key), which leaves the host port unreachable and would otherwise read as an opaque hang.
+  Abort with STATUS: BLOCKED, reason: ready_timeout for <service> — <quoted crash line / missing env var>.
 ```
 
 For `docker-exec`, readiness is host-side: `http_200`/`port_open` use the **mapped host port**;

@@ -185,27 +185,38 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
           for up to ~90s. Never reuse an older code (stale codes from prior attempts are rejected).
        f. Write the code: `printf '%s' "$CODE" > "$OTP_FILE"`.
     5. **Gmail fallback:** Gmail tools absent, search/`get_thread` failed, or no fresh mail within
-       ~90s → `AskUserQuestion`: "No pude leer el OTP desde Gmail. Pégalo aquí." Write the user's
+       ~90s → `AskUserQuestion`: "Couldn't read the OTP from Gmail. Paste it here." Write the user's
        answer to `$OTP_FILE`. No answer / code expired → kill the login process, abort `BLOCKED`.
     6. Wait for the login process and branch on its exit code:
        - `0` → re-run the probe; valid → continue to step 15.
        - `41` → print the 401 abort message (below) and exit `BLOCKED` (2).
        - `42`/`43` → report which OTP step failed; offer ONE retry of the whole gate; second failure → `BLOCKED`.
        - `44` → enter a bounded ask-the-user retry (same 3-round shape as step 18c, but self-contained — no fix-loop dispatch, no selectors.md persistence): ask the user where the login form lives (route, field hints), set `LOGIN_PATH` from the answer, retry (max 3 rounds).
-       - `47` → **captcha/Turnstile fallback** — the headless login can't pass the challenge. Do
-         NOT retry headless and do NOT silently abort: hand off to the consumer's real-Chrome
-         capture flow per "Captcha → consumer capture fallback" below.
+       - `47` → **captcha/Turnstile.** FIRST branch on `E2E_BASE_URL`. If it is **loopback**
+         (`localhost`/`127.0.0.1`), a captcha is a **misconfiguration, not a capture trigger**: a
+         local login backend does not enforce Turnstile, so the challenge means the local frontend
+         is calling a **prod/remote backend** (Turnstile is enforced server-side by prod). Do NOT
+         hand off to the consumer-capture flow — capturing a prod session is exactly what poisons
+         the next run with a cookie the local stack cannot decrypt. Instead diagnose: the frontend's
+         auth base URLs (e.g. `NX_REACT_APP_DASHBOARD_SERVER_BASE`, `NX_REACT_APP_API_GATEWAY_BASE_URL`)
+         must point at the **local** login backend — confirm `.env.e2e` overrides them to `localhost`
+         **and** that the frontend was rebooted since (Vite bakes them at dev-server start), then
+         re-run the gate. Abort `BLOCKED` with that diagnosis. Only when `E2E_BASE_URL` is genuinely
+         **remote** (or `--allow-prod-target`) do the consumer real-Chrome capture flow below — do
+         NOT retry headless and do NOT silently abort.
 
     **401 abort message (verbatim, both here and in step 17b):**
 
-    > ⛔ **No es posible realizar pruebas: el login está recibiendo Error HTTP 401.** Verifica TEST_EMAIL/TEST_PASSWORD en `.env.e2e` o el estado del servicio de auth.
+    > ⛔ **Cannot run tests: login is returning HTTP 401.** Check TEST_EMAIL/TEST_PASSWORD in `.env.e2e` or the auth service's health.
 
-    **Captcha → consumer capture fallback (EXIT 47).** When the local login is captcha-gated
-    (Cloudflare Turnstile / reCAPTCHA), the sanctioned path is the consumer's own real-Chrome
-    capture — a human solves the challenge — NOT a headless bypass. The captured session MUST be
-    against `E2E_BASE_URL` (the localhost run); a production-origin `storageState` cannot
-    authenticate a localhost suite (its cookies are scoped to `.jelou.ai`), and falling back to a
-    prod target to dodge the captcha is forbidden.
+    **Captcha → consumer capture fallback (EXIT 47).** Reached ONLY when `E2E_BASE_URL` is a
+    genuinely **remote** target (a loopback captcha is the misconfiguration diagnosed in the `47`
+    branch above — never captured). When that remote login is captcha-gated (Cloudflare Turnstile /
+    reCAPTCHA), the sanctioned path is the consumer's own real-Chrome capture — a human solves the
+    challenge — NOT a headless bypass. The captured session MUST be against `E2E_BASE_URL`; a
+    production-origin `storageState` cannot authenticate a localhost suite (its cookies are scoped
+    to `.jelou.ai` and the local backend cannot decrypt them), and falling back to a prod target to
+    dodge the captcha is forbidden.
 
     1. Resolve the consumer's capture contract: `auth_capture` under the UI service in
        `services.yaml` (`auth_capture.launch` opens a real Chrome at `E2E_BASE_URL`;
@@ -215,9 +226,9 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
        launch and a capture command to run sub-step 2; if only one resolves (e.g. `e2e:capture`
        with no launch counterpart), treat the contract as **not declared** and go to sub-step 3.
        See `jelou/references/auth-fixtures.md` § "Captcha-gated login: consumer capture provider".
-    2. **Declared:** `AskUserQuestion` — "El login local está protegido por captcha/Turnstile.
-       Abre el Chrome real con `<launch>`, inicia sesión manualmente (resuelve el captcha + 2FA)
-       **apuntando a `E2E_BASE_URL`**, y avísame." On "listo": run `<capture>` with `E2E_BASE_URL`
+    2. **Declared:** `AskUserQuestion` — "Login at this remote target is captcha-gated (Turnstile).
+       Open the real Chrome with `<launch>`, sign in manually (solve the captcha + 2FA)
+       **pointing at `E2E_BASE_URL`**, and tell me when done." On "done": run `<capture>` with `E2E_BASE_URL`
        and `E2E_STORAGE_STATE` in its env, then re-run `bin/e2e-session-probe.mjs`. Valid →
        continue to step 15. Still invalid → `BLOCKED` (capture targeted the wrong origin, or the
        login didn't complete).
@@ -431,8 +442,8 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
 
        1. Record `PAUSE_START=$(date +%s)`.
        2. `AskUserQuestion`:
-          > "No encuentro **<missing>**. Busqué `<tried>` (derivado de `<looked_in>` / `selectors-used.txt`). ¿Dónde lo encuentro? (componente, ruta, o el selector correcto)"
-          Options: free-form answer (Other) · "Omitir este ítem" (flag now).
+          > "Can't find **<missing>**. I looked for `<tried>` (derived from `<looked_in>` / `selectors-used.txt`). Where is it? (component, route, or the correct selector)"
+          Options: free-form answer (Other) · "Skip this item" (flag now).
        3. On answer: `FIX_DEADLINE=$(( FIX_DEADLINE + $(date +%s) - PAUSE_START ))` — the budget
           clock measures agent work, not user reading time. The 10-dispatch cap still counts.
        4. `ASK_ROUNDS[<item>]+=1`. If > 3 → flag the item BLOCKED in the run report with every
@@ -463,8 +474,8 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
 
 20. **Write the run report** to `$TASK_DIR/services/$UI_SERVICE/e2e/run-$(date -u +%Y%m%dT%H%M%SZ).md`. Include pre-flight, boot order, per-test pass/fail/flagged, fix-loop activity, artifacts, summary.
 
-    Include a "Preguntas y feedback" section when step 18c fired: one row per question —
-    | # | Qué faltaba | Qué se intentó | Respuesta del usuario | Resultado |
+    Include a "Questions and feedback" section when step 18c fired: one row per question —
+    | # | What was missing | What was tried | User's answer | Outcome |
 
 21. **Append to TASKS.md** Timeline:
     ```
@@ -495,7 +506,7 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
 | UI service missing `dev` block | 2 | "UI service `<id>` is missing a `dev` block" — E2E mandatory for frontend changes; add `stack` + `dev` to services.yaml |
 | `.env.e2e` missing | 2 | "`.env.e2e` missing; create it and set E2E_BASE_URL" + reference to e2e-environment.md |
 | `.env.e2e` does not declare `E2E_BASE_URL` | 2 | "declare E2E_BASE_URL in .env.e2e" |
-| Login HTTP 401 (gate or mid-suite collapse) | 2 | "⛔ No es posible realizar pruebas: el login está recibiendo Error HTTP 401..." — never auto-patch auth state |
+| Login HTTP 401 (gate or mid-suite collapse) | 2 | "⛔ Cannot run tests: login is returning HTTP 401..." — never auto-patch auth state |
 | OTP unreadable (Gmail down/missing mail) | 2 | asks user to paste the OTP; unanswered → BLOCKED |
 | Login form not found (exit 44) | 1/2 | enters the feedback loop (3 rounds), then BLOCKED |
 | Captcha/Turnstile blocks headless login (exit 47) | 1/2 | hands off to the consumer real-Chrome capture flow (`auth_capture`) targeting `E2E_BASE_URL`; no usable session → BLOCKED. Never falls back to a prod target |

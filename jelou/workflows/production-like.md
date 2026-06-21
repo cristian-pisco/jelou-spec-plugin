@@ -42,8 +42,8 @@ No seed system: reuses `dev` blocks + `data_isolation: per-run`. Testcontainers 
      Playwright infra, else `MODE=derive-from-spec`; `EXPECT=live` — post-deploy: the
      writer skips its RED-verification run, the orchestrator runs the suite later),
      then commit the generated `user-flow.md` + specs to the task directory and
-     re-read. Derivation is **unconditional and silent**: never ask the user "¿cómo
-     acoto este run?", and never invent a "Phase-10 / deferred-manual / manual-E2E"
+     re-read. Derivation is **unconditional and silent**: never ask the user "how should
+     I scope this run?", and never invent a "Phase-10 / deferred-manual / manual-E2E"
      gate — no such gate exists.
    After this step every UI service has a `user-flow.md`, so step 8 can compute the
    fullstack boot order, and the suite pre-exists for Phase 4.
@@ -54,6 +54,19 @@ No seed system: reuses `dev` blocks + `data_isolation: per-run`. Testcontainers 
    - `fullstack`: the union of (a) each UI service's `user-flow.md` `Service Boot Order`
      (resolved as in `ui-qa-run.md` Phase 1 step 7) and (b) affected backend services.
      Reconcile boot-order conflicts with `ui-qa-run`'s rule (refuse on contradiction).
+
+8a. **Expand the boot order with runtime dependencies (`depends_on`).** A UI service that
+   authenticates against a backend depends, at request time, on services that are NOT in
+   `affected_services` and may not appear in its `user-flow.md` `Service Boot Order` — its
+   login backend and that backend's session-validation API. If those are not booted, the live
+   flow returns `401` even though the service-under-test is healthy (this was the datum-legacy
+   run's gateway-401 root cause: the login + session-validation backends were never started).
+   So for every service now in the boot order, read its optional `depends_on` list from
+   `services.yaml` (`jelou/references/dev-block-schema.md`) and fold each entry into the boot
+   order **transitively** (a dependency's own `depends_on` is included too); de-duplicate and
+   order each dependency before the service that needs it. Each folded dependency must end up
+   with a `dev` block — step 8b applies to them exactly as to any other boot-order service. A
+   UI service MUST declare its login backend and session-validation API in `depends_on`.
 
 8b. **Resolve missing `dev` blocks — auto-derive + persist, NEVER improvise.** For each
    service in the boot order whose `services.yaml` entry has **no `dev` block**, do NOT skip
@@ -77,21 +90,21 @@ No seed system: reuses `dev` blocks + `data_isolation: per-run`. Testcontainers 
    4. **Derivable:** show the rendered `dev:` YAML (the script's `yaml` field) plus any
       `warnings`, then `AskUserQuestion`. **The option set depends on the service type** so a
       UI service can never be silently dropped:
-      > "`<service>` has no `dev` block. Inferí este bloque (launcher `<launcher>`, command
-      > `<command>`). ¿Lo escribo en `.spec-workspace/registry/services.yaml`?"
-      - **Backend service** (`<service> ∉ ui_services`): options **Escribir y continuar** ·
-        **Editar yo mismo (abortar)** · **Omitir este servicio**.
+      > "`<service>` has no `dev` block. I inferred this block (launcher `<launcher>`, command
+      > `<command>`). Shall I write it to `.spec-workspace/registry/services.yaml`?"
+      - **Backend service** (`<service> ∉ ui_services`): options **Write and continue** ·
+        **I'll edit it myself (abort)** · **Skip this service**.
       - **UI service** (`<service> ∈ ui_services`, known from the classify step): options
-        **Escribir y continuar** · **Editar yo mismo (abortar)** only — no "Omitir"; the prompt
+        **Write and continue** · **I'll edit it myself (abort)** only — no "Skip"; the prompt
         states skipping a UI service is not permitted (E2E is mandatory for frontend changes,
         per `ui-qa-run.md` step 6).
 
       Outcomes:
-      - **Escribir y continuar** → write the block under that service's entry in
+      - **Write and continue** → write the block under that service's entry in
         `.spec-workspace/registry/services.yaml`, re-read the registry, continue.
-      - **Editar yo mismo** → refuse with the step 8b.3 message (edit `services.yaml`); do NOT
+      - **I'll edit it myself** → refuse with the step 8b.3 message (edit `services.yaml`); do NOT
         improvise.
-      - **Omitir este servicio** (backend only) → drop it from the boot order with a one-line
+      - **Skip this service** (backend only) → drop it from the boot order with a one-line
         note; its `test-suite` still runs and surfaces its own "infra unreachable" hint.
    5. After this step every service remaining in the boot order has a `dev` block. The boot
       contract (`env-lifecycle.md`) refuses to boot anything without one.
@@ -110,10 +123,17 @@ No seed system: reuses `dev` blocks + `data_isolation: per-run`. Testcontainers 
     `jelou/references/env-lifecycle.md` (`http_200`/`port_open` on the mapped host port), and the
     probe decides whether the boot step launches it at all:
     - **Healthy** → reuse the already-running process; do NOT add it to `BOOTED[]`, so teardown
-      never stops it (it belongs to the developer).
-    - **Unhealthy or absent** → boot it fresh with `data_isolation: per-run` and register it in
-      `BOOTED[]`/`TEARDOWN_CMD[]` so teardown reclaims it. This makes the run reproducible when no
-      live stack exists, and frugal when one does.
+      never stops it (it belongs to the developer). **Exception — stale `env_files`:** for a
+      service whose launcher sources `env_files` (npm/make/shell — e.g. the Vite frontend),
+      reuse only if no `env_file` is newer than the running process (compare each `env_file`
+      mtime against the process start time, `ps -o lstart= -p <pid>`). A frontend **bakes** env
+      vars (e.g. its API base URL) at dev-server start, so a healthy-but-**stale** process keeps
+      serving the OLD env and silently talks to the wrong backend — the datum-legacy run's
+      "reused vite still pointing at prod" failure, where `.env.e2e` had changed since boot. If
+      any `env_file` changed since the process booted, treat it as stale and reboot (next bullet).
+    - **Unhealthy, absent, or stale** → boot it fresh with `data_isolation: per-run` and register
+      it in `BOOTED[]`/`TEARDOWN_CMD[]` so teardown reclaims it. This makes the run reproducible
+      when no live stack exists, and frugal when one does.
 
     On `ready_timeout` → `STATUS: BLOCKED` (teardown still runs via the trap).
 
@@ -227,7 +247,7 @@ file), so the runners' live probes are safe to mutate.
   `jlu-ui-qa-runner`; all authoring to `jlu-ui-e2e-writer` / `jlu-test-writer`. The
   orchestrator MUST NOT write any `.spec.ts` itself — inline `prodlike-*.spec.ts`
   probe specs are forbidden. Its only execution is the OTP auth gate (Phase 3.75).
-- **Suite derivation is unconditional and silent.** Never ask "¿cómo acoto este run?"
+- **Suite derivation is unconditional and silent.** Never ask "how should I scope this run?"
   and never fabricate a "Phase-10 / deferred-manual / manual-E2E wall" — it does not
   exist. A missing suite is materialized in step 7.5 by `jlu-ui-e2e-writer`.
 - All suites green but the Phase 4.5 breadth gate finds a validated DTO field with no rejecting-payload

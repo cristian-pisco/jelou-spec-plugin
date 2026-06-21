@@ -79,14 +79,14 @@ describe('renderRound', () => {
       sources: [{ title: 'Doc', url: 'https://x.test' }],
     });
     assert.match(r, /## Round 2 — 2026-06-15 · fusion/);
-    assert.match(r, /\*\*Pregunta:\*\* ¿costo\?/);
-    assert.match(r, /\*\*Respuesta:\*\* depende/);
+    assert.match(r, /\*\*Question:\*\* ¿costo\?/);
+    assert.match(r, /\*\*Answer:\*\* depende/);
     assert.match(r, /- Doc — https:\/\/x\.test/);
   });
 
   test('zero sources renders the unverified marker', () => {
     const r = renderRound({ n: 1, today: '2026-06-15', engine: 'perplexity', question: 'q', answer: 'a', sources: [] });
-    assert.match(r, /sin fuentes — no verificado/);
+    assert.match(r, /no sources — unverified/);
   });
 });
 
@@ -213,7 +213,7 @@ describe('persistRound (local storage)', () => {
     const dir = mkdtempSync(pjoin(tmpdir(), 'inv-'));
     const notePath = pjoin(dir, 'investigations', 't.md');
     mkdirSync(pjoin(dir, 'investigations'), { recursive: true });
-    writeFileSync(notePath, '## Round 1 — 2026-06-10 · perplexity\n\n**Respuesta:** old\n');
+    writeFileSync(notePath, '## Round 1 — 2026-06-10 · perplexity\n\n**Answer:** old\n');
     persistRound({ storage: 'local', notePath, exists: true, slug: 't', title: 'T', engine: 'fusion', today: '2026-06-16', question: 'q', answer: 'a', sources: [] });
     const body = readFileSync(notePath, 'utf8');
     assert.match(body, /^---\n/);
@@ -238,7 +238,7 @@ describe('buildNoteContent', () => {
   });
 
   test('append to a note that lost its frontmatter prepends a fresh header', () => {
-    const c = buildNoteContent({ existingContent: '## Round 1 — 2026-06-10 · perplexity\n\n**Respuesta:** old\n', exists: true, slug: 't', title: 'T', engine: 'fusion', today: '2026-06-16', question: 'q', answer: 'a', sources: [] });
+    const c = buildNoteContent({ existingContent: '## Round 1 — 2026-06-10 · perplexity\n\n**Answer:** old\n', exists: true, slug: 't', title: 'T', engine: 'fusion', today: '2026-06-16', question: 'q', answer: 'a', sources: [] });
     assert.match(c, /^---\n/);
     assert.match(c, /## Round 2 — 2026-06-16 · fusion/);
   });

@@ -1,6 +1,6 @@
 ---
 name: council
-description: "Use to convene a multi-model jury on a software architecture idea — a deliberation session where heterogeneous judges refute it round after round until the user and jury reach consensus (GO/GO_WITH_CONDITIONS/NO_GO), then hands a cleared idea off exclusively to /jlu-new-task. Triggers: \"council\", \"jurado\", \"judge this idea\", \"vale la pena implementar\", \"second opinion on this design\""
+description: "Use to convene a multi-model jury on a software architecture idea — a deliberation session where heterogeneous judges refute it round after round until the user and jury reach consensus (GO/GO_WITH_CONDITIONS/NO_GO), then hands a cleared idea off exclusively to /jlu-new-task. Triggers: \"council\", \"jury\", \"judge this idea\", \"is this worth building\", \"second opinion on this design\""
 argument-hint: "<idea text | path-to-idea-file> [--context <path>] [--services a,b]"
 allowed-tools:
   - Read

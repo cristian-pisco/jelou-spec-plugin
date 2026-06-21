@@ -1,6 +1,6 @@
 ---
 name: investigate
-description: "Use for research and decision investigation — researching a question, comparing options, or gathering what is known about a topic, persisted as a resumable note. Triggers: \"investigar\", \"research\", \"indaga\", \"compara opciones\", \"qué se sabe de\", \"investigate X\". NOT for debugging failures, 500s, errors, or stack traces — those route to /jlu-diagnose."
+description: "Use for research and decision investigation — researching a question, comparing options, or gathering what is known about a topic, persisted as a resumable note. Triggers: \"research\", \"investigate X\", \"look into\", \"compare options\", \"what's known about\". NOT for debugging failures, 500s, errors, or stack traces — those route to /jlu-diagnose."
 argument-hint: "<question> [--engine perplexity|fusion]"
 allowed-tools:
   - Read

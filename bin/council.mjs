@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // bin/council.mjs
 //
-// Fan-out engine for /jlu:council (design doc Revisión 5).
-// Pure judge dispatch: OpenRouter API judges (single-shot, expediente-only)
+// Fan-out engine for /jlu:council (design doc Revision 5).
+// Pure judge dispatch: OpenRouter API judges (single-shot, case-file-only)
 // plus optional agentic CLI extras (codex, gemini). The workflow orchestrates
 // and arbitrates; this script only collects envelopes.
 //
@@ -189,8 +189,8 @@ export function composeBrief({ template, idea, expediente, agentic }) {
   const modo = agentic ? AGENTIC_PREAMBLE : API_PREAMBLE;
   return template
     .replaceAll('{IDEA}', idea)
-    .replaceAll('{EXPEDIENTE}', expediente || '(empty case file)')
-    .replaceAll('{MODO_AGENTICO}', modo);
+    .replaceAll('{CASE_FILE}', expediente || '(empty case file)')
+    .replaceAll('{AGENTIC_MODE}', modo);
 }
 
 export function parseJudgeJson(text) {
@@ -290,7 +290,7 @@ function envelopeBase(judge, transport, startedAt) {
     elapsed_ms: Date.now() - startedAt,
     word_count: 0,
     same_family_as_arbiter: sameFamilyAsArbiter(judge),
-    label: transport === 'openrouter' ? 'expediente-only' : 'agéntico',
+    label: transport === 'openrouter' ? 'case-file-only' : 'agentic',
   };
 }
 

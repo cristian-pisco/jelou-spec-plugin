@@ -169,7 +169,7 @@ describe('preflight', () => {
   test('over budget throws actionable message before any fetch', () => {
     assert.throws(() => preflight('x'.repeat(200), 100), (err) => {
       assert.match(err.message, /200/);
-      assert.match(err.message, /case_file_max_bytes|límite/i);
+      assert.match(err.message, /case_file_max_bytes|limit/i);
       return true;
     });
     preflight('small', 100);
@@ -177,8 +177,8 @@ describe('preflight', () => {
 });
 
 describe('composeBrief', () => {
-  const template = 'A {IDEA} B {EXPEDIENTE} C {MODO_AGENTICO} D';
-  test('replaces placeholders for expediente-only judges', () => {
+  const template = 'A {IDEA} B {CASE_FILE} C {AGENTIC_MODE} D';
+  test('replaces placeholders for case-file-only judges', () => {
     const out = composeBrief({ template, idea: 'I', expediente: 'E', agentic: false });
     assert.match(out, /A I B E C /);
     assert.match(out, /no repository access/i);

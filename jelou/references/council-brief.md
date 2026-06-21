@@ -1,8 +1,8 @@
 # Council Judge Brief — single source
 
 Read by `bin/council.mjs` (API + CLI judges) and by `jelou/workflows/council.md`.
-Placeholders are replaced at run time: `{IDEA}`, `{EXPEDIENTE}`, `{MODO_AGENTICO}`.
-Briefs go out in English (best model performance); the final report is rendered in Spanish by the arbiter.
+Placeholders are replaced at run time: `{IDEA}`, `{CASE_FILE}`, `{AGENTIC_MODE}`.
+Briefs go out in English (best model performance); the final report is rendered in English by the arbiter.
 
 ---
 
@@ -22,15 +22,15 @@ You have no live web access. Judge from your own knowledge plus the case file on
 
 This is a deliberation that runs over several rounds until the user and the jury reach consensus. The case file may already contain `## Deliberation so far` — prior rounds' surviving refutations, the user's rebuttals, and researched facts. Treat that section as established ground: do not re-raise a refutation the user has already answered with evidence, and update your verdict in light of it.
 
-{MODO_AGENTICO}
+{AGENTIC_MODE}
 
 ## The idea under judgment
 
 {IDEA}
 
-## Case file (expediente)
+## Case file
 
-{EXPEDIENTE}
+{CASE_FILE}
 
 ## Required output — JSON only
 
@@ -53,10 +53,10 @@ Rules:
 - An empty `refutations` array is only valid with an explicit statement in `tradeoffs` of what you tried to refute and could not.
 - `uncertainties` must hold only verifiable factual questions you could not resolve from your own knowledge — never opinions, never restated refutations. Use `[]` when every fact your verdict relies on is one you are sure of.
 
-## Agentic-mode preamble (used as {MODO_AGENTICO} for CLI judges)
+## Agentic-mode preamble (used as {AGENTIC_MODE} for CLI judges)
 
 > IMPORTANT: do not invoke or delegate to any skills, tools, agents, or councils. Provide your own analysis only. You may read files in this repository to gather evidence, but you must not modify anything.
 
-For API (expediente-only) judges, `{MODO_AGENTICO}` is replaced with:
+For API (case-file-only) judges, `{AGENTIC_MODE}` is replaced with:
 
 > You have no repository access. Judge strictly on the case file above.

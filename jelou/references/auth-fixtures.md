@@ -142,6 +142,23 @@ Config lives in `.env.e2e` (see `e2e-environment.md`): `COOKIE_SECRET` (required
 feature) plus optional `SESSION_SYNC_MONGO_URI`, `SESSION_SYNC_DB`, `SESSION_TTL_HOURS`,
 `SESSION_COOKIE_NAME`, `JLU_MONGODB_MODULE`.
 
+## Foreign / undecryptable sessions are discarded, never carried forward
+
+A persisted `storageState` whose `jelou_auth` cookie **cannot be decrypted with the local
+`COOKIE_SECRET`** (AES-256-GCM auth-tag failure) is a **foreign / prod-captured** session — it was
+encrypted by a different backend (typically production) and can never authenticate the local stack:
+the local auth-service's `decryptCookie` returns empty → no `sessionId` → every gateway/auth call
+401s, and the session won't exist in the local session store either. Two independent symptoms of
+the same artifact (the datum-legacy run's `user-local.json` was exactly this — a prod cookie
+transplanted to `localhost`).
+
+Treat such a session as **invalid**: the probe (`bin/e2e-session-probe.mjs`, which checks against
+the local `E2E_BASE_URL`) already rejects it, and the gate must **discard** it and force a **fresh
+local login** rather than carrying it forward or "fixing" it via capture. Never reuse a session
+that decrypt-fails locally; never capture a prod session to stand in for a local one. The correct
+session for a loopback `E2E_BASE_URL` always comes from a real **local** login, whose cookie the
+local backend encrypted and whose `sessionId` lives in the local store.
+
 ## Mandatory `.gitignore` entries
 
 Both the plugin and the consumer's repo MUST gitignore:

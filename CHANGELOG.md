@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.252] — 2026-06-21
+
+### Changed
+- boot UI auth/session dependencies via a declarative services.yaml depends_on (Phase 1 step 8a), folded transitively into the boot order; fixes the gateway-401 where the login + session-validation backends were never started.
+- reuse-or-reboot is env-aware: a launcher that sources env_files is reused only if no env_file is newer than the running process, else rebooted (stale Vite env fix).
+- a captcha on a loopback target is diagnosed as a frontend-points-at-prod misconfiguration, never the prod-capture flow.
+- foreign/undecryptable persisted sessions are discarded for a fresh local login.
+- boot surfaces the launch-log crash reason on ready_timeout.
+
 ## [0.3.251] — 2026-06-20
 
 ### Internal

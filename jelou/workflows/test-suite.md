@@ -10,11 +10,11 @@
 
 ## Principles
 
-- **Cero argumentos.** Invocas y se acaba. La skill no negocia, no pregunta, no acepta flags.
-- **Workers = 1.** Mínimo absoluto. La skill garantiza que no satura CPU ni memoria; tarda lo que tenga que tardar.
-- **Reporte rico.** Cuando algo falla, el dev ve qué componente (Controller, Service, etc.) y dónde, no un mar de stack traces sin estructura.
-- **Sin auto-fix.** La skill valida. Las decisiones sobre fixes son del dev.
-- **Production-like vía orquestador.** Cuando `/jlu-production-like` la invoca, la infraestructura de desarrollo ya está levantada por el orquestador y los tests de integración corren contra el stack vivo. Standalone sigue corriendo en el host y solo avisa (Step 6d) si la infra es inalcanzable. Sin cambio de comportamiento.
+- **Zero arguments.** You invoke it and it's done. The skill doesn't negotiate, doesn't ask, doesn't accept flags.
+- **Workers = 1.** Absolute minimum. The skill guarantees it won't saturate CPU or memory; it takes as long as it takes.
+- **Rich report.** When something fails, the dev sees which component (Controller, Service, etc.) and where, not an unstructured sea of stack traces.
+- **No auto-fix.** The skill validates. Decisions about fixes belong to the dev.
+- **Production-like via orchestrator.** When `/jlu-production-like` invokes it, the dev infrastructure is already up via the orchestrator and the integration tests run against the live stack. Standalone still runs on the host and only warns (Step 6d) if the infra is unreachable. No behavior change.
 
 ---
 

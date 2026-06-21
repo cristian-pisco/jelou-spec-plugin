@@ -11,7 +11,7 @@ loop ends when the live refutations are resolved (the jury trends
 `NO_GO`. On a consensus that clears the idea, the **only** onward step the council
 offers is `/jlu-new-task` — never another plugin's planning or spec workflow.
 
-Design source of truth: design doc Revisión 5 (cristianp-main-design-20260606-172535.md),
+Design source of truth: design doc Revision 5 (cristianp-main-design-20260606-172535.md),
 extended with the consensus-session model.
 
 ```
@@ -23,13 +23,13 @@ workflow /jlu:council (this session) = ORCHESTRATOR + ARBITER + RESEARCHER
   ├─ ROUND LOOP (repeat until consensus, hard cap on rounds):
   │     ├─ Bash: bin/council.mjs --session-dir <dir> --round <n> --context <transcript>
   │     │        (secrets stay here)  ├── 4 OpenRouter judges, single-shot, blind
-  │     │        prints JSON to stdout └── optional extras: codex/gemini (agéntico)
+  │     │        prints JSON to stdout └── optional extras: codex/gemini (agentic)
   │     ├─ arbiter synthesizes THIS round (verdict tendency, surviving refutations, dissent)
   │     ├─ arbiter RESEARCHES every judge `uncertainties[]` (Perplexity/web) — never assume
   │     ├─ question: present surviving refutations + researched facts → user rebuts / refines / concedes
   │     └─ consensus? → exit loop.   else → append to transcript, n++ , loop
   │
-  ├─ write COUNCIL_REPORT.md (final consensus state + Deliberación) into the session dir
+  ├─ write COUNCIL_REPORT.md (final consensus state + Deliberation) into the session dir
   ├─ [consensus cleared the idea] → EXCLUSIVE handoff: offer /jlu-new-task seeded from the consensus
   └─ [optional] visual phase for stakeholders
 ```
@@ -51,12 +51,12 @@ launch any judges.
    (call it `<SPEC_WS_DIR>`). Resolving `<WORKSPACE_PATH>` exactly as new-task does is
    load-bearing: the seed this council writes in Step 6 must land where new-task later globs
    for it, even when the `workspace` field points at a parent directory. No workspace → skip
-   to Step 3 with no `--services` (the report will carry the empty-expediente banner).
+   to Step 3 with no `--services` (the report will carry the empty-case-file banner).
 2. Read the service registry at `<SPEC_WS_DIR>/registry/services.yaml`.
 3. If the cwd resolves to exactly ONE mapped service, use it directly.
 4. If resolution yields zero or multiple services (the common case for cross-service
    ideas run from the workspace root), ask ONCE via `question` (multiSelect) listing
-   the registry services: "¿Qué servicio(s) son relevantes para esta idea?" — build
+   the registry services: "Which service(s) are relevant to this idea?" — build
    `--services id1,id2` from the answer. The user may select none; proceed without
    artifacts and let the banner speak.
 
@@ -112,7 +112,7 @@ for this round, the same rigor the final report demands (kept lighter per round)
   judges' verdicts and the strength of surviving refutations; never average numerically.
 - **Surviving refutations** — refutations that still stand after this round, each with its
   concrete evidence. Drop any the user has already answered with evidence in a prior round.
-- **Disenso (dissent)** — when judges contradict each other, the dissent is the headline:
+- **Dissent** — when judges contradict each other, the dissent is the headline:
   present each side's reasoning fairly, with evidence. Never resolve the dissent for the
   user and never average it away — the contradiction IS the signal.
 - **Unique Insights** — points raised by only ONE judge that deserve attention, with credit.
@@ -124,10 +124,10 @@ for this round, the same rigor the final report demands (kept lighter per round)
   with your inclination (self-preference bias).
 - **Banners (when they apply):**
   - Exactly one judge ok this round →
-    `SIN SEÑAL CROSS-MODEL — veredicto de un solo modelo: tratar como opinión, no como jurado`
+    `NO CROSS-MODEL SIGNAL — single-model verdict: treat as an opinion, not a jury`
   - Inventory shows 0 artifacts included →
-    `EXPEDIENTE VACÍO — los jueces opinaron sin contexto del repo; corre /jlu:map-codebase para enriquecer el expediente`
-- Per-round judge labelling stays: API judges are `expediente-only`; CLI extras are `agéntico`.
+    `EMPTY CASE FILE — the judges opined without repo context; run /jlu:map-codebase to enrich the case file`
+- Per-round judge labelling stays: API judges are `case-file-only`; CLI extras are `agentic`.
 
 ### 4.3 — Resolve the judges' uncertainties (arbiter researches; never assume)
 
@@ -151,17 +151,17 @@ fact is not known, it is researched, not invented.**
 
 Via `question`, present a compact picture of this round (never dump a file): the verdict
 tendency, the surviving refutations each paired with the fact the arbiter researched (or
-"sin resolver" when no web tool was available), and the dissent if any. Then let the user
+"unresolved" when no web tool was available), and the dissent if any. Then let the user
 drive — the options depend on the verdict tendency:
-- **Aceptar el veredicto** — offered whenever the jury trends `GO` (a clean `GO` with no live
+- **Accept the verdict** — offered whenever the jury trends `GO` (a clean `GO` with no live
   refutations) or `GO_WITH_CONDITIONS`; for `GO_WITH_CONDITIONS` this means accepting the
   conditions as they stand. Choosing it reaches consensus (§4.5). A clean `GO` is never auto-
   exited — the user still gets this explicit accept so consensus is genuinely user+jury.
-- **Refutar con evidencia** — the user answers a specific refutation (capture their point).
-- **Refinar la idea** — the user narrows scope or changes the mechanism. Record it in
-  `deliberation.md` ("**Idea refinada (ronda N):** <antes> → <después>") and use the refined
+- **Rebut with evidence** — the user answers a specific refutation (capture their point).
+- **Refine the idea** — the user narrows scope or changes the mechanism. Record it in
+  `deliberation.md` ("**Refined idea (round N):** <before> → <after>") and use the refined
   wording as the idea argument for the next round's fan-out (§4.1).
-- **Conceder** — the user accepts a `NO_GO` (or decides to abandon/pivot).
+- **Concede** — the user accepts a `NO_GO` (or decides to abandon/pivot).
 
 Append the user's response to `deliberation.md` under `## Deliberation so far` (after the
 `## Researched facts` you wrote in §4.3) so the next round's judges and the final report
@@ -170,7 +170,7 @@ both see it.
 ### 4.5 — Consensus check and loop control
 
 Consensus is reached — **end the loop** — when either holds:
-- the user chose **Aceptar el veredicto** while the jury trends `GO` or `GO_WITH_CONDITIONS`
+- the user chose **Accept the verdict** while the jury trends `GO` or `GO_WITH_CONDITIONS`
   (live refutations resolved and any conditions accepted), or
 - the user concedes a `NO_GO`.
 
@@ -183,25 +183,25 @@ current (non-consensus) state as the verdict. The loop never exceeds 6 rounds.
 
 ## Step 5 — Write the final consensus report
 
-Write `COUNCIL_REPORT.md` INSIDE the session dir, in Spanish, reflecting the FINAL state of
+Write `COUNCIL_REPORT.md` INSIDE the session dir, in English, reflecting the FINAL state of
 the deliberation (not just the last round). Structure:
 
-1. **Veredicto** — the consensus `GO | GO_WITH_CONDITIONS | NO_GO` + conditions, and one line
+1. **Verdict** — the consensus `GO | GO_WITH_CONDITIONS | NO_GO` + conditions, and one line
    on how the deliberation got there.
-2. **Banners** (at the very top, when they apply): the `SIN SEÑAL CROSS-MODEL` and
-   `EXPEDIENTE VACÍO` banners from §4.2, judged on the final round.
-3. **Deliberación** — the round-by-round arc: how many rounds, which refutations were
+2. **Banners** (at the very top, when they apply): the `NO CROSS-MODEL SIGNAL` and
+   `EMPTY CASE FILE` banners from §4.2, judged on the final round.
+3. **Deliberation** — the round-by-round arc: how many rounds, which refutations were
    resolved (and by which researched fact + source), which the user answered, and what
    the user refined. This is what distinguishes a session from a one-shot verdict.
-4. **Expediente** — fixed inventory block: artifacts included (with bytes), absent (with
+4. **Case file** — fixed inventory block: artifacts included (with bytes), absent (with
    reason), straight from the script's `inventory`.
-5. **Disenso** — any dissent that survived to the end, presented fairly per side, never
+5. **Dissent** — any dissent that survived to the end, presented fairly per side, never
    resolved for the user and never averaged away — the contradiction IS the signal.
 6. **Unique Insights** — points raised by only ONE judge that deserve attention, with credit.
 7. **Attribution** — for each key point in the verdict, name the judge(s) that contributed it,
    and for each resolved uncertainty, name the source the arbiter researched.
-8. **Jueces** — one row per envelope (final round, with prior rounds noted): judge, transport,
-   label `agéntico` (CLI extras) or `expediente-only` (API judges), status, elapsed, word_count.
+8. **Judges** — one row per envelope (final round, with prior rounds noted): judge, transport,
+   label `agentic` (CLI extras) or `case-file-only` (API judges), status, elapsed, word_count.
    Absent/failed judges are declared, never hidden.
 9. **Discount rules** — restate the correlated-agreement discount, including the explicit
    `same_family_as_arbiter` discount of the Claude API judge.
@@ -210,7 +210,7 @@ the deliberation (not just the last round). Structure:
 
 Print the report location as an absolute path on its own line (clickable in the terminal):
 
-> Reporte del council: /abs/path/to/session-dir/COUNCIL_REPORT.md
+> Council report: /abs/path/to/session-dir/COUNCIL_REPORT.md
 
 Never print the COUNCIL_REPORT.md content in the terminal. A 3-line summary (verdict +
 one-line dissent note + judges alive) is allowed; the document itself is read in the editor.
@@ -248,23 +248,23 @@ context loaded from disk, never from this conversation's memory:
 
 ### Drive the handoff (consensus `GO` / `GO_WITH_CONDITIONS`)
 
-Ask via `question`: "El council llegó a consenso (`<verdict>`). ¿Cómo creamos la tarea con
+Ask via `question`: "The council reached consensus (`<verdict>`). How do we create the task with
 `/jlu-new-task`?" with options:
 
-- **"En una sesión nueva — contexto limpio (recomendado)"** — tell the user to open a fresh
+- **"In a fresh session — clean context (recommended)"** — tell the user to open a fresh
   session (`/clear`, or a new terminal in this repo) and run `/jlu-new-task`. It auto-detects
   this council's pending `new-task-seed.md` and offers to load it, so the full task context
   reloads from disk into a ~0% window with nothing to paste. (The explicit form also works:
-  `/jlu-new-task <idea>. Contexto en <abs>/new-task-seed.md y <abs>/COUNCIL_REPORT.md — léelos primero.`)
+  `/jlu-new-task <idea>. Context in <abs>/new-task-seed.md and <abs>/COUNCIL_REPORT.md — read them first.`)
   **Recommend this whenever the deliberation ran more than a round or two** — a long session
   leaves little window for `/jlu-new-task`'s own interview.
-- **"Ahora, en esta sesión"** — invoke `/jlu-new-task` inline, seeded with the contents of
+- **"Now, in this session"** — invoke `/jlu-new-task` inline, seeded with the contents of
   `new-task-seed.md` as its task description. Seamless, but it shares THIS session's context
   window — only sensible when the deliberation was short and the window is still light.
   (Each runtime invokes a sibling command its own way — see its runtime contract; e.g.
   Claude Code invokes the `new-task` skill via the `Skill` tool with the seed text,
   OpenCode/Codex run the `jlu-new-task` command with the seed as the argument.)
-- **"Todavía no — dejar la semilla y cerrar"** — print the same fresh-session command for
+- **"Not yet — leave the seed and close"** — print the same fresh-session command for
   later and finish. The seed file already holds the full detail.
 
 ### Consensus `NO_GO` (user conceded)
@@ -276,11 +276,11 @@ idea and run another council session, or close.
 
 1. Detect the visual-explainer plugin (e.g. its skills are installed under the Claude
    plugin cache). If absent: print one line —
-   `Fase visual omitida: instala con /plugin marketplace add nicobailon/visual-explainer`
+   `Visual phase skipped: install with /plugin marketplace add nicobailon/visual-explainer`
    — and finish.
 2. If present, ask via `question`: generate the stakeholder one-pager/slides from
-   COUNCIL_REPORT.md? Content is verdict-level only (idea, veredicto, top trade-offs,
-   disenso, condiciones) — never code excerpts from the repo.
+   COUNCIL_REPORT.md? Content is verdict-level only (idea, verdict, top trade-offs,
+   dissent, conditions) — never code excerpts from the repo.
 3. If generated, ask via `question` whether to publish (here.now / share-page).
    **NEVER publish without explicit per-run confirmation.** Declining leaves the local
    HTML only. There is no flag, config or default that skips this question.

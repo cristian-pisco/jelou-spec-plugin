@@ -20,6 +20,7 @@ The block is intentionally narrow. It does not describe how the service builds, 
 - id: service-auth
   path: ../service-auth
   stack: nestjs
+  depends_on: [dashboard-server, jelou-api]   # optional; runtime/auth deps booted before this service
   docker:                          # existing block, unchanged
     service: auth-api
     compose_file: docker-compose.yml
@@ -141,6 +142,32 @@ Declares how the service's persistent state behaves across concurrent E2E runs:
 - **`none`** — service is stateless; no isolation needed (e.g., a static-content service, a stateless API gateway).
 
 When `--allow-shared-data` is set, the user accepts the risk and is responsible for ensuring the runs don't collide on data.
+
+## `depends_on`
+
+Optional, service-level (a sibling of `dev`/`docker`, not inside `dev`) list of other service ids
+this service needs **running at request time** — not to build, but to serve real traffic. The
+canonical case is a UI service that authenticates: its login backend and that backend's
+session-validation API. These are usually NOT in `affected_services` and may be absent from a
+`user-flow.md` `Service Boot Order`, so without `depends_on` they never boot and the live flow
+returns `401` while the service-under-test itself looks healthy (the datum-legacy run's gateway-401
+root cause).
+
+`/jlu-production-like` (Phase 1 step 8a) and `/jlu-ui-qa-run` expand the boot order with
+`depends_on` **transitively** (a dependency's own `depends_on` is folded in too), ordering each
+dependency before its dependents. Every folded dependency must have a `dev` block, exactly like any
+other boot-order service (`bin/derive-dev-block.mjs` + step 8b resolve missing ones). Other
+workflows ignore `depends_on`.
+
+```yaml
+- id: jelou-apps                              # the React frontend
+  depends_on: [dashboard-server, jelou-api]  # login backend + session-validation API
+  dev:
+    launcher: npm
+    command: yarn dev
+    env_files: [.env, .env.e2e]
+    # …
+```
 
 ## Backwards compatibility
 

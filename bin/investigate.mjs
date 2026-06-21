@@ -67,14 +67,14 @@ export function renderRound({ n, today, engine, question, answer, sources }) {
   const lines = [
     `## Round ${n} — ${today} · ${engine}`,
     '',
-    `**Pregunta:** ${question}`,
+    `**Question:** ${question}`,
     '',
-    `**Respuesta:** ${answer}`,
+    `**Answer:** ${answer}`,
     '',
-    '**Fuentes:**',
+    '**Sources:**',
   ];
   if (sources.length === 0) {
-    lines.push('- sin fuentes — no verificado');
+    lines.push('- no sources — unverified');
   } else {
     for (const s of sources) lines.push(`- ${s.title} — ${s.url}`);
   }

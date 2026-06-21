@@ -26,8 +26,8 @@ describe('council brief — jelou/references/council-brief.md', () => {
     const brief = mustRead('jelou/references/council-brief.md');
     assert.match(brief, /REFUTE this idea/i);
     assert.match(brief, /\{IDEA\}/);
-    assert.match(brief, /\{EXPEDIENTE\}/);
-    assert.match(brief, /\{MODO_AGENTICO\}/);
+    assert.match(brief, /\{CASE_FILE\}/);
+    assert.match(brief, /\{AGENTIC_MODE\}/);
   });
 
   test('demands canonical verdict tokens in JSON output', () => {
@@ -85,10 +85,10 @@ describe('council workflow — jelou/workflows/council.md', () => {
     assert.match(wf, /discount/i);
   });
 
-  test('declares degraded-mode banners with exact Spanish wording', () => {
+  test('declares degraded-mode banners with exact wording', () => {
     const wf = mustRead('jelou/workflows/council.md');
-    assert.match(wf, /SIN SEÑAL CROSS-MODEL/);
-    assert.match(wf, /EXPEDIENTE VACÍO/);
+    assert.match(wf, /NO CROSS-MODEL SIGNAL/);
+    assert.match(wf, /EMPTY CASE FILE/);
     assert.match(wf, /jlu:map-codebase/);
   });
 
@@ -111,10 +111,10 @@ describe('council workflow — jelou/workflows/council.md', () => {
     assert.match(wf, /plugin marketplace add nicobailon\/visual-explainer/);
   });
 
-  test('labels judges agéntico vs expediente-only', () => {
+  test('labels judges agentic vs case-file-only', () => {
     const wf = mustRead('jelou/workflows/council.md');
-    assert.match(wf, /agéntico/);
-    assert.match(wf, /expediente-only/);
+    assert.match(wf, /agentic/);
+    assert.match(wf, /case-file-only/);
   });
 
   test('runs a multi-round deliberation loop to consensus', () => {
