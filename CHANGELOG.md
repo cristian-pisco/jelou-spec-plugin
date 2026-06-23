@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.259] — 2026-06-23
+
+### Added
+- add runtime-exec CLI for build preflight context resolution
+
 ## [0.3.258] — 2026-06-23
 
 ### Added
