@@ -105,7 +105,11 @@ export function executeValidate({
 
   let running = false;
   for (const step of plan.steps) {
-    if (step.kind === 'check') { running = probe(step); continue; }
+    if (step.kind === 'check') {
+      running = probe(step);
+      log(`container '${plan.composeService}' ${running ? 'is running' : 'is not running'}`);
+      continue;
+    }
     if (step.kind === 'boot') {
       if (running) { log(`'${plan.composeService}' already up`); continue; }
       const r = runner(step.cmd, { cwd: serviceDir });

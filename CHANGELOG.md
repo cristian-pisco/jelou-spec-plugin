@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.262] — 2026-06-23
+
+### Internal
+- phase A review cleanups (drop dead import, log check step)
+
 ## [0.3.261] — 2026-06-23
 
 ### Added
