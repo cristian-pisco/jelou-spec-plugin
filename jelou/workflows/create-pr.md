@@ -8,7 +8,7 @@
 
 Print exactly:
 
-⚠️ /jlu-create-pr is deprecated and now runs /jlu-ship. Please use /jlu-ship going forward.
+⚠️ `/jlu-create-pr` is deprecated and now runs `/jlu-ship`. Please use `/jlu-ship` going forward.
 
 ## Step 2 — Delegate to ship
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.272] — 2026-06-23
+
+### Internal
+- align /jlu-create-pr deprecation notice across runtimes
+
 ## [0.3.271] — 2026-06-23
 
 ### Internal

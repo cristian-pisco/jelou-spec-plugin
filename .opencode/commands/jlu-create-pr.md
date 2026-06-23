@@ -2,7 +2,7 @@
 description: DEPRECATED alias of jlu-ship — use jlu-ship instead
 agent: build
 ---
-Print exactly: ⚠️ `/jlu-create-pr` is deprecated. Use `/jlu-ship` going forward.
+Print exactly: ⚠️ `/jlu-create-pr` is deprecated and now runs `/jlu-ship`. Please use `/jlu-ship` going forward.
 
 Then resolve the ship workflow path in this order:
 1. `<HOME>/.config/opencode/jelou/workflows/ship.md` (global install preferred; resolve `<HOME>` to an absolute path first)
