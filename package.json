@@ -21,6 +21,7 @@
     "sync-codex": "node bin/sync-codex.mjs",
     "sync": "node bin/sync-agents.mjs && node bin/sync-codex.mjs",
     "check-sync": "node bin/sync-agents.mjs --check && node bin/sync-codex.mjs --check",
-    "prepare": "bash bin/install-git-hooks.sh"
+    "prepare": "bash bin/install-git-hooks.sh",
+    "release": "python3 bin/changelog-entry.py --release"
   }
 }
