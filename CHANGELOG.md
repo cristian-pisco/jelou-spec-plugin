@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.268] — 2026-06-23
+
+### Fixed
+- make /jlu-create-pr alias delegate to ship in the Codex runtime
+
 ## [0.3.267] — 2026-06-23
 
 ### Added

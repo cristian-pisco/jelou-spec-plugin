@@ -18,8 +18,10 @@ describe('create-pr deprecated alias', () => {
     assert.match(s, /\/jlu-ship/);
     assert.match(s, /jelou\/workflows\/ship\.md/);
   });
-  test('alias workflow stub points at ship.md', () => {
-    assert.match(read('jelou/workflows/create-pr.md'), /ship\.md/);
+  test('alias workflow is executable: contains deprecation marker and active delegation to ship.md', () => {
+    const w = read('jelou/workflows/create-pr.md');
+    assert.match(w, /⚠️.*jlu-create-pr.*deprecated/i, 'must contain deprecation notice');
+    assert.match(w, /(execute|run|read and execute|follow)[^\n]*ship\.md/i, 'must contain an executable delegation to ship.md');
   });
   test('all 3 layers exist for both ship and create-pr (parity inputs)', () => {
     for (const p of [
