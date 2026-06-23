@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.273] — 2026-06-23
+
+### Internal
+- repoint remaining jlu:create-pr references to jlu:ship
+
 ## [0.3.272] — 2026-06-23
 
 ### Internal

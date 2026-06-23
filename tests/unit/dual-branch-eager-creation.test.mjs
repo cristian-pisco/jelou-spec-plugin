@@ -94,7 +94,7 @@ describe('new-task: creates + pushes staging up front', () => {
     assert.match(wf, /alpha=<creation_alpha_sha>, production=/);
   });
 
-  test('report no longer says staging is synthesized at create-pr', () => {
+  test('report no longer says staging is synthesized at ship', () => {
     assert.doesNotMatch(wf, /will be synthesized automatically during `\/jlu-ship`/);
     assert.match(wf, /was created from `origin\/alpha` and pushed/);
   });
@@ -164,7 +164,7 @@ describe('jlu-tasks-agent: TASKS.md template reflects eager creation', () => {
   const src = read('agents/jlu-tasks-agent.md');
   const mirror = read('.opencode/agents/jlu-tasks-agent.md');
 
-  test('secondary-branch template is not described as synthesized at create-pr', () => {
+  test('secondary-branch template is not described as synthesized at ship', () => {
     assert.doesNotMatch(src, /synthesized at first \/jlu-ship/);
     assert.doesNotMatch(mirror, /synthesized at first \/jlu-ship/);
   });

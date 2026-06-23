@@ -135,7 +135,7 @@ describe('probe-coverage-breadth — CLI', () => {
     assert.equal(r.status, 1);
   });
 
-  test('--dto scoped mode audits only the named DTO (for create-pr)', () => {
+  test('--dto scoped mode audits only the named DTO (for ship)', () => {
     const dir = mkdtempSync(join(tmpdir(), 'breadth-dto-'));
     try {
       const dtoPath = join(dir, 'changed.dto.ts');

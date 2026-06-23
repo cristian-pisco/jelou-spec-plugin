@@ -157,12 +157,12 @@ Status: <lifecycle-state>
 └──────────────────────┴──────────────────────────────────┴───────┘
 
 ### Next Steps
-- Run `/jlu:create-pr` to open pull requests
+- Run `/jlu:ship` to open pull requests
 - After PR merge, run `/jlu:close-task`
 - <context-specific notes when applicable>
 ```
 
-**Next Steps** for `post-execution` always starts with `/jlu:create-pr`, then `/jlu:close-task`. Add context-specific notes when relevant (e.g., cross-service dependencies, external team actions, phases targeting a different repo).
+**Next Steps** for `post-execution` always starts with `/jlu:ship`, then `/jlu:close-task`. Add context-specific notes when relevant (e.g., cross-service dependencies, external team actions, phases targeting a different repo).
 
 ### Variant: `context-load`
 
@@ -190,8 +190,8 @@ Status: <lifecycle-state>
 | `refining` | Re-run `/jlu:new-task <slug>` — spec interview not yet complete. |
 | `planned` | Run `/jlu:execute-task` to begin TDD implementation. |
 | `implementing` | Run `/jlu:execute-task` to resume — next phase is `<recovery-info.next-phase>`. |
-| `validating` | Run `/jlu:execute-task` to complete QA, then `/jlu:create-pr`. |
-| `ready_to_publish` | Run `/jlu:create-pr` to open pull requests. *(If PR exists: merge, then `/jlu:close-task`.)* |
+| `validating` | Run `/jlu:execute-task` to complete QA, then `/jlu:ship`. |
+| `ready_to_publish` | Run `/jlu:ship` to open pull requests. *(If PR exists: merge, then `/jlu:close-task`.)* |
 | `done` | PR is open. Await review and merge, then `/jlu:close-task`. |
 | `closed` | No action needed. |
 
