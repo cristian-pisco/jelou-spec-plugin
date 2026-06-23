@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.263] — 2026-06-23
+
+### Added
+- add jlu-deps-validator subagent for ship deps gate
+
 ## [0.3.262] — 2026-06-23
 
 ### Internal
