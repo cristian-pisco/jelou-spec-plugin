@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.260] — 2026-06-23
+
+### Added
+- add planInstallValidate for runtime-aware clean-install gate
+
 ## [0.3.259] — 2026-06-23
 
 ### Added
