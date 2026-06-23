@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.257] — 2026-06-23
+
+### Internal
+- extract shared exec-template helpers into runtime-exec.mjs
+
 ## [0.3.256] — 2026-06-23
 
 ### Documentation

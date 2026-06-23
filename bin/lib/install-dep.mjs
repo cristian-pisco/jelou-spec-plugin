@@ -11,8 +11,7 @@
 // The executor (bin/install-dep.mjs) runs the steps.
 
 import { detectPackageManager } from '../derive-dev-block.mjs';
-
-const DEFAULT_EXEC_TEMPLATE = 'docker compose -f {compose_file} exec {compose_service} {cmd}';
+import { DEFAULT_EXEC_TEMPLATE, substituteExecTemplate } from './runtime-exec.mjs';
 
 // npm/bun use `install`/`add`; yarn/pnpm use `add`. Dev flag differs only in spelling.
 function installCommand(pm, packages, dev) {
@@ -24,13 +23,6 @@ function installCommand(pm, packages, dev) {
     case 'npm':
     default:     return `npm install ${dev ? '-D ' : ''}${pkgs}`;
   }
-}
-
-function substituteExecTemplate(template, { composeFile, composeService, cmd }) {
-  return template
-    .replaceAll('{compose_file}', composeFile)
-    .replaceAll('{compose_service}', composeService)
-    .replaceAll('{cmd}', cmd);
 }
 
 export function planInstall({ service, serviceDir, packages, dev = false }) {
