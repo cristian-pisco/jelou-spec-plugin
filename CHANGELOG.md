@@ -1,113 +1,18 @@
 # Changelog
 
-## [0.3.273] — 2026-06-23
-
-### Internal
-- repoint remaining jlu:create-pr references to jlu:ship
-
-## [0.3.272] — 2026-06-23
-
-### Internal
-- align /jlu-create-pr deprecation notice across runtimes
-
-## [0.3.271] — 2026-06-23
-
-### Internal
-- document /jlu-ship rename + preflight gate
-
-## [next] — /jlu-ship rename + preflight gate
+## [0.3.257] — 2026-06-23
 
 ### Changed
-- `/jlu-create-pr` renamed to `/jlu-ship`; `/jlu-create-pr` is kept as a deprecated alias that prints a warning then delegates to `/jlu-ship` unchanged.
+- `/jlu-create-pr` renamed to `/jlu-ship`; `/jlu-create-pr` is kept as a deprecated alias that prints a warning then delegates to `/jlu-ship` unchanged (all 3 runtimes).
 - Trace span `create_pr` renamed to `ship`.
 
 ### Added
-- **Runtime-aware build+deps preflight gate (Step 4b):** before opening PRs, `/jlu-ship` validates that each service installs deps cleanly and builds. docker-compose-runtime services install and build inside their container; host-runtime services run on the host.
+- **Runtime-aware build+deps preflight gate (Step 4b):** before opening PRs, `/jlu-ship` validates that each service installs deps cleanly and builds. docker-compose-runtime services install and build inside their container; host-runtime services run on the host. Gate failures are user-overridable and recorded in the PR body + TASKS.md.
 - `jlu-deps-validator` subagent (haiku, report-only): runs `bin/install-dep.mjs --validate` per service, returns PASS / FAIL / SKIP.
-- `jlu-build-validator` updated with runtime-aware mode: reads exec context from `bin/runtime-exec.mjs`, prefixes build commands with `EXEC_PREFIX` for docker-compose services.
+- `jlu-build-validator` runtime-aware mode: reads exec context from `bin/runtime-exec.mjs`, prefixes build commands with `EXEC_PREFIX` for docker-compose services.
 - `bin/lib/runtime-exec.mjs` and `bin/runtime-exec.mjs` CLI: resolve service → `{runtime, execPrefix}` from `jlu-services.json`.
-- `bin/lib/install-dep.mjs`: `planInstallValidate` (frozen host / container install + drift check).
-- Container-exec carve-out extended in `jelou/references/subagent-base.md` and `jelou/references/docker-conventions.md` to document the ship preflight exception (scoped to `/jlu-ship` only; TDD pipeline stays host-only).
-
-## [0.3.270] — 2026-06-23
-
-### Internal
-- extend container-exec carve-out to the ship preflight
-
-## [0.3.269] — 2026-06-23
-
-### Added
-- add Step 4b build+deps preflight gate to ship workflow
-
-## [0.3.268] — 2026-06-23
-
-### Fixed
-- make /jlu-create-pr alias delegate to ship in the Codex runtime
-
-## [0.3.267] — 2026-06-23
-
-### Added
-- skills/create-pr/SKILL.md: deprecated alias that prints a warning then executes ship.md
-- jelou/workflows/create-pr.md: 2-line parity stub pointing at ship.md
-- .opencode/commands/jlu-create-pr.md: redirect command to ship workflow
-- npm run sync regenerates .codex/prompts/jlu-create-pr.md from the alias skill
-- tests/unit/ship-alias.test.mjs: verifies all 3 alias layers exist and point at ship
-
-## [0.3.266] — 2026-06-23
-
-### Internal
-- Rename SPAN_NAMES.CREATE_PR → SHIP ('create_pr' → 'ship') in trace schema
-- git mv skills/create-pr/SKILL.md → skills/ship/SKILL.md; name: ship
-- git mv jelou/workflows/create-pr.md → jelou/workflows/ship.md; --name ship
-- Hand-author .opencode/commands/jlu-ship.md
-- npm run sync generates .codex/prompts/jlu-ship.md
-- Update ~30 cross-refs: agents, references, workflows, tests, README, INVOCATION
-- Harness-parity intentionally RED until Task 10 restores the create-pr alias
-
-## [0.3.265] — 2026-06-23
-
-### Fixed
-- scope the Rules host-only prohibition to allow ship-preflight container exec
-
-## [0.3.264] — 2026-06-23
-
-### Added
-- make jlu-build-validator runtime-aware for ship preflight
-
-## [0.3.263] — 2026-06-23
-
-### Added
-- add jlu-deps-validator subagent for ship deps gate
-
-## [0.3.262] — 2026-06-23
-
-### Internal
-- phase A review cleanups (drop dead import, log check step)
-
-## [0.3.261] — 2026-06-23
-
-### Added
-- add --validate mode to install-dep (clean-install + drift gate)
-
-## [0.3.260] — 2026-06-23
-
-### Added
-- add planInstallValidate for runtime-aware clean-install gate
-
-## [0.3.259] — 2026-06-23
-
-### Added
-- add runtime-exec CLI for build preflight context resolution
-
-## [0.3.258] — 2026-06-23
-
-### Added
-- add resolveRuntimeExec for host/docker-compose build context
-
-## [0.3.257] — 2026-06-23
-
-### Internal
-- extract shared exec-template helpers into runtime-exec.mjs
+- `bin/lib/install-dep.mjs` `planInstallValidate` + `bin/install-dep.mjs --validate`: frozen install on host / container install + lockfile drift check.
+- Container-exec carve-out extended in `jelou/references/subagent-base.md` and `jelou/references/docker-conventions.md`, scoped to `/jlu-ship` only (TDD pipeline stays host-only).
 
 ## [0.3.256] — 2026-06-23
 
