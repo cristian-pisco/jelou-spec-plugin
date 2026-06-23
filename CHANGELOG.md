@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.3.271] — 2026-06-23
+
+### Internal
+- document /jlu-ship rename + preflight gate
+
+## [next] — /jlu-ship rename + preflight gate
+
+### Changed
+- `/jlu-create-pr` renamed to `/jlu-ship`; `/jlu-create-pr` is kept as a deprecated alias that prints a warning then delegates to `/jlu-ship` unchanged.
+- Trace span `create_pr` renamed to `ship`.
+
+### Added
+- **Runtime-aware build+deps preflight gate (Step 4b):** before opening PRs, `/jlu-ship` validates that each service installs deps cleanly and builds. docker-compose-runtime services install and build inside their container; host-runtime services run on the host.
+- `jlu-deps-validator` subagent (haiku, report-only): runs `bin/install-dep.mjs --validate` per service, returns PASS / FAIL / SKIP.
+- `jlu-build-validator` updated with runtime-aware mode: reads exec context from `bin/runtime-exec.mjs`, prefixes build commands with `EXEC_PREFIX` for docker-compose services.
+- `bin/lib/runtime-exec.mjs` and `bin/runtime-exec.mjs` CLI: resolve service → `{runtime, execPrefix}` from `jlu-services.json`.
+- `bin/lib/install-dep.mjs`: `planInstallValidate` (frozen host / container install + drift check).
+- Container-exec carve-out extended in `jelou/references/subagent-base.md` and `jelou/references/docker-conventions.md` to document the ship preflight exception (scoped to `/jlu-ship` only; TDD pipeline stays host-only).
+
 ## [0.3.270] — 2026-06-23
 
 ### Internal

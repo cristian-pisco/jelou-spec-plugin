@@ -52,6 +52,8 @@ OpenCode normalization rules:
 | `ubiquitous-language`  | `/jlu-ubiquitous-language`       |
 | `production-like`      | `/jlu-production-like [slug]`    |
 
+`/jlu-create-pr` is a deprecated alias for `/jlu-ship`; it prints a warning and delegates immediately. Before opening PRs, `/jlu-ship` validates that each service installs deps cleanly and builds — in-container for docker-compose services.
+
 OpenCode commands live in `.opencode/commands/jlu-<skill>.md` and resolve workflow files global-first from `~/.config/opencode/jelou/` before project-local fallbacks. Most commands dispatch `jelou/workflows/<skill>.md`; OpenCode-specific overrides may live under `jelou/workflows-opencode/`.
 
 ## Codex CLI

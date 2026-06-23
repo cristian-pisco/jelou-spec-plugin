@@ -234,7 +234,7 @@ OpenCode command definitions live in `.opencode/commands/`. All commands use the
 | `/jlu-list-tasks [--status <state>] [--sprint <n>]` | List every local task created by `/jlu-new-task` — table of slug, title, lifecycle state, date, sprint, and affected services |
 | `/jlu-load-context` | Load task context into a fresh session for Q&A |
 | `/jlu-council` | Convene a multi-model jury on an architecture idea — categorical `GO / GO_WITH_CONDITIONS / NO_GO` verdict with dissent preserved (Claude Code skill; OpenCode parity planned) |
-| `/jlu-ship [task-slug]` | Stage, commit, push, and create pull requests for all affected services |
+| `/jlu-ship [task-slug]` | Stage, commit, push, and create pull requests for all affected services. Before opening PRs, validates that each service installs deps cleanly and builds — in-container for docker-compose services. `/jlu-create-pr` is a deprecated alias. |
 | `/jlu-daily-slack <sprint> #channel` | Generate and post a sprint-scoped daily summary to a Slack channel |
 | `/jlu-close-task` | Close task after PR merge — updates ClickUp, cleans worktrees |
 | `/jlu-rollback-phase` | Reset service worktrees to the last known-good phase state |
