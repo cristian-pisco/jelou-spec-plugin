@@ -22,8 +22,7 @@ Skills are invoked with the plugin namespace prefix `jlu:`.
 | `daily-slack`          | `/jlu:daily-slack`               |
 | `architecture-review`  | `/jlu:architecture-review`       |
 | `ubiquitous-language`  | `/jlu:ubiquitous-language`       |
-| `ui-qa-run`            | `/jlu:ui-qa-run`                 |
-| `ui-qa-cleanup`        | `/jlu:ui-qa-cleanup`             |
+| `production-like`      | `/jlu:production-like [slug]`    |
 
 The `jlu:` prefix derives from `.claude-plugin/plugin.json` (`name: "jlu"`). Skill names are taken from each `skills/*/SKILL.md` `name:` field. Claude Code auto-discovers all skills in `skills/` at plugin install time.
 
@@ -51,8 +50,7 @@ OpenCode normalization rules:
 | `daily-slack`          | `/jlu-daily-slack`               |
 | `architecture-review`  | `/jlu-architecture-review`       |
 | `ubiquitous-language`  | `/jlu-ubiquitous-language`       |
-| `ui-qa-run`            | `/jlu-ui-qa-run`                 |
-| `ui-qa-cleanup`        | `/jlu-ui-qa-cleanup`             |
+| `production-like`      | `/jlu-production-like [slug]`    |
 
 OpenCode commands live in `.opencode/commands/jlu-<skill>.md` and resolve workflow files global-first from `~/.config/opencode/jelou/` before project-local fallbacks. Most commands dispatch `jelou/workflows/<skill>.md`; OpenCode-specific overrides may live under `jelou/workflows-opencode/`.
 

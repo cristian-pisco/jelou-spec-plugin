@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.256] — 2026-06-23
+
+### Documentation
+- README + INVOCATION: add the previously-undocumented `/jlu-production-like` to the Core Commands table and the invocation reference, plus a dedicated "Production-Like — Full-Stack QA Orchestration" section (thin-orchestrator model, fullstack vs full-backend runner matrix, Testcontainers backend-E2E).
+- Remove its internal runners (`test-suite`, `ui-qa-run`, `ui-qa-cleanup`) from the command tables — `production-like` is the single QA entry point; the sub-commands stay documented in their own dedicated sections.
+
 ## [0.3.255] — 2026-06-21
 
 ### Fixed

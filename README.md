@@ -240,9 +240,7 @@ OpenCode command definitions live in `.opencode/commands/`. All commands use the
 | `/jlu-rollback-phase` | Reset service worktrees to the last known-good phase state |
 | `/jlu-diagnose [name]` | Analyze a failing dev-environment service (TMUX pane + recent events) and propose a structured fix (host or container) |
 | `/jlu-architecture-review [<service-id>] [--cross-service]` | Surface deepening opportunities (single-service or cross-service); interactive grilling loop; lazy ADRs |
-| `/jlu-test-suite` | Run the current service's unit + integration tests with workers=1, report failures grouped by component (Controller, Service, Repository, etc.). Invoke before `/jlu-create-pr`. No arguments. |
-| `/jlu-ui-qa-run [task-slug]` | Boot affected services and run the Playwright E2E suite with bounded auto-fix loop and RAM/CPU worker gates |
-| `/jlu-ui-qa-cleanup [task-slug]` | Recover from leaked dev servers, stale containers, or held lock files |
+| `/jlu-production-like [task-slug]` | Run the full production-like QA suite for a task — auto-detects fullstack vs full-backend, boots the dev infra once, runs the UI Playwright suite and the backend unit/integration + Testcontainers backend-E2E phases against the live stack, then tears down. The single QA entry point for a finished task. |
 | `/jlu-trace-report` | Query the workspace trace store: by-agent / by-phase / by-task / trends |
 | `/jlu-investigate "<question>" [--engine perplexity\|fusion]` | Stateful research/decision command. Runs one engine per call (default Perplexity; OpenRouter Fusion via `--engine fusion`), persists each investigation as a resumable Obsidian note (local-file fallback), resumes by topic slug. Not a debugger — use `/jlu-diagnose` for failures. |
 | `/jlu-update [--ref <ref>]` | Update the plugin to the latest version for the current runtime — pulls the shared `~/.jelou-spec-plugin` git cache and reinstalls. Primary update path for Codex and OpenCode. |
@@ -459,6 +457,24 @@ For tasks that touch a UI service, jelou-spec-plugin generates failing Playwrigh
 Each E2E-targeted service must declare a `dev` block in `services.yaml` (launcher, command, readiness signal, RAM estimate, data isolation). See [`jelou/references/dev-block-schema.md`](./jelou/references/dev-block-schema.md). Services without a `dev` block are skipped.
 
 Trace summaries (`trace-summary.json` + screenshots) are committed; raw `trace.zip` is gitignored.
+
+## Production-Like — Full-Stack QA Orchestration
+
+`/jlu-production-like` runs a task's complete QA against a live, production-shaped stack in one command. It classifies the task, boots the dev infrastructure **once**, fans out to the right runners, then tears everything down — so UI E2E and backend E2E don't each pay their own boot/teardown cost.
+
+The orchestrator is **thin**: it owns only the dev-environment lifecycle (boot once / teardown), the OTP auth gate (session-bound), brokering any runner's `NEEDS_CONTEXT` via a question, dispatch/routing, and result aggregation. All execution and authoring is delegated to subagents — it never runs a test or writes a `.spec.ts` itself.
+
+| Task class | Runners dispatched | What runs |
+|---|---|---|
+| **fullstack** | `jlu-ui-qa-runner` + `jlu-test-suite-runner` + `jlu-backend-e2e-runner` | UI Playwright suite (reuse-or-reboot frontend) **and** backend unit/integration + a Testcontainers backend-E2E phase |
+| **full-backend** | `jlu-test-suite-runner` + `jlu-backend-e2e-runner` | Backend unit/integration suite + Testcontainers backend-E2E (dependencies-only, real HTTP) |
+
+The backend-E2E phase uses Testcontainers for dependencies only (no service-under-test container); the frontend is reused if already healthy, otherwise rebooted fresh so it bakes the E2E env. The missing UI suite is pre-materialized from `SPEC.md` if absent. Runs once per task — invoke before opening the PR, after `/jlu-execute-task` is green.
+
+```bash
+/jlu-production-like                 # auto-detect the task from the current branch
+/jlu-production-like add-oauth-flow  # explicit task slug
+```
 
 ## Architecture Review — Deepening Opportunities
 
