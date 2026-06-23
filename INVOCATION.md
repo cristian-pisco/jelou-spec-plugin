@@ -13,7 +13,7 @@ Skills are invoked with the plugin namespace prefix `jlu:`.
 | `map-codebase`         | `/jlu:map-codebase [service-id]` |
 | `refine-task`          | `/jlu:refine-task [slug]`        |
 | `extend-phase`         | `/jlu:extend-phase`              |
-| `create-pr`            | `/jlu:create-pr`                 |
+| `ship`                 | `/jlu:ship`                      |
 | `report-task`          | `/jlu:report-task`               |
 | `load-context`         | `/jlu:load-context`              |
 | `close-task`           | `/jlu:close-task`                |
@@ -41,7 +41,7 @@ OpenCode normalization rules:
 | `map-codebase`         | `/jlu-map-codebase [service-id]` |
 | `refine-task`          | `/jlu-refine-task [slug]`        |
 | `extend-phase`         | `/jlu-extend-phase`              |
-| `create-pr`            | `/jlu-create-pr`                 |
+| `ship`                 | `/jlu-ship`                      |
 | `report-task`          | `/jlu-report-task`               |
 | `load-context`         | `/jlu-load-context`              |
 | `close-task`           | `/jlu-close-task`                |
@@ -51,6 +51,8 @@ OpenCode normalization rules:
 | `architecture-review`  | `/jlu-architecture-review`       |
 | `ubiquitous-language`  | `/jlu-ubiquitous-language`       |
 | `production-like`      | `/jlu-production-like [slug]`    |
+
+`/jlu-create-pr` is a deprecated alias for `/jlu-ship`; it prints a warning and delegates immediately. Before opening PRs, `/jlu-ship` validates that each service installs deps cleanly and builds — in-container for docker-compose services.
 
 OpenCode commands live in `.opencode/commands/jlu-<skill>.md` and resolve workflow files global-first from `~/.config/opencode/jelou/` before project-local fallbacks. Most commands dispatch `jelou/workflows/<skill>.md`; OpenCode-specific overrides may live under `jelou/workflows-opencode/`.
 
@@ -63,7 +65,7 @@ Commands use the same hyphen-prefixed name (`jlu-`) as OpenCode, exposed as Code
 | `new-task`             | `/jlu-new-task [desc]`           |
 | `execute-task`         | `/jlu-execute-task [slug]`       |
 | `map-codebase`         | `/jlu-map-codebase [service-id]` |
-| `create-pr`            | `/jlu-create-pr`                 |
+| `ship`                 | `/jlu-ship`                      |
 | … (all skills)         | `/jlu-<skill>`                   |
 
 Codex prompts live in `.codex/prompts/jlu-<skill>.md` and resolve workflow files global-first from `$CODEX_HOME/jelou/` (default `~/.codex/jelou/`) before project-local fallbacks. Codex subagents are TOML files in `.codex/agents/<agent>.toml`. Both are **generated** from canonical sources by `bin/sync-codex.mjs` — do not hand-edit. Install with `bin/install-codex.sh`. The Codex runtime contract (no structured `question`, `agents.max_depth = 1`) lives in `jelou/references/codex-runtime.md`.

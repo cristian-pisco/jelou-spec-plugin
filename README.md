@@ -147,7 +147,7 @@ After that, start OpenCode in the target repo and run:
 opencode
 ```
 
-Use commands like `/jlu-new-task`, `/jlu-execute-task`, `/jlu-create-pr`, `/jlu-ubiquitous-language` (or bare `jlu-new-task`, `jlu-execute-task`, etc.).
+Use commands like `/jlu-new-task`, `/jlu-execute-task`, `/jlu-ship`, `/jlu-ubiquitous-language` (or bare `jlu-new-task`, `jlu-execute-task`, etc.).
 
 ### Update in Existing Project
 
@@ -206,7 +206,7 @@ Then in Codex, the commands are the same hyphen-prefixed names as OpenCode:
 /jlu-new-task add user authentication
 /jlu-map-codebase service-auth
 /jlu-execute-task add-user-auth
-/jlu-create-pr
+/jlu-ship
 ```
 
 Codex specifics (see [jelou/references/codex-runtime.md](./jelou/references/codex-runtime.md)):
@@ -234,7 +234,7 @@ OpenCode command definitions live in `.opencode/commands/`. All commands use the
 | `/jlu-list-tasks [--status <state>] [--sprint <n>]` | List every local task created by `/jlu-new-task` — table of slug, title, lifecycle state, date, sprint, and affected services |
 | `/jlu-load-context` | Load task context into a fresh session for Q&A |
 | `/jlu-council` | Convene a multi-model jury on an architecture idea — categorical `GO / GO_WITH_CONDITIONS / NO_GO` verdict with dissent preserved (Claude Code skill; OpenCode parity planned) |
-| `/jlu-create-pr [task-slug]` | Stage, commit, push, and create pull requests for all affected services |
+| `/jlu-ship [task-slug]` | Stage, commit, push, and create pull requests for all affected services. Before opening PRs, validates that each service installs deps cleanly and builds — in-container for docker-compose services. `/jlu-create-pr` is a deprecated alias. |
 | `/jlu-daily-slack <sprint> #channel` | Generate and post a sprint-scoped daily summary to a Slack channel |
 | `/jlu-close-task` | Close task after PR merge — updates ClickUp, cleans worktrees |
 | `/jlu-rollback-phase` | Reset service worktrees to the last known-good phase state |
@@ -415,7 +415,7 @@ setting `status: closed` in its frontmatter.
 
 ### Spec Compliance Review
 
-When creating a PR via `/jlu-create-pr`, a spec compliance review runs automatically:
+When creating a PR via `/jlu-ship`, a spec compliance review runs automatically:
 - Checks every SPEC.md requirement against the actual code diff
 - Reports COVERED / MISSING / UNTESTED status with file:line evidence
 - Detects scope creep (code changes not in the spec)
@@ -423,10 +423,10 @@ When creating a PR via `/jlu-create-pr`, a spec compliance review runs automatic
 
 ### Dual-PR Tasks
 
-Tasks opting into dual-PR (via the `/jlu-new-task` prompt "Also create a PR to `alpha`?") produce **two** PRs on `/jlu-create-pr`:
+Tasks opting into dual-PR (via the `/jlu-new-task` prompt "Also create a PR to `alpha`?") produce **two** PRs on `/jlu-ship`:
 
 - `production/<slug>` → trunk (the mandatory primary PR)
-- `staging/<slug>` → `alpha` (created up-front by `/jlu-new-task`: cut from `origin/alpha` and pushed; production commits are cherry-picked on top at `/jlu-create-pr` by the `jlu-conflict-resolver` sub-agent — reused when `alpha` is unchanged, rebuilt from fresh `origin/alpha` when it moved)
+- `staging/<slug>` → `alpha` (created up-front by `/jlu-new-task`: cut from `origin/alpha` and pushed; production commits are cherry-picked on top at `/jlu-ship` by the `jlu-conflict-resolver` sub-agent — reused when `alpha` is unchanged, rebuilt from fresh `origin/alpha` when it moved)
 
 If the conflict resolver cannot resolve a merge conflict with confidence, the staging side aborts cleanly and offers the user three options: resolve manually, disable dual-PR, or abort.
 
@@ -709,7 +709,7 @@ Other modes: `--by-phase` (durations grouped by `service:phase_num`), `--by-task
 
 ### Suggestions before heavy workflows
 
-The three heavy workflows (`/jlu-execute-task`, `/jlu-refine-task`, `/jlu-create-pr`) run the suggester at Step 0.5 right after the reconciler. The suggester applies four rules over recent traces:
+The three heavy workflows (`/jlu-execute-task`, `/jlu-refine-task`, `/jlu-ship`) run the suggester at Step 0.5 right after the reconciler. The suggester applies four rules over recent traces:
 
 - **`bump_model_tier`** — agent retry rate > 20% over last 10 dispatches → suggests upgrading that agent's model tier
 - **`extend_patterns`** — same `error_signature` ≥ 3x in 30 days → suggests adding it to the daemon's failure-pattern matcher via `/jlu-add-failure-pattern`
@@ -827,7 +827,7 @@ To bypass the hook for a one-off manual run (humans only): `JLU_TEST_GUARD=off` 
 2. **Proposal** → Two-pass generation (global strategy + per-service details)
 3. **Execute** → Dependency-driven, TDD-enforced implementation with specialized agents
 4. **Validate** → Continuous QA per phase + final cross-service validation
-5. **Deliver** → Create PRs (`/jlu-create-pr`), sync to ClickUp, post to Slack
+5. **Deliver** → Create PRs (`/jlu-ship`), sync to ClickUp, post to Slack
 
 All state is file-based. No external database required.
 

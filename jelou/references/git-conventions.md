@@ -16,7 +16,7 @@ Every task creates a **mandatory** primary branch targeting trunk, and **optiona
 
 - Cut from `origin/alpha`.
 - **Created at task creation** by `/jlu-new-task` Step 15c (when `Dual PR: yes`), in each affected service repo, and pushed to the remote. At creation it is empty (identical to `alpha`) — no PR is opened until there are commits.
-- Commits arrive via cherry-pick from `production/<task-slug>` at `/jlu-create-pr`, which **reuses** the pre-created branch when `origin/alpha` is unchanged and **rebuilds** it from fresh `origin/alpha` when alpha has moved. Conflicts are resolved by the `jlu-conflict-resolver` sub-agent (sonnet) using SPEC + adjacent code.
+- Commits arrive via cherry-pick from `production/<task-slug>` at `/jlu-ship`, which **reuses** the pre-created branch when `origin/alpha` is unchanged and **rebuilds** it from fresh `origin/alpha` when alpha has moved. Conflicts are resolved by the `jlu-conflict-resolver` sub-agent (sonnet) using SPEC + adjacent code.
 - PR targets `alpha`.
 
 ### Rules
@@ -31,13 +31,13 @@ Worktree mode: `<repo-root>/.worktrees/<task-slug>` (primary task worktree, crea
 
 Branch-only mode: no task worktree. The user works on `production/<task-slug>` in the main repo.
 
-Dual-PR synthesis: `<repo-root>/.worktrees/<task-slug>-staging-tmp` (temporary worktree, created by `/jlu-create-pr` for the cherry-pick and removed before the workflow returns).
+Dual-PR synthesis: `<repo-root>/.worktrees/<task-slug>-staging-tmp` (temporary worktree, created by `/jlu-ship` for the cherry-pick and removed before the workflow returns).
 
 ### Stale Detection (Decision #17)
 
 No automatic worktree cleanup. `/jlu-report-task` identifies:
 - Stale task worktrees (task is `done` or `closed`).
-- Stale staging temp worktrees (older than 1 hour — left behind by a crashed `/jlu-create-pr`).
+- Stale staging temp worktrees (older than 1 hour — left behind by a crashed `/jlu-ship`).
 
 ### Docker Integration
 
@@ -49,7 +49,7 @@ No automatic worktree cleanup. `/jlu-report-task` identifies:
 
 ## Protected Branch Restrictions
 
-The git-agent is **strictly forbidden** from pushing to `main`, `master`, or `alpha`, and from force-pushing any branch. The git-agent performs exactly one `staging/<slug>` operation: the initial create-from-`origin/alpha` + non-force push at `/jlu-new-task` Step 15c. All later `staging/<slug>` pushes (cherry-pick syncs, force-with-lease rebuilds) are performed by the `/jlu-create-pr` orchestrator, not the git-agent.
+The git-agent is **strictly forbidden** from pushing to `main`, `master`, or `alpha`, and from force-pushing any branch. The git-agent performs exactly one `staging/<slug>` operation: the initial create-from-`origin/alpha` + non-force push at `/jlu-new-task` Step 15c. All later `staging/<slug>` pushes (cherry-pick syncs, force-with-lease rebuilds) are performed by the `/jlu-ship` orchestrator, not the git-agent.
 
 ## PR Strategy
 
@@ -61,7 +61,7 @@ The git-agent is **strictly forbidden** from pushing to `main`, `master`, or `al
 ### Secondary PR (opt-in, per task)
 
 - Branch: `staging/<task-slug>` → `alpha` (created at `/jlu-new-task`; see Branch Naming).
-- The alpha PR is opened by `/jlu-create-pr` after the primary branch is pushed and commits have been cherry-picked onto the staging branch.
+- The alpha PR is opened by `/jlu-ship` after the primary branch is pushed and commits have been cherry-picked onto the staging branch.
 - Flow per service:
   1. Fetch origin.
   2. Rebuild / first-pick / incremental decision from per-service `Sync markers` in TASKS.md (`alpha`, `production`). First-pick reuses the branch `/jlu-new-task` pre-created (alpha unchanged, nothing cherry-picked yet); rebuild recreates it from fresh `origin/alpha` (alpha moved).
@@ -85,7 +85,7 @@ Both PR bodies carry `> Part of dual-PR task. Sibling PR: <url>` above the `## P
 | Worktree creation (worktree mode) | `/jlu-new-task` Step 15c | Setup subtask (via git-agent) |
 | Staging + committing + pushing `production/<slug>` | Orchestrator (after phase) | git-agent |
 | `staging/<slug>` creation + initial push | `/jlu-new-task` Step 15c | Setup subtask (via git-agent) |
-| `staging/<slug>` cherry-pick sync / rebuild | `/jlu-create-pr` Step 5b | jlu-conflict-resolver + orchestrator |
-| Alpha PR push | `/jlu-create-pr` Step 5b.7 | Orchestrator (not git-agent) |
-| PR creation (primary + alpha) | `/jlu-create-pr` | Orchestrator + `gh` CLI |
+| `staging/<slug>` cherry-pick sync / rebuild | `/jlu-ship` Step 5b | jlu-conflict-resolver + orchestrator |
+| Alpha PR push | `/jlu-ship` Step 5b.7 | Orchestrator (not git-agent) |
+| PR creation (primary + alpha) | `/jlu-ship` | Orchestrator + `gh` CLI |
 | Task closure (delete local branches, remove remote staging, close alpha PR if open) | `/jlu-close-task` | Orchestrator |

@@ -58,7 +58,7 @@ If no existing tests: emit a brand-new file at `<UI_SERVICE_WORKTREE>/tests/e2e/
 
 ## Where to write
 
-Both agents write artifacts to `<TASK_DIR>/services/<UI_SERVICE_ID>/e2e/`, never directly into the consumer service tree. The hand-off into the consumer's `<UI_SERVICE_WORKTREE>/tests/e2e/` happens later — for the writer, this is on `/jlu-create-pr` (mirroring jelou-spec-plugin's backend test hand-off pattern); for the fix-loop, this is implicit (the fix-loop reads tests from the consumer's tests/e2e/ at runtime, since by then they've already been moved).
+Both agents write artifacts to `<TASK_DIR>/services/<UI_SERVICE_ID>/e2e/`, never directly into the consumer service tree. The hand-off into the consumer's `<UI_SERVICE_WORKTREE>/tests/e2e/` happens later — for the writer, this is on `/jlu-ship` (mirroring jelou-spec-plugin's backend test hand-off pattern); for the fix-loop, this is implicit (the fix-loop reads tests from the consumer's tests/e2e/ at runtime, since by then they've already been moved).
 
 ## Worktree resolution example
 

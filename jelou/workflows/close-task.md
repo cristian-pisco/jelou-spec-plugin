@@ -158,7 +158,7 @@ For each affected service:
 
 1. `cd <SERVICE_REPO_ROOT>` (main repo).
 
-2. **Staging branch teardown** (whenever `DUAL_PR = yes`). Because `/jlu-new-task` pushes `staging/<TASK_SLUG>` up front, the remote branch can exist even if `/jlu-create-pr` never ran and no alpha PR was recorded — so this runs regardless of whether an alpha PR URL was captured:
+2. **Staging branch teardown** (whenever `DUAL_PR = yes`). Because `/jlu-new-task` pushes `staging/<TASK_SLUG>` up front, the remote branch can exist even if `/jlu-ship` never ran and no alpha PR was recorded — so this runs regardless of whether an alpha PR URL was captured:
    - If an alpha PR URL was recorded AND its state was `OPEN` or `DRAFT`:
      ```bash
      gh pr close <alpha-pr-url> --delete-branch

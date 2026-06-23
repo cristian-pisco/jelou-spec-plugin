@@ -36,7 +36,7 @@ Codex has no structured question tool and limits subagent nesting. See
 
 ## Phase 1 Scope
 
-- Core workflows are in scope: map-codebase, new-task, refine-task, execute-task, extend-phase, create-pr, report-task, load-context, close-task, rollback-phase.
+- Core workflows are in scope: map-codebase, new-task, refine-task, execute-task, extend-phase, ship (formerly create-pr — `/jlu-create-pr` is a deprecated alias), report-task, load-context, close-task, rollback-phase. `/jlu-ship` validates that each service installs deps cleanly and builds before opening PRs — in-container for docker-compose services.
 - External integrations are deferred to Phase 2:
   - `jlu-task-clickup`
   - `jlu-daily-slack`

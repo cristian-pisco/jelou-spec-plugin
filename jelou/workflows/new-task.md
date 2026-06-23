@@ -381,7 +381,7 @@ After storing `DUAL_PR`, **insert** the `## Branching` section into the existing
 ## Branching
 - Dual PR: <DUAL_PR yes|no>
 - Primary branch: production/<TASK_SLUG>
-- Secondary branch: staging/<TASK_SLUG>   (created from origin/alpha and pushed at Step 15c when Dual PR = yes; commits arrive via cherry-pick at /jlu-create-pr)
+- Secondary branch: staging/<TASK_SLUG>   (created from origin/alpha and pushed at Step 15c when Dual PR = yes; commits arrive via cherry-pick at /jlu-ship)
 - Mode: (pending — chosen after spec approval)
 - Sync markers: (pending — seeded at Step 15c with `<service-id>: alpha=<creation-sha>, production=`; production filled at first dual-PR sync)
 ```
@@ -773,7 +773,7 @@ After the setup subtask returns, for each service where `staging_branch = create
   - <service-id>: alpha=<creation_alpha_sha>, production=
 ```
 
-The empty `production=` value tells `/jlu-create-pr` that no commits have been cherry-picked yet (its 5b.3 "first-pick" path). Services with `skipped-no-alpha` or `skipped-exists` get no marker line.
+The empty `production=` value tells `/jlu-ship` that no commits have been cherry-picked yet (its 5b.3 "first-pick" path). Services with `skipped-no-alpha` or `skipped-exists` get no marker line.
 
 ### Record
 
@@ -843,7 +843,7 @@ If `SETUP_MODE = branch`: append to the report:
 
 If `DUAL_PR = yes`: append to the report:
 
-> Dual-PR enabled. The `staging/<TASK_SLUG>` branch was created from `origin/alpha` and pushed for each affected service (skipped for any service lacking an `alpha` branch). Production commits are cherry-picked onto it at `/jlu-create-pr` — reusing the branch when `alpha` is unchanged, rebuilding from fresh `origin/alpha` when it moved — with conflicts resolved by the `jlu-conflict-resolver` sub-agent.
+> Dual-PR enabled. The `staging/<TASK_SLUG>` branch was created from `origin/alpha` and pushed for each affected service (skipped for any service lacking an `alpha` branch). Production commits are cherry-picked onto it at `/jlu-ship` — reusing the branch when `alpha` is unchanged, rebuilding from fresh `origin/alpha` when it moved — with conflicts resolved by the `jlu-conflict-resolver` sub-agent.
 
 ---
 
@@ -873,7 +873,7 @@ If `DUAL_PR = yes`: append to the report:
 | User stories dir | `.spec-workspace/specs/<dd-mm-yyyy>/<task-slug>/services/<service-id>/uh/` |
 | Worktree | `<service-repo>/.worktrees/<task-slug>` |
 | Branch (primary) | `production/<task-slug>` (in each affected service repo) |
-| Branch (alpha, opt-in) | `staging/<task-slug>` (created from `origin/alpha` and pushed at `/jlu-new-task` Step 15c when Dual PR = yes; commits cherry-picked at `/jlu-create-pr`) |
+| Branch (alpha, opt-in) | `staging/<task-slug>` (created from `origin/alpha` and pushed at `/jlu-new-task` Step 15c when Dual PR = yes; commits cherry-picked at `/jlu-ship`) |
 | Temp staging worktree | `<service-repo>/.worktrees/<task-slug>-staging-tmp` (ephemeral, dual-PR sync only) |
 
 ---

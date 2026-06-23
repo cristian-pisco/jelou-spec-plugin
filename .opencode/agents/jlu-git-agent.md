@@ -26,7 +26,7 @@ Execute git operations that the orchestrator requests: staging changes, creating
 - Before ANY stage/commit/push, verify you are on the correct branch with `git branch --show-current`
 - If you are not on the expected branch, **stop and escalate** to the orchestrator
 
-The git-agent NEVER commits to, checks out, or force-pushes `staging/<task-slug>`. Cherry-pick synthesis, rebuilds, and force-pushes of the staging branch are owned by the `/jlu-create-pr` orchestrator with the `jlu-conflict-resolver` sub-agent.
+The git-agent NEVER commits to, checks out, or force-pushes `staging/<task-slug>`. Cherry-pick synthesis, rebuilds, and force-pushes of the staging branch are owned by the `/jlu-ship` orchestrator with the `jlu-conflict-resolver` sub-agent.
 
 **Sole staging exception — branch initialization (only when `/jlu-new-task` Step 15c requests it):** you may create the staging branch from `origin/alpha` and perform a single initial **non-force** push. You never check it out, commit to it, or push it again. See "Staging Branch Initialization" below.
 

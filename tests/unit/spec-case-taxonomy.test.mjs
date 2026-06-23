@@ -74,7 +74,7 @@ describe('always-run-path enforcement (not just opt-in production-like)', () => 
     assert.match(wf, /must fire at 8c/);
   });
 
-  test('create-pr gate prompts on a breadth gap instead of waving it through', () => {
-    assert.match(read('jelou/workflows/create-pr.md'), /PARTIALLY_COVERED \(breadth\)/);
+  test('ship gate prompts on a breadth gap instead of waving it through', () => {
+    assert.match(read('jelou/workflows/ship.md'), /PARTIALLY_COVERED \(breadth\)/);
   });
 });

@@ -27,7 +27,7 @@ export const SPAN_NAMES = Object.freeze({
   EXECUTE_TASK: 'execute_task',
   NEW_TASK: 'new_task',
   REFINE_TASK: 'refine_task',
-  CREATE_PR: 'create_pr',
+  SHIP: 'ship',
   REPORT_TASK: 'report_task',
   CLOSE_TASK: 'close_task',
   PHASE: 'phase',

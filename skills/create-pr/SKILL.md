@@ -1,6 +1,6 @@
 ---
 name: create-pr
-description: Use after implementation is complete — stages, commits, pushes, and opens PRs for all affected services. Triggers: "create PR", "open pull request", "push the code", "ready for review"
+description: "DEPRECATED alias of /jlu-ship — stages, builds, validates deps, and opens PRs. Use /jlu-ship."
 argument-hint: "[task-slug]"
 allowed-tools:
   - Read
@@ -13,36 +13,10 @@ allowed-tools:
   - Agent
 ---
 
-You are the orchestrator for the `/jlu-create-pr` command.
+You are handling the DEPRECATED `/jlu-create-pr` command.
 
-## Phase 1 — Bootstrap
+**First, print exactly:**
 
-**Resolve plugin root.** Try in order:
-1. Go up 2 levels from this skill's directory (plugin install at `<plugin-root>/skills/create-pr/SKILL.md`).
-2. `~/.claude/jelou/` (manual installation).
+> ⚠️ `/jlu-create-pr` is deprecated and now runs `/jlu-ship`. Please use `/jlu-ship` going forward.
 
-If neither resolves, stop with: "Plugin root not found. Ensure jelou-spec-plugin is installed."
-
-**Runtime contract (Claude Code).** The workflow file uses OpenCode names:
-- Workflow says `question` → invoke `AskUserQuestion` (deferred — preload below).
-- Workflow says `task` → invoke `Agent` (subagent dispatch).
-- Never narrate questions as plain text. Never skip a prescribed question.
-
-**Run these in parallel** (single tool-call message — do NOT serialize):
-1. `Bash`: `<plugin-root>/bin/check-update.sh 2>/dev/null || echo SKIPPED`
-2. `Read`: `<plugin-root>/jelou/workflows/create-pr.md`
-3. `ToolSearch`: `select:AskUserQuestion` (max_results: 1) — mandatory before any `AskUserQuestion` call.
-
-**Update banner.** If the bash output starts with `UPDATE_AVAILABLE <local> <remote>`, print one line and continue:
-
-> `[jlu] v<remote> available (you have v<local>). Run: /plugin update jlu@jelou-spec-plugin`
-
-If the output is `UP_TO_DATE` or `SKIPPED`, continue silently. Update-check failures must never block the workflow.
-
-**ToolSearch fallback.** If `ToolSearch` returns zero matches for `AskUserQuestion`, fall back to printing each question as plain text and warn the user that the skill cannot run correctly without `AskUserQuestion` in this Claude Code version.
-
-## Phase 2 — Execute Workflow
-
-Follow the workflow file you just read. Do NOT spawn a sub-agent — execute the workflow yourself in this session.
-
-The argument is `{argument}`. The plugin root is the path resolved above. The current working directory is `{cwd}`.
+Then execute the `/jlu-ship` workflow unchanged: resolve the plugin root (up 2 levels from this skill's directory, or `~/.claude/jelou/`), then follow `<plugin-root>/jelou/workflows/ship.md` exactly as written, passing the argument `{argument}`, plugin root, and cwd `{cwd}`. Do all bootstrap (update banner, ToolSearch for AskUserQuestion, trace) per that workflow.

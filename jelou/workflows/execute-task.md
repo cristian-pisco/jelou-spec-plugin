@@ -900,7 +900,7 @@ node "${PLUGIN_ROOT:-.}/bin/trace-end-span.mjs" \
 
 ## Step 8 — Final Validation
 
-After all phases are complete, this is the **regression check** for the entire task. It does NOT run the full test suite — Step 8b runs only the tests affected by the task's diff. The full suite is owned by the on-demand `/jlu-test-suite` skill (invoke before `/jlu-create-pr` when you want a richer signal) and by CI on push.
+After all phases are complete, this is the **regression check** for the entire task. It does NOT run the full test suite — Step 8b runs only the tests affected by the task's diff. The full suite is owned by the on-demand `/jlu-test-suite` skill (invoke before `/jlu-ship` when you want a richer signal) and by CI on push.
 
 ### 8a. Write Tier 2 Integration Tests (gated)
 
@@ -1091,7 +1091,7 @@ If all validation passes:
    <total: +<insertions> / -<deletions> across <N> files>
 
    ### Next Steps
-   - Run `/jlu-create-pr` to open the pull request.
+   - Run `/jlu-ship` to open the pull request.
    - After merge, run `/jlu-close-task`.
    ```
 
@@ -1201,7 +1201,7 @@ Awaiting your input to proceed.
 ## Step N — Close workflow span
 
 Determine `$WORKFLOW_OUTCOME`:
-- `ok` — all phases done, QA green, ready for `/jlu-create-pr`
+- `ok` — all phases done, QA green, ready for `/jlu-ship`
 - `blocked` — workflow halted on a phase escalation; user intervention required
 - `failed` — workflow aborted (irrecoverable error)
 

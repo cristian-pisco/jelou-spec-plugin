@@ -3,9 +3,9 @@
 // Cross-document consistency guard for eager dual-branch creation.
 //
 // Regression guard for: the dual-PR workflow used to synthesize staging/<slug>
-// lazily at /jlu-create-pr. It now creates BOTH branches at /jlu-new-task time
+// lazily at /jlu-ship. It now creates BOTH branches at /jlu-new-task time
 // (production/<slug> from trunk, staging/<slug> from origin/alpha + pushed) and
-// /jlu-create-pr reuses the pre-created staging branch (rebuilding only when
+// /jlu-ship reuses the pre-created staging branch (rebuilding only when
 // origin/alpha moved). These assertions pin the agreement across the reference,
 // the agent definition, and every workflow that documents the behavior — so a
 // future edit to one document cannot silently re-introduce the old "synthesized
@@ -94,19 +94,19 @@ describe('new-task: creates + pushes staging up front', () => {
     assert.match(wf, /alpha=<creation_alpha_sha>, production=/);
   });
 
-  test('report no longer says staging is synthesized at create-pr', () => {
-    assert.doesNotMatch(wf, /will be synthesized automatically during `\/jlu-create-pr`/);
+  test('report no longer says staging is synthesized at ship', () => {
+    assert.doesNotMatch(wf, /will be synthesized automatically during `\/jlu-ship`/);
     assert.match(wf, /was created from `origin\/alpha` and pushed/);
   });
 
   test('quick-ref table marks staging as created at new-task', () => {
-    assert.doesNotMatch(wf, /`staging\/<task-slug>` \(synthesized at first `\/jlu-create-pr`/);
+    assert.doesNotMatch(wf, /`staging\/<task-slug>` \(synthesized at first `\/jlu-ship`/);
     assert.match(wf, /created from `origin\/alpha` and pushed at `\/jlu-new-task` Step 15c/);
   });
 });
 
-describe('create-pr: reuses the pre-created staging branch', () => {
-  const wf = read('jelou/workflows/create-pr.md');
+describe('ship: reuses the pre-created staging branch', () => {
+  const wf = read('jelou/workflows/ship.md');
 
   test('5b.3 has a first-pick path that reuses the existing branch', () => {
     assert.match(wf, /\*\*first-pick\*\*/);
@@ -131,7 +131,7 @@ describe('close-task: tears down eagerly-pushed staging', () => {
 
   test('staging teardown runs whenever DUAL_PR = yes, not only when an alpha PR was recorded', () => {
     assert.match(wf, /\*\*Staging branch teardown\*\* \(whenever `DUAL_PR = yes`\)/);
-    assert.match(wf, /the remote branch can exist even if `\/jlu-create-pr` never ran/);
+    assert.match(wf, /the remote branch can exist even if `\/jlu-ship` never ran/);
   });
 
   test('handles the no-alpha-PR case explicitly', () => {
@@ -164,9 +164,9 @@ describe('jlu-tasks-agent: TASKS.md template reflects eager creation', () => {
   const src = read('agents/jlu-tasks-agent.md');
   const mirror = read('.opencode/agents/jlu-tasks-agent.md');
 
-  test('secondary-branch template is not described as synthesized at create-pr', () => {
-    assert.doesNotMatch(src, /synthesized at first \/jlu-create-pr/);
-    assert.doesNotMatch(mirror, /synthesized at first \/jlu-create-pr/);
+  test('secondary-branch template is not described as synthesized at ship', () => {
+    assert.doesNotMatch(src, /synthesized at first \/jlu-ship/);
+    assert.doesNotMatch(mirror, /synthesized at first \/jlu-ship/);
   });
 
   test('secondary branch template says created at new-task', () => {

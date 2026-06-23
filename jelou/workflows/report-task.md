@@ -56,7 +56,7 @@ find <SERVICE_REPO_ROOT>/.worktrees -maxdepth 1 -type d -name '*-staging-tmp' -m
 
 For each match, report as a leaked worktree:
 
-> Leaked temp staging worktree: `<path>` (older than 1 hour). Likely left behind by a crashed `/jlu-create-pr`. Remove with:
+> Leaked temp staging worktree: `<path>` (older than 1 hour). Likely left behind by a crashed `/jlu-ship`. Remove with:
 > ```bash
 > git -C <service-repo> worktree remove --force <path>
 > ```
@@ -70,7 +70,7 @@ git -C <service-repo> rev-parse --verify production/<TASK_SLUG> 2>/dev/null
 git -C <service-repo> rev-parse --verify staging/<TASK_SLUG> 2>/dev/null
 ```
 
-If either is present, report it as a candidate for cleanup (not auto-removed). The `staging/<TASK_SLUG>` branch may linger for dual-PR tasks created but never carried through `/jlu-create-pr` / `/jlu-close-task`.
+If either is present, report it as a candidate for cleanup (not auto-removed). The `staging/<TASK_SLUG>` branch may linger for dual-PR tasks created but never carried through `/jlu-ship` / `/jlu-close-task`.
 
 ## Step 5 — Consolidate Observability
 
