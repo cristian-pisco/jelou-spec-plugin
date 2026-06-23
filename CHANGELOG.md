@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.264] — 2026-06-23
+
+### Added
+- make jlu-build-validator runtime-aware for ship preflight
+
 ## [0.3.263] — 2026-06-23
 
 ### Added

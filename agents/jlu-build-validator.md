@@ -42,7 +42,27 @@ Detect the build command in this priority order:
 4. **Makefile** — Check if `Makefile` exists with a `build` target. If present → `make build`.
 5. **No build configured** — If none of the above are found, report SKIP and stop.
 
-All detected commands run on the host runtime directly — never via `docker compose exec` or any container wrapper.
+All detected commands run on the host runtime directly — never via `docker compose exec` or any container wrapper, **except** in the ship-preflight runtime-aware mode below.
+
+## Runtime-Aware Mode (ship preflight only)
+
+When invoked by the `/jlu-ship` preflight, you may be given a `SERVICE_ID` and
+`SERVICE_CWD`. In that mode, resolve the build execution context first:
+
+```bash
+node "${PLUGIN_ROOT:-.}/bin/runtime-exec.mjs" "<SERVICE_ID>" --cwd "<SERVICE_CWD>"
+```
+
+- `RUNTIME: host` / empty `EXEC_PREFIX` → run build commands exactly as today, on the host.
+- `RUNTIME: docker-compose` → prefix every build command with the printed
+  `EXEC_PREFIX`, e.g. `docker compose -f ./docker-compose.yml exec app npm run build`.
+  The container's deps and Node version are what the service actually ships with.
+  You still READ and EDIT source files on the host — the source is volume-mounted,
+  so host edits reflect inside the container.
+
+This container-exec is permitted ONLY in the ship preflight (the carve-out in
+`subagent-base.md`). The TDD per-phase build check (`/jlu-execute-task`) passes no
+runtime context and stays strictly host-only.
 
 ## Fix Loop
 
