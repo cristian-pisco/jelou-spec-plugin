@@ -135,10 +135,22 @@ describe('release-bump CLI', () => {
       'utf8'
     );
 
+    const changelogBefore = readFileSync(join(dir, 'CHANGELOG.md'), 'utf8');
+    const manifestsBefore = Object.fromEntries(
+      MANIFEST_FILES.map(rel => [rel, readFileSync(join(dir, rel), 'utf8')])
+    );
+
     const result = runRelease(dir, ['-m', 'feat: thing']);
 
     assert.notEqual(result.status, 0, 'expected non-zero exit on drift');
-    assert.equal(readVersion(dir, 'package.json'), '0.3.100', 'package.json must not change');
+
+    const changelogAfter = readFileSync(join(dir, 'CHANGELOG.md'), 'utf8');
+    assert.equal(changelogAfter, changelogBefore, 'CHANGELOG.md must not change on drift');
+
+    for (const rel of MANIFEST_FILES) {
+      const after = readFileSync(join(dir, rel), 'utf8');
+      assert.equal(after, manifestsBefore[rel], `${rel} must not change on drift`);
+    }
   });
 
   test('missing -m → exit 1', () => {
