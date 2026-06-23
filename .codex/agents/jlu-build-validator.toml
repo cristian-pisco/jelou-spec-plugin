@@ -124,7 +124,7 @@ Before reporting, verify:
 
 - You fix production code ONLY. Never modify test files.
 - Match the existing codebase conventions exactly. Your fixes should look like existing code.
-- Build and framework commands run on the host runtime directly — never via `docker compose exec` or any container wrapper.
+- Build and framework commands run on the host runtime directly — never via `docker compose exec` or any container wrapper, **except** in the ship-preflight runtime-aware mode (see "Runtime-Aware Mode" above). The TDD per-phase build check stays host-only.
 - Read the build error output carefully — fix the root cause, not symptoms.
 - If a fix requires architectural changes beyond simple corrections (missing imports, type annotations, export statements), report FAIL and let the orchestrator escalate.
 - Keep fixes minimal. Do not refactor, improve, or gold-plate code while fixing build errors.

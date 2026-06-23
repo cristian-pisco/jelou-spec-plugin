@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.265] — 2026-06-23
+
+### Fixed
+- scope the Rules host-only prohibition to allow ship-preflight container exec
+
 ## [0.3.264] — 2026-06-23
 
 ### Added

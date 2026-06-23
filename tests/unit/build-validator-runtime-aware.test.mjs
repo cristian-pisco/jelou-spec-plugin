@@ -18,4 +18,13 @@ describe('jlu-build-validator runtime awareness', () => {
   test('scopes the container exception to the ship preflight only', () => {
     assert.match(body, /ship preflight/i);
   });
+  test('every "never via docker compose exec" prohibition carries a ship-preflight qualifier', () => {
+    const lines = body.split('\n');
+    const unqualified = lines.filter(
+      line =>
+        /never via `docker compose exec`/.test(line) &&
+        !/except|ship.?preflight/i.test(line)
+    );
+    assert.deepEqual(unqualified, [], `Found unqualified prohibition(s):\n${unqualified.join('\n')}`);
+  });
 });
