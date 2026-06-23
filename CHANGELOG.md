@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.258] — 2026-06-23
+
+### Added
+- add resolveRuntimeExec for host/docker-compose build context
+
 ## [0.3.257] — 2026-06-23
 
 ### Internal
