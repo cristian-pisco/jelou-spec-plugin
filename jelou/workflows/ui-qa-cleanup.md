@@ -69,7 +69,7 @@ If a port is held by a process that doesn't match the task's expected `dev.comma
 
 ### 5. Sweep stale temporary worktrees
 
-Per `jelou/references/worktree-resolution.md`, dual-PR runs can leave a `.worktrees/<slug>-staging-tmp/` if `/jlu-create-pr` crashed mid-cherry-pick. If older than 1 hour:
+Per `jelou/references/worktree-resolution.md`, dual-PR runs can leave a `.worktrees/<slug>-staging-tmp/` if `/jlu-ship` crashed mid-cherry-pick. If older than 1 hour:
 
 ```bash
 find "$SERVICE_REPO/.worktrees" -maxdepth 1 -type d -name "*-staging-tmp" -mmin +60 -print | while read -r d; do

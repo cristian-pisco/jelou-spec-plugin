@@ -43,7 +43,7 @@ On `span_end` additionally:
 | `execute_task` | task | `/jlu-execute-task` (Phase 2) |
 | `new_task` | task | `/jlu-new-task` (Phase 2) |
 | `refine_task` | task | `/jlu-refine-task` (Phase 2) |
-| `create_pr` | task | `/jlu-create-pr` (Phase 2) |
+| `ship` | task | `/jlu-ship` (Phase 2) |
 | `report_task` | task | `/jlu-report-task` (Phase 2) |
 | `close_task` | task | `/jlu-close-task` (Phase 2) |
 | `phase` | task | execute-task per-phase (Phase 2) |

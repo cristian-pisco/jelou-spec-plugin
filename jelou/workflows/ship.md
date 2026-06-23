@@ -1,6 +1,6 @@
-# Workflow: create-pr
+# Workflow: ship
 
-> Orchestrator workflow for `/jlu-create-pr [task-slug]`
+> Orchestrator workflow for `/jlu-ship [task-slug]`
 > Stages all changes, commits, pushes, and creates pull requests for all affected services. Idempotent — skips if PR already exists.
 
 > **Tool requirement**: All prompts, questions, and confirmations to the user in this workflow MUST use `question`. Never output questions as plain text.
@@ -19,7 +19,7 @@
 2. **Open the workflow-level span**:
    ```bash
    WF_OUT=$(node "${PLUGIN_ROOT:-.}/bin/trace-start-span.mjs" \
-     --name create_pr --scope task --task "$TASK_SLUG")
+     --name ship --scope task --task "$TASK_SLUG")
    WORKFLOW_SPAN_ID=$(echo "$WF_OUT" | jq -r '.span_id // ""')
    WORKFLOW_TRACE_ID=$(echo "$WF_OUT" | jq -r '.trace_id // ""')
    ```
@@ -338,7 +338,7 @@ fi
 
 If either worktree add fails (e.g., temp worktree already exists), abort for this service:
 
-> Temp staging worktree for `<service-id>` is in an unexpected state. Remove `.worktrees/<TASK_SLUG>-staging-tmp` manually and re-run `/jlu-create-pr`.
+> Temp staging worktree for `<service-id>` is in an unexpected state. Remove `.worktrees/<TASK_SLUG>-staging-tmp` manually and re-run `/jlu-ship`.
 
 Record as an abort and continue to the next service.
 
@@ -365,7 +365,7 @@ On `{status: "aborted", unresolved_commit, conflicting_files, reason, explanatio
    git worktree remove --force .worktrees/<TASK_SLUG>-staging-tmp
    git branch -D staging/<TASK_SLUG> 2>/dev/null || true
    ```
-   (Force-delete local staging — this run's partial state is discarded. Next `/jlu-create-pr` will rebuild from scratch.)
+   (Force-delete local staging — this run's partial state is discarded. Next `/jlu-ship` will rebuild from scratch.)
 2. Using `question`, present to the user:
    ```
    Staging-PR synthesis aborted for <service-id>.
@@ -377,9 +377,9 @@ On `{status: "aborted", unresolved_commit, conflicting_files, reason, explanatio
      Explanation: <explanation>
 
    Options:
-     A) Resolve manually — cut staging/<TASK_SLUG> from origin/alpha, cherry-pick <CHERRY_PICK_RANGE>, resolve conflicts, push, then re-run /jlu-create-pr.
-     B) Disable dual-PR for this task — edit TASKS.md (Dual PR: no), then re-run /jlu-create-pr.
-     C) Abort /jlu-create-pr entirely.
+     A) Resolve manually — cut staging/<TASK_SLUG> from origin/alpha, cherry-pick <CHERRY_PICK_RANGE>, resolve conflicts, push, then re-run /jlu-ship.
+     B) Disable dual-PR for this task — edit TASKS.md (Dual PR: no), then re-run /jlu-ship.
+     C) Abort /jlu-ship entirely.
    ```
 3. On "A": stop the workflow. Note that the trunk PR may already exist — report its state. User resolves and re-runs.
 4. On "B": update `<TASK_DIR>/TASKS.md` → `## Branching → Dual PR: no`. Continue with trunk-only flow (skip to Step 6 for remaining services; skip all remaining 5b steps).
@@ -404,14 +404,14 @@ For `SYNC_MODE = rebuild` (push-rejection means a force-push was refused because
 git worktree remove --force .worktrees/<TASK_SLUG>-staging-tmp
 git branch -D staging/<TASK_SLUG> 2>/dev/null || true
 ```
-> Remote `staging/<TASK_SLUG>` has diverged unexpectedly for `<service-id>`. Inspect remote, reconcile, and re-run `/jlu-create-pr`.
+> Remote `staging/<TASK_SLUG>` has diverged unexpectedly for `<service-id>`. Inspect remote, reconcile, and re-run `/jlu-ship`.
 
 For `SYNC_MODE ∈ {first-pick, incremental}` (push-rejection means a fast-forward was not possible — typically someone pushed to `origin/staging/<TASK_SLUG>` externally):
 ```bash
 git worktree remove --force .worktrees/<TASK_SLUG>-staging-tmp
 # Do NOT delete local staging/<TASK_SLUG> — it is a valid branch; only the push was rejected.
 ```
-> Remote `staging/<TASK_SLUG>` diverged since the last sync for `<service-id>`. Local branch is intact. Inspect remote, reconcile, then re-run `/jlu-create-pr`.
+> Remote `staging/<TASK_SLUG>` diverged since the last sync for `<service-id>`. Local branch is intact. Inspect remote, reconcile, then re-run `/jlu-ship`.
 
 ### 5b.8 — Update markers
 

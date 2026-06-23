@@ -180,8 +180,8 @@ describe('false-green guards in the delegates', () => {
   });
 });
 
-describe('create-pr.md — breadth gate on the always-run PR path', () => {
-  const wf = read('jelou/workflows/create-pr.md');
+describe('ship.md — breadth gate on the always-run PR path', () => {
+  const wf = read('jelou/workflows/ship.md');
   test('runs the static auditor scoped to changed DTOs', () => {
     assert.match(wf, /probe-coverage-breadth\.mjs/);
     assert.match(wf, /--dto/);

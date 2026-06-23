@@ -96,7 +96,7 @@ Before presenting context, compute a compact status summary from the TASKS.md yo
    - Count phases: `done` / total from the Phase Progress table.
    - Read the Recovery Info section: extract "Next phase" and "Last completed phase".
 4. **If state is `ready_to_publish`**:
-   - Check External Links: does a PR URL already exist? (exists = awaiting review, missing = need to run `/jlu-create-pr`)
+   - Check External Links: does a PR URL already exist? (exists = awaiting review, missing = need to run `/jlu-ship`)
 5. **Map state → human label and recommended command**:
 
    | State | Human Label | Next Step Message |
@@ -105,8 +105,8 @@ Before presenting context, compute a compact status summary from the TASKS.md yo
    | `refining` | Spec refinement in progress | Re-run `/jlu-new-task <slug>` — spec interview is not yet complete. |
    | `planned` | Spec finalized — ready to implement | Run `/jlu-execute-task` to begin TDD implementation. |
    | `implementing` | TDD execution in progress | Run `/jlu-execute-task` to resume — next phase is `<recovery-info.next-phase>` (phase <N>/<total>). |
-   | `validating` | All phases complete — QA running | Run `/jlu-execute-task` to complete QA, then `/jlu-create-pr` when all services pass. |
-   | `ready_to_publish` | Implementation done — PR needed | Run `/jlu-create-pr` to open pull requests. *(If PR already exists: awaiting review — merge, then `/jlu-close-task`.)* |
+   | `validating` | All phases complete — QA running | Run `/jlu-execute-task` to complete QA, then `/jlu-ship` when all services pass. |
+   | `ready_to_publish` | Implementation done — PR needed | Run `/jlu-ship` to open pull requests. *(If PR already exists: awaiting review — merge, then `/jlu-close-task`.)* |
    | `done` | PRs open — awaiting merge | PR is open. Await review and merge, then run `/jlu-close-task`. |
    | `closed` | Task finalized | No action needed. |
 

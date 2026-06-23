@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.266] — 2026-06-23
+
+### Internal
+- Rename SPAN_NAMES.CREATE_PR → SHIP ('create_pr' → 'ship') in trace schema
+- git mv skills/create-pr/SKILL.md → skills/ship/SKILL.md; name: ship
+- git mv jelou/workflows/create-pr.md → jelou/workflows/ship.md; --name ship
+- Hand-author .opencode/commands/jlu-ship.md
+- npm run sync generates .codex/prompts/jlu-ship.md
+- Update ~30 cross-refs: agents, references, workflows, tests, README, INVOCATION
+- Harness-parity intentionally RED until Task 10 restores the create-pr alias
+
 ## [0.3.265] — 2026-06-23
 
 ### Fixed

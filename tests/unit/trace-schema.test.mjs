@@ -40,7 +40,7 @@ describe('schema constants are frozen and stable', () => {
   });
 
   test('SPAN_NAMES includes canonical workflow names', () => {
-    for (const name of ['execute_task', 'new_task', 'refine_task', 'create_pr',
+    for (const name of ['execute_task', 'new_task', 'refine_task', 'ship',
                         'report_task', 'close_task', 'phase', 'agent_dispatch']) {
       assert.ok(Object.values(SPAN_NAMES).includes(name),
         `SPAN_NAMES missing ${name}`);

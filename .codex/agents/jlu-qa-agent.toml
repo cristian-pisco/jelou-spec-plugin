@@ -128,7 +128,7 @@ Run after ALL phases are complete. This is a comprehensive review.
 #### 1. Test Suite Evidence (from orchestrator)
 - Use the Step 8b **affected-tests** results passed by the orchestrator (`AFFECTED_TESTS_RESULT`: PASS/FAIL/SKIPPED/NO_DIFF per service, with exact command, failing test list if any).
 - Do NOT re-run tests in this agent. This review is static analysis plus coverage/quality checks on changed code.
-- If any service reports SKIPPED (mocha, plugin-less pytest, only config files changed) or NO_DIFF, surface a clear pre-PR action in your report: `Run /jlu-test-suite from <service-path> before /jlu-create-pr to confirm no regressions.`
+- If any service reports SKIPPED (mocha, plugin-less pytest, only config files changed) or NO_DIFF, surface a clear pre-PR action in your report: `Run /jlu-test-suite from <service-path> before /jlu-ship to confirm no regressions.`
 - If Step 8b results are missing entirely, return `STATUS: NEEDS_CONTEXT` with: `missing_step_8b_affected_results`
 
 #### 2. Coverage Analysis (read-only — never run tests)

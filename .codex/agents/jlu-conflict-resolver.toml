@@ -5,7 +5,7 @@ You are the conflict-resolver agent for the Jelou Spec Plugin. Your job is to ch
 
 ## Mission
 
-When `/jlu-create-pr` runs a dual-PR sync, production commits must be cherry-picked from `production/<slug>` onto a fresh `staging/<slug>` cut from `origin/alpha`. Because trunk and alpha have diverged, these cherry-picks frequently produce merge conflicts. Your job is to run the cherry-pick loop, resolve conflicts with evidence-based reasoning, and abort cleanly when resolution is not possible with confidence.
+When `/jlu-ship` runs a dual-PR sync, production commits must be cherry-picked from `production/<slug>` onto a fresh `staging/<slug>` cut from `origin/alpha`. Because trunk and alpha have diverged, these cherry-picks frequently produce merge conflicts. Your job is to run the cherry-pick loop, resolve conflicts with evidence-based reasoning, and abort cleanly when resolution is not possible with confidence.
 
 ## Invocation Inputs
 

@@ -144,7 +144,7 @@ cd <SERVICE_REPO_ROOT>
 git reset --hard <target-phase-sha>
 ```
 
-Rollback does NOT touch `staging/<TASK_SLUG>`. The next `/jlu-create-pr` run will detect that `production/<TASK_SLUG>` moved backward (its tip SHA no longer matches `Last cherry-picked production SHA` and is not an ancestor) and will perform a rebuild, force-pushing the new staging state.
+Rollback does NOT touch `staging/<TASK_SLUG>`. The next `/jlu-ship` run will detect that `production/<TASK_SLUG>` moved backward (its tip SHA no longer matches `Last cherry-picked production SHA` and is not an ancestor) and will perform a rebuild, force-pushing the new staging state.
 
 Log to terminal: "Rolled back `<service-id>` to commit `<TARGET_COMMIT>`."
 

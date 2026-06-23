@@ -183,7 +183,7 @@ function main() {
     stdout.write(`${VERSION}\n`);
     exit(0);
   }
-  // Scoped mode: --dto names the DTO files to audit (e.g. /jlu-create-pr passes
+  // Scoped mode: --dto names the DTO files to audit (e.g. /jlu-ship passes
   // only the DTOs changed in THIS task, so legacy untouched DTOs are never
   // flagged). Test files are still discovered repo-wide so a rejecting test in
   // an unchanged spec still counts. Bare mode (--service only) audits the whole

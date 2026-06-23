@@ -1,6 +1,6 @@
 ---
-name: create-pr
-description: Use after implementation is complete — stages, commits, pushes, and opens PRs for all affected services. Triggers: "create PR", "open pull request", "push the code", "ready for review"
+name: ship
+description: Use after implementation is complete — stages, commits, pushes, and opens PRs for all affected services. Triggers: "ship", "ship it", "create PR", "open pull request", "push the code", "ready for review"
 argument-hint: "[task-slug]"
 allowed-tools:
   - Read
@@ -13,12 +13,12 @@ allowed-tools:
   - Agent
 ---
 
-You are the orchestrator for the `/jlu-create-pr` command.
+You are the orchestrator for the `/jlu-ship` command.
 
 ## Phase 1 — Bootstrap
 
 **Resolve plugin root.** Try in order:
-1. Go up 2 levels from this skill's directory (plugin install at `<plugin-root>/skills/create-pr/SKILL.md`).
+1. Go up 2 levels from this skill's directory (plugin install at `<plugin-root>/skills/ship/SKILL.md`).
 2. `~/.claude/jelou/` (manual installation).
 
 If neither resolves, stop with: "Plugin root not found. Ensure jelou-spec-plugin is installed."
@@ -30,7 +30,7 @@ If neither resolves, stop with: "Plugin root not found. Ensure jelou-spec-plugin
 
 **Run these in parallel** (single tool-call message — do NOT serialize):
 1. `Bash`: `<plugin-root>/bin/check-update.sh 2>/dev/null || echo SKIPPED`
-2. `Read`: `<plugin-root>/jelou/workflows/create-pr.md`
+2. `Read`: `<plugin-root>/jelou/workflows/ship.md`
 3. `ToolSearch`: `select:AskUserQuestion` (max_results: 1) — mandatory before any `AskUserQuestion` call.
 
 **Update banner.** If the bash output starts with `UPDATE_AVAILABLE <local> <remote>`, print one line and continue:

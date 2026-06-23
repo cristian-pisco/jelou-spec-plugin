@@ -103,15 +103,15 @@ describe('refine-task workflow — trace instrumentation', () => {
   });
 });
 
-describe('create-pr workflow — trace instrumentation', () => {
-  const wf = read('jelou/workflows/create-pr.md');
+describe('ship workflow — trace instrumentation', () => {
+  const wf = read('jelou/workflows/ship.md');
 
   test('Step 0.5 runs trace-reconcile.mjs', () => {
     assert.match(wf, /trace-reconcile\.mjs/);
   });
 
-  test('opens workflow-level span with --name create_pr', () => {
-    assert.match(wf, /trace-start-span\.mjs[\s\S]*?--name create_pr/);
+  test('opens workflow-level span with --name ship', () => {
+    assert.match(wf, /trace-start-span\.mjs[\s\S]*?--name ship/);
   });
 
   test('closes the workflow span', () => {
@@ -149,7 +149,7 @@ describe('close-task workflow — trace instrumentation', () => {
 });
 
 describe('suggester wired into Step 0.5 of heavy workflows (Phase 3)', () => {
-  const heavy = ['execute-task', 'refine-task', 'create-pr'];
+  const heavy = ['execute-task', 'refine-task', 'ship'];
   for (const name of heavy) {
     test(`${name} invokes bin/trace-suggest.mjs after reconcile`, () => {
       const wf = read(`jelou/workflows/${name}.md`);

@@ -122,7 +122,7 @@ From `TASKS.md`, compute:
    - `draft` / `refining` -> `/jlu-new-task`
    - `planned` -> `/jlu-execute-task`
    - `implementing` / `validating` -> `/jlu-execute-task`
-   - `ready_to_publish` -> `/jlu-create-pr`
+   - `ready_to_publish` -> `/jlu-ship`
    - `done` -> await merge then `/jlu-close-task`
    - `closed` -> no action
 6. If blockers exist, override recommendation with blocker resolution first.

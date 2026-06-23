@@ -87,9 +87,9 @@ affected_services:
 ## Branching
 - **Dual PR**: yes | no
 - **Primary branch**: production/<task-slug>
-- **Secondary branch**: staging/<task-slug>  (created from origin/alpha and pushed at /jlu-new-task Step 15c when Dual PR = yes; commits cherry-picked at /jlu-create-pr)
+- **Secondary branch**: staging/<task-slug>  (created from origin/alpha and pushed at /jlu-new-task Step 15c when Dual PR = yes; commits cherry-picked at /jlu-ship)
 - **Mode**: worktree | branch
-- **Sync markers**: per-service map, seeded at /jlu-new-task Step 15c (`alpha=<creation-sha>, production=`) and overwritten on each `/jlu-create-pr` dual-PR sync
+- **Sync markers**: per-service map, seeded at /jlu-new-task Step 15c (`alpha=<creation-sha>, production=`) and overwritten on each `/jlu-ship` dual-PR sync
   - <service-id>: alpha=<sha>, production=<sha>
 
 ## Blockers
@@ -140,7 +140,7 @@ If this task is resumed after interruption:
 
 7. **Track blockers** — When a blocker is reported, add it. When resolved, mark it resolved (don't delete).
 
-8. **Branching section is semi-append-only**. The "Dual PR", "Primary branch", "Secondary branch", and "Mode" fields are set once (at task creation / mode selection) and do not change. The per-service "Sync markers" entries (`<service-id>: alpha=<sha>, production=<sha>`) are overwritten on each `/jlu-create-pr` dual-PR sync.
+8. **Branching section is semi-append-only**. The "Dual PR", "Primary branch", "Secondary branch", and "Mode" fields are set once (at task creation / mode selection) and do not change. The per-service "Sync markers" entries (`<service-id>: alpha=<sha>, production=<sha>`) are overwritten on each `/jlu-ship` dual-PR sync.
 
 9. **YAML frontmatter is the structured source of truth for `affected_services`.** The `---` block at the top of TASKS.md mirrors the per-service entries under `## Services`. When a service is added, removed, or its `sub_state` changes, update both the frontmatter and the body. Downstream consumers (e.g., `jelou-ui-qa`) read the frontmatter as the parseable source; the markdown body is for human reading. Legacy TASKS.md files without frontmatter remain valid (consumers fall back to parsing the markdown body).
 
