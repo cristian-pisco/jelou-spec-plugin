@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.261] — 2026-06-23
+
+### Added
+- add --validate mode to install-dep (clean-install + drift gate)
+
 ## [0.3.260] — 2026-06-23
 
 ### Added

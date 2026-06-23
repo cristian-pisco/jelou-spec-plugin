@@ -17,15 +17,16 @@ import { fileURLToPath } from 'node:url';
 import { isAbsolute, resolve } from 'node:path';
 import { resolveWorkspace } from './lib/dev-orchestrator/workspace.mjs';
 import { readConfig } from './lib/dev-orchestrator/config.mjs';
-import { planInstall } from './lib/install-dep.mjs';
+import { planInstall, planInstallValidate } from './lib/install-dep.mjs';
 
 function parseArgs(argv) {
   const rest = argv.slice(2);
-  const out = { dev: false, cwd: process.cwd(), packages: [], service: null };
+  const out = { dev: false, cwd: process.cwd(), packages: [], service: null, validate: false };
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i];
     if (a === '--dev' || a === '-D') out.dev = true;
     else if (a === '--cwd') out.cwd = rest[++i];
+    else if (a === '--validate') out.validate = true;
     else if (out.service === null) out.service = a;
     else out.packages.push(a);
   }
@@ -89,10 +90,51 @@ export function executeInstall({
   return 0;
 }
 
+// Exit codes: 0 = clean (PASS/SKIP), 1 = install/boot failure, 3 = lockfile drift.
+export function executeValidate({
+  plan, serviceDir, runner = defaultRunner,
+  probe = (step) => isContainerRunning(step, serviceDir), log = console.error,
+}) {
+  if (plan.runtime === 'skip') { log('no package.json → SKIP deps validation'); return 0; }
+
+  if (plan.runtime === 'host') {
+    log(`validating clean install on host (${plan.packageManager}: ${plan.steps[0].cmd})`);
+    const r = runner(plan.steps[0].cmd, { cwd: serviceDir });
+    return r.status === 0 ? 0 : (r.status || 1);
+  }
+
+  let running = false;
+  for (const step of plan.steps) {
+    if (step.kind === 'check') { running = probe(step); continue; }
+    if (step.kind === 'boot') {
+      if (running) { log(`'${plan.composeService}' already up`); continue; }
+      const r = runner(step.cmd, { cwd: serviceDir });
+      if (r.status !== 0) { log(`error: failed to boot '${plan.composeService}'`); return r.status || 1; }
+      continue;
+    }
+    if (step.kind === 'install') {
+      log(`installing inside '${plan.composeService}' (${plan.packageManager})`);
+      const r = runner(step.cmd, { cwd: serviceDir });
+      if (r.status !== 0) return r.status || 1;
+      continue;
+    }
+    if (step.kind === 'drift_check') {
+      const r = runner(step.cmd, { cwd: serviceDir });
+      if (r.status !== 0) {
+        log(`DRIFT: ${step.lockfile} changed during install — reverting (gate FAIL)`);
+        runner(step.revertCmd, { cwd: serviceDir });
+        return 3;
+      }
+      log(`no lockfile drift (${step.lockfile}) — clean`);
+    }
+  }
+  return 0;
+}
+
 function main() {
   const args = parseArgs(process.argv);
-  if (!args.service || args.packages.length === 0) {
-    console.error('usage: install-dep.mjs <service-name> <pkg>[ <pkg> ...] [--dev] [--cwd <dir>]');
+  if (!args.service || (!args.validate && args.packages.length === 0)) {
+    console.error('usage: install-dep.mjs <service> (<pkg>... | --validate) [--dev] [--cwd <dir>]');
     process.exit(2);
   }
 
@@ -107,14 +149,13 @@ function main() {
     if (service && service.path) {
       serviceDir = isAbsolute(service.path) ? service.path : resolve(root, service.path);
     }
-  } catch {
-    // No workspace / no config → fall back to a host install in --cwd.
-  }
+  } catch { /* host fallback */ }
 
-  if (!service) {
-    console.error(`service '${args.service}' not registered in jlu-services.json → host install in ${serviceDir}`);
+  if (args.validate) {
+    const plan = planInstallValidate({ service, serviceDir });
+    process.exit(executeValidate({ plan, serviceDir }));
   }
-
+  if (!service) console.error(`service '${args.service}' not registered → host install in ${serviceDir}`);
   const plan = planInstall({ service, serviceDir, packages: args.packages, dev: args.dev });
   process.exit(executeInstall({ plan, serviceDir }));
 }
