@@ -1,5 +1,5 @@
 ---
-description: "Use after implementation is complete — stages, commits, pushes, and opens PRs for all affected services."
+description: "DEPRECATED alias of /jlu-ship — stages, builds, validates deps, and opens PRs. Use /jlu-ship."
 argument-hint: "[task-slug]"
 ---
 Resolve the workflow file in this order, and use the first one that exists:

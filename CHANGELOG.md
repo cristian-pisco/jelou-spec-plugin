@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.267] — 2026-06-23
+
+### Added
+- skills/create-pr/SKILL.md: deprecated alias that prints a warning then executes ship.md
+- jelou/workflows/create-pr.md: 2-line parity stub pointing at ship.md
+- .opencode/commands/jlu-create-pr.md: redirect command to ship workflow
+- npm run sync regenerates .codex/prompts/jlu-create-pr.md from the alias skill
+- tests/unit/ship-alias.test.mjs: verifies all 3 alias layers exist and point at ship
+
 ## [0.3.266] — 2026-06-23
 
 ### Internal

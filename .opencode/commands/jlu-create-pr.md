@@ -1,10 +1,12 @@
 ---
-description: Create pull requests per service
+description: DEPRECATED alias of jlu-ship — use jlu-ship instead
 agent: build
 ---
-Resolve workflow path in this order:
-1. `<HOME>/.config/opencode/jelou/workflows/create-pr.md` (global install preferred; resolve `<HOME>` to an absolute path first)
-2. `jelou/workflows/create-pr.md` (project-local fallback)
+Print exactly: ⚠️ `/jlu-create-pr` is deprecated. Use `/jlu-ship` going forward.
+
+Then resolve the ship workflow path in this order:
+1. `<HOME>/.config/opencode/jelou/workflows/ship.md` (global install preferred; resolve `<HOME>` to an absolute path first)
+2. `jelou/workflows/ship.md` (project-local fallback)
 
 Resolution rules:
 - Select the first existing path only.
