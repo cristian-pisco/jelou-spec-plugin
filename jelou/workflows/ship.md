@@ -245,6 +245,51 @@ For the current service, apply the **mode-driven** worktree resolution algorithm
 
 ---
 
+## Step 4b — Ship Preflight (Build + Dependency Validation)
+
+> **Gate. Orchestrator delegates everything — never runs install/build itself.**
+> Per service, in this order. Any verbose install/build output stays inside the
+> subagents; you only ingest their compact reports and broker overrides.
+
+### 4b.1 — Dependency install (report-only)
+
+Spawn `jlu-deps-validator` with model **haiku** and this task:
+
+> Validate that service `<SERVICE_ID>` installs dependencies cleanly. SERVICE_CWD is `<SERVICE_CWD>`. Run the runtime-aware validator and report PASS / FAIL / SKIP.
+
+On **PASS** or **SKIP** → continue to 4b.2.
+On **FAIL** (install failure or lockfile drift) → present via `question`:
+
+```
+Dependency preflight FAILED for <SERVICE_ID>: <one-line reason>.
+
+Options:
+A) Abort — fix deps, then re-run /jlu-ship
+B) Proceed anyway (record the override in the PR)
+```
+
+On A → stop the workflow for this service (offer skip/abort like Step 5 escalation). On B → set `PREFLIGHT_OVERRIDE[<service-id>] += "deps"`.
+
+### 4b.2 — Build validation (auto-fix)
+
+Spawn `jlu-build-validator` with model **MODEL_CONFIG.code** (default sonnet) and this task:
+
+> Validate the build for service `<SERVICE_ID>`. SERVICE_CWD is `<SERVICE_CWD>`. Resolve the runtime exec context first (host or docker-compose) and run the build in the right place. Auto-fix build errors within the 5-round limit. Report PASS / FAIL / SKIP.
+
+On **PASS** or **SKIP** → continue to Step 5. On **FAIL** after 5 rounds → present via `question` the same A/B override. On B → set `PREFLIGHT_OVERRIDE[<service-id>] += "build"`.
+
+### 4b.3 — Record overrides
+
+If `PREFLIGHT_OVERRIDE[<service-id>]` is non-empty, you MUST surface it later:
+- Prepend to that service's PR body (in Step 7d, before `## Problem`):
+  `> ⚠️ Shipped past failing preflight (<deps|build|deps+build>) — user override`
+- Append to the TASKS.md Timeline in Step 9:
+  `| <ISO-timestamp> | preflight override | <service-id>: <deps|build> |`
+
+**Store**: `PREFLIGHT_OVERRIDE` (map service-id → list)
+
+---
+
 ## Step 5 — Stage, Commit, Push (via git-agent)
 
 Spawn `jlu-git-agent` in `SERVICE_CWD` with model: **haiku** and this task:
@@ -516,6 +561,12 @@ Derive from the task title. The title must be:
 
 ### 7d. Construct PR Body
 
+If `PREFLIGHT_OVERRIDE[<service-id>]` is non-empty, prepend this banner before `## Problem`:
+
+```
+> ⚠️ Shipped past failing preflight (<deps|build|deps+build>) — user override
+```
+
 ```markdown
 ## Problem
 <Problem statement from SPEC.md>
@@ -683,6 +734,7 @@ Append to the Timeline section:
 ```
 | <ISO-timestamp> | PR created (trunk) | <service-id>: <trunk-pr-url> |
 | <ISO-timestamp> | PR created (alpha) | <service-id>: <alpha-pr-url> |  (only when alpha PR is new)
+| <ISO-timestamp> | preflight override | <service-id>: <deps|build> |  (only when PREFLIGHT_OVERRIDE is set for this service)
 ```
 
 For existing PRs that were not newly created, use "PR found (existing)" instead of "PR created".

@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.269] — 2026-06-23
+
+### Added
+- add Step 4b build+deps preflight gate to ship workflow
+
 ## [0.3.268] — 2026-06-23
 
 ### Fixed
