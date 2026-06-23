@@ -28,6 +28,8 @@ All commands run on the host runtime directly (`node`, `pnpm`, `pytest`, `go tes
 
 **Single carve-out — dependency install.** Adding a package is the one operation that targets the *running service's* runtime, not the host test runtime. For a service whose `jlu-services.json` `runtime.type` is `docker-compose`, the install must run inside the container (the container owns the package manager, Node version, and native-build toolchain). Never run a raw `npm install` to add a package — always go through `bin/install-dep.mjs`, which routes by runtime, boots the container if it is down, and installs in the right context. See `docker-conventions.md` → "Installing Dependencies". This does **not** loosen anything above: tests, build, lint, and format stay host-only.
 
+**Second carve-out — the `/jlu-ship` preflight.** For docker-compose-runtime services, the ship preflight also runs the *build* inside the container (the container owns node_modules + the Node version), via `jlu-build-validator`'s runtime-aware mode resolved through `bin/runtime-exec.mjs`. This is scoped to `/jlu-ship` only — exactly like Testcontainers is scoped to `/jlu-production-like`. The TDD per-phase pipeline (`/jlu-execute-task`) passes no runtime context and stays host-only for build/test/lint/format.
+
 ## Test Execution Resource Limits
 
 Test runners default to one worker per CPU core, and each Jest/Vitest worker is a separate Node process holding 0.5–2 GB once ts-jest starts type-checking. On a many-core dev machine an uncapped run spawns 20+ workers, exhausts RAM, and freezes the host hard enough to need a forced power-off. This has happened on real runs. These rules are absolute for every test invocation, in every agent:

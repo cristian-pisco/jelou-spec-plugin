@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.270] — 2026-06-23
+
+### Internal
+- extend container-exec carve-out to the ship preflight
+
 ## [0.3.269] — 2026-06-23
 
 ### Added

@@ -35,6 +35,14 @@ It reads the service's `runtime` block from `jlu-services.json` and:
 
 The package manager is detected from the lockfile (pnpm/yarn/bun/npm) — never assumed. This is the one place the TDD pipeline is allowed to exec into a container; see the carve-out in `subagent-base.md`.
 
+## Build in the ship preflight
+
+The general rule (build reads the dep graph → runs on host) has one scoped
+exception: the `/jlu-ship` preflight builds docker-compose-runtime services
+*inside* their container, because their node_modules and Node version live there.
+This is resolved per service via `bin/runtime-exec.mjs` and applies ONLY to the
+ship preflight — never to the TDD per-phase build check.
+
 ## Port Allocation Algorithm
 
 Each task worktree gets its own Docker instance on unique host ports to avoid collisions with other running tasks.
