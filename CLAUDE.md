@@ -1,3 +1,13 @@
+## Releasing (one bump per feature)
+
+Commits no longer auto-bump the version. When opening a PR for a plugin change, run the release tool once before pushing:
+
+```
+npm run release -- -m "feat: <subject>" [--minor|--major]
+```
+
+This bumps all 4 manifests, prepends one CHANGELOG entry, and stages the changes. Commit the result as part of the feature branch. One bump + one CHANGELOG entry per feature.
+
 ## Pre-push checklist (main branch)
 
 Before pushing to `main` — directly or via merge — the unit test suite MUST pass.

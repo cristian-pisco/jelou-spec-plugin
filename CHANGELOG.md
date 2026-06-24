@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.258] — 2026-06-23
+
+### Internal
+- Remove the per-commit commit-msg hook and the redundant bin/bump-version.sh
+- Add npm run release (bin/changelog-entry.py --release): one +1 bump (--minor/--major supported) plus one CHANGELOG entry across all 4 manifests
+- Document the single-bump release workflow in CLAUDE.md
+
 ## [0.3.257] — 2026-06-23
 
 ### Changed

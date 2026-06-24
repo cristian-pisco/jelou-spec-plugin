@@ -14,5 +14,5 @@ if [ ! -d "$PROJECT_DIR/.githooks" ]; then
 fi
 
 git -C "$PROJECT_DIR" config core.hooksPath .githooks
-chmod +x "$PROJECT_DIR/.githooks"/*
+chmod +x "$PROJECT_DIR/.githooks"/* 2>/dev/null || true
 echo "git hooks installed: core.hooksPath = .githooks"

@@ -1,30 +1,25 @@
 #!/usr/bin/env python3
-"""Bump the patch version and prepend a CHANGELOG entry from a commit message.
+"""Single-release version bumper and CHANGELOG entry writer.
 
-Invoked by .githooks/commit-msg with the commit message file as argv[1].
+Usage:
+    python3 bin/changelog-entry.py --release -m "<subject>" [--body "<text>"] \
+        [--minor|--major] [--project-dir <dir>] [--no-stage]
 
-Properties:
-  - Atomic: reads all three manifest versions first; aborts (exit 1) if they
-    differ, so a partial drift can never compound silently.
-  - Idempotent: if any manifest already has a staged version change, the bump
-    is skipped — but the staged delta must still be exactly +1 patch from
-    HEAD, otherwise the commit is aborted (anti-jump guard).
-  - Skips merges, rebases, cherry-picks, reverts, and amends so historical
-    rewrites never touch the version.
-  - Honors a "[skip-bump]" marker in the commit subject or body — but the
-    anti-jump guard still runs so [skip-bump] cannot be used to disguise a
-    multi-version leap.
-  - Honors "[allow-jump]" / "[bump-minor]" / "[bump-major]" markers when
-    the maintainer is intentionally moving the version non-consecutively.
+Behavior:
+  - Reads all 4 manifest versions; exits 1 if they differ (drift guard).
+  - Computes next version: patch by default, minor with --minor, major with --major.
+  - Writes the new version to all 4 manifests and prepends one CHANGELOG entry.
+  - Stages the 4 manifests + CHANGELOG.md unless --no-stage is passed.
+  - Prints "released <old> → <new>" and exits 0.
+  - Requires -m; exits 1 if missing.
 
 Exit codes:
-  0  bumped, skipped intentionally, or no-op
-  1  drift detected, message unparseable, jump without marker, or unexpected
-     failure (aborts commit)
+  0  release written (or --no-stage dry run)
+  1  drift detected, missing -m, or unexpected failure
 """
 from __future__ import annotations
 
-import os
+import argparse
 import re
 import subprocess
 import sys
@@ -79,18 +74,13 @@ def bullets_from_body(body: str) -> list[str]:
     return items
 
 
-def bump_patch(version: str) -> str:
-    major, minor, patch = version.split(".")
-    return f"{major}.{minor}.{int(patch) + 1}"
-
-
 def parse_semver(version: str) -> tuple[int, int, int]:
     major, minor, patch = (int(p) for p in version.split("."))
     return major, minor, patch
 
 
 def expected_next(parent: str, marker: str | None) -> str:
-    """Return the only version we'll accept as a successor to `parent`."""
+    """Return the version that follows `parent` for the given bump type."""
     maj, mn, pt = parse_semver(parent)
     if marker == "bump-major":
         return f"{maj + 1}.0.0"
@@ -113,84 +103,6 @@ def write_version(path: Path, old: str, new: str) -> None:
     if count == 0:
         raise RuntimeError(f"{path}: version string {old!r} not found")
     path.write_text(updated)
-
-
-def git_show(project: Path, ref: str) -> str | None:
-    """Return file contents at a git ref, or None if the ref does not exist."""
-    res = subprocess.run(
-        ["git", "-C", str(project), "show", ref],
-        capture_output=True, text=True,
-    )
-    return res.stdout if res.returncode == 0 else None
-
-
-def staged_version_changed(project: Path, rel: str) -> bool:
-    """True if the file's staged version differs from HEAD's version."""
-    head = git_show(project, f"HEAD:{rel}")
-    staged = git_show(project, f":{rel}")
-    if head is None or staged is None:
-        return False
-    head_m = VERSION_RE.search(head)
-    staged_m = VERSION_RE.search(staged)
-    if not head_m or not staged_m:
-        return False
-    return head_m.group(1) != staged_m.group(1)
-
-
-def staged_version_pair(project: Path, rel: str) -> tuple[str | None, str | None]:
-    """Return (parent_version, staged_version) for `rel`, or (None, None)."""
-    head = git_show(project, f"HEAD:{rel}")
-    staged = git_show(project, f":{rel}")
-    if head is None or staged is None:
-        return (None, None)
-    head_m = VERSION_RE.search(head)
-    staged_m = VERSION_RE.search(staged)
-    if not head_m or not staged_m:
-        return (None, None)
-    return (head_m.group(1), staged_m.group(1))
-
-
-def has_marker(subject: str, body: str, marker: str) -> bool:
-    """True if [marker] appears as an end-of-line token in the commit message.
-
-    A bare substring check would mis-fire whenever a commit message *documents*
-    a marker (e.g. release notes that say "Use [skip-bump] when...") and the
-    hook would silently skip the bump. Requiring the marker at end-of-line
-    matches the existing project convention of trailing markers on the subject
-    line (e.g. `git commit -m "feat: foo [skip-bump]"`) and on body lines.
-    """
-    blob = f"{subject}\n{body}"
-    return bool(re.search(rf"(?m)\[{re.escape(marker)}\]\s*$", blob))
-
-
-def find_marker(subject: str, body: str) -> str | None:
-    """Return the bump marker present in the commit message, if any."""
-    for m in ("bump-major", "bump-minor", "allow-jump"):
-        if has_marker(subject, body, m):
-            return m
-    return None
-
-
-def in_special_state(project: Path) -> bool:
-    """Skip merges, rebases, cherry-picks, reverts."""
-    git_dir = subprocess.run(
-        ["git", "-C", str(project), "rev-parse", "--git-dir"],
-        capture_output=True, text=True, check=True,
-    ).stdout.strip()
-    g = Path(git_dir)
-    if not g.is_absolute():
-        g = project / g
-    for marker in ("MERGE_MSG", "CHERRY_PICK_HEAD", "REVERT_HEAD"):
-        if (g / marker).exists():
-            return True
-    for d in ("rebase-merge", "rebase-apply"):
-        if (g / d).exists():
-            return True
-    return False
-
-
-def is_amend() -> bool:
-    return "amend" in os.environ.get("GIT_REFLOG_ACTION", "").lower()
 
 
 def build_entry(version: str, subject: str, body: str) -> str:
@@ -227,112 +139,64 @@ def stage(project: Path, *relpaths: str) -> None:
     )
 
 
-def parse_message(text: str) -> tuple[str, str]:
-    """Strip git comment lines, return (subject, body)."""
-    lines = [l for l in text.splitlines() if not l.startswith("#")]
-    cleaned = "\n".join(lines).strip()
-    if not cleaned:
-        return "", ""
-    parts = cleaned.split("\n", 1)
-    subject = parts[0].strip()
-    body = parts[1].strip() if len(parts) > 1 else ""
-    return subject, body
-
-
 def main() -> int:
-    if len(sys.argv) < 2:
-        print("changelog-entry: missing commit message file path", file=sys.stderr)
-        return 1
-
-    msg_path = Path(sys.argv[1])
-    if not msg_path.exists():
-        print(f"changelog-entry: message file not found: {msg_path}", file=sys.stderr)
-        return 1
-
-    project = Path(
-        subprocess.run(
-            ["git", "rev-parse", "--show-toplevel"],
-            capture_output=True, text=True, check=True,
-        ).stdout.strip()
+    parser = argparse.ArgumentParser(
+        description="Bump plugin version and write a CHANGELOG entry.",
     )
+    parser.add_argument("--release", action="store_true", required=True,
+                        help="Run in release mode (required).")
+    parser.add_argument("-m", dest="subject", metavar="SUBJECT",
+                        help="Release subject line (required).")
+    parser.add_argument("--body", default="",
+                        help="Optional body text with '- bullet' lines.")
+    bump_group = parser.add_mutually_exclusive_group()
+    bump_group.add_argument("--minor", action="store_true",
+                            help="Bump the minor version (x.Y.0).")
+    bump_group.add_argument("--major", action="store_true",
+                            help="Bump the major version (X.0.0).")
+    parser.add_argument("--project-dir", default=None,
+                        help="Project root (default: git rev-parse --show-toplevel).")
+    parser.add_argument("--no-stage", action="store_true",
+                        help="Skip the git add step (useful for tests).")
 
-    if in_special_state(project) or is_amend():
-        return 0
+    args = parser.parse_args()
 
-    subject, body = parse_message(msg_path.read_text())
-    if not subject:
-        print("changelog-entry: empty commit subject — aborting.", file=sys.stderr)
+    if not args.subject:
+        print("changelog-entry: -m <subject> is required.", file=sys.stderr)
         return 1
 
-    marker = find_marker(subject, body)
-    skip_bump = has_marker(subject, body, "skip-bump")
+    if args.project_dir:
+        project = Path(args.project_dir).resolve()
+    else:
+        project = Path(
+            subprocess.run(
+                ["git", "rev-parse", "--show-toplevel"],
+                capture_output=True, text=True, check=True,
+            ).stdout.strip()
+        )
 
-    # If the commit already stages a version change, the hook becomes a no-op
-    # for the actual bump — but we still verify the staged delta is exactly
-    # +1 patch (or +1 minor/major if the matching marker is present). This
-    # blocks the "skip-bump + manually jump 5 versions ahead" pattern that
-    # let the marketplace silently freeze at 0.3.157 in the past.
-    staged_pairs = {rel: staged_version_pair(project, rel) for rel in VERSION_FILES}
-    if any(parent != staged for parent, staged in staged_pairs.values()
-           if parent is not None and staged is not None):
-        # Confirm all three files agree on parent and on staged separately.
-        parents = {p for p, _ in staged_pairs.values() if p is not None}
-        stageds = {s for _, s in staged_pairs.values() if s is not None}
-        if len(parents) > 1 or len(stageds) > 1:
-            detail = "\n".join(
-                f"  {rel}: {p} -> {s}" for rel, (p, s) in staged_pairs.items()
-            )
-            print(
-                "changelog-entry: staged version change is not uniform across "
-                "manifests — aborting commit.\n"
-                f"{detail}\n"
-                "Stage the same version on all three files, then re-commit.",
-                file=sys.stderr,
-            )
-            return 1
-
-        parent = next(iter(parents))
-        staged = next(iter(stageds))
-        if marker == "allow-jump":
-            return 0
+    versions = {}
+    for rel in VERSION_FILES:
         try:
-            target = expected_next(parent, marker)
-        except ValueError:
-            print(f"changelog-entry: invalid semver in HEAD ({parent}).", file=sys.stderr)
+            versions[rel] = read_version(project / rel)
+        except Exception as e:
+            print(f"changelog-entry: {e}", file=sys.stderr)
             return 1
-        if staged != target:
-            marker_hint = (
-                "Add `[allow-jump]` to the commit message if this skip is "
-                "intentional, or `[bump-minor]` / `[bump-major]` for the "
-                "corresponding semver step."
-            )
-            print(
-                f"changelog-entry: refusing to commit a version jump.\n"
-                f"  HEAD version: {parent}\n"
-                f"  Staged:       {staged}\n"
-                f"  Expected:     {target} (marker: {marker or 'none'})\n"
-                f"{marker_hint}",
-                file=sys.stderr,
-            )
-            return 1
-        return 0
 
-    if skip_bump:
-        return 0
-
-    versions = {rel: read_version(project / rel) for rel in VERSION_FILES}
     distinct = set(versions.values())
     if len(distinct) > 1:
         detail = "\n".join(f"  {rel}: {v}" for rel, v in versions.items())
         print(
-            "changelog-entry: version drift across manifest files — aborting commit.\n"
+            "changelog-entry: version drift across manifest files — aborting.\n"
             f"{detail}\n"
-            "Sync them manually so all three match, then re-commit.",
+            "Sync them manually so all four match, then re-run.",
             file=sys.stderr,
         )
         return 1
 
     old = next(iter(distinct))
+    marker = "bump-major" if args.major else ("bump-minor" if args.minor else None)
+
     try:
         new = expected_next(old, marker)
     except ValueError:
@@ -342,13 +206,14 @@ def main() -> int:
     try:
         for rel in VERSION_FILES:
             write_version(project / rel, old, new)
-        prepend_changelog(project, build_entry(new, subject, body))
-        stage(project, *VERSION_FILES, "CHANGELOG.md")
+        prepend_changelog(project, build_entry(new, args.subject, args.body))
+        if not args.no_stage:
+            stage(project, *VERSION_FILES, "CHANGELOG.md")
     except Exception as e:
         print(f"changelog-entry: {e}", file=sys.stderr)
         return 1
 
-    print(f"changelog-entry: bumped {old} → {new}; CHANGELOG entry added.")
+    print(f"released {old} → {new}")
     return 0
 
 
