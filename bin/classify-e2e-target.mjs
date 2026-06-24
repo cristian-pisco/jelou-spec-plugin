@@ -11,8 +11,9 @@
 //
 // Always exits 0 — callers branch on the printed string, not the exit code.
 
-import { argv, stdout, exit } from 'node:process';
+import { argv, stdout, exit, env } from 'node:process';
 import { fileURLToPath } from 'node:url';
+import { applyEnvFiles } from './lib/env-files.mjs';
 
 const VERSION = '0.1.0';
 
@@ -48,7 +49,14 @@ function main() {
     stdout.write(`${VERSION}\n`);
     exit(0);
   }
-  stdout.write(`${classifyTarget(arg)}\n`);
+  // No URL arg: self-load E2E_BASE_URL from UI_WORKTREE's .env/.env.e2e (the auth-driver
+  // pattern) so the orchestrator's auth gate can classify without sourcing env into its shell.
+  let url = arg;
+  if (!url && env.UI_WORKTREE) {
+    applyEnvFiles(env, env.UI_WORKTREE);
+    url = env.E2E_BASE_URL;
+  }
+  stdout.write(`${classifyTarget(url)}\n`);
   exit(0);
 }
 
