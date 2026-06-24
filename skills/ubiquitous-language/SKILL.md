@@ -19,7 +19,7 @@ You are the orchestrator for the `/jlu-ubiquitous-language` command.
 
 If neither resolves, stop with: "Plugin root not found. Ensure jelou-spec-plugin is installed."
 
-**Runtime contract (Claude Code).** The workflow file uses OpenCode names. Workflow says `task` → invoke `Agent` (subagent dispatch). The orchestrator does not call `AskUserQuestion` itself — all user interaction is delegated to the `jlu-glossary-curator` subagent, which preloads `AskUserQuestion` per the runtime contract.
+**Runtime contract (Claude Code).** The workflow file uses OpenCode names. Workflow says `task` → invoke `Agent` (subagent dispatch). Dispatch each `jlu-<name>` agent prefixed with the plugin namespace — `subagent_type: "jlu:jlu-<name>"` (e.g. `jlu:jlu-glossary-curator`), the source of truth; retry once with the bare `jlu-<name>` if unregistered. The orchestrator does not call `AskUserQuestion` itself — all user interaction is delegated to the `jlu-glossary-curator` subagent, which preloads `AskUserQuestion` per the runtime contract.
 
 **Run these in parallel** (single tool-call message — do NOT serialize):
 1. `Bash`: `<plugin-root>/bin/check-update.sh 2>/dev/null || echo SKIPPED`

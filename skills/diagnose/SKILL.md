@@ -24,7 +24,7 @@ You are the orchestrator for the `/jlu:diagnose` command.
 
 If neither resolves, stop with: "Plugin root not found. Ensure jelou-spec-plugin is installed."
 
-**Runtime contract (Claude Code).** The workflow file uses OpenCode names: `question` → `AskUserQuestion`, `task` → `Agent`. Never narrate questions as plain text.
+**Runtime contract (Claude Code).** The workflow file uses OpenCode names: `question` → `AskUserQuestion`, `task` → `Agent` — dispatch `jlu-<name>` agents prefixed with the plugin namespace (`subagent_type: "jlu:jlu-<name>"`, the source of truth; retry once with the bare `jlu-<name>` if unregistered). Never narrate questions as plain text.
 
 **Run these in parallel** (single tool-call message):
 1. `Bash`: `<plugin-root>/bin/check-update.sh 2>/dev/null || echo SKIPPED`
@@ -37,4 +37,4 @@ If neither resolves, stop with: "Plugin root not found. Ensure jelou-spec-plugin
 
 ## Phase 2 — Execute Workflow
 
-Follow the workflow inline. Argument is `{argument}`. Cwd is `{cwd}`. Dispatch the diagnoser agent via `Agent` with subagent_type `jlu-dev-diagnoser`.
+Follow the workflow inline. Argument is `{argument}`. Cwd is `{cwd}`. Dispatch the diagnoser agent via `Agent` with subagent_type `jlu:jlu-dev-diagnoser` (retry once with the bare `jlu-dev-diagnoser` if that name isn't registered).
