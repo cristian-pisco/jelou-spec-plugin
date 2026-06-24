@@ -39,6 +39,8 @@ describe('EXIT codes', () => {
       SECRET_MISMATCH: 45,
       MONGO_UNREACHABLE: 46,
       CAPTCHA_BLOCKED: 47,
+      DASHBOARD_UNREACHABLE: 48,
+      DB_ERROR: 49,
     });
   });
 });

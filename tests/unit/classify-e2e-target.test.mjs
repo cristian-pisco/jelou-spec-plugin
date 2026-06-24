@@ -8,6 +8,8 @@
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { spawnSync } from 'node:child_process';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { classifyTarget } from '../../bin/classify-e2e-target.mjs';
@@ -62,5 +64,23 @@ describe('classify-e2e-target — CLI', () => {
     const r = run('--version');
     assert.equal(r.code, 0);
     assert.match(r.out, /^\d+\.\d+\.\d+$/);
+  });
+});
+
+describe('classify-e2e-target — CLI self-loads E2E_BASE_URL from UI_WORKTREE when no arg', () => {
+  function runNoArg(envExtra) {
+    const r = spawnSync('node', [SCRIPT], { encoding: 'utf8', env: { ...process.env, ...envExtra } });
+    return { code: r.status, out: r.stdout.trim() };
+  }
+  test('reads E2E_BASE_URL from the worktree .env.e2e overlay and classifies it', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'classify-'));
+    writeFileSync(join(dir, '.env.e2e'), 'E2E_BASE_URL=http://localhost:5173\n');
+    const r = runNoArg({ UI_WORKTREE: dir });
+    assert.equal(r.code, 0);
+    assert.equal(r.out, 'safe');
+  });
+  test('no arg and no UI_WORKTREE stays fail-safe (prod)', () => {
+    const r = runNoArg({ UI_WORKTREE: '' });
+    assert.equal(r.out, 'prod');
   });
 });

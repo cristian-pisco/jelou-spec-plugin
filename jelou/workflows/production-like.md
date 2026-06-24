@@ -161,11 +161,14 @@ No seed system: reuses `dev` blocks + `data_isolation: per-run`. Testcontainers 
 ### Phase 3.75 — Auth gate (orchestrator-owned)
 
 11c. For each UI service, perform the auth gate inline per `ui-qa-run.md` steps
-    14b/14c: probe the session, log in via OTP (Gmail read / paste fallback) when
-    invalid, and provision the local cookie-guard session. This produces a valid
-    `storageState` the UI runner consumes. The OTP gate stays in the orchestrator
-    because the Gmail MCP is session-bound; it is the ONLY execution the orchestrator
-    performs.
+    14b/14c: probe the session and, when invalid, mint a fresh one. For a **loopback
+    `E2E_BASE_URL`** the gate self-heals **deterministically** — `bin/e2e-ensure-account.mjs`
+    (guarantee the account) then `bin/e2e-login-local.mjs` (a direct API login: no browser,
+    no Turnstile, no OTP) — and the Gmail/OTP driver plus the cookie-guard provisioning are
+    reserved for genuinely remote/prod targets. Otherwise (a remote target) log in via OTP
+    (Gmail read / paste fallback) and provision the local cookie-guard session. This produces a
+    valid `storageState` the UI runner consumes. The OTP gate stays in the orchestrator because
+    the Gmail MCP is session-bound; it is the ONLY execution the orchestrator performs.
 
     **No discretionary auth-gate menu — auto-refresh, never "your call".** An invalid or
     stale session is NEVER the user's decision to make. The orchestrator MUST run the local
@@ -173,7 +176,7 @@ No seed system: reuses `dev` blocks + `data_isolation: per-run`. Testcontainers 
     it MUST NOT surface an `AskUserQuestion` offering to "accept the stale session / pause for
     a manual refresh / choose whether to refresh" — presenting that choice is the exact defect
     this guard forbids. `E2E_BASE_URL` and `TEST_EMAIL`/`TEST_PASSWORD` are known because the
-    14b block sources `.env.e2e`; never claim the target is unknown and never punt the refresh
+    14b auth drivers self-load `.env.e2e` from `UI_WORKTREE`; never claim the target is unknown and never punt the refresh
     to the user. The ONLY user prompts the gate may raise are the four already in `ui-qa-run.md`
     step 14b: missing `e2e-auth.yaml` (one-time OTP sender/subject), the Gmail paste fallback,
     login-form-not-found (exit 44), and a genuinely remote captcha capture (exit 47). A green

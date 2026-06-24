@@ -148,7 +148,43 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
     fi
     ```
 
-    When `AUTH_GATE=login_required`, **log in automatically — never present a discretionary
+    **Self-heal deterministically for a local stack (loopback targets).** When
+    `AUTH_GATE=login_required`, classify `E2E_BASE_URL` FIRST: a loopback stack enforces no
+    Turnstile and the E2E account carries no 2FA, so its session is minted by a direct API
+    login — no browser, no Turnstile, and no OTP — not by the Gmail/OTP driver. This is the
+    path that lets the gate recover unattended; the heavy OTP flow below is reserved for
+    genuinely remote/prod targets.
+
+    ```bash
+    # classify-e2e-target self-loads E2E_BASE_URL from UI_WORKTREE — no env is sourced into this shell.
+    if [ "$AUTH_GATE" = "login_required" ] && [ "$(node "$PLUGIN_ROOT/bin/classify-e2e-target.mjs")" = "safe" ]; then
+      # B — guarantee the account is deterministically loginable (emailVerified, no per-user 2FA).
+      node "$PLUGIN_ROOT/bin/e2e-ensure-account.mjs" || echo "⚠️  ensure-account exit $? — continuing; e2e-login-local will surface the real cause"
+      # A — mint the session via the local dashboard API, then confirm it against the gateway.
+      if node "$PLUGIN_ROOT/bin/e2e-login-local.mjs"; then
+        if node "$PLUGIN_ROOT/bin/e2e-session-probe.mjs"; then
+          AUTH_GATE=healed
+          echo "auth gate: local session minted deterministically (no browser/OTP)"
+        else
+          echo "⛔ e2e-login-local minted a session but the probe still fails — confirm the .env.e2e overlay actually applied and the UI serves LOCAL bases (not prod); if the cookie is valid yet cross-route calls 401, the local dashboard-server login did not populate logsM.userSessions for the gateway — use the 14c session-sync path. Then re-run"; exit 2
+        fi
+      else
+        # Fail fast with the REAL cause — never the "DB schema drift" rabbit hole.
+        case "$?" in
+          41) echo "⛔ e2e-login-local: credentials rejected (HTTP 401) — check TEST_EMAIL/TEST_PASSWORD in .env.e2e" ;;
+          43) echo "⛔ e2e-login-local: 2FA is armed on the account and no code was readable from Redis — re-run e2e-ensure-account" ;;
+          48) echo "⛔ e2e-login-local: dashboard-server unreachable at the local base — is the stack booted?" ;;
+          2)  echo "⛔ e2e-login-local: misconfigured — a required var (TEST_EMAIL/TEST_PASSWORD/DASHBOARD_BASE/E2E_BASE_URL/E2E_STORAGE_STATE) is missing from .env.e2e" ;;
+          *)  echo "⛔ e2e-login-local: no valid jelou_auth minted — confirm the .env.e2e overlay actually applied and the UI serves LOCAL bases" ;;
+        esac
+        exit 2
+      fi
+    fi
+    ```
+
+    When `AUTH_GATE=login_required` **and the target was not `healed` above** — i.e. a genuinely
+    remote/prod `E2E_BASE_URL`, since a loopback target is always healed deterministically by the
+    block above — **log in automatically — never present a discretionary
     menu.** An invalid/stale session is auto-refreshed by the sub-steps below; the orchestrator
     MUST NOT raise an `AskUserQuestion` offering to "accept the stale session / pause for a manual
     refresh / decide whether to refresh." That user's-call menu is forbidden — a stale session is
@@ -158,7 +194,7 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
 
     1. Verify `TEST_EMAIL` and `TEST_PASSWORD` are declared **by name** in `.env` / `.env.e2e` (`grep -qE '^TEST_EMAIL=' ...`). Missing → abort `STATUS: BLOCKED`, exit 2, naming the variables. Never print values (guard-env-reads enforces).
     2. Read `.spec-workspace/e2e-auth.yaml` (flat keys: `otp_from`, `otp_subject_regex`, `otp_code_regex`). Missing file → ask the user ONCE via `AskUserQuestion` for the OTP mail's sender and subject pattern, then persist the file so future runs never re-ask.
-    3. Launch the login driver in the background and watch its stdout:
+    3. Launch the OTP login driver (`bin/e2e-login.mjs` — the remote/prod path; a loopback target was already healed above) in the background and watch its stdout:
        ```bash
        OTP_FILE=$(mktemp -u /tmp/jlu-otp-XXXXXX)
        OTP_FILE="$OTP_FILE" node "$PLUGIN_ROOT/bin/e2e-login.mjs" > /tmp/jlu-login.out 2>&1 &
@@ -251,19 +287,23 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
 
 14c. **Provision the local cookie-guard session (auto-detect; sanctioned write).** Runs after 14b yields a valid session — pre-existing or freshly logged in — and before Playwright. Replicates `jelou-apps/tools/dev-session-sync` for headless E2E: it decrypts the real `jelou_auth` cookie captured in `storageState`, upserts the session into local `logsM.userSessions`, and copies the cookie onto the `localhost` host so the suite reaches the local gateway without 401. See `jelou/references/auth-fixtures.md` § "Local cookie-guard session provisioning".
 
-    Auto-detect makes it a no-op unless the target is loopback, `COOKIE_SECRET` is set (in `.env.e2e`), and a `jelou_auth` cookie is present — so non-local or non-cookie-guarded flows skip cleanly. The env from 14b's `set -a` block is still in scope.
+    Auto-detect makes it a no-op unless the target is loopback, `COOKIE_SECRET` is set (in `.env.e2e`), and a `jelou_auth` cookie is present — so non-local or non-cookie-guarded flows skip cleanly. It is also **skipped entirely when the session was `healed` by 14b's deterministic local login** — a locally-minted session is **natively valid** (the local dashboard-server created its `logsM.userSessions` row at login). This is not a blind assumption: `AUTH_GATE=healed` is set only after the post-mint `e2e-session-probe` passed against the gateway, so a stack whose native login does NOT populate that row fails the probe and never reaches this skip. session-sync remains for the captured-cookie (remote/consumer) path. The auth drivers self-load `.env`+`.env.e2e` from `UI_WORKTREE` (as in 14b); nothing is `source`d.
 
     ```bash
-    SESSION_SYNC_RC=0
-    SESSION_SYNC_FAILED=""
-    SESSION_SYNC_OUT=$(node "$PLUGIN_ROOT/bin/e2e-session-sync.mjs" 2>&1) || SESSION_SYNC_RC=$?
-    case "$SESSION_SYNC_RC" in
-      0)  echo "$SESSION_SYNC_OUT" ;;                                  # SESSION_SYNC_OK or SESSION_SYNC_SKIP <reason>
-      45) SESSION_SYNC_FAILED="cookie decrypt failed — COOKIE_SECRET likely does not match the backend ($SESSION_SYNC_OUT)" ;;
-      46) SESSION_SYNC_FAILED="local Mongo unreachable at SESSION_SYNC_MONGO_URI ($SESSION_SYNC_OUT)" ;;
-      *)  SESSION_SYNC_FAILED="session provisioning misconfigured ($SESSION_SYNC_OUT)" ;;
-    esac
-    [ -n "$SESSION_SYNC_FAILED" ] && echo "⚠️  session-sync: $SESSION_SYNC_FAILED — continuing; the suite remains the source of truth."
+    if [ "$AUTH_GATE" = "healed" ]; then
+      echo "session-sync: skipped — the deterministically minted local session is natively valid (no logsM.userSessions seed needed)"
+    else
+      SESSION_SYNC_RC=0
+      SESSION_SYNC_FAILED=""
+      SESSION_SYNC_OUT=$(node "$PLUGIN_ROOT/bin/e2e-session-sync.mjs" 2>&1) || SESSION_SYNC_RC=$?
+      case "$SESSION_SYNC_RC" in
+        0)  echo "$SESSION_SYNC_OUT" ;;                                  # SESSION_SYNC_OK or SESSION_SYNC_SKIP <reason>
+        45) SESSION_SYNC_FAILED="cookie decrypt failed — COOKIE_SECRET likely does not match the backend ($SESSION_SYNC_OUT)" ;;
+        46) SESSION_SYNC_FAILED="local Mongo unreachable at SESSION_SYNC_MONGO_URI ($SESSION_SYNC_OUT)" ;;
+        *)  SESSION_SYNC_FAILED="session provisioning misconfigured ($SESSION_SYNC_OUT)" ;;
+      esac
+      [ -n "$SESSION_SYNC_FAILED" ] && echo "⚠️  session-sync: $SESSION_SYNC_FAILED — continuing; the suite remains the source of truth."
+    fi
     ```
 
     **Warn-and-continue (never block).** On any non-zero exit (`45`/`46`/`*`), report `SESSION_SYNC_FAILED` with detail and continue to step 15 — mirroring the extension's "alert and do nothing". Provisioning is idempotent: the upsert keys on `sessionId` and the localhost cookie is replaced, not appended, so re-runs are safe.
@@ -410,10 +450,18 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
 17b. **Mid-suite auth collapse check.** Before dispatching any fix-loop:
     ```bash
     if [ "$(node "$PLUGIN_ROOT/bin/detect-auth-collapse.mjs" "$TASK_DIR/services/$UI_SERVICE/e2e/run.json")" = "auth_collapse" ]; then
-      # 3+ consecutive 401-shaped failures — the session died. Fix-loop is forbidden here.
-      # Print the step-14b 401 abort message and exit BLOCKED (2).
-      # If $SESSION_SYNC_FAILED is set (step 14c warned), append it so the cause is unambiguous.
-      exit 2
+      # 3+ consecutive 401-shaped failures — the session died mid-suite. Fix-loop is forbidden here.
+      # Safe/loopback target: re-mint the session deterministically (non-interactive — no browser,
+      # no OTP, no user input) via e2e-login-local and re-probe. Recovered → the collapse was a
+      # transient session expiry; re-run the suite ONCE with the refreshed storageState before judging.
+      if [ "$(node "$PLUGIN_ROOT/bin/classify-e2e-target.mjs")" = "safe" ] \
+         && node "$PLUGIN_ROOT/bin/e2e-login-local.mjs" && node "$PLUGIN_ROOT/bin/e2e-session-probe.mjs"; then
+        echo "auth collapse: re-minted the local session non-interactively — retry the suite once"
+      else
+        # Remote/prod, or the re-mint failed: print the step-14b 401 abort message and exit BLOCKED (2).
+        # If $SESSION_SYNC_FAILED is set (step 14c warned), append it so the cause is unambiguous.
+        exit 2
+      fi
     fi
     ```
 
