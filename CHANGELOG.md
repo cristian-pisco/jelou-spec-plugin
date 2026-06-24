@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.259] — 2026-06-24
+
+### Added
+- deterministic local E2E login + self-healing auth gate
+
 ## [0.3.258] — 2026-06-23
 
 ### Internal
