@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.260] — 2026-06-24
+
+### Fixed
+- dispatch jlu agents via plugin namespace with bare fallback
+
 ## [0.3.259] — 2026-06-24
 
 ### Added
