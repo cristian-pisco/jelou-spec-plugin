@@ -1058,6 +1058,47 @@ This step authors only — it is **pre-deploy**: it does NOT boot a UI server an
 NOT run Playwright (that happens post-deploy under `/jlu-production-like` /
 `/jlu-ui-qa-run`). It is a no-op when no UI service is affected.
 
+### Step 8f — Materialize the backend E2E suite from SPEC.md (shift-left)
+
+The backend twin of Step 8e, for parity: a frontend change ships with its Playwright
+suite, so a backend change must ship with its controller-level E2E suite — instead of
+that suite only ever existing reactively the first time someone runs
+`/jlu-production-like`. A service is a **backend service** when its `services.yaml`
+`stack` is NOT a UI stack (i.e. ∉ {`react`, `nextjs`, `vue`, `angular`, `svelte`}); the
+HTTP-surface gate below — not this definition — decides whether it actually gets a suite.
+
+This step is gated on real HTTP surface area the change **adds or modifies**: run it for
+an affected backend service only when this task **introduced or changed an HTTP route
+handler the service exposes** — detected runtime-agnostically from the phase's
+added/changed lines, NOT from a fixed filename set (so it works beyond NestJS). A route
+handler is any of: an HTTP-method decorator (`@Get`/`@Post`/… NestJS, `@app.get`/router
+decorators FastAPI), a route registration (`app.get(...)`/`router.post(...)` Express,
+`r.Get(...)`/`http.HandleFunc(...)` Go, a `routes/*.php` entry Laravel), or a
+controller/handler method wired to a path. Key on the handler appearing in the diff —
+NOT on SPEC.md merely *naming* an endpoint, since the spec may name a downstream API the
+service only *calls* (that is not an exposed surface and must not trigger authoring). A
+backend service whose change exposes no new/changed route handler (pure refactor,
+internal helper, worker/cron/queue consumer, migration-only) is skipped with a one-line
+note — it has no controller→DB flow to E2E.
+
+For each affected backend service that clears the gate:
+
+1. Resolve its active worktree (`jelou/references/worktree-resolution.md`).
+2. If a `test/e2e/**` / `*.e2e-spec.ts` suite already covers the touched endpoints → no-op.
+3. Otherwise dispatch `jlu-test-writer` with an **E2E target** (`test/e2e/**`,
+   dependencies-only Testcontainers permitted for DB/Redis/etc.), instructing it to
+   author the suite from `SPEC.md` following the assertion doctrine in
+   `jelou/references/backend-e2e-authoring.md` — every mutating endpoint reads its
+   entity back through a fresh request and asserts the DB-persistence + cache side
+   effects, never just the HTTP 2xx.
+4. Commit the generated `test/e2e/**` suite to the task branch.
+
+This step **authors only** — it does NOT boot the service and does NOT run the E2E
+suite (it never starts a Testcontainers dependency). Execution, and the Testcontainers
+boot, remain owned exclusively by `/jlu-production-like` (Phase 3.5) — the Testcontainers
+carve-out is path-scoped to `test/e2e/**` and the TDD pipeline never *runs* it. It is a
+no-op when no affected backend service exposes a touched endpoint.
+
 ---
 
 ## Step 9 — Success Path

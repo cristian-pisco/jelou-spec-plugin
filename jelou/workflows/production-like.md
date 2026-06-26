@@ -156,7 +156,12 @@ No seed system: reuses `dev` blocks + `data_isolation: per-run`. Testcontainers 
     dispatch `jlu-backend-e2e-runner` (it runs the Testcontainers dependencies-only
     E2E suites under `test/e2e/**` / `*.e2e-spec.ts`). On `NO_E2E_SUITE`, route
     authoring to `jlu-test-writer` (`--allow-test-edits`, E2E target `test/e2e/**`,
-    dependencies-only), then re-dispatch the runner once. Record PASS/FAIL; never abort.
+    dependencies-only, following the assertion doctrine in
+    `jelou/references/backend-e2e-authoring.md` — assert DB-persistence + cache side
+    effects, not just the 2xx), then re-dispatch the runner once. Record PASS/FAIL;
+    never abort. Normally the suite already exists, authored shift-left at
+    `/jlu-execute-task` Step 8f; this reactive authoring is the fallback when a task was
+    shipped before that step ran.
 
 ### Phase 3.75 — Auth gate (orchestrator-owned)
 
@@ -234,7 +239,9 @@ file), so the runners' live probes are safe to mutate.
 
 12e. **Route the gap to the authors (detect, do not duplicate).** On `PASS-THIN`, re-dispatch the
     upstream authors to fill the named cases — **never author them here**: backend gaps → `jlu-test-writer`
-    with `--allow-test-edits` and the `uncovered_dimensions` list; UI gaps → `jlu-ui-e2e-writer`
+    with `--allow-test-edits`, the `uncovered_dimensions` list, and — for gaps on the E2E path
+    (`test/e2e/**`) — the `jelou/references/backend-e2e-authoring.md` doctrine (DB-persistence + cache
+    side effects); UI gaps → `jlu-ui-e2e-writer`
     (`MODE=derive-from-spec`, `--allow-test-edits`) with the uncovered field-type/reference dimensions.
     After they author, re-run the affected suite once (the Phase 3/4 command) to confirm the new cases go
     RED-then-GREEN. production-like remains a runner: it delegates EXECUTION and now also delegates the
