@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.261] — 2026-06-26
+
+### Fixed
+- auth gate auto-provisions logsM.userSessions via session-sync when a local mint still 401s at the gateway, instead of dead-ending or improvising a prod-session menu
+
 ## [0.3.260] — 2026-06-24
 
 ### Fixed

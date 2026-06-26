@@ -166,7 +166,19 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
           AUTH_GATE=healed
           echo "auth gate: local session minted deterministically (no browser/OTP)"
         else
-          echo "⛔ e2e-login-local minted a session but the probe still fails — confirm the .env.e2e overlay actually applied and the UI serves LOCAL bases (not prod); if the cookie is valid yet cross-route calls 401, the local dashboard-server login did not populate logsM.userSessions for the gateway — use the 14c session-sync path. Then re-run"; exit 2
+          # Minted a valid cookie but the gateway still 401s: the local dashboard-server login did
+          # NOT populate logsM.userSessions. Provision that row deterministically by running the 14c
+          # session-sync inline on the cookie we JUST minted — the LOCAL one, never a prod-captured
+          # session — then re-probe. Still no browser, no Turnstile, no OTP, no prod. This is the
+          # auto-heal: the gate never dead-ends here telling the user to run session-sync by hand,
+          # and never improvises a "refresh a prod session" menu (that menu is forbidden, see below).
+          echo "auth gate: local cookie minted but gateway 401 — provisioning logsM.userSessions via session-sync, then re-probing"
+          if node "$PLUGIN_ROOT/bin/e2e-session-sync.mjs" && node "$PLUGIN_ROOT/bin/e2e-session-probe.mjs"; then
+            AUTH_GATE=healed
+            echo "auth gate: local session provisioned via session-sync (no browser/OTP/prod)"
+          else
+            echo "⛔ e2e-login-local minted a session and session-sync ran, but the gateway probe still fails — confirm the .env.e2e overlay actually applied: COOKIE_SECRET must match the backend and the UI must serve LOCAL bases (not prod). This is never resolved by capturing a prod session. Then re-run"; exit 2
+          fi
         fi
       else
         # Fail fast with the REAL cause — never the "DB schema drift" rabbit hole.
@@ -287,7 +299,7 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
 
 14c. **Provision the local cookie-guard session (auto-detect; sanctioned write).** Runs after 14b yields a valid session — pre-existing or freshly logged in — and before Playwright. Replicates `jelou-apps/tools/dev-session-sync` for headless E2E: it decrypts the real `jelou_auth` cookie captured in `storageState`, upserts the session into local `logsM.userSessions`, and copies the cookie onto the `localhost` host so the suite reaches the local gateway without 401. See `jelou/references/auth-fixtures.md` § "Local cookie-guard session provisioning".
 
-    Auto-detect makes it a no-op unless the target is loopback, `COOKIE_SECRET` is set (in `.env.e2e`), and a `jelou_auth` cookie is present — so non-local or non-cookie-guarded flows skip cleanly. It is also **skipped entirely when the session was `healed` by 14b's deterministic local login** — a locally-minted session is **natively valid** (the local dashboard-server created its `logsM.userSessions` row at login). This is not a blind assumption: `AUTH_GATE=healed` is set only after the post-mint `e2e-session-probe` passed against the gateway, so a stack whose native login does NOT populate that row fails the probe and never reaches this skip. session-sync remains for the captured-cookie (remote/consumer) path. The auth drivers self-load `.env`+`.env.e2e` from `UI_WORKTREE` (as in 14b); nothing is `source`d.
+    Auto-detect makes it a no-op unless the target is loopback, `COOKIE_SECRET` is set (in `.env.e2e`), and a `jelou_auth` cookie is present — so non-local or non-cookie-guarded flows skip cleanly. It is also **skipped entirely when the session was `healed` by 14b's deterministic local login** — a locally-minted session is **natively valid** (the local dashboard-server created its `logsM.userSessions` row at login). This is not a blind assumption: `AUTH_GATE=healed` is set only after an `e2e-session-probe` passed against the gateway. A stack whose native login does NOT populate that row fails the first probe — and 14b then runs session-sync inline on the locally-minted cookie and re-probes, setting `healed` only once the gateway accepts it; so by the time control reaches here the row already exists and this step is correctly a no-op. session-sync invoked from THIS step (14c) therefore serves only the captured-cookie (remote/consumer) path. The auth drivers self-load `.env`+`.env.e2e` from `UI_WORKTREE` (as in 14b); nothing is `source`d.
 
     ```bash
     if [ "$AUTH_GATE" = "healed" ]; then
