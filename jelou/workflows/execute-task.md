@@ -1064,15 +1064,22 @@ The backend twin of Step 8e, for parity: a frontend change ships with its Playwr
 suite, so a backend change must ship with its controller-level E2E suite — instead of
 that suite only ever existing reactively the first time someone runs
 `/jlu-production-like`. A service is a **backend service** when its `services.yaml`
-`stack` is NOT a UI stack (i.e. ∉ {`react`, `nextjs`, `vue`, `angular`, `svelte`}) and
-it exposes an HTTP API surface.
+`stack` is NOT a UI stack (i.e. ∉ {`react`, `nextjs`, `vue`, `angular`, `svelte`}); the
+HTTP-surface gate below — not this definition — decides whether it actually gets a suite.
 
-This step is gated on real HTTP surface area: run it for an affected backend service
-only when this task **introduced or modified an HTTP endpoint** for it — detectable from
-any phase's `Files Modified` touching a controller/router (`*.controller.*`, `routes/`,
-route registrations) or from SPEC.md naming an endpoint for the service. A backend
-service whose change touched no controller (pure refactor, internal helper, migration
-only) is skipped with a one-line note — it has no controller→DB flow to E2E.
+This step is gated on real HTTP surface area the change **adds or modifies**: run it for
+an affected backend service only when this task **introduced or changed an HTTP route
+handler the service exposes** — detected runtime-agnostically from the phase's
+added/changed lines, NOT from a fixed filename set (so it works beyond NestJS). A route
+handler is any of: an HTTP-method decorator (`@Get`/`@Post`/… NestJS, `@app.get`/router
+decorators FastAPI), a route registration (`app.get(...)`/`router.post(...)` Express,
+`r.Get(...)`/`http.HandleFunc(...)` Go, a `routes/*.php` entry Laravel), or a
+controller/handler method wired to a path. Key on the handler appearing in the diff —
+NOT on SPEC.md merely *naming* an endpoint, since the spec may name a downstream API the
+service only *calls* (that is not an exposed surface and must not trigger authoring). A
+backend service whose change exposes no new/changed route handler (pure refactor,
+internal helper, worker/cron/queue consumer, migration-only) is skipped with a one-line
+note — it has no controller→DB flow to E2E.
 
 For each affected backend service that clears the gate:
 

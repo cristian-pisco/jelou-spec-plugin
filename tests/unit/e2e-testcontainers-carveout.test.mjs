@@ -42,4 +42,15 @@ describe('Testcontainers carve-out — E2E path is the only exception', () => {
     assert.match(tdd, E2E_PATH);
     assert.match(tdd, /production-like/);
   });
+
+  test('execute-task Step 8f authors the E2E suite but never runs it (production-like stays the only runner)', () => {
+    const wf = read('jelou/workflows/execute-task.md');
+    const start = wf.indexOf('### Step 8f');
+    assert.ok(start >= 0, 'execute-task.md must define a "### Step 8f" backend-E2E authoring step');
+    const end = wf.indexOf('## Step 9', start);
+    const s8f = wf.slice(start, end > start ? end : wf.length);
+    assert.match(s8f, E2E_PATH);
+    assert.match(s8f, /authors? only|does NOT run|never run/i);
+    assert.match(s8f, /production-like/);
+  });
 });

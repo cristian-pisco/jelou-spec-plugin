@@ -58,7 +58,9 @@ not from a mocked repository.
   merely a `200` with some array. A filter that names a real column must return only
   matching rows; an out-of-range page must return empty, not the first page.
 - **Authorization scoping** → assert the caller sees **only the rows it is entitled to**
-  (tenant/owner scoping); a second identity must not read the first's rows.
+  (tenant/owner scoping); a second identity must not read the first's rows. If the path
+  has no tenant/owner scoping, or the auth fixtures expose a single identity, state that
+  once and skip the cross-identity assertion — never fabricate a second identity.
 - **Read-through cache** → its populate/hit/invalidate behavior follows Rule 2.
 
 ## Rule 2 — Assert cache side effects (populate + invalidate)
@@ -69,8 +71,10 @@ of record and gets its own assertions:
 - **Write-through / write-behind** → after a write, assert the cache key holds the new
   value (and the expected TTL, when the contract specifies one).
 - **Read-through** → assert a cold request populates the cache (miss → fill) and a warm
-  request is served from it (hit), e.g. by asserting the second call does not re-touch
-  the origin, or by reading the key directly.
+  request is served from it (hit). The primary technique is **reading the key directly**
+  from the real cache the runner brought up — a real-dependencies E2E mocks nothing below
+  the controller, so there is no origin spy to assert "did not re-touch the origin"
+  against (only use that when the origin exposes a query counter/metric).
 - **Invalidation / eviction** → after an update or delete, assert the stale key is gone
   (or refreshed). A cache that serves stale data after a write is the classic bug this
   rule targets; a suite that never asserts invalidation cannot catch it.

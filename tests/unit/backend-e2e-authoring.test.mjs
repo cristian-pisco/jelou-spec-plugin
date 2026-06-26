@@ -29,8 +29,8 @@ describe('backend-e2e-authoring reference — the assertion doctrine', () => {
     assert.match(doc, E2E_PATH);
   });
 
-  test('mandates asserting DB persistence, not just the HTTP response', () => {
-    assert.match(doc, /persist|database|\brow\b|document/i);
+  test('mandates asserting DB persistence via read-back, not just the HTTP response', () => {
+    assert.match(doc, /read the entity back/i);
     assert.match(doc, /not (just|only) the (2xx|status|HTTP response)|beyond the (2xx|status|HTTP response)/i);
   });
 
@@ -43,14 +43,13 @@ describe('backend-e2e-authoring reference — the assertion doctrine', () => {
     assert.match(doc, /authoriz\w+ scoping|only the rows|entitled/i);
   });
 
-  test('mandates asserting cache side effects (populate + invalidate)', () => {
-    assert.match(doc, /cache|redis/i);
-    assert.match(doc, /invalidat|evict|populate/i);
+  test('mandates asserting cache side effects via imperative populate + invalidate checks', () => {
+    assert.match(doc, /cache key holds the new\s+value/i);
+    assert.match(doc, /stale key is gone/i);
   });
 
-  test('forbids mocking the repository/cache inside an E2E', () => {
-    assert.match(doc, /mock/i);
-    assert.match(doc, /defeats|never mock|real (datastore|database|cache|dependenc)/i);
+  test('forbids mocking the repository/cache inside an E2E (named anti-pattern)', () => {
+    assert.match(doc, /Mocking the repository, the cache, or the DB/i);
   });
 
   test('points at the case-matrix for inputs (inputs vs side-effects split)', () => {
@@ -76,21 +75,30 @@ describe('production-like — routes E2E authoring with the doctrine', () => {
 
 describe('execute-task — shift-left backend E2E authoring (parity with UI 8e)', () => {
   const wf = read('jelou/workflows/execute-task.md');
+  // Slice the Step 8f section so assertions pin the step itself — not tokens
+  // (SPEC.md, commit, production-like, "authors only") that recur throughout the
+  // workflow and would keep the suite green even if Step 8f were gutted.
+  const start = wf.indexOf('### Step 8f');
+  const end = start >= 0 ? wf.indexOf('## Step 9', start) : -1;
+  const s8f = start >= 0 ? wf.slice(start, end > start ? end : wf.length) : '';
 
-  test('has a backend E2E materialization step that authors from SPEC.md', () => {
-    assert.match(wf, /backend E2E/i);
-    assert.match(wf, /SPEC\.md/);
-    assert.match(wf, new RegExp(DOC));
+  test('the Step 8f section exists', () => {
+    assert.ok(start >= 0, 'execute-task.md must contain a "### Step 8f" section');
   });
 
-  test('authors only — does NOT run Testcontainers (production-like stays the only runner)', () => {
-    // The step must explicitly disclaim execution, mirroring Step 8e's UI contract.
-    assert.match(wf, /authors? only|does NOT run|never run/i);
-    assert.match(wf, /production-like/);
+  test('Step 8f authors the backend E2E suite from SPEC.md via the doctrine', () => {
+    assert.match(s8f, /backend E2E/i);
+    assert.match(s8f, /SPEC\.md/);
+    assert.match(s8f, new RegExp(DOC));
   });
 
-  test('detects backend services and commits the generated suite', () => {
-    assert.match(wf, /backend service/i);
-    assert.match(wf, /commit/i);
+  test('Step 8f authors only — does NOT run Testcontainers (production-like stays the only runner)', () => {
+    assert.match(s8f, /authors? only|does NOT run|never run/i);
+    assert.match(s8f, /production-like/);
+  });
+
+  test('Step 8f detects backend services and commits the generated suite', () => {
+    assert.match(s8f, /backend service/i);
+    assert.match(s8f, /commit/i);
   });
 });
