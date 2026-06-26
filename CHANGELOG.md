@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.262] — 2026-06-26
+
+### Added
+- shift-left backend E2E authoring + DB/cache persistence assertion doctrine
+
 ## [0.3.261] — 2026-06-26
 
 ### Fixed

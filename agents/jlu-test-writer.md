@@ -88,6 +88,23 @@ Write integration tests that verify real wiring against host-resident infrastruc
 
 These tests run exactly once, at the end of the task, during final validation.
 
+### Tier E2E: Backend E2E (authoring only — never run here)
+
+When the orchestrator dispatches you with an **E2E target** (`test/e2e/**` /
+`*.e2e-spec.ts`) — the `/jlu-production-like` backend-E2E phase, or the
+`/jlu-execute-task` Step 8f shift-left — you author a suite that exercises the **real
+controller over real HTTP** against **real dependencies** (DB/Redis/etc. brought up
+dependencies-only via Testcontainers; the service under test runs on the host).
+
+- **Read and apply `jelou/references/backend-e2e-authoring.md`** — the assertion
+  doctrine for this tier. Its core rule: assert the **DB-persistence and cache side
+  effects** of every write (read the entity back through a fresh request; assert cache
+  populate + invalidation), **not just the HTTP 2xx**. A status-code-only backend E2E
+  is a false positive, not a test.
+- Inputs still follow the case-matrix above; side effects follow that doctrine.
+- You **author only** — you never run a backend E2E suite. Execution (and the
+  Testcontainers boot) is owned exclusively by `/jlu-production-like`.
+
 ### Docker is forbidden for tests
 
 See `subagent-base.md` — applies to both tiers, no exceptions.
@@ -231,7 +248,7 @@ After writing tests and confirming they fail, provide a structured summary:
 - Match the existing codebase conventions exactly. Your tests should look like they were written by the same team.
 - Every requirement in the phase MUST have at least one test. If a requirement is untestable, flag it.
 - Respect the engineering principles: Security > Simplicity > Readability > TDD > Repo conventions.
-- Respect the TEST_TIER instruction. Tier 1 must be infrastructure-free; Tier 2 may assume host-resident infrastructure already running but must never start containers or import Testcontainers — never in Tier 1/2. The sole exception: when authoring a backend E2E suite for `/jlu-production-like`, Testcontainers is permitted ONLY in the E2E path (`test/e2e/**`, `*.e2e-spec.ts`) and only to bring up dependencies (DB/Redis/etc.), never the service under test.
+- Respect the TEST_TIER instruction. Tier 1 must be infrastructure-free; Tier 2 may assume host-resident infrastructure already running but must never start containers or import Testcontainers — never in Tier 1/2. The sole exception: when authoring a backend E2E suite (the `/jlu-production-like` backend-E2E phase, or the `/jlu-execute-task` Step 8f shift-left), Testcontainers is permitted ONLY in the E2E path (`test/e2e/**`, `*.e2e-spec.ts`) and only to bring up dependencies (DB/Redis/etc.), never the service under test. When authoring such a suite, follow the assertion doctrine in `jelou/references/backend-e2e-authoring.md` (assert DB-persistence + cache side effects, not just the 2xx). Authoring is not running: a backend E2E suite is executed only by `/jlu-production-like`.
 - When in doubt about whether a test needs real infrastructure, write it as Tier 1 (mocked). A mocked test that exists is better than an integration test deferred.
 
 ## Examples
