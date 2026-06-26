@@ -48,6 +48,26 @@ describe('self-healing gate — fails fast with the real cause, never DB drift',
   });
 });
 
+describe('self-healing gate — a local mint that still 401s is provisioned via session-sync, never dead-ended', () => {
+  // The dead-end this guards: e2e-login-local mints a valid cookie but the gateway still
+  // 401s because the native local login never wrote logsM.userSessions. The gate must run
+  // session-sync inline on that LOCAL cookie and re-probe — not exit BLOCKED telling the
+  // user to "use the 14c path" by hand, and never improvise a prod-session-refresh menu.
+  const i = uiwf.indexOf('bin/e2e-login-local.mjs');
+  const region = uiwf.slice(i, i + 1600);
+
+  test('the probe-fail branch auto-runs session-sync and re-probes before BLOCKED', () => {
+    assert.match(region, /e2e-session-sync\.mjs/);
+    assert.match(region, /e2e-session-sync\.mjs[\s\S]{0,120}e2e-session-probe\.mjs/);
+    assert.match(region, /e2e-session-sync[\s\S]{0,200}AUTH_GATE=healed/);
+  });
+
+  test('the loopback session-sync runs on the locally-minted cookie, never a prod-captured one', () => {
+    assert.match(region, /minted/i);
+    assert.match(region, /never[\s\S]{0,80}prod[\s\S]{0,40}(session|captur)/i);
+  });
+});
+
 describe('self-healing gate — the OTP/sync machinery is reserved for remote/prod', () => {
   test('the Gmail/OTP driver is labelled the remote/prod path', () => {
     assert.match(uiwf, /e2e-login\.mjs`?[\s\S]{0,40}remote\/prod/i);

@@ -164,7 +164,9 @@ No seed system: reuses `dev` blocks + `data_isolation: per-run`. Testcontainers 
     14b/14c: probe the session and, when invalid, mint a fresh one. For a **loopback
     `E2E_BASE_URL`** the gate self-heals **deterministically** — `bin/e2e-ensure-account.mjs`
     (guarantee the account) then `bin/e2e-login-local.mjs` (a direct API login: no browser,
-    no Turnstile, no OTP) — and the Gmail/OTP driver plus the cookie-guard provisioning are
+    no Turnstile, no OTP), and — only when that minted cookie is valid yet the gateway still
+    401s because the native login left `logsM.userSessions` unpopulated — `bin/e2e-session-sync.mjs`
+    inline on that same locally-minted cookie, then a re-probe. The Gmail/OTP driver is
     reserved for genuinely remote/prod targets. Otherwise (a remote target) log in via OTP
     (Gmail read / paste fallback) and provision the local cookie-guard session. This produces a
     valid `storageState` the UI runner consumes. The OTP gate stays in the orchestrator because

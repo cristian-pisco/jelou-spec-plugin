@@ -24,6 +24,7 @@ import {
   buildSessionUpdate,
   extractAuthCookie,
   isLocalHost,
+  isLoopbackMongoUri,
   buildLocalCookie,
   shouldProvision,
   DEFAULT_COOKIE_NAME,
@@ -133,6 +134,33 @@ describe('isLocalHost', () => {
   });
 });
 
+describe('isLoopbackMongoUri', () => {
+  test('accepts loopback hosts (creds, ports, IPv6, replica sets)', () => {
+    for (const u of [
+      'mongodb://127.0.0.1:27017',
+      'mongodb://localhost',
+      'mongodb://localhost:27017/logsM',
+      'mongodb://[::1]:27017',
+      'mongodb://user:pass@127.0.0.1:27017/logsM?authSource=admin',
+      'mongodb://127.0.0.1:27017,127.0.0.1:27018/?replicaSet=rs0',
+    ]) assert.equal(isLoopbackMongoUri(u), true, u);
+  });
+
+  test('rejects remote hosts, srv seedlists, mixed sets, and garbage', () => {
+    for (const u of [
+      'mongodb://mongo:27017',
+      'mongodb://prod.example.com:27017',
+      'mongodb+srv://cluster0.abcde.mongodb.net',
+      'mongodb://127.0.0.1:27017,prod.example.com:27018',
+      'mongodb://user:p@ss@db.internal:27017',
+      'postgres://127.0.0.1:5432',
+      'mongodb://',
+      '',
+      null,
+    ]) assert.equal(isLoopbackMongoUri(u), false, String(u));
+  });
+});
+
 describe('buildLocalCookie', () => {
   test('host-only localhost cookie, secure follows the protocol', () => {
     const c = buildLocalCookie('jelou_auth', 'prod-token', 'http://localhost:5173', 12, 1_000_000);
@@ -206,5 +234,39 @@ describe('e2e-session-sync CLI', () => {
       encoding: 'utf8',
     });
     assert.doesNotMatch(r.stdout + r.stderr, /SUPERSECRETVALUE/);
+  });
+
+  // The write-target guard: a loopback E2E_BASE_URL must not let a prod SESSION_SYNC_MONGO_URI
+  // through. Refuse before connecting; require an explicit opt-in for a non-loopback target.
+  function loopbackState() {
+    const dir = mkdtempSync(join(tmpdir(), 'session-sync-'));
+    const state = join(dir, 'state.json');
+    const cookie = encryptCookie({ sessionId: 's1', userId: '1', companyId: '2' }, SECRET);
+    writeFileSync(state, JSON.stringify({ cookies: [{ name: 'jelou_auth', value: cookie, domain: '.jelou.ai', path: '/' }] }));
+    return state;
+  }
+
+  test('refuses (exit 2) a non-loopback SESSION_SYNC_MONGO_URI on a loopback target', () => {
+    const r = spawnSync('node', [DRIVER], {
+      env: {
+        PATH: process.env.PATH, E2E_STORAGE_STATE: loopbackState(), E2E_BASE_URL: 'http://localhost:5173',
+        COOKIE_SECRET: SECRET, SESSION_SYNC_MONGO_URI: 'mongodb://prod.example.com:27017',
+      },
+      encoding: 'utf8',
+    });
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /refusing to write a session to non-loopback Mongo/);
+  });
+
+  test('SESSION_SYNC_ALLOW_REMOTE_MONGO=1 bypasses the guard (no refusal)', () => {
+    const r = spawnSync('node', [DRIVER], {
+      env: {
+        PATH: process.env.PATH, E2E_STORAGE_STATE: loopbackState(), E2E_BASE_URL: 'http://localhost:5173',
+        COOKIE_SECRET: SECRET, SESSION_SYNC_MONGO_URI: 'mongodb://prod.example.com:27017',
+        SESSION_SYNC_ALLOW_REMOTE_MONGO: '1',
+      },
+      encoding: 'utf8',
+    });
+    assert.doesNotMatch(r.stderr, /refusing to write a session to non-loopback Mongo/);
   });
 });

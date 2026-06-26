@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.261] — 2026-06-26
+
+### Fixed
+- auth gate auto-provisions logsM.userSessions via session-sync when a local mint still 401s at the gateway, instead of dead-ending or improvising a prod-session menu
+- session-sync refuses a non-loopback SESSION_SYNC_MONGO_URI write target (opt-in via SESSION_SYNC_ALLOW_REMOTE_MONGO) so a loopback E2E run can never forge a session row into prod/staging Mongo
+
 ## [0.3.260] — 2026-06-24
 
 ### Fixed

@@ -13,8 +13,10 @@
 //
 // Env: E2E_STORAGE_STATE, E2E_BASE_URL, COOKIE_SECRET; optional UI_WORKTREE,
 //   SESSION_SYNC_MONGO_URI (default mongodb://127.0.0.1:27017), SESSION_SYNC_DB (logsM),
-//   SESSION_TTL_HOURS (12), SESSION_COOKIE_NAME (jelou_auth), JLU_MONGODB_MODULE.
-// Exit: 0 ok/skip · 45 decrypt/secret mismatch · 46 Mongo unreachable · 2 misconfig.
+//   SESSION_TTL_HOURS (12), SESSION_COOKIE_NAME (jelou_auth), JLU_MONGODB_MODULE,
+//   SESSION_SYNC_ALLOW_REMOTE_MONGO (default off — refuse a non-loopback write target unless set).
+// Exit: 0 ok/skip · 45 decrypt/secret mismatch · 46 Mongo unreachable · 2 misconfig
+//   (includes a non-loopback SESSION_SYNC_MONGO_URI without SESSION_SYNC_ALLOW_REMOTE_MONGO).
 // Secrets (COOKIE_SECRET, cookie value, sessionId) are never printed.
 
 import { createRequire } from 'node:module';
@@ -28,6 +30,7 @@ import {
   extractAuthCookie,
   buildLocalCookie,
   shouldProvision,
+  isLoopbackMongoUri,
   DEFAULT_COOKIE_NAME,
 } from './lib/session-sync.mjs';
 import { applyEnvFiles } from './lib/env-files.mjs';
@@ -94,6 +97,20 @@ async function main() {
     process.exit(EXIT.OK);
   }
 
+  // Guard the WRITE TARGET independently of E2E_BASE_URL, before any work: a loopback base
+  // with a prod SESSION_SYNC_MONGO_URI would otherwise forge a session row in prod. Refuse a
+  // non-loopback Mongo unless explicitly opted in (e.g. a containerized local Mongo).
+  const uri = env.SESSION_SYNC_MONGO_URI || 'mongodb://127.0.0.1:27017';
+  const allowRemoteMongo = /^(1|true|yes)$/i.test(env.SESSION_SYNC_ALLOW_REMOTE_MONGO || '');
+  if (!allowRemoteMongo && !isLoopbackMongoUri(uri)) {
+    console.error(
+      `session-sync: refusing to write a session to non-loopback Mongo ${redactMongoUri(uri)} — `
+        + 'a sanctioned session write must target the local stack, not prod/staging. Set '
+        + 'SESSION_SYNC_ALLOW_REMOTE_MONGO=1 to override (e.g. a containerized local Mongo).',
+    );
+    process.exit(2);
+  }
+
   const cookieValue = extractAuthCookie(storageState, cookieName);
   let fields;
   try {
@@ -112,7 +129,6 @@ async function main() {
     process.exit(2);
   }
 
-  const uri = env.SESSION_SYNC_MONGO_URI || 'mongodb://127.0.0.1:27017';
   const dbName = env.SESSION_SYNC_DB || 'logsM';
   const ttlHours = Math.max(1, Number(env.SESSION_TTL_HOURS) || 12);
   const client = new mongodb.MongoClient(uri, { serverSelectionTimeoutMS: 5000 });

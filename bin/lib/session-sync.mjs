@@ -88,6 +88,30 @@ export function isLocalHost(url) {
   return host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
 }
 
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
+
+// A sanctioned session write must target the LOCAL stack, never prod/staging. The
+// connection string is the write target, so guard it independently of E2E_BASE_URL:
+// a loopback base with a prod SESSION_SYNC_MONGO_URI would otherwise forge a session
+// row in prod. Parses the authority by hand because mongodb URIs carry comma-separated
+// replica-set hosts that `new URL()` mangles. mongodb+srv:// is a hosted DNS seedlist,
+// never loopback. Every host must be loopback; mixed → not loopback.
+export function isLoopbackMongoUri(uri) {
+  if (!uri || typeof uri !== 'string') return false;
+  const scheme = uri.match(/^(mongodb(?:\+srv)?):\/\//i);
+  if (!scheme) return false;
+  if (/\+srv/i.test(scheme[1])) return false;
+  let authority = uri.slice(scheme[0].length).split(/[/?#]/, 1)[0];
+  const at = authority.lastIndexOf('@');
+  if (at !== -1) authority = authority.slice(at + 1);
+  const hosts = authority.split(',').filter(Boolean);
+  if (hosts.length === 0) return false;
+  return hosts.every((hp) => {
+    const host = hp.startsWith('[') ? hp.slice(0, hp.indexOf(']') + 1) : hp.split(':', 1)[0];
+    return LOOPBACK_HOSTS.has(host.toLowerCase());
+  });
+}
+
 export function buildLocalCookie(name, value, baseUrl, ttlHours, nowMs) {
   const u = new URL(baseUrl);
   return {
