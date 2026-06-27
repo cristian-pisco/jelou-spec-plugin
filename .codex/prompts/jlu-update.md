@@ -1,5 +1,5 @@
 ---
-description: "Use to update the Jelou Spec Plugin to the latest version from any runtime — pulls the shared git cache and reinstalls. Fills the gap for Codex and OpenCode, which have no built-in plugin update."
+description: "Use to update the Jelou Spec Plugin to the latest version from any runtime. On Claude Code it drives the plugin CLI directly (no manual /plugin update); on Codex and OpenCode it pulls the shared git cache and reinstalls."
 argument-hint: "[--ref <ref>]"
 ---
 Resolve the workflow file in this order, and use the first one that exists:

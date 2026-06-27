@@ -5,10 +5,12 @@
 
 ---
 
-You are the orchestrator for the `/jlu-update` command. Your job is to pull the latest
-plugin version into the shared git cache and reinstall it for the runtime you are running
-in. Claude Code has a native update path (the plugin marketplace); Codex and OpenCode do
-not, so this command is their only built-in way to update.
+You are the orchestrator for the `/jlu-update` command. Your job is to bring the plugin to
+the latest version for the runtime you are running in. On Codex and OpenCode that means
+pulling the shared git cache and reinstalling. On Claude Code the plugin lives in the
+marketplace cache (no git cache); there the updater drives the non-interactive plugin CLI
+(`claude plugin marketplace update` then `claude plugin update jlu@jelou-spec-plugin`) so
+the update is applied directly — you do not need to run `/plugin update` yourself.
 
 ## Step 1 — Determine your host
 
@@ -45,11 +47,15 @@ Run, passing your host from Step 1 and forwarding a `--ref <ref>` only if the us
 <resolved-script> --host <your-host>
 ```
 
-The script pulls the cache to the latest release, prints `vOLD -> vNEW` (or `Already at vX`),
-and re-runs `setup --host <your-host>` to refresh that runtime's installed files.
+On Codex/OpenCode the script pulls the cache to the latest release, prints `vOLD -> vNEW`
+(or `Already at vX`), and re-runs `setup --host <your-host>` to refresh that runtime's
+installed files. On Claude Code it drives the plugin CLI and prints the CLI's result
+(e.g. `already at the latest version` or the upgrade), then a restart reminder.
 
 ## Step 4 — Report
 
-Relay the script's outcome to the user in one or two lines: the version transition and which
-host was refreshed. If the script exited because no git cache exists, relay its guidance
-verbatim (the reinstall one-liner, or `/plugin update` for Claude) — do not invent steps.
+Relay the script's outcome to the user in one or two lines: the version transition (or
+`already at latest`) and which host was refreshed. On Claude Code, remind the user that a
+restart / new session is required to load the new version. If the script fell back to its
+guidance (no git cache and no `claude` CLI, or no installer-managed cache on Codex/OpenCode),
+relay that guidance verbatim — do not invent steps.

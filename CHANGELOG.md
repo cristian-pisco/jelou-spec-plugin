@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.263] — 2026-06-27
+
+### Added
+- jlu-update applies updates directly on Claude Code via the plugin CLI
+
 ## [0.3.262] — 2026-06-26
 
 ### Added
