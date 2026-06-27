@@ -9,7 +9,7 @@
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, chmodSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -22,6 +22,14 @@ function makeCache(version = '0.3.240') {
   mkdirSync(join(dir, '.git'));
   writeFileSync(join(dir, 'package.json'), `{ "version": "${version}" }\n`);
   return dir;
+}
+
+function makeShim(log) {
+  const dir = mkdtempSync(join(tmpdir(), 'jlu-shim-'));
+  const bin = join(dir, 'claude');
+  writeFileSync(bin, `#!/usr/bin/env bash\necho "$*" >> "${log}"\necho "ok"\n`);
+  chmodSync(bin, 0o755);
+  return { dir, bin };
 }
 
 function run(args = [], extraEnv = {}) {
@@ -92,8 +100,47 @@ describe('jlu-update.sh — no cache guidance', () => {
     assert.match(r.stderr, /No local plugin git cache/);
     assert.match(r.stderr, /install\.sh \| bash -s -- --host codex/);
   });
-  test('claude without a cache exits 0 and points to the marketplace', () => {
-    const r = run(['--host', 'claude'], { JLU_HOME: '/nonexistent' });
+});
+
+describe('jlu-update.sh — claude (marketplace install, no git cache)', () => {
+  test('dry run shows the plugin-CLI plan when the CLI is on PATH', () => {
+    const shim = makeShim('/dev/null');
+    try {
+      const r = run(['--host', 'claude'], { JLU_HOME: '/nonexistent', JLU_CLAUDE_CLI: shim.bin });
+      assert.equal(r.status, 0);
+      assert.match(r.stdout, /^HOST: claude$/m);
+      assert.match(r.stdout, /^PLAN: .*plugin update jlu@jelou-spec-plugin$/m);
+    } finally {
+      rmSync(shim.dir, { recursive: true, force: true });
+    }
+  });
+
+  test('applied run invokes marketplace update then plugin update', () => {
+    const logDir = mkdtempSync(join(tmpdir(), 'jlu-log-'));
+    const log = join(logDir, 'calls.txt');
+    const shim = makeShim(log);
+    try {
+      const r = run(['--host', 'claude'], {
+        JLU_HOME: '/nonexistent',
+        JLU_CLAUDE_CLI: shim.bin,
+        JLU_UPDATE_DRYRUN: '0',
+      });
+      assert.equal(r.status, 0);
+      const calls = readFileSync(log, 'utf8');
+      assert.match(calls, /plugin marketplace update jelou-spec-plugin/);
+      assert.match(calls, /plugin update jlu@jelou-spec-plugin/);
+      assert.match(r.stdout, /Restart Claude Code/);
+    } finally {
+      rmSync(shim.dir, { recursive: true, force: true });
+      rmSync(logDir, { recursive: true, force: true });
+    }
+  });
+
+  test('falls back to /plugin update guidance when the claude CLI is absent', () => {
+    const r = run(['--host', 'claude'], {
+      JLU_HOME: '/nonexistent',
+      JLU_CLAUDE_CLI: '/nonexistent/claude',
+    });
     assert.equal(r.status, 0);
     assert.match(r.stderr, /\/plugin update jlu@jelou-spec-plugin/);
   });

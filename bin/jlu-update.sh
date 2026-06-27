@@ -2,10 +2,16 @@
 set -euo pipefail
 
 # jlu-update.sh — bring the installed plugin to the latest version for one host.
-# Powers the /jlu-update command in every runtime. Claude has a native path
-# (/plugin update jlu@jelou-spec-plugin); this fills the gap for Codex and
-# OpenCode, which have no built-in update mechanism. It pulls the shared git
-# cache ($JLU_HOME, created by install.sh) and re-runs setup for the host.
+# Powers the /jlu-update command in every runtime.
+#
+# Codex and OpenCode have no built-in plugin updater, so this pulls the shared
+# git cache ($JLU_HOME, created by install.sh) and re-runs setup for the host.
+#
+# Claude Code installs from the marketplace (no git cache); there it drives the
+# non-interactive CLI — `claude plugin marketplace update` then `claude plugin
+# update jlu@jelou-spec-plugin` — so /jlu-update applies the update directly
+# instead of handing off to the interactive `/plugin update`. A restart is still
+# required to load the new version. Set JLU_CLAUDE_CLI to override the binary.
 
 REPO_URL="https://github.com/cristian-pisco/jelou-spec-plugin"
 JLU_HOME="${JLU_HOME:-$HOME/.jelou-spec-plugin}"
@@ -58,9 +64,23 @@ fi
 
 if [ -z "$CACHE" ]; then
   if [ "$HOST" = "claude" ]; then
+    CLAUDE_BIN="${JLU_CLAUDE_CLI:-claude}"
+    if command -v "$CLAUDE_BIN" >/dev/null 2>&1; then
+      if [ "${JLU_UPDATE_DRYRUN:-0}" = "1" ]; then
+        echo "HOST: claude"
+        echo "PLAN: $CLAUDE_BIN plugin update jlu@jelou-spec-plugin"
+        exit 0
+      fi
+      echo "Updating via the Claude Code plugin CLI ..."
+      "$CLAUDE_BIN" plugin marketplace update jelou-spec-plugin || true
+      "$CLAUDE_BIN" plugin update jlu@jelou-spec-plugin
+      echo
+      echo "Restart Claude Code (or open a new session) to load the new version."
+      exit 0
+    fi
     cat >&2 <<MSG
-No local plugin git cache found ($JLU_HOME).
-Claude installs from the plugin marketplace — update there with:
+No local plugin git cache found ($JLU_HOME) and the 'claude' CLI is not on PATH.
+Update from inside Claude Code with:
   /plugin update jlu@jelou-spec-plugin
 MSG
     exit 0
