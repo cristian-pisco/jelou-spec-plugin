@@ -1,5 +1,4 @@
 {
-  "_comment": "Codex PreToolUse guards. Codex passes {tool_name, tool_input.command, cwd} on stdin and reads back {hookSpecificOutput:{permissionDecision:'deny',permissionDecisionReason}} — the exact shape bin/guard-*.mjs already emit for Claude Code, so the guards are reused verbatim. Paths resolve from the git root because Codex runs hooks with the (unstable) session cwd. install-codex.sh rewrites these to absolute ~/.codex/bin paths for a global install.",
   "hooks": {
     "PreToolUse": [
       {

@@ -126,6 +126,7 @@ fi
 
 echo
 echo "Done. Core commands now available in Codex:"
-echo "  /jlu-new-task   /jlu-map-codebase   /jlu-execute-task   /jlu-create-pr"
+echo "  /jlu-new-task   /jlu-map-codebase   /jlu-load-context   /jlu-execute-task   /jlu-ship"
+echo "Use the slash form. If Codex treats jlu-* as a PATH lookup, restart Codex and confirm this install is loaded."
 echo
 echo "Note: /jlu-task-clickup and /jlu-daily-slack are Phase 2 (skipped in Phase 1 runs)."

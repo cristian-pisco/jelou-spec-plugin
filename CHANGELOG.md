@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.266] — 2026-06-28
+
+### Fixed
+- normalize bare Codex jlu commands
+
 ## [0.3.265] — 2026-06-28
 
 ### Changed
