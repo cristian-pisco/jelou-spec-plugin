@@ -270,6 +270,12 @@ describe('guard — plugin wiring', () => {
     assert.match(guard.command, /\$\{CLAUDE_PLUGIN_ROOT\}/);
   });
 
+  test('.codex/hooks.json uses the strict Codex top-level schema', () => {
+    const hooks = JSON.parse(readFileSync(join(ROOT, '.codex/hooks.json'), 'utf8'));
+    assert.deepEqual(Object.keys(hooks), ['hooks']);
+    assert.ok(hooks.hooks.PreToolUse.some((h) => h.matcher === '^Bash$'));
+  });
+
   test('plugin manifest points at the hooks file', () => {
     const manifest = JSON.parse(readFileSync(join(ROOT, '.claude-plugin/plugin.json'), 'utf8'));
     assert.equal(manifest.hooks, './hooks/hooks.json');
