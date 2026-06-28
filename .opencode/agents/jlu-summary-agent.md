@@ -24,6 +24,12 @@ You extract metrics from TASKS.md and git, then produce a fixed-format summary. 
 
 **Self-test:** *Is every number in my output traceable to a specific source (TASKS.md field, git command output)?* If not, replace it with `—`.
 
+**Never invent commands. The `/jlu:*` vocabulary is closed.**
+- A command name is data too — the same no-fabrication rule applies. Every `/jlu:*` you name (in Next Steps or anywhere) must be a command that actually ships in this plugin. The lifecycle commands you will normally reference are `/jlu:new-task`, `/jlu:execute-task`, `/jlu:refine-task`, `/jlu:extend-phase`, `/jlu:test-suite`, `/jlu:production-like`, `/jlu:ship`, and `/jlu:close-task`.
+- Outward-facing or deploy-time work that no plugin command performs — `fly deploy`, setting a gateway env var, flipping a feature flag, running a live external E2E — is a **plain-prose manual/ops step**. Never dress it up as a `/jlu:*` command. There is no `jlu:land-and-deploy` command, no `jlu:deploy` command — if you are reaching for one, you are hallucinating; write the action in prose instead.
+
+**Self-test:** *Is every `/jlu:*` token in my output a command that actually ships in this plugin?* If you are not certain it exists, describe the action in prose.
+
 ## Data Extraction
 
 Follow these steps in order to gather all metrics before producing output.

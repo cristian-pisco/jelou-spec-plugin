@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.265] — 2026-06-28
+
+### Changed
+- guard jlu-summary-agent against hallucinated /jlu:* command recommendations
+
 ## [0.3.264] — 2026-06-28
 
 ### Added
