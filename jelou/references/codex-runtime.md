@@ -5,6 +5,20 @@
 > `question` and `task`. This file maps those verbs to Codex behavior and records the
 > Codex-specific constraints the orchestrator must respect.
 
+## Invocation model
+
+Use slash prompts when possible: `/jlu-load-context`, `/jlu-new-task`, and the
+other generated entries in `prompts/jlu-*.md`.
+
+If the user enters a bare `jlu-*` command token in Codex, treat it as a prompt
+invocation, not as a shell command. Resolve `.codex/prompts/<command>.md` first,
+then `$CODEX_HOME/prompts/<command>.md` (`$CODEX_HOME` defaults to `~/.codex`),
+read the prompt, and execute it with the remaining text as arguments. If neither
+prompt exists, report that the Codex prompt is not installed and ask the user to
+run `./setup --host codex` from `jelou-spec-plugin` or
+`bin/install-codex.sh <project>` for a project-local install. Never search
+`PATH`, package scripts, or repo helpers for `jlu-*`.
+
 ## Tool / verb mapping
 
 | Workflow says | Codex behavior | Notes |
@@ -56,6 +70,7 @@ The prompts and agents are **generated mirrors** — edit `skills/<skill>/SKILL.
 - Resolve the workflow global-first (`$CODEX_HOME/jelou/workflows/<skill>.md`), then
   project-local (`jelou/workflows/<skill>.md`). Read exactly one.
 - Always reference commands with the `jlu-` prefix (never `jlu:`).
+- Bare `jlu-*` input is a prompt invocation fallback. It is not a `PATH` lookup.
 - Phase 1 portability: skip ClickUp/Slack execution steps if encountered; report them as deferred.
 
 ## Hooks caveat

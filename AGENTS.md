@@ -15,6 +15,12 @@ OpenCode command normalization:
 - When a `jlu-*` command exists, prefer command execution over similarly named skills.
 - Never route `jlu-*` invocations to non-`jlu-*` skills.
 
+Codex command normalization:
+- Prefer the slash prompt form (`/jlu-load-context`).
+- If the user enters a bare `jlu-*` command token (`jlu-load-context`, `jlu-load-context <args>`, or "run jlu-load-context"), treat it as the matching Codex prompt, not as a shell executable.
+- Resolve the prompt from `.codex/prompts/<command>.md` first, then `$CODEX_HOME/prompts/<command>.md` (`$CODEX_HOME` defaults to `~/.codex`), read it, and execute it with the remaining text as arguments.
+- If no matching prompt exists, stop with: "Codex prompt not installed: `<command>`. Run `./setup --host codex` from jelou-spec-plugin or `bin/install-codex.sh <project>` for a project-local install." Never search `PATH`, package scripts, or repo helpers for `jlu-*`.
+
 ## OpenCode Runtime Contract
 
 - Use `question` for all user prompts and confirmations.

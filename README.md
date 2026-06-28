@@ -209,6 +209,12 @@ Then in Codex, the commands are the same hyphen-prefixed names as OpenCode:
 /jlu-ship
 ```
 
+Use the slash form in Codex. If a bare command such as `jlu-load-context` is entered,
+the installed `AGENTS.md` fallback treats it as the matching prompt; if Codex says it
+is not on `PATH`, the Codex install is not loaded. Re-run `./setup --host codex`
+or use `bin/install-codex.sh <project>` for a project-local install, then restart
+Codex in the target repo.
+
 Codex specifics (see [jelou/references/codex-runtime.md](./jelou/references/codex-runtime.md)):
 
 - **Prompts + subagents are generated** from `skills/` and `agents/` by `bin/sync-codex.mjs` (CI enforces sync). Edit the canonical sources, then `npm run sync`.
