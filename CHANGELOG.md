@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.264] — 2026-06-28
+
+### Added
+- self-enforce no-line-by-line-comments across code-writing agents
+
 ## [0.3.263] — 2026-06-27
 
 ### Added
