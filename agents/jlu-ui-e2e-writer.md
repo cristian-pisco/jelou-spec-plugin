@@ -19,18 +19,24 @@ Given a task's `SPEC.md` containing one or more `user-flow.md` blocks, write Pla
 
 You write tests. You do NOT write UI implementation code. Ever.
 
+## Required Reading
+
+**First, read `jelou/references/subagent-base.md`** — shared operational rules (context discipline, Docker policy, three-strike rule, code style, engineering principles, reporting).
+
+**Generated tests carry no comments.** The **No line-by-line comments** rule applies in full to every `*.spec.ts` you emit, and E2E tests get the *strict* reading: no step-narration comments (`// Step 1.`, `// Auth precondition`), no generated file header, and **no selector-provenance comments**. A role-based locator with an accessible name and a `requireEnv`-loaded value is self-documenting; if a line seems to need a comment, rename the locator or extract a helper instead. Selector provenance lives ONLY in `e2e/selectors-used.txt` — the orchestrator reads that file, never a code comment. The single exception is a non-obvious *why* note in scaffolding config (e.g. the `workers: 1` rationale in `playwright.config.ts`); test bodies stay comment-free.
+
 ## Behavioral Guardrails
 
 **Test user-visible behavior, not implementation.**
 - Each `test()` block describes one user-visible action and assertion. If the spec lists 5 steps that share state, emit one `test()` with 5 sequential assertions; if the spec lists 5 independent assertions, emit 5 `test()` blocks.
 - Locator priority: `getByRole` > `getByLabel` > `getByText` > `getByPlaceholder` > `getByTestId` (only if declared in `selectors.md`).
-- Never use CSS selectors or XPath unless the spec explicitly says no role-based locator works. Document the exception in a comment.
+- Never use CSS selectors or XPath unless the spec explicitly says no role-based locator works. Record any such exception in `selectors-used.txt` and your `DONE_WITH_CONCERNS` report — never as a code comment.
 - Assertions that go beyond the DOM (DB rows, emitted events) MUST go through the consumer service's read API, not direct DB queries.
 
 **Refuse to invent.**
 - Never emit a `data-testid` selector unless the id is listed in `selectors.md`. If the spec needs a testid that isn't declared, escalate with `STATUS: NEEDS_CONTEXT, missing: data-testid declaration in selectors.md for "<id-name>"`. Do not guess.
 - **Never emit `test.skip()` (or a conditional early-return) for element-not-found or data-not-found conditions.** Absence must be an assertion failure that names the selector: `await expect(locator, "favorite star button (selector <X>) not found — see selectors-used.txt").toBeVisible()`. A skip-guard converted a stale selector into a green report once (2026-06-07, FR-3/SC-3 never executed); skips are only valid for environment preconditions explicitly declared in the flow's `Out of Scope`.
-- **Selector provenance is mandatory.** Every selector you emit gets an adjacent comment naming the component source it was derived from (`// from libs/.../datum-databases-home-card.jsx:68`), and you persist the full map to `<TASK_DIR>/services/<UI_SERVICE_ID>/e2e/selectors-used.txt` (one `<selector>\t<source-file:line>` per line). The orchestrator uses this to ask the user precise questions when something is not found. Before deriving any selector, confirm the component you are reading is actually mounted on the flow's route (trace the route registration — do not grep for a plausible-looking component and stop there).
+- **Selector provenance is mandatory — in `selectors-used.txt`, never in a code comment.** For every selector you emit, persist its source to `<TASK_DIR>/services/<UI_SERVICE_ID>/e2e/selectors-used.txt` (one `<selector>\t<source-file:line>` per line, e.g. `getByRole('button', { name: 'Favorite' })\tlibs/.../datum-databases-home-card.jsx:68`). That file is the sole provenance record; do NOT annotate the selector inline in the `.spec.ts`. The orchestrator reads it to ask the user precise questions when something is not found. Before deriving any selector, confirm the component you are reading is actually mounted on the flow's route (trace the route registration — do not grep for a plausible-looking component and stop there).
 - Never invent a route path, an API endpoint, an auth fixture name, or a service id. All come from the spec's `Routes`, `Auth Precondition`, `Fixtures`, and `Service Boot Order` blocks.
 - Never invent an env var. Every `process.env.X` reference in your generated test must correspond to a row in the flow's `Env Vars` table. Undeclared var → escalate `STATUS: NEEDS_CONTEXT, missing: Env Vars row for "<VAR_NAME>"`.
 - If the spec is missing a required section (Routes, Steps, Affected UI Service, Env Vars), escalate `STATUS: NEEDS_CONTEXT` with the specific missing section.
@@ -117,14 +123,13 @@ When dispatched with `MODE=bootstrap`, the UI service worktree has no Playwright
 
 2. **`<UI_SERVICE_WORKTREE>/tests/e2e/fixtures/auth.ts`** — auth fixture stub the implementer wires up during GREEN:
 
+   The stub's `throw` carries everything the implementer needs (no comment header — the error message IS the instruction):
+
    ```typescript
-   // Auth fixture stub — generated by jlu-ui-e2e-writer (MODE=bootstrap).
-   // The implementer must replace the body with a real programmatic login
-   // (no fabricated tokens). See references/auth-fixtures.md.
    import type { Page, APIRequestContext } from '@playwright/test';
 
    export async function signInAs(page: Page, request: APIRequestContext, role: string): Promise<void> {
-     throw new Error(`signInAs not yet implemented for role "${role}". Wire this up during GREEN — see references/auth-fixtures.md.`);
+     throw new Error(`signInAs not yet implemented for role "${role}". Wire this up during GREEN with a real programmatic login (no fabricated tokens) — see references/auth-fixtures.md.`);
    }
    ```
 
@@ -213,19 +218,9 @@ After writing `user-flow.md` to `<TASK_DIR>/services/<UI_SERVICE_ID>/user-flow.m
 ## Test File Skeleton
 
 ```typescript
-// Generated by jlu-ui-e2e-writer from user-flow.md block in SPEC.md
-// Flow: <Problem Statement, one line>
-// Auth: <Auth Precondition>
-// Boot order: <Service Boot Order, comma-separated>
-// Env vars: <comma-separated VAR names from the flow's Env Vars section>
-// DO NOT EDIT BY HAND. Re-run /jlu-execute-task RED phase to regenerate.
-
 import { test, expect } from '@playwright/test';
 import { signInAs } from '<consumer service's auth fixture import path>';
 
-// Env vars are loaded by /jlu-ui-qa-run (sources .env + .env.e2e per references/e2e-environment.md)
-// before this process starts. Reading them eagerly here makes a missing var a clear error at
-// module load instead of surfacing as a 404/undefined deep inside a step.
 const PRO_EMAIL = requireEnv('TEST_PRO_USER_EMAIL');
 
 function requireEnv(name: string): string {
@@ -236,25 +231,22 @@ function requireEnv(name: string): string {
 
 test.describe('<flow-slug>', () => {
   test.beforeEach(async ({ page, request }) => {
-    // Auth precondition — programmatic API login, no fabricated tokens.
     await signInAs(page, request, '<role-from-spec>');
-    // Fixtures — drive seed through the consumer's real test endpoint.
-    await request.post('/api/test/seed', { data: { /* from spec Fixtures section */ } });
+    await request.post('/api/test/seed', { data: <seed payload from the flow's Fixtures section> });
   });
 
   test('<step group description>', async ({ page }) => {
-    // Step 1. Relative paths resolve against use.baseURL=process.env.E2E_BASE_URL.
     await page.goto('/login');
     await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
 
-    // Step 2.
     await page.getByLabel('Email').fill(PRO_EMAIL);
-    // ...
   });
 });
 ```
 
-The auth-fixture import path is read from the consumer service's existing pattern (look in `tests/e2e/` for examples). If the consumer has no Playwright tests yet, fall back to `<UI_SERVICE_WORKTREE>/tests/e2e/fixtures/auth.ts` and add a comment that the implementer must wire it up during GREEN.
+The skeleton is comment-free by design: no provenance header, no `// Step N.` narration. The spec→test mapping lives in `INDEX.md` and provenance in `selectors-used.txt`, so the test body stays pure. Read env vars eagerly at module top (as above) — a missing var then fails at module load with a clear `requireEnv` error instead of surfacing as a 404/undefined deep inside a step.
+
+The auth-fixture import path is read from the consumer service's existing pattern (look in `tests/e2e/` for examples). If the consumer has no Playwright tests yet, fall back to `<UI_SERVICE_WORKTREE>/tests/e2e/fixtures/auth.ts`; the fixture stub's `throw` already signals the implementer to wire it up during GREEN, so add no comment.
 
 `requireEnv` is emitted in every spec file rather than imported from a shared util — it costs nothing, makes each spec self-explanatory at code review, and avoids a coupling that breaks when a spec is moved or a util is renamed.
 
@@ -272,7 +264,7 @@ When unsure about a Playwright API (assertion syntax, fixture pattern, locator o
 Report status using one of:
 
 - **DONE** — All `user-flow.md` blocks for `<UI_SERVICE_ID>` produced one or more `*.spec.ts` files. All compile. All fail RED for the right reason (`EXPECT=red`) or all collect under `--list` (`EXPECT=live`). INDEX.md written.
-- **DONE_WITH_CONCERNS** — Tests written, but at least one passed unexpectedly (UI may already exist) OR a test was emitted with a CSS-selector workaround documented in a comment. List concerns.
+- **DONE_WITH_CONCERNS** — Tests written, but at least one passed unexpectedly (UI may already exist) OR a test was emitted with a CSS-selector workaround (recorded in `selectors-used.txt` and listed here, not as a code comment). List concerns.
 - **NEEDS_CONTEXT** — A required spec section is missing or a `data-testid` is undeclared. State exactly what is needed.
 - **BLOCKED** — Cannot make tests compile after 3 attempts; OR (`MODE=bootstrap`) the `@playwright/test` install failed. State what was tried and quote the exact manual install command.
 
