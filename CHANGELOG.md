@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.268] — 2026-06-29
+
+### Fixed
+- Let Codex and OpenCode jlu-update use the updater repo when no shared cache exists.
+- Bootstrap ~/.jelou-spec-plugin automatically when no git checkout is available, then reinstall the current runtime.
+- Preserve the Claude marketplace updater path while covering the new Codex cache fallback in tests.
+
 ## [0.3.267] — 2026-06-29
 
 ### Fixed
