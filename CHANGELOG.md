@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.269] — 2026-06-29
+
+### Added
+- Let `/jlu-map-codebase --root` and `--all` map every project under a root directory with one flat mapper worker per service.
+- Add `jlu-codebase-mapper` for non-interactive batch mapping without nested subagent dispatch.
+- Cover root batch mode contracts, shared-write serialization, and batch interview handling in unit tests.
+
+### Changed
+- Allow the operational analyzer to consume provided or deferred user concerns in root batch mode while preserving interactive interviews for single-service mapping.
+- Document Codex/OpenCode batch dispatch constraints so registry and glossary writes stay centralized in the root orchestrator.
+
 ## [0.3.268] — 2026-06-29
 
 ### Fixed
