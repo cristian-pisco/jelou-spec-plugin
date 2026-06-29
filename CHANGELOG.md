@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.267] — 2026-06-29
+
+### Fixed
+- Treat "use the jlu-* skill" as Codex prompt routing instead of falling back to Claude SKILL.md files.
+- Convert AskUserQuestion references to plain-text questions that must wait for user input under Codex.
+- Preserve context-remaining in the Codex TUI status line during global and project installs.
+
 ## [0.3.266] — 2026-06-28
 
 ### Fixed
