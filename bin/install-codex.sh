@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Jelou Spec Plugin - Codex CLI installer
 # Installs Codex prompts, subagents (TOML), shared workflows, PreToolUse guards,
-# MCP config, and the AGENTS.md rules block.
+# MCP config, TUI status line, and the AGENTS.md rules block.
 #
 # Usage:
 #   bin/install-codex.sh                 # global install into $CODEX_HOME (~/.codex)
@@ -51,6 +51,72 @@ cp "$PLUGIN_DIR/bin/guard-test-commands.mjs" "$BIN_DIR/"
 cp "$PLUGIN_DIR/bin/guard-env-reads.mjs" "$BIN_DIR/"
 echo "Installed Codex prompts, agents, workflows, and guard scripts"
 
+ensure_context_status_line() {
+  local target_config="$1"
+  export TARGET_CONFIG="$target_config"
+  python3 - <<'PY'
+import os
+import re
+from pathlib import Path
+
+path = Path(os.environ["TARGET_CONFIG"])
+text = path.read_text() if path.exists() else ""
+lines = text.splitlines()
+status_line = 'status_line = ["model-with-reasoning", "context-remaining", "current-dir"]'
+
+tui_start = None
+for idx, line in enumerate(lines):
+    if line.strip() == "[tui]":
+        tui_start = idx
+        break
+
+if tui_start is None:
+    updated = text.rstrip()
+    if updated:
+        updated += "\n\n"
+    updated += "[tui]\n" + status_line + "\n"
+    path.write_text(updated)
+    raise SystemExit
+
+tui_end = len(lines)
+for idx in range(tui_start + 1, len(lines)):
+    stripped = lines[idx].strip()
+    if stripped.startswith("[") and stripped.endswith("]"):
+        tui_end = idx
+        break
+
+status_start = None
+for idx in range(tui_start + 1, tui_end):
+    if re.match(r"\s*status_line\s*=", lines[idx]):
+        status_start = idx
+        break
+
+if status_start is None:
+    lines.insert(tui_start + 1, status_line)
+    path.write_text("\n".join(lines) + "\n")
+    raise SystemExit
+
+status_end = status_start
+while status_end + 1 < tui_end and "]" not in lines[status_end]:
+    status_end += 1
+
+block = "\n".join(lines[status_start : status_end + 1])
+items = re.findall(r"['\"]([^'\"]+)['\"]", block)
+
+if "context-remaining" not in items:
+    if items:
+        items.insert(1, "context-remaining")
+    else:
+        items = ["model-with-reasoning", "context-remaining", "current-dir"]
+    indent = re.match(r"(\s*)", lines[status_start]).group(1)
+    replacement = indent + "status_line = [" + ", ".join(f'"{item}"' for item in items) + "]"
+    lines[status_start : status_end + 1] = [replacement]
+    path.write_text("\n".join(lines) + "\n")
+elif text and not text.endswith("\n"):
+    path.write_text(text + "\n")
+PY
+}
+
 # --- hooks.json: resolve guard paths to the install location ---
 cat > "$HOOKS_FILE" <<JSON
 {
@@ -72,6 +138,7 @@ echo "Wrote $HOOKS_FILE"
 # --- config.toml: merge MCP + agent limits idempotently ---
 if [ "$MODE" = "project" ]; then
   cp "$PLUGIN_DIR/.codex/config.toml" "$CONFIG_FILE"
+  ensure_context_status_line "$CONFIG_FILE"
   echo "Wrote project $CONFIG_FILE"
 else
   touch "$CONFIG_FILE"
@@ -95,6 +162,8 @@ TOML
   else
     echo "context7 already configured in $CONFIG_FILE — left untouched"
   fi
+  ensure_context_status_line "$CONFIG_FILE"
+  echo "Ensured Codex TUI status line shows context remaining in $CONFIG_FILE"
   echo
   echo "NOTE: mark this project trusted so its .codex/ layer loads, e.g. in $CONFIG_FILE:"
   echo "  [projects.\"\$(pwd)\"]"

@@ -221,6 +221,7 @@ Codex specifics (see [jelou/references/codex-runtime.md](./jelou/references/code
 - **`question` degrades gracefully**: Codex has no structured question widget, so interview steps are asked as plain-text numbered prompts that wait for your reply.
 - **Subagent depth is capped** (`agents.max_depth = 1`): the orchestrator dispatches workers; workers don't re-dispatch. Parallel fan-out across services uses `agents.max_threads`.
 - **Guards are reused verbatim** via `.codex/hooks.json` — Codex's PreToolUse hook contract (`tool_name`/`tool_input.command` in, `permissionDecision` out) matches Claude Code's exactly.
+- **Context window stays visible**: the Codex installer ensures `tui.status_line` includes `context-remaining`, preserving your existing footer items when possible.
 - **Trust the project** so its `.codex/` layer loads: add `[projects."<abs-path>"] trust_level = "trusted"` to `~/.codex/config.toml`. Note that Codex's project layer cannot set `model`/`sandbox_mode`/`approval_policy` (machine-local by design).
 
 ## Core Commands

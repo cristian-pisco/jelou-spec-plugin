@@ -3,12 +3,15 @@
 # Project `.codex/config.toml` may only set keys that are NOT machine-local.
 # By Codex's design, `model`, `model_provider`, `approval_policy`, and
 # `sandbox_mode` cannot be set from a project layer — they live in the user's
-# `~/.codex/config.toml`. This file ships only the project-safe layers:
-# subagent limits and the hooks feature flag.
+# `~/.codex/config.toml`. This file ships only project-safe layers: UI footer,
+# subagent limits, and the hooks feature flag.
 #
 # This project `.codex/` layer loads only when the user has marked the project
 # trusted: `[projects."<abs-path>"] trust_level = "trusted"` in ~/.codex/config.toml.
 # Hooks themselves are wired in `.codex/hooks.json` (loaded alongside this file).
+
+[tui]
+status_line = ["model-with-reasoning", "context-remaining", "current-dir"]
 
 [agents]
 # The execute-task orchestrator fans out one worker per affected service.
