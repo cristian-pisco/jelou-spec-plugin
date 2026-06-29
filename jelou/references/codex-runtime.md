@@ -58,6 +58,9 @@ Codex differs from Claude Code / OpenCode in two ways that the orchestrator must
 
 When dispatching, give each worker the same focused, single-service scope and the
 subagent summary contract (`jelou/references/subagent-contract.md`) as under any runtime.
+For `/jlu-map-codebase --root`, dispatch one `jlu-codebase-mapper` worker per
+service; do not have those workers invoke `/jlu-map-codebase` or dispatch the
+structural/operational analyzers themselves.
 
 ## Where Codex artifacts live
 

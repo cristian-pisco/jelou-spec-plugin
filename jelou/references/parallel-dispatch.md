@@ -95,11 +95,19 @@ Per-task fan-out points (also gated by `PHASE_PARALLELISM`; sequential by defaul
 
 | Workflow | Step | Agents fanned out |
 |----------|------|-------------------|
-| `map-codebase` | Step 5 | structural + operational analyzers |
+| `map-codebase` | Batch B4 | `jlu-codebase-mapper` per discovered service |
+| `map-codebase` | Step 5 | structural + operational analyzers for a single service |
 | `execute-task` | Step 4c (proposal) | `jlu-proposal-agent` per service (multi-service tasks only) |
 | `new-task` | Step 8 (worktree setup) | per-service git worktree creation |
 
 These were previously dispatched in parallel by precedent. They're now gated by `PHASE_PARALLELISM` so a developer running multiple agents under heavy local load can flip a single env var and get full sequential behavior.
+
+`map-codebase` root batch mode must remain flat: the orchestrator dispatches one
+`jlu-codebase-mapper` per service, and each mapper executes the structural and
+operational analysis inline. A mapper must not invoke `/jlu-map-codebase` and must
+not dispatch the structural/operational analyzers itself. Shared writes such as
+`registry/services.yaml` and glossary merging are serialized by the root orchestrator
+after mapper workers return.
 
 ## Common Mistakes
 

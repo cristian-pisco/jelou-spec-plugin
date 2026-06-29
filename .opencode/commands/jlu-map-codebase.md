@@ -1,5 +1,5 @@
 ---
-description: Analyze service codebase map
+description: Analyze service or workspace-root codebase map
 agent: build
 ---
 Resolve workflow path in this order:
