@@ -15,17 +15,27 @@ describe('Codex jlu command normalization', () => {
     const src = readRepo('AGENTS.md');
     assert.match(src, /Codex command normalization/);
     assert.match(src, /matching Codex prompt/);
+    assert.match(src, /use the jlu-load-context skill/);
+    assert.match(src, /not as a shell executable or a `skills\/\*\/SKILL\.md` skill/);
     assert.match(src, /\.codex\/prompts\/<command>\.md/);
     assert.match(src, /\$CODEX_HOME\/prompts\/<command>\.md/);
+    assert.match(src, /Match command names exactly/);
+    assert.match(src, /Never fuzzy-correct/);
     assert.match(src, /Never search `PATH`/);
+    assert.match(src, /`skills\/\*\/SKILL\.md`/);
   });
 
   test('the Codex runtime reference carries the same fallback', () => {
     const src = readRepo('jelou/references/codex-runtime.md');
     assert.match(src, /## Invocation model/);
     assert.match(src, /bare `jlu-\*` command token/);
-    assert.match(src, /not as a shell command/);
+    assert.match(src, /not as a shell command or a `skills\/\*\/SKILL\.md` skill/);
+    assert.match(src, /use the jlu-load-context skill/);
+    assert.match(src, /Command matching is exact/);
+    assert.match(src, /Never fuzzy-correct/);
     assert.match(src, /Never search\s+`PATH`/);
+    assert.match(src, /Missing `AskUserQuestion` is not a blocker in Codex/);
+    assert.match(src, /Do not continue inline/);
   });
 
   test('README points PATH lookup symptoms to Codex installation', () => {

@@ -39,7 +39,7 @@ If neither resolves, stop with: "Plugin root not found. Ensure jelou-spec-plugin
 
 If the output is `UP_TO_DATE` or `SKIPPED`, continue silently. Update-check failures must never block the workflow.
 
-**ToolSearch fallback.** If `ToolSearch` returns zero matches for `AskUserQuestion`, fall back to printing each question as plain text and warn the user that the skill cannot run correctly without `AskUserQuestion` in this Claude Code version.
+**ToolSearch fallback.** If `ToolSearch` returns zero matches for `AskUserQuestion`, fall back to printing each question as plain text, then stop and wait for the user's answer. Warn the user that this Claude Code version lacks the structured question tool, but never answer a workflow question yourself, continue inline, or narrow the scope from assumptions.
 
 ## Phase 2 — Execute Workflow
 
