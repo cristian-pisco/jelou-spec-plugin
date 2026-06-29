@@ -50,8 +50,10 @@ The installer clones the plugin to `~/.jelou-spec-plugin` (override with `JLU_HO
 ### Updating (any runtime)
 
 Run `/jlu-update` from inside any runtime — Claude Code, Codex, or OpenCode. It pulls the
-shared `~/.jelou-spec-plugin` git cache to the latest release and reinstalls for the runtime
-you ran it from, printing `vOLD -> vNEW`. Pin a version with `/jlu-update --ref v0.3.235`.
+shared `~/.jelou-spec-plugin` git cache to the latest release, or the updater's own git
+checkout when no shared cache exists. If neither exists on Codex/OpenCode, it bootstraps
+`~/.jelou-spec-plugin` automatically before reinstalling for the runtime you ran it from,
+printing `vOLD -> vNEW`. Pin a version with `/jlu-update --ref v0.3.235`.
 
 This is the primary update path for Codex and OpenCode, which have no built-in plugin
 update. Claude Code also supports its native marketplace path (`/plugin update
@@ -250,7 +252,7 @@ OpenCode command definitions live in `.opencode/commands/`. All commands use the
 | `/jlu-production-like [task-slug]` | Run the full production-like QA suite for a task — auto-detects fullstack vs full-backend, boots the dev infra once, runs the UI Playwright suite and the backend unit/integration + Testcontainers backend-E2E phases against the live stack, then tears down. The single QA entry point for a finished task. |
 | `/jlu-trace-report` | Query the workspace trace store: by-agent / by-phase / by-task / trends |
 | `/jlu-investigate "<question>" [--engine perplexity\|fusion]` | Stateful research/decision command. Runs one engine per call (default Perplexity; OpenRouter Fusion via `--engine fusion`), persists each investigation as a resumable Obsidian note (local-file fallback), resumes by topic slug. Not a debugger — use `/jlu-diagnose` for failures. |
-| `/jlu-update [--ref <ref>]` | Update the plugin to the latest version for the current runtime — pulls the shared `~/.jelou-spec-plugin` git cache and reinstalls. Primary update path for Codex and OpenCode. |
+| `/jlu-update [--ref <ref>]` | Update the plugin to the latest version for the current runtime — pulls or bootstraps the shared `~/.jelou-spec-plugin` git cache, or uses the updater's own checkout, and reinstalls. Primary update path for Codex and OpenCode. |
 
 ### Test execution model
 

@@ -47,10 +47,12 @@ Run, passing your host from Step 1 and forwarding a `--ref <ref>` only if the us
 <resolved-script> --host <your-host>
 ```
 
-On Codex/OpenCode the script pulls the cache to the latest release, prints `vOLD -> vNEW`
-(or `Already at vX`), and re-runs `setup --host <your-host>` to refresh that runtime's
-installed files. On Claude Code it drives the plugin CLI and prints the CLI's result
-(e.g. `already at the latest version` or the upgrade), then a restart reminder.
+On Codex/OpenCode the script pulls the shared cache to the latest release, uses the repo
+where the updater script lives when no shared cache exists, or bootstraps the shared cache
+if neither git checkout is available. It prints `vOLD -> vNEW` (or `Already at vX`) and
+re-runs `setup --host <your-host>` to refresh that runtime's installed files. On Claude
+Code it drives the plugin CLI and prints the CLI's result (e.g. `already at the latest
+version` or the upgrade), then a restart reminder.
 
 ## Step 4 — Report
 

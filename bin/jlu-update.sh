@@ -15,6 +15,8 @@ set -euo pipefail
 
 REPO_URL="https://github.com/cristian-pisco/jelou-spec-plugin"
 JLU_HOME="${JLU_HOME:-$HOME/.jelou-spec-plugin}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 REF="main"
 HOST=""
 SOURCE=""
@@ -55,11 +57,38 @@ read_version() {
   grep -o '"version": "[^"]*"' "$1/package.json" 2>/dev/null | head -1 | grep -o '[0-9]*\.[0-9]*\.[0-9]*' || true
 }
 
+require_dep() { command -v "$1" >/dev/null 2>&1 || { echo "Error: $1 is required but not found on PATH." >&2; exit 4; }; }
+
 CACHE=""
 if is_git_repo "$JLU_HOME"; then
   CACHE="$JLU_HOME"
 elif [ -n "$SOURCE" ] && is_git_repo "$SOURCE"; then
   CACHE="$(cd "$SOURCE" && pwd)"
+elif [ "$HOST" != "claude" ] && is_git_repo "$SCRIPT_ROOT"; then
+  CACHE="$SCRIPT_ROOT"
+fi
+
+if [ -z "$CACHE" ] && [ "$HOST" != "claude" ]; then
+  if [ "${JLU_UPDATE_DRYRUN:-0}" = "1" ]; then
+    echo "REF: $REF"
+    echo "CACHE: $JLU_HOME"
+    echo "HOST: $HOST"
+    echo "PLAN: clone $REPO_URL -> $JLU_HOME"
+    echo "PLAN: setup --host $HOST"
+    exit 0
+  fi
+  require_dep git
+  if [ -e "$JLU_HOME" ]; then
+    cat >&2 <<MSG
+No local plugin git cache found, and $JLU_HOME already exists but is not a git checkout.
+Move it aside or set JLU_HOME to an empty path, then run /jlu-update again.
+MSG
+    exit 3
+  fi
+  echo "No local plugin git cache found. Creating $JLU_HOME ..."
+  mkdir -p "$(dirname "$JLU_HOME")"
+  git clone --quiet "$REPO_URL" "$JLU_HOME"
+  CACHE="$JLU_HOME"
 fi
 
 if [ -z "$CACHE" ]; then
@@ -85,12 +114,6 @@ Update from inside Claude Code with:
 MSG
     exit 0
   fi
-  cat >&2 <<MSG
-No local plugin git cache found ($JLU_HOME).
-Reinstall (this also enables future /jlu-update) with:
-  curl -fsSL $REPO_URL/raw/main/install.sh | bash -s -- --host $HOST
-MSG
-  exit 3
 fi
 
 if [ "${JLU_UPDATE_DRYRUN:-0}" = "1" ]; then
@@ -101,7 +124,6 @@ if [ "${JLU_UPDATE_DRYRUN:-0}" = "1" ]; then
   exit 0
 fi
 
-require_dep() { command -v "$1" >/dev/null 2>&1 || { echo "Error: $1 is required but not found on PATH." >&2; exit 4; }; }
 require_dep git
 
 OLD_VERSION="$(read_version "$CACHE")"

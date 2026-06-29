@@ -15,6 +15,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+const ROOT = join(HERE, '..', '..');
 const SCRIPT = join(HERE, '..', '..', 'bin', 'jlu-update.sh');
 
 function makeCache(version = '0.3.240') {
@@ -32,8 +33,18 @@ function makeShim(log) {
   return { dir, bin };
 }
 
-function run(args = [], extraEnv = {}) {
-  return spawnSync('bash', [SCRIPT, ...args], {
+function makeScriptCopy() {
+  const dir = mkdtempSync(join(tmpdir(), 'jlu-script-'));
+  const binDir = join(dir, 'bin');
+  mkdirSync(binDir);
+  const script = join(binDir, 'jlu-update.sh');
+  writeFileSync(script, readFileSync(SCRIPT, 'utf8'));
+  chmodSync(script, 0o755);
+  return { dir, script };
+}
+
+function run(args = [], extraEnv = {}, script = SCRIPT) {
+  return spawnSync('bash', [script, ...args], {
     encoding: 'utf8',
     env: { ...process.env, JLU_UPDATE_DRYRUN: '1', ...extraEnv },
   });
@@ -91,14 +102,29 @@ describe('jlu-update.sh — cache resolution', () => {
       rmSync(cache, { recursive: true, force: true });
     }
   });
+  test('falls back to the script repo when JLU_HOME is not a git repo', () => {
+    const r = run(['--host', 'codex'], { JLU_HOME: '/nonexistent' });
+    assert.equal(r.status, 0);
+    assert.match(r.stdout, new RegExp(`^CACHE: ${ROOT}$`, 'm'));
+    assert.match(r.stdout, /^HOST: codex$/m);
+    assert.match(r.stdout, /^PLAN: setup --host codex$/m);
+  });
 });
 
-describe('jlu-update.sh — no cache guidance', () => {
-  test('codex without a cache exits 3 with the reinstall one-liner', () => {
-    const r = run(['--host', 'codex'], { JLU_HOME: '/nonexistent' });
-    assert.equal(r.status, 3);
-    assert.match(r.stderr, /No local plugin git cache/);
-    assert.match(r.stderr, /install\.sh \| bash -s -- --host codex/);
+describe('jlu-update.sh — cache bootstrap', () => {
+  test('codex without any git cache plans a cache clone and reinstall', () => {
+    const copy = makeScriptCopy();
+    const cache = join(copy.dir, 'cache');
+    try {
+      const r = run(['--host', 'codex'], { JLU_HOME: cache }, copy.script);
+      assert.equal(r.status, 0);
+      assert.match(r.stdout, new RegExp(`^CACHE: ${cache}$`, 'm'));
+      assert.match(r.stdout, /^HOST: codex$/m);
+      assert.match(r.stdout, /PLAN: clone https:\/\/github\.com\/cristian-pisco\/jelou-spec-plugin -> /);
+      assert.match(r.stdout, /^PLAN: setup --host codex$/m);
+    } finally {
+      rmSync(copy.dir, { recursive: true, force: true });
+    }
   });
 });
 
