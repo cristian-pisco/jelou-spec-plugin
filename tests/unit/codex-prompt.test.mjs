@@ -40,12 +40,14 @@ describe('renderCodexPrompt', () => {
     const out = renderCodexPrompt('new-task', fm);
     assert.match(out, /jelou\/workflows\/new-task\.md/);
     assert.match(out, /\$ARGUMENTS/);
+    assert.match(out, /Do not read or execute `skills\/new-task\/SKILL\.md`/);
   });
 
   test('encodes the Codex runtime contract (question/task, jlu- prefix)', () => {
     const out = renderCodexPrompt('new-task', fm);
     assert.match(out, /Runtime contract \(Codex\)/);
-    assert.match(out, /`question` →/);
+    assert.match(out, /`question` \/ `AskUserQuestion` →/);
+    assert.match(out, /continue inline/);
     assert.match(out, /`task` →/);
     assert.match(out, /max_depth = 1/);
     assert.match(out, /`jlu-` prefix/);

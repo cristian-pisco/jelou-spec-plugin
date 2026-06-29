@@ -11,19 +11,24 @@ Use slash prompts when possible: `/jlu-load-context`, `/jlu-new-task`, and the
 other generated entries in `prompts/jlu-*.md`.
 
 If the user enters a bare `jlu-*` command token in Codex, treat it as a prompt
-invocation, not as a shell command. Resolve `.codex/prompts/<command>.md` first,
-then `$CODEX_HOME/prompts/<command>.md` (`$CODEX_HOME` defaults to `~/.codex`),
-read the prompt, and execute it with the remaining text as arguments. If neither
-prompt exists, report that the Codex prompt is not installed and ask the user to
-run `./setup --host codex` from `jelou-spec-plugin` or
-`bin/install-codex.sh <project>` for a project-local install. Never search
-`PATH`, package scripts, or repo helpers for `jlu-*`.
+invocation, not as a shell command or a `skills/*/SKILL.md` skill. This includes
+phrases like "run jlu-load-context" or "use the jlu-load-context skill". Resolve
+`.codex/prompts/<command>.md` first, then `$CODEX_HOME/prompts/<command>.md`
+(`$CODEX_HOME` defaults to `~/.codex`), read the prompt, and execute it with the
+remaining text as arguments.
+
+Command matching is exact. Never fuzzy-correct, complete, or infer misspelled
+`jlu-*` command names. If neither prompt exists, report that the Codex prompt is
+not installed and ask the user to run `./setup --host codex` from
+`jelou-spec-plugin` or `bin/install-codex.sh <project>` for a project-local
+install. Never search `PATH`, package scripts, repo helpers, or `skills/*/SKILL.md`
+for `jlu-*`.
 
 ## Tool / verb mapping
 
 | Workflow says | Codex behavior | Notes |
 |---------------|----------------|-------|
-| `question` | Ask the user in plain text and **wait** | Codex has no structured question tool (no `AskUserQuestion`/OpenCode `question` equivalent). Present prescribed options as a numbered list. |
+| `question` / `AskUserQuestion` | Ask the user in plain text and **wait** | Codex has no structured question tool (no `AskUserQuestion`/OpenCode `question` equivalent). Present prescribed options as a numbered list. |
 | `task` | Dispatch a Codex subagent, or run inline | Use a `worker`/`explorer` built-in or a named `jlu-*` agent from `.codex/agents/`. If dispatch is unavailable, do the step inline. |
 
 ## The `question` gap — read this
@@ -35,6 +40,9 @@ question or a confirmation:
 - **Never skip a prescribed question.** The interview-driven workflows (`new-task`,
   `refine-task`, `extend-phase`, `council`) depend on real user input. Fabricating
   answers produces wrong specs.
+- **Missing `AskUserQuestion` is not a blocker in Codex.** Convert it to a
+  plain-text question and wait. Do not continue inline, pick defaults, or scope
+  the task yourself because the structured tool is unavailable.
 - Present options as `1) … 2) … 3) …` and tell the user to reply with a number or free text.
 
 ## Subagent dispatch constraints
@@ -70,7 +78,8 @@ The prompts and agents are **generated mirrors** — edit `skills/<skill>/SKILL.
 - Resolve the workflow global-first (`$CODEX_HOME/jelou/workflows/<skill>.md`), then
   project-local (`jelou/workflows/<skill>.md`). Read exactly one.
 - Always reference commands with the `jlu-` prefix (never `jlu:`).
-- Bare `jlu-*` input is a prompt invocation fallback. It is not a `PATH` lookup.
+- Bare `jlu-*` input is a prompt invocation fallback. It is not a `PATH` lookup,
+  skill lookup, or fuzzy command lookup.
 - Phase 1 portability: skip ClickUp/Slack execution steps if encountered; report them as deferred.
 
 ## Hooks caveat
