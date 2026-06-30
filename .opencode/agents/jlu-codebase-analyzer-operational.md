@@ -15,7 +15,8 @@ Explore the given service's codebase to understand its coding conventions, exter
 - Conventions come from reading code, not from best-practice guides. If the team uses `snake_case`, document `snake_case` — don't recommend `camelCase`.
 - Concerns must have evidence: a file path, a line number, a dependency version. "Could be a problem" is not a concern.
 - Integration docs must point to actual code locations, not inferred from package names alone.
-- The user interview is mandatory for CONCERNS.md — tribal knowledge isn't in the code.
+- The user interview is mandatory for CONCERNS.md in normal single-service mode — tribal knowledge isn't in the code.
+- In root batch mode only, the orchestrator may pass `INTERVIEW_MODE=provided` or `INTERVIEW_MODE=deferred`. Respect that mode instead of asking per-service questions.
 
 **Self-test:** *Could someone verify every concern and convention by reading the files I reference?* If not, strengthen the evidence or remove the claim.
 
@@ -25,6 +26,8 @@ You receive from the orchestrator:
 - **Service ID**: the identifier for the service
 - **Source code path**: absolute path to the service's source code (`SOURCE_ROOT`)
 - **Output directory**: absolute path where you write the 3 output files (`OUTPUT_DIR`)
+- **INTERVIEW_MODE** (optional): `interactive` (default), `provided`, or `deferred`
+- **USER_CONCERNS** (optional): consolidated concerns supplied by the user before a batch run
 
 All analysis commands and searches must be scoped to `SOURCE_ROOT`. Never scan from `/` or from an unspecified working directory.
 
@@ -40,7 +43,10 @@ All analysis commands and searches must be scoped to `SOURCE_ROOT`. Never scan f
    - Check test framework config for test path patterns, tags, or markers (Jest config `projects` or `testMatch`, pytest markers, Go build tags)
    - Check package.json scripts for separate test commands (e.g., `test:unit`, `test:integration`, `test:e2e`)
    - Determine the command to run only specific test files (framework-dependent: Jest accepts file paths as args, pytest accepts file paths, Go uses `-run` flag)
-5. **Interview the user**: Use AskUserQuestion to gather tribal knowledge about concerns not visible in code (mandatory for CONCERNS.md).
+5. **Interview or consume batch concerns**:
+   - `INTERVIEW_MODE=interactive` or omitted: use AskUserQuestion to gather tribal knowledge about concerns not visible in code.
+   - `INTERVIEW_MODE=provided`: do not ask questions; incorporate `USER_CONCERNS` as user-sourced concerns where relevant.
+   - `INTERVIEW_MODE=deferred`: do not ask questions; write `User interview deferred by root batch mode` in CONCERNS.md.
 
 ## Output 1: CONVENTIONS.md
 
@@ -147,7 +153,7 @@ APM, error tracking, logging services, metrics collection.
 
 ## Output 3: CONCERNS.md
 
-Write to `<OUTPUT_DIR>/CONCERNS.md`. This output requires both automated analysis AND a user interview.
+Write to `<OUTPUT_DIR>/CONCERNS.md`. This output requires automated analysis plus user context. In normal single-service mode that context comes from a user interview. In root batch mode, it may come from `USER_CONCERNS` or be explicitly deferred.
 
 ### Phase 1: Automated Analysis (do this FIRST, silently)
 
@@ -160,9 +166,13 @@ Scan the codebase for:
 - **Dead code**: Exported functions/classes with no importers, unused variables, commented-out code blocks
 - **Performance patterns**: N+1 queries, unbounded queries, synchronous operations that should be async
 
-### Phase 2: User Interview (mandatory)
+### Phase 2: User Context
 
-After completing automated analysis, use AskUserQuestion to interview the user. **NEVER output questions as plain text.**
+After completing automated analysis:
+
+- If `INTERVIEW_MODE=interactive` or omitted, use AskUserQuestion to interview the user. **NEVER output questions as plain text.**
+- If `INTERVIEW_MODE=provided`, do not ask questions. Use `USER_CONCERNS` as user-sourced evidence and label those rows with `Source` = `user`.
+- If `INTERVIEW_MODE=deferred`, do not ask questions. Add a note near the top of CONCERNS.md: `User interview deferred by root batch mode`; do not fabricate user-sourced rows.
 
 **Round 1**: Present a brief summary of your top findings from Phase 1, then ask:
 - Are there known scaling limits or capacity concerns?

@@ -1,7 +1,7 @@
 ---
 name: map-codebase
-description: Use before starting work on a new service — analyzes architecture, stack, conventions, integrations, and concerns. Triggers: "map codebase", "analyze the service", "understand the code", "explore the repo"
-argument-hint: "[service-id]"
+description: Use before starting work on a new service or workspace root — analyzes architecture, stack, conventions, integrations, and concerns. Triggers: "map codebase", "analyze the service", "understand the code", "explore the repo"
+argument-hint: "[service-id | --root [root-path] | --all]"
 allowed-tools:
   - Read
   - Write
@@ -45,6 +45,6 @@ If the output is `UP_TO_DATE` or `SKIPPED`, continue silently. Update-check fail
 
 ## Phase 2 — Execute Workflow
 
-Follow the workflow file you just read. Do NOT spawn a sub-agent — execute the workflow yourself in this session. Running inline keeps `jlu-codebase-analyzer-operational` (which interviews the user via `AskUserQuestion` per Decision #30) at L2 instead of L3, which is required for `AskUserQuestion` to work.
+Follow the workflow file you just read. Do not delegate the entire workflow to a sub-agent — execute orchestration yourself in this session. When the workflow explicitly says `task`, dispatch the named worker agent. Running orchestration inline keeps single-service `jlu-codebase-analyzer-operational` (which interviews the user via `AskUserQuestion` per Decision #30) at L2 instead of L3, while root batch mode still fans out its non-interactive mapper workers.
 
 The argument is `{argument}`. The plugin root is the path resolved above. The current working directory is `{cwd}`.

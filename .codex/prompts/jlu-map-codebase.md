@@ -1,6 +1,6 @@
 ---
-description: "Use before starting work on a new service — analyzes architecture, stack, conventions, integrations, and concerns."
-argument-hint: "[service-id]"
+description: "Use before starting work on a new service or workspace root — analyzes architecture, stack, conventions, integrations, and concerns."
+argument-hint: "[service-id | --root [root-path] | --all]"
 ---
 Resolve the workflow file in this order, and use the first one that exists:
 1. `$CODEX_HOME/jelou/workflows/map-codebase.md` (global install; `$CODEX_HOME` defaults to `~/.codex` — resolve it to an absolute path first).

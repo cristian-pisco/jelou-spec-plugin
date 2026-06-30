@@ -1,11 +1,217 @@
 # Workflow: map-codebase
 
-> Orchestrator workflow for `/jlu-map-codebase [service-id]`
-> Maps a service's codebase using 2 parallel research agents.
+> Orchestrator workflow for `/jlu-map-codebase [service-id | --root [root-path] | --all]`
+> Maps one service's codebase, or maps every project under a root directory using
+> one parallel mapper agent per project.
 
 > **Tool requirement**: All prompts, questions, and confirmations to the user in this workflow MUST use `question`. Never output questions as plain text.
 
 ---
+
+## Step 0 — Select Run Mode
+
+1. Parse command arguments before resolving a service:
+   - `--root`, `--root <path>`, `--root=<path>`, `--all`, or `--batch` set `RUN_MODE` = `batch`.
+   - `--defer-interview` sets `BATCH_INTERVIEW_MODE` = `deferred`.
+   - `--interview` sets `BATCH_INTERVIEW_MODE` = `provided`.
+   - A non-flag argument without a batch flag remains the single-service `service-id`.
+2. If no service-id and no batch flag were provided, auto-detect batch mode only when all are true:
+   - The current directory has no `.spec-workspace.json`.
+   - The current directory does not pass the repository-root gate from Step 4.
+   - At least one immediate child directory passes the repository-root gate from Step 4.
+3. For batch mode:
+   - Set `ROOT_PATH` to the explicit `--root` path, or to the current directory when omitted.
+   - Execute **Batch Root Mode** below.
+   - Stop before **Single-Service Mode**. Do not fall through into Step 1.
+4. For single-service mode, continue to Step 1 unchanged.
+
+---
+
+## Batch Root Mode — Map All Projects Under a Root
+
+Batch mode is intentionally flat: the orchestrator dispatches one `jlu-codebase-mapper`
+worker per service. A mapper worker must not invoke `/jlu-map-codebase` and must not
+dispatch structural, operational, glossary, or any other subagents. This keeps Codex
+within `agents.max_depth = 1` and keeps OpenCode/Claude Code behavior equivalent.
+
+### B1. Resolve Root and Workspace
+
+1. Normalize `ROOT_PATH` to an absolute path.
+2. Error gate: stop if `ROOT_PATH` does not exist, is not a directory, resolves to `/`,
+   or is empty.
+3. Resolve one shared `WORKSPACE_PATH` for the whole root:
+   a. If `<ROOT_PATH>/.spec-workspace.json` exists, read its `workspace` field and
+      resolve it relative to `ROOT_PATH`.
+   b. Else if `<ROOT_PATH>/.spec-workspace/` exists, use it.
+   c. Else search parent directories up to 5 levels for `.spec-workspace/`.
+   d. Else create `<ROOT_PATH>/.spec-workspace/` with:
+      ```
+      .spec-workspace/
+        registry/
+          services.yaml
+        principles/
+          ENGINEERING_PRINCIPLES.md
+        services/
+        specs/
+      ```
+      Then create `<ROOT_PATH>/.spec-workspace.json` pointing to `.spec-workspace/`.
+4. Root mode owns this single shared workspace. Do not let child project
+   `.spec-workspace.json` files redirect individual workers to other workspaces.
+
+**Store**: `ROOT_PATH`, `WORKSPACE_PATH`
+
+### B2. Discover Projects
+
+Build `SERVICE_TARGETS`, a list of `{service-id, SOURCE_ROOT}`:
+
+1. Read `<WORKSPACE_PATH>/registry/services.yaml` if it exists.
+   - For each service entry with a `path`, resolve the path relative to `WORKSPACE_PATH`.
+   - Keep entries whose resolved path exists and passes the repository-root gate from Step 4.
+   - Preserve the registry `id` as `service-id`.
+   - Record missing or invalid registry paths as skipped targets for the final report.
+2. Scan immediate child directories of `ROOT_PATH`.
+   - Exclude `.spec-workspace`, `.git`, `node_modules`, `vendor`, `dist`, `build`,
+     `.cache`, `.next`, `coverage`, and hidden directories unless they are already in
+     `services.yaml`.
+   - A child is a project when it passes the repository-root gate from Step 4.
+   - Derive `service-id` from the directory basename by trimming whitespace, replacing
+     whitespace with `-`, and removing characters outside `[A-Za-z0-9._-]`.
+3. De-duplicate by absolute `SOURCE_ROOT`. Registry entries win over scanned entries.
+4. Error gate: if two targets resolve to the same `service-id` but different paths,
+   ask the user to provide unique service IDs before dispatching any workers.
+5. Error gate: if `SERVICE_TARGETS` is empty, stop with:
+   > "No projects found under `<ROOT_PATH>`. Run `/jlu-map-codebase <service-id>` from a service repo or pass `/jlu-map-codebase --root <path>`."
+
+**Store**: `SERVICE_TARGETS`
+
+### B3. Resolve Batch Interview Mode
+
+Per-service interviews are not run in batch mode because parallel workers must not
+compete for user prompts.
+
+1. If `--interview` was provided, ask one consolidated `question` before dispatch:
+   > "Batch mapping will not ask per-service questions. Share any known scaling limits, planned deprecations, fragile areas, or security concerns that should be included across these services. Reply `none` to continue without user concerns."
+   Store the answer as `USER_CONCERNS` and set `BATCH_INTERVIEW_MODE` = `provided`.
+2. If `--defer-interview` was provided, set `BATCH_INTERVIEW_MODE` = `deferred`.
+3. If neither flag was provided, default `BATCH_INTERVIEW_MODE` = `deferred` and
+   `USER_CONCERNS` = `none provided`.
+
+Workers must write `CONCERNS.md` with code-derived findings plus either the provided
+batch concerns or a clear note: `User interview deferred by root batch mode`.
+
+**Store**: `BATCH_INTERVIEW_MODE`, `USER_CONCERNS`
+
+### B4. Dispatch Service Mappers
+
+1. Set `BATCH_PARALLELISM` from `JLU_PHASE_PARALLELISM` (default `1`), clamped to
+   `1..len(SERVICE_TARGETS)`.
+2. For each target, compute `OUTPUT_DIR` =
+   `<WORKSPACE_PATH>/services/<service-id>/codebase/` and create it if missing.
+3. Dispatch `jlu-codebase-mapper` (model: **sonnet**) once per target.
+   - If `BATCH_PARALLELISM > 1`, dispatch up to `BATCH_PARALLELISM` mapper workers
+     in a single orchestrator message. If there are more targets than the cap,
+     process chunks sequentially.
+   - If `BATCH_PARALLELISM = 1`, run targets sequentially in discovery order.
+4. Each mapper prompt must include:
+   ```
+   Service ID: <service-id>
+   SOURCE_ROOT: <absolute source root>
+   OUTPUT_DIR: <absolute output directory>
+   WORKSPACE_PATH: <absolute workspace path>
+   PLUGIN_ROOT: <plugin-root>
+   INTERVIEW_MODE: <BATCH_INTERVIEW_MODE>
+   USER_CONCERNS: <USER_CONCERNS or "none provided">
+   Safety: Scope all file operations and Bash commands to SOURCE_ROOT for reads, and to OUTPUT_DIR for writes. Never scan /, /proc, /sys, /dev, /run, or home-level container storage paths.
+   Batch constraints:
+   - Do not invoke /jlu-map-codebase or any jlu-* prompt/command.
+   - Do not dispatch subagents or use task/Agent.
+   - Do not write registry/services.yaml, glossary files, or files outside OUTPUT_DIR.
+   - Run the single-service mapping body inline: incremental detection, document generation/update, consistency check, and .last-analysis.json marker.
+   - Read <PLUGIN_ROOT>/agents/jlu-codebase-analyzer-structural.md and <PLUGIN_ROOT>/agents/jlu-codebase-analyzer-operational.md, then apply those analyzer instructions inline.
+   - Do not ask the user questions. Use USER_CONCERNS or mark the user interview deferred.
+   - Emit the standard subagent JSON summary with artifacts as absolute output doc paths.
+   ```
+
+**Store**: `MAPPER_RESULTS`
+
+### B5. Validate Mapper Results
+
+After each chunk returns:
+
+1. For every successful mapper, verify all 6 files exist and are non-empty:
+   - `<OUTPUT_DIR>/ARCHITECTURE.md`
+   - `<OUTPUT_DIR>/STACK.md`
+   - `<OUTPUT_DIR>/STRUCTURE.md`
+   - `<OUTPUT_DIR>/CONVENTIONS.md`
+   - `<OUTPUT_DIR>/INTEGRATIONS.md`
+   - `<OUTPUT_DIR>/CONCERNS.md`
+2. If a mapper reports `blocked` or `failed`, keep processing other chunks but record
+   the service as failed in the final report.
+3. If validation fails for a service, mark that service failed and do not register it.
+
+**Store**: `SUCCESSFUL_SERVICES`, `FAILED_SERVICES`, `SKIPPED_SERVICES`
+
+### B6. Update Registry Once
+
+Registry writes are shared state. Do this only in the root orchestrator after mapper
+workers finish.
+
+1. Read `<WORKSPACE_PATH>/registry/services.yaml`. If missing, create it with
+   `services: []`.
+2. For each successful service:
+   - If an entry exists and its `path` resolves to a different path, update the path.
+   - If an entry exists and its path is correct, leave it unchanged.
+   - If no entry exists, append one using the same stack/path/docker derivation rules
+     from Step 7c.
+3. Write `services.yaml` once after applying all service changes.
+4. Record `REGISTRY_ACTION[service-id]` as `registered`, `path-updated`,
+   `already-registered`, or `skipped (<reason>)`.
+
+### B7. Glossary Extraction and Merge Once
+
+> Fail-soft: glossary extraction must never block the mapped codebase docs.
+
+1. If there are no successful services, skip glossary extraction.
+2. Create `<WORKSPACE_PATH>/glossary/` and `<WORKSPACE_PATH>/glossary/.tmp/` if missing.
+3. Dispatch one `jlu-glossary-extractor` per successful service, capped by
+   `BATCH_PARALLELISM`, with each extractor writing a unique fragment:
+   `<WORKSPACE_PATH>/glossary/.tmp/<service-id>.candidates.json`.
+4. After all extractor workers return, run the merger exactly once:
+   ```bash
+   node <plugin-root>/bin/glossary-merge.mjs --glossary-dir <WORKSPACE_PATH>/glossary
+   ```
+5. If any extractor or the merger fails, record a warning and continue.
+
+### B8. Batch Report Summary
+
+Present a final summary:
+
+```
+## Map Codebase Batch Complete — <ROOT_PATH>
+
+### Services
+| Service | Source | Result | Registry | Notes |
+|---|---|---|---|---|
+| <service-id> | <SOURCE_ROOT> | mapped / skipped / failed | <REGISTRY_ACTION> | <notes> |
+
+### Batch
+- Services discovered: <N>
+- Services mapped: <N>
+- Services failed: <N>
+- Parallelism: <BATCH_PARALLELISM>
+- Interview mode: <BATCH_INTERVIEW_MODE>
+
+### Glossary
+- New candidate terms: <added count from merger output, or "skipped">
+- Skipped: <skipped count from merger output, or "skipped">
+- Run `/jlu-ubiquitous-language` to curate the workspace glossary.
+```
+
+Then stop.
+
+---
+
+## Single-Service Mode
 
 ## Step 1 — Resolve Service ID
 
