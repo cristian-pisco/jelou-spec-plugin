@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.270] — 2026-07-01
+
+### Fixed
+- right-size jlu-dev-diagnoser model tier to sonnet (council audit)
+
 ## [0.3.269] — 2026-06-29
 
 ### Added

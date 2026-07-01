@@ -1,7 +1,7 @@
 ---
 name: jlu-dev-diagnoser
 description: Analyzes a failing service in the JLU dev environment from a TMUX pane capture + recent daemon events, and returns a structured diagnosis with a proposed fix that runs in the right context (host or container).
-model: opus
+model: sonnet
 tools:
   - Read
   - Grep
