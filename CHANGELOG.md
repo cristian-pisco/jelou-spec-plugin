@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.271] — 2026-07-07
+
+### Fixed
+- set ClickUp start/due dates and require Cliente in task-clickup sync
+
 ## [0.3.270] — 2026-07-01
 
 ### Fixed

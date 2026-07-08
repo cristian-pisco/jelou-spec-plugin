@@ -72,7 +72,7 @@ describe('task-clickup workflow — Step 5 time_estimate + OKR injection', () =>
   });
 
   test('5d defines a verification protocol with fallback', () => {
-    assert.match(wf, /5d\.\s+Verify time_estimate landed/);
+    assert.match(wf, /5d\.\s+Verify time_estimate/);
     assert.match(wf, /clickup_get_task/);
     assert.match(wf, /60000/);
     assert.match(wf, /fallback/i);
@@ -143,7 +143,7 @@ describe('task-clickup workflow — extended field coverage', () => {
     assert.match(wf, /\*\*Estado del diseño\*\*[\s\S]{0,300}Solicitado/);
     assert.match(wf, /\*\*Proyecto\*\*[\s\S]{0,400}affected services/);
     assert.match(wf, /\*\*QA Asignado\*\*[\s\S]{0,200}Opt-in/);
-    assert.match(wf, /\*\*Cliente\*\*[\s\S]{0,200}Opt-in/);
+    assert.match(wf, /\*\*Cliente\*\*[\s\S]{0,120}Required — never skip/);
   });
 
   test('Step 5e example payload includes the OKR (Tech) labels field and the extended fields', () => {
@@ -180,6 +180,44 @@ describe('task-clickup workflow — extended field coverage', () => {
 
   test('Rules require OKR in both description and the OKR (Tech) custom field', () => {
     assert.match(wf, /OKR is mandatory\*\* in \*\*both\*\* the macro task description \*\*and\*\* the\s+`OKR \(Tech\)` custom field/);
+  });
+});
+
+describe('task-clickup workflow — task dates + required Cliente', () => {
+  const wf = read('jelou/workflows/task-clickup.md');
+
+  test('Step 4e defines built-in start_date/due_date derivation', () => {
+    assert.match(wf, /Step 4e — Task dates/);
+    assert.match(wf, /start_date`\*\* = today/);
+    assert.match(wf, /due_date`\*\* = end of the destination sprint/);
+    assert.match(wf, /date -d 'today 00:00' \+%s%3N/);
+  });
+
+  test('Step 4e keeps built-in dates distinct from human-curated custom fields', () => {
+    assert.match(wf, /distinct from the human-curated custom date\s+fields/);
+  });
+
+  test('create + update calls pass start_date and due_date', () => {
+    assert.match(wf, /clickup_create_task[\s\S]{0,500}start_date:[\s\S]{0,120}due_date:/);
+    assert.match(wf, /clickup_update_task[\s\S]{0,500}start_date:[\s\S]{0,120}due_date:/);
+  });
+
+  test('subtasks inherit the parent sprint window', () => {
+    assert.match(wf, /Subtasks also inherit the parent's built-in `start_date` \/ `due_date`/);
+  });
+
+  test('Step 8 persists start_date_ms and due_date_ms', () => {
+    assert.match(wf, /"start_date_ms":\s*"<milliseconds>"/);
+    assert.match(wf, /"due_date_ms":\s*"<milliseconds>"/);
+  });
+
+  test('Rules mark start_date/due_date and Cliente as REQUIRED', () => {
+    assert.match(wf, /`start_date` and `due_date` are REQUIRED/);
+    assert.match(wf, /Cliente is REQUIRED — never skip it/);
+  });
+
+  test('Step 3 mapping table marks Cliente as required (not opt-in)', () => {
+    assert.match(wf, /Client \| Cliente \| drop_down \| yes \|/);
   });
 });
 
