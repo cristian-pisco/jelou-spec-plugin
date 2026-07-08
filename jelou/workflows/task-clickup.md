@@ -78,7 +78,7 @@ If MCP is already configured, this may be a transient ClickUp API error. Try re-
 | Design State | Estado del diseño | drop_down | conditional | Auto-set to "Solicitado" only when `Needs Design = Si`. |
 | Project Area | Proyecto | drop_down | conditional | Inferred from affected services / SPEC context. Skip if no confident match. |
 | QA Assignee | QA Asignado | users | opt-in | Set only when a QA assignee is provided (e.g., on hand-off to QA). |
-| Client | Cliente | drop_down | opt-in | Set only when the task is tied to a specific customer. |
+| Client | Cliente | drop_down | yes | Infer from SPEC / task context; if no confident match, ASK the user — never skip (indispensable). See Step 4d. |
 
 3. Persist discovered field IDs in `CLICKUP_TASK.json` under `field_mappings`
    for future runs. For `OKR (Tech)`, also persist the resolved KR-code → option
@@ -188,7 +188,34 @@ the user as natural language (e.g., "1d 4h").
 | **Estado del diseño** | Conditional. If `Necesita Diseno = Si` and no prior design state is recorded → set to `Solicitado`. If `Necesita Diseno = No` → leave empty. On subsequent updates, do **not** overwrite an existing value (humans curate this field). |
 | **Proyecto** | Inferred from the affected services in TASKS.md or the SPEC.md context. Use the following best-effort match against the `Proyecto` field options: service `chatbot-server` / runtime concerns → `Brain`; UI editor work → `Builder` (or `Builder (Legacy)` if pre-V3); marketplace features → `Marketplace`; module-specific tasks (e.g., "Nodo API", "AI Agent") → the matching option. If no confident match (single clear hit), skip — do not guess. |
 | **QA Asignado** | Opt-in. Only set when a QA assignee is explicitly provided (via question on hand-off, or via a `qa_assignee` default in `CLICKUP_TASK.json`). Same dual-write contract as Responsable is **not** needed — QA Asignado is the custom field only, not the top-level `assignees`. |
-| **Cliente** | Opt-in. Only set when the task is explicitly tied to a customer (mentioned in SPEC.md or asked via question). Resolve by case-insensitive name match against the `Cliente` field options. Skip on ambiguity. |
+| **Cliente** | **Required — never skip.** Try to infer from SPEC.md / task context by case-insensitive name match against the `Cliente` field options. If there is no confident single match, ASK the user via question (present the option labels) and persist the choice in `CLICKUP_TASK.json` `defaults.cliente` for future runs. Only fall back to the `Cliente interno` option if the user explicitly declines to pick one. |
+
+### Step 4e — Task dates (start_date / due_date, REQUIRED)
+
+Set the two **built-in** ClickUp task dates — the top-level `start_date` and
+`due_date`, both Unix time in **milliseconds** (integers). These are the
+task's schedule fields and are distinct from the human-curated custom date
+fields `Fecha límite modificada` / `Fecha de entrega al Cliente`, which are
+NEVER auto-set.
+
+- **`start_date`** = today at local midnight (the day work starts). Compute
+  it deterministically with Bash: `date -d 'today 00:00' +%s%3N` (epoch ms).
+- **`due_date`** = end of the destination sprint (that day at 23:59).
+  Resolve the sprint end date in this order:
+  1. The target list's own `due_date` from the `clickup_get_list` response
+     (Step 3), when present — use it as-is.
+  2. Else parse it from the sprint list name — sprint lists are named like
+     `Sprint 60 (6/22 - 7/5)`; take the **second** date, interpret its
+     month/day in the current year (roll to next year only if the end month
+     is earlier than the start month), then compute ms with Bash:
+     `date -d '<YYYY-MM-DD> 23:59' +%s%3N`.
+  3. Else fall back to `start_date` + the Step 4c `time_estimate` rounded up
+     to whole days, so `due_date` is never empty.
+- Set `start_date_time` and `due_date_time` to `false` (date-only, no
+  time-of-day component).
+- On **update** of an existing macro task, do NOT overwrite a `start_date`
+  already persisted from a prior sync (`macroTask.start_date_ms` in
+  `CLICKUP_TASK.json`); only refresh `due_date` when the sprint changed.
 
 ## Step 5 — Create or Update Macro Task
 
@@ -224,6 +251,10 @@ clickup_create_task(
   priority: <1-4>,
   task_type: "<inferred type>",
   time_estimate: <milliseconds-from-step-4c>,
+  start_date: <ms-from-step-4e>,       # built-in task date (today)
+  due_date: <ms-from-step-4e>,         # built-in task date (sprint end)
+  start_date_time: false,
+  due_date_time: false,
   points: <story-points-from-step-4b>,
   custom_fields: [<all mapped fields from Step 3-4>]
 )
@@ -263,6 +294,10 @@ custom-field writes to a separate endpoint
 clickup_update_task(
   task_id: "<macro-task-id>",
   time_estimate: <milliseconds-from-step-4c>,
+  start_date: <ms-from-step-4e>,        # omit if macroTask.start_date_ms already set
+  due_date: <ms-from-step-4e>,          # refresh when the sprint changed
+  start_date_time: false,
+  due_date_time: false,
   points: <story-points-from-step-4b>,
   status: "<mapped-status>",
   assignees: { "add": [<user-id-int>], "rem": [] },   # NOT a flat array on Update
@@ -324,10 +359,20 @@ whose value the inference step in Step 4d resolved as empty. Never write
 `Fecha límite modificada` or `Fecha de entrega al Cliente` — those are
 human-curated.
 
-### 5d. Verify time_estimate landed
+### 5d. Verify time_estimate, dates, and Cliente landed
 
 Immediately after create or update, call `clickup_get_task(task_id=<id>)` and
 read the returned `time_estimate` field.
+
+On that **same** re-fetch, also confirm the required Step-4e/Cliente fields
+landed:
+
+- `returned.start_date` and `returned.due_date` are both non-null. If either
+  is missing, re-send it once via `clickup_update_task`, re-fetch, and — if
+  still missing — record it in `syncHistory.details` and warn in Step 9.
+- The `Cliente` custom field is set (non-empty) on the returned task. If it
+  is empty, resolve it per Step 4d (infer or ASK) and set it before
+  continuing — the sync must not finish with an empty Cliente.
 
 - If `returned.time_estimate == sent.time_estimate` **and**
   `returned.time_estimate >= 3,600,000` (≥ 1 h) → continue.
@@ -402,6 +447,10 @@ For each user story file in `uh/`:
      markdown_description: "<story body>",
      assignees: [<user-id-int>],
      time_estimate: <subtask-ms-from-step-4c>,
+     start_date: <parent-start_date-ms>,   # inherit the parent's sprint window
+     due_date: <parent-due_date-ms>,
+     start_date_time: false,
+     due_date_time: false,
      points: <subtask-points-from-step-4b>,
      custom_fields: [<inherited fields, including Responsable {add, rem}>]
    )
@@ -415,6 +464,8 @@ For each user story file in `uh/`:
    not as a custom field — same value as the parent (or a proportional
    fraction for subtasks). For the OKR (Tech) labels field, reuse the
    parent's resolved option UUID — do **not** re-resolve from list options.
+   Subtasks also inherit the parent's built-in `start_date` / `due_date`
+   (same sprint window) — pass the parent's persisted ms values directly.
 4. **Update existing**: Use `clickup_update_task` with `time_estimate` and any changed fields in a single call.
 5. **Verify** `time_estimate` on every subtask using the same protocol as
    Step 5d (call `clickup_get_task`, fall back to `clickup_update_task` once,
@@ -455,13 +506,16 @@ Write the updated sync state:
     "equipo": "<value>",
     "responsable": "<value>",
     "solicitante": "<value>",
-    "qa_assignee": "<value-or-null>"
+    "qa_assignee": "<value-or-null>",
+    "cliente": "<value-or-null>"
   },
   "macroTask": {
     "id": "<clickup-task-id>",
     "url": "<clickup-url>",
     "status": "<current-status>",
     "time_estimate_ms": "<milliseconds>",
+    "start_date_ms": "<milliseconds>",
+    "due_date_ms": "<milliseconds>",
     "lastSynced": "<ISO-8601>"
   },
   "subtasks": {
@@ -469,6 +523,8 @@ Write the updated sync state:
       "id": "<clickup-task-id>",
       "url": "<clickup-url>",
       "time_estimate_ms": "<milliseconds>",
+      "start_date_ms": "<milliseconds>",
+      "due_date_ms": "<milliseconds>",
       "lastSynced": "<ISO-8601>"
     }
   },
@@ -499,6 +555,8 @@ Present the sync results to the user:
 - Story Points: <SP> (Talla: <talla>)
 - OKR: KR <n.n> — <description>
 - Time Estimate: <human-readable> (sent: <ms>, verified: <ms>)
+- Dates: <start YYYY-MM-DD> → <due YYYY-MM-DD> (sprint end)
+- Client: <Cliente option chosen, or "asked user">
 - Status: <clickup-status>
 
 ### Subtasks
@@ -533,6 +591,13 @@ Present the sync results to the user:
   matching the KR-code prefix on the field's option labels (see Step 5e and
   `references/okr-mapping.md`). Subtasks inherit the parent's resolved
   option UUID and do not repeat the markdown OKR block.
+- **`start_date` and `due_date` are REQUIRED** on every macro task and
+  subtask (Step 4e): `start_date` = today, `due_date` = destination sprint
+  end. These are the **built-in** task dates — set them on create/update.
+  Do not confuse them with the human-curated custom fields below.
+- **Cliente is REQUIRED — never skip it.** Infer from SPEC / task context;
+  if there is no confident match, ASK the user via question and persist the
+  choice in `defaults.cliente`. Never leave the task without a Cliente.
 - **Never auto-set human-curated fields**: `Fecha límite modificada` and
   `Fecha de entrega al Cliente` are owned by people, not the workflow. Leave
   them untouched even if they appear in the list's field definitions.
