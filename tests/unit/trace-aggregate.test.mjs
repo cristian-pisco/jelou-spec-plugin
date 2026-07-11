@@ -10,6 +10,8 @@ import {
   groupByPhase,
   percentile,
   retryRate,
+  retriedFraction,
+  wilsonLowerBound,
   pairSpans,
 } from '../../bin/lib/trace/aggregate.mjs';
 import { readSpans } from '../../bin/lib/trace/reader.mjs';
@@ -115,5 +117,41 @@ describe('retryRate(agentPairs)', () => {
       { end: { attrs: { retry_count: 2 } } },
     ];
     assert.equal(retryRate(pairs), 1);
+  });
+});
+
+describe('wilsonLowerBound(successes, n, z)', () => {
+  test('returns 0 when n is 0', () => {
+    assert.equal(wilsonLowerBound(0, 0), 0);
+  });
+
+  test('6 of 10 lands above 0.20 and below the 0.6 point estimate', () => {
+    const lb = wilsonLowerBound(6, 10);
+    assert.ok(lb > 0.20);
+    assert.ok(lb < 0.6);
+  });
+
+  test('clamps to the [0, 1] range', () => {
+    assert.equal(wilsonLowerBound(0, 5), 0);
+    assert.ok(wilsonLowerBound(5, 5) <= 1);
+  });
+});
+
+describe('retriedFraction(agentPairs)', () => {
+  test('counts pairs whose retry_count > 0', () => {
+    const pairs = [
+      { end: { attrs: { retry_count: 0 } } },
+      { end: { attrs: { retry_count: 2 } } },
+      { end: { attrs: { retry_count: 1 } } },
+      { end: { attrs: {} } },
+    ];
+    const { k, n, fraction } = retriedFraction(pairs);
+    assert.equal(n, 4);
+    assert.equal(k, 2);
+    assert.equal(fraction, 0.5);
+  });
+
+  test('empty list yields a zero fraction', () => {
+    assert.deepEqual(retriedFraction([]), { k: 0, n: 0, fraction: 0 });
   });
 });

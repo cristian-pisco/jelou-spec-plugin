@@ -93,6 +93,63 @@ describe('bin/trace-end-span.mjs', () => {
     assert.deepEqual(end.attrs.artifacts, ['src/a.ts', 'src/b.ts', 'tests/a.test.ts']);
   });
 
+  test('captures token counts under gen_ai.usage.* attr keys', () => {
+    writeFileSync(file, startSpanLine('S1', 'T1', 'agent_dispatch', 'task',
+      { agent_role: 'implementer', attrs: { model_used: 'sonnet' } }) + '\n');
+    const r = run(['--span', 'S1', '--status', 'ok',
+                   '--tokens-in', '12000', '--tokens-out', '3000',
+                   '--reasoning-tokens', '500', '--cache-read-tokens', '8000']);
+    assert.equal(r.status, 0, r.stderr);
+    const end = JSON.parse(readFileSync(file, 'utf8').split('\n').filter(Boolean)[1]);
+    assert.equal(end.attrs['gen_ai.usage.input_tokens'], 12000);
+    assert.equal(end.attrs['gen_ai.usage.output_tokens'], 3000);
+    assert.equal(end.attrs['gen_ai.usage.reasoning_tokens'], 500);
+    assert.equal(end.attrs['gen_ai.usage.cache_read_tokens'], 8000);
+  });
+
+  test('--cost sets cost_usd explicitly (overrides derivation)', () => {
+    writeFileSync(file, startSpanLine('S1', 'T1', 'agent_dispatch', 'task',
+      { agent_role: 'implementer', attrs: { model_used: 'opus' } }) + '\n');
+    const r = run(['--span', 'S1', '--status', 'ok',
+                   '--tokens-in', '1000000', '--tokens-out', '1000000', '--cost', '0.42']);
+    assert.equal(r.status, 0);
+    const end = JSON.parse(readFileSync(file, 'utf8').split('\n').filter(Boolean)[1]);
+    assert.equal(end.attrs.cost_usd, 0.42);
+  });
+
+  test('derives cost_usd from tokens + start-span model_used when --cost absent', () => {
+    writeFileSync(file, startSpanLine('S1', 'T1', 'agent_dispatch', 'task',
+      { agent_role: 'implementer', attrs: { model_used: 'sonnet' } }) + '\n');
+    const r = run(['--span', 'S1', '--status', 'ok',
+                   '--tokens-in', '1000000', '--tokens-out', '1000000']);
+    assert.equal(r.status, 0);
+    const end = JSON.parse(readFileSync(file, 'utf8').split('\n').filter(Boolean)[1]);
+    assert.equal(end.attrs.cost_usd, 18);
+  });
+
+  test('no cost_usd when model unknown and no --cost given', () => {
+    writeFileSync(file, startSpanLine('S1', 'T1', 'agent_dispatch', 'task',
+      { agent_role: 'implementer' }) + '\n');
+    const r = run(['--span', 'S1', '--status', 'ok',
+                   '--tokens-in', '1000', '--tokens-out', '1000']);
+    assert.equal(r.status, 0);
+    const end = JSON.parse(readFileSync(file, 'utf8').split('\n').filter(Boolean)[1]);
+    assert.ok(!('cost_usd' in end.attrs), 'cost_usd should be absent when tier unknown');
+  });
+
+  test('--success pass@k passes through; invalid --success exits 1', () => {
+    writeFileSync(file, startSpanLine('S1', 'T1', 'phase', 'task') + '\n');
+    const ok = run(['--span', 'S1', '--status', 'ok', '--success', 'pass@k', '--attempts', '3']);
+    assert.equal(ok.status, 0);
+    const end = JSON.parse(readFileSync(file, 'utf8').split('\n').filter(Boolean)[1]);
+    assert.equal(end.attrs.success, 'pass@k');
+    assert.equal(end.attrs.attempts_to_green, 3);
+
+    const bad = run(['--span', 'S1', '--status', 'ok', '--success', 'maybe']);
+    assert.equal(bad.status, 1);
+    assert.match(bad.stderr, /--success must be one of/i);
+  });
+
   test('--span missing: exit 1', () => {
     const r = run(['--status', 'ok']);
     assert.equal(r.status, 1);

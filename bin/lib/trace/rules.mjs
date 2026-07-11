@@ -12,7 +12,8 @@
 // Cooldown: 7 days per (rule_id, signature) pair. Both approved and declined
 // history entries start a cooldown.
 
-import { groupByAgent, groupByPhase, percentile, retryRate } from './aggregate.mjs';
+import { groupByAgent, groupByPhase, percentile, retryRate, retriedFraction, wilsonLowerBound } from './aggregate.mjs';
+import { MIN_SAMPLE } from './schema.mjs';
 
 const N_WINDOW = 10;
 const PATTERN_LOOKBACK_MS = 30 * 24 * 60 * 60 * 1000;
@@ -32,9 +33,11 @@ export const RULES = [
       const byAgent = groupByAgent(pairs);
       for (const [agent_role, agentPairs] of Object.entries(byAgent)) {
         const recent = agentPairs.slice(-N_WINDOW);
-        if (recent.length < N_WINDOW) continue;
+        if (recent.length < MIN_SAMPLE) continue;
+        const { k, n } = retriedFraction(recent);
+        const lb = wilsonLowerBound(k, n);
+        if (lb <= RETRY_RATE_THRESHOLD) continue;
         const rate = retryRate(recent);
-        if (rate <= RETRY_RATE_THRESHOLD) continue;
         const signatures = recent
           .map(p => p.end?.attrs?.error_signature)
           .filter(Boolean);
@@ -43,6 +46,8 @@ export const RULES = [
           signature: agent_role,
           evidence: {
             retry_rate: rate,
+            retried_fraction: k / n,
+            wilson_lower_bound: Number(lb.toFixed(3)),
             dispatches_checked: recent.length,
             error_signatures: signatures,
           },
@@ -119,7 +124,7 @@ export const RULES = [
       const findings = [];
       for (const p of pairs) {
         if (!p.end) continue;
-        if (p.end.status !== 'blocked' && p.end.status !== 'failed') continue;
+        if (p.end.status !== 'blocked' && p.end.status !== 'failed' && p.end.status !== 'orphaned') continue;
         const ts = new Date(p.end.ts).getTime();
         if (ts < cutoff) continue;
         const sig = p.end?.attrs?.error_signature ||

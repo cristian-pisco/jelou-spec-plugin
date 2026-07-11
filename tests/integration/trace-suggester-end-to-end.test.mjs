@@ -69,8 +69,8 @@ function seedRuns(file, count, retryRateTarget) {
 }
 
 describe('suggester end-to-end against synthetic trace store', () => {
-  test('15 runs with 30% retry rate emits bump_model_tier for implementer', () => {
-    seedRuns(traceFile, 15, 0.30);
+  test('15 runs with 60% retry rate emits bump_model_tier for implementer', () => {
+    seedRuns(traceFile, 15, 0.60);
     const r = spawnSync('node', [SUGGEST], {
       encoding: 'utf8',
       env: {
@@ -82,7 +82,21 @@ describe('suggester end-to-end against synthetic trace store', () => {
     assert.equal(r.status, 0, r.stderr);
     assert.match(r.stdout, /SUGGEST \[bump_model_tier\]/);
     assert.match(r.stdout, /implementer/);
-    assert.match(r.stdout, /30%/);
+    assert.match(r.stdout, /60%/);
+  });
+
+  test('15 runs with 30% retry rate does NOT emit bump_model_tier', () => {
+    seedRuns(traceFile, 15, 0.30);
+    const r = spawnSync('node', [SUGGEST], {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        TRACE_FILE: traceFile,
+        TRACE_SUGGEST_HISTORY: historyFile,
+      },
+    });
+    assert.equal(r.status, 0);
+    assert.doesNotMatch(r.stdout, /bump_model_tier/);
   });
 
   test('15 runs with 10% retry rate does NOT emit bump_model_tier', () => {
@@ -100,7 +114,7 @@ describe('suggester end-to-end against synthetic trace store', () => {
   });
 
   test('cooldown: declining a suggestion suppresses it on the next run', () => {
-    seedRuns(traceFile, 15, 0.30);
+    seedRuns(traceFile, 15, 0.60);
     // First run — should emit
     let r = spawnSync('node', [SUGGEST], {
       encoding: 'utf8',

@@ -15,9 +15,7 @@ const MIN = 60 * 1000;
 function emit(obj) { lines.push(JSON.stringify(obj)); }
 
 // --- 10 implementer dispatches in the last hour (rule a) ---
-// retry_count pattern: [1,1,1,0,0,0,0,0,0,0] → rate = 0.30 (>0.20)
-// First 3 carry error_signature DEAD_BEEF (rule b)
-const retries = [1, 1, 1, 0, 0, 0, 0, 0, 0, 0];
+const retries = [1, 1, 1, 1, 1, 1, 0, 0, 0, 0];
 for (let i = 0; i < 10; i++) {
   const start = NOW - (60 - i * 6) * MIN; // spread within last hour
   const end = start + 30000;

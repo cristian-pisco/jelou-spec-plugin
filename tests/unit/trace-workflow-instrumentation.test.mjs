@@ -148,6 +148,27 @@ describe('close-task workflow — trace instrumentation', () => {
   });
 });
 
+describe('execute-task — Stage-1 deterministic quality signals', () => {
+  const wf = read('jelou/workflows/execute-task.md');
+
+  test('dispatch close captures best-effort token usage', () => {
+    assert.match(wf, /--tokens-in /, 'dispatch end-span must pass best-effort --tokens-in');
+    assert.match(wf, /--tokens-out /);
+    assert.match(wf, /TOKENS_IN|TOKENS_OUT/);
+  });
+
+  test('phase close records the pass@1/pass@k success signal', () => {
+    assert.match(wf, /--success /, 'phase end-span must pass --success');
+    assert.match(wf, /PHASE_SUCCESS/);
+    assert.match(wf, /pass@1[\s\S]*?pass@k/);
+  });
+
+  test('phase close records attempts_to_green', () => {
+    assert.match(wf, /--attempts /);
+    assert.match(wf, /PHASE_ATTEMPTS/);
+  });
+});
+
 describe('suggester wired into Step 0.5 of heavy workflows (Phase 3)', () => {
   const heavy = ['execute-task', 'refine-task', 'ship'];
   for (const name of heavy) {
