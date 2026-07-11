@@ -89,6 +89,25 @@ export function retryRate(agentPairs) {
   return total / agentPairs.length;
 }
 
+export function wilsonLowerBound(successes, n, z = 1.96) {
+  if (n === 0) return 0;
+  const p = successes / n;
+  const numerator = p + (z * z) / (2 * n) -
+    z * Math.sqrt((p * (1 - p)) / n + (z * z) / (4 * n * n));
+  const denominator = 1 + (z * z) / n;
+  const lb = numerator / denominator;
+  return Math.min(1, Math.max(0, lb));
+}
+
+export function retriedFraction(agentPairs) {
+  const n = agentPairs.length;
+  let k = 0;
+  for (const p of agentPairs) {
+    if ((p.end?.attrs?.retry_count ?? 0) > 0) k += 1;
+  }
+  return { k, n, fraction: n ? k / n : 0 };
+}
+
 export function rollupCost(pairs) {
   const by_agent = {};
   const by_model = {};

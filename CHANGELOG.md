@@ -5,6 +5,9 @@
 ### Added
 - trace deterministic eval signals — token/cost, task-success (pass@1/pass@k), OpenInference export
 
+### Changed
+- trace rules: gate `bump_model_tier` behind the Wilson score lower bound of the binomial retried-fraction (with a `MIN_SAMPLE` floor) so it no longer fires on thin evidence; flag `orphaned` spans as an interrupted-trajectory signal in `immediate_flag`
+
 ## [0.3.272] — 2026-07-11
 
 ### Added

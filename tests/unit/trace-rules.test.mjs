@@ -25,6 +25,17 @@ function loadPairs() {
   return pairSpans(spans);
 }
 
+function makeDispatches(role, retryCounts) {
+  const ts = new Date().toISOString();
+  return retryCounts.map((rc, i) => ({
+    start: { event_kind: 'span_start', span_id: `${role}${i}`, trace_id: `T_${role}${i}`,
+             name: 'agent_dispatch', agent_role: role, scope: 'task', ts },
+    end: { event_kind: 'span_end', span_id: `${role}${i}`, status: 'ok',
+           ts, attrs: { retry_count: rc } },
+    duration_ms: 1000,
+  }));
+}
+
 describe('RULES constants', () => {
   test('exposes four rules with stable ids', () => {
     assert.deepEqual(
@@ -47,29 +58,41 @@ describe('RULES constants', () => {
 });
 
 describe('rule: bump_model_tier', () => {
-  test('triggers when retry_rate > 0.20 over last 10 dispatches', () => {
+  test('triggers when the Wilson lower bound clears the threshold', () => {
     const pairs = loadPairs();
     const findings = evaluate(pairs).filter(f => f.rule_id === 'bump_model_tier');
     assert.ok(findings.length >= 1);
     const f = findings.find(x => x.signature === 'implementer');
     assert.ok(f);
     assert.ok(f.evidence.retry_rate > 0.20);
+    assert.ok(f.evidence.wilson_lower_bound > 0.20);
+    assert.equal(f.evidence.retried_fraction, 0.6);
     assert.equal(f.evidence.dispatches_checked, 10);
   });
 
-  test('does not trigger when retry_rate <= 0.20', () => {
-    const pairs = [];
-    for (let i = 0; i < 10; i++) {
-      pairs.push({
-        start: { event_kind: 'span_start', span_id: `S${i}`, trace_id: `T${i}`,
-                 name: 'agent_dispatch', agent_role: 'cleaner', scope: 'task',
-                 ts: new Date().toISOString() },
-        end: { event_kind: 'span_end', span_id: `S${i}`, status: 'ok',
-               ts: new Date().toISOString(),
-               attrs: { retry_count: 0 } },
-        duration_ms: 1000,
-      });
-    }
+  test('does not trigger when nothing retried', () => {
+    const pairs = makeDispatches('cleaner', [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    const findings = evaluate(pairs).filter(f => f.rule_id === 'bump_model_tier');
+    assert.equal(findings.length, 0);
+  });
+
+  test('does not trigger at 3/10 retried (Wilson lower bound below threshold)', () => {
+    const pairs = makeDispatches('gamma', [1, 1, 1, 0, 0, 0, 0, 0, 0, 0]);
+    const findings = evaluate(pairs).filter(f => f.rule_id === 'bump_model_tier');
+    assert.equal(findings.length, 0);
+  });
+
+  test('triggers at 6/10 retried (Wilson lower bound above threshold)', () => {
+    const pairs = makeDispatches('delta', [1, 1, 1, 1, 1, 1, 0, 0, 0, 0]);
+    const findings = evaluate(pairs).filter(f => f.rule_id === 'bump_model_tier');
+    const f = findings.find(x => x.signature === 'delta');
+    assert.ok(f);
+    assert.ok(f.evidence.wilson_lower_bound > 0.20);
+    assert.equal(f.evidence.retried_fraction, 0.6);
+  });
+
+  test('does not trigger with fewer than MIN_SAMPLE dispatches', () => {
+    const pairs = makeDispatches('epsilon', [1, 1, 1, 1, 1]);
     const findings = evaluate(pairs).filter(f => f.rule_id === 'bump_model_tier');
     assert.equal(findings.length, 0);
   });
@@ -99,6 +122,20 @@ describe('rule: immediate_flag', () => {
     const pairs = loadPairs();
     const findings = evaluate(pairs).filter(f => f.rule_id === 'immediate_flag');
     assert.ok(findings.length >= 1);
+  });
+
+  test('triggers for an orphaned span in last 24h', () => {
+    const ts = new Date().toISOString();
+    const pairs = [{
+      start: { event_kind: 'span_start', span_id: 'ORPH', trace_id: 'T_ORPH',
+               name: 'agent_dispatch', agent_role: 'implementer', scope: 'task', ts },
+      end: { event_kind: 'span_end', span_id: 'ORPH', status: 'orphaned',
+             ts, attrs: { error_signature: 'ORPHAN_SIG' } },
+      duration_ms: 1000,
+    }];
+    const findings = evaluate(pairs).filter(f => f.rule_id === 'immediate_flag');
+    assert.equal(findings.length, 1);
+    assert.equal(findings[0].evidence.status, 'orphaned');
   });
 
   test('does not trigger for blocked spans older than 24h', () => {
