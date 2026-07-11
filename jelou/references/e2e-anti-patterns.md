@@ -4,8 +4,9 @@
 
 ## 1. Testing the mock, not the code
 
+**❌ Anti-pattern — asserts the mock, not the UI:**
+
 ```ts
-// ❌
 const mockClick = jest.fn();
 render(<Button onClick={mockClick} />);
 fireEvent.click(screen.getByRole('button'));
@@ -14,8 +15,9 @@ expect(mockClick).toHaveBeenCalled();
 
 This proves nothing about the user's experience. It proves the test wired up its own mock correctly.
 
+**✅ Instead — assert what the user sees:**
+
 ```ts
-// ✅
 await page.goto('/products');
 await page.getByRole('button', { name: 'Add to cart' }).click();
 await expect(page.getByRole('status')).toHaveText('Added to cart');
@@ -25,22 +27,25 @@ E2E tests assert what the user sees, never what an internal handler was called w
 
 ## 2. Coupling to implementation details
 
+**❌ Anti-pattern — couples to framework class names:**
+
 ```ts
-// ❌
 await page.locator('div.MuiButton-root.MuiButton-containedPrimary').click();
 ```
 
 This breaks when MUI publishes a new version, or when the team migrates to Tailwind, or when someone refactors the className. The user doesn't see "MuiButton-root"; they see a "Submit" button.
 
+**✅ Instead — locate by role and visible name:**
+
 ```ts
-// ✅
 await page.getByRole('button', { name: 'Submit' }).click();
 ```
 
 ## 3. Arbitrary sleeps
 
+**❌ Anti-pattern — fixed sleep after the click:**
+
 ```ts
-// ❌
 await page.click('button.submit');
 await page.waitForTimeout(2000);
 expect(await page.textContent('h1')).toBe('Success');
@@ -48,8 +53,9 @@ expect(await page.textContent('h1')).toBe('Success');
 
 Two seconds may be enough today, not enough on the CI runner under load, and pure flake on the engineer's underpowered laptop. Hides real timing bugs by making them probabilistic.
 
+**✅ Instead — assert on the visible outcome:**
+
 ```ts
-// ✅
 await page.getByRole('button', { name: 'Submit' }).click();
 await expect(page.getByRole('heading', { name: 'Success' })).toBeVisible();
 ```
@@ -58,16 +64,18 @@ await expect(page.getByRole('heading', { name: 'Success' })).toBeVisible();
 
 ## 4. Direct database queries in tests
 
+**❌ Anti-pattern — query the database directly:**
+
 ```ts
-// ❌
 const result = await db.query('SELECT status FROM subscriptions WHERE user_id = ?', [userId]);
 expect(result.rows[0].status).toBe('canceled');
 ```
 
 Couples tests to schema. When the team migrates `subscriptions` to a new table, every test breaks for a reason the spec author never agreed to.
 
+**✅ Instead — assert against the API contract:**
+
 ```ts
-// ✅
 const response = await request.get(`/api/users/${userId}/subscription`);
 expect(await response.json()).toMatchObject({ status: 'canceled' });
 ```
@@ -76,8 +84,9 @@ Tests assert against the contract, not the implementation.
 
 ## 5. Conditional assertions ("if this then that")
 
+**❌ Anti-pattern — assertion guarded by a condition:**
+
 ```ts
-// ❌
 if (await page.getByText('Welcome').isVisible()) {
   await page.getByRole('button', { name: 'Continue' }).click();
 }
@@ -86,8 +95,9 @@ expect(await page.title()).toBe('Dashboard');
 
 The test passes whether the welcome banner appeared or not. It's a test of the test runner, not the application.
 
+**✅ Instead — pick one branch and assert it explicitly:**
+
 ```ts
-// ✅ — pick one branch and assert it explicitly
 await expect(page.getByText('Welcome')).toBeVisible();
 await page.getByRole('button', { name: 'Continue' }).click();
 await expect(page).toHaveTitle('Dashboard');
@@ -97,29 +107,32 @@ If both branches need testing, write two `test()` blocks with different `beforeE
 
 ## 6. Test order dependency
 
+**❌ Anti-pattern — tests depend on execution order:**
+
 ```ts
-// ❌
-test('first, create the org', async () => { /* creates an org */ });
-test('then, invite a member', async () => { /* assumes the org exists */ });
+test('first, create the org', async () => {});
+test('then, invite a member', async () => {});
 ```
 
 Playwright doesn't guarantee test order across files, and `--workers > 1` deliberately runs them in parallel. Order-dependent tests pass on the author's laptop and fail in CI.
 
+**✅ Instead — each test seeds its own state:**
+
 ```ts
-// ✅
 test.beforeEach(async ({ request }) => {
   await request.post('/api/test/seed', { data: { org: { name: 'Acme' } } });
 });
 
-test('invites a member', async () => { /* ... */ });
+test('invites a member', async () => {});
 ```
 
 Each test sets up its own state.
 
 ## 7. Asserting on transient toasts without auto-wait
 
+**❌ Anti-pattern — sleep then read the toast:**
+
 ```ts
-// ❌
 await page.click('button.save');
 await page.waitForTimeout(500);
 expect(await page.textContent('.toast')).toBe('Saved');
@@ -127,23 +140,28 @@ expect(await page.textContent('.toast')).toBe('Saved');
 
 Toasts often auto-dismiss after 3 seconds. By the time the assertion runs, the toast might be gone.
 
+**✅ Instead — assert on a role=status region that auto-waits:**
+
 ```ts
-// ✅
 await page.getByRole('button', { name: 'Save' }).click();
-await expect(page.getByRole('status')).toHaveText('Saved');  // role=status auto-waits and is announced to screen readers
+await expect(page.getByRole('status')).toHaveText('Saved');
 ```
+
+The `role=status` region auto-waits and is announced to screen readers.
 
 ## 8. `data-testid` for things that have a stable role
 
+**❌ Anti-pattern — testid for the only Submit button on the page:**
+
 ```ts
-// ❌
-await page.getByTestId('submit-btn').click();  // when there's exactly one Submit button on the page
+await page.getByTestId('submit-btn').click();
 ```
 
 `data-testid` is a fallback. Reach for it only when role-based locators truly can't disambiguate (multiple identical roles, third-party widgets without stable semantics, custom components that the implementer agreed to maintain).
 
+**✅ Instead — the role locator disambiguates:**
+
 ```ts
-// ✅
 await page.getByRole('button', { name: 'Submit' }).click();
 ```
 
@@ -151,8 +169,9 @@ If you do need a testid, declare it in `selectors.md` first. The writer refuses 
 
 ## 9. Snapshot testing the entire DOM
 
+**❌ Anti-pattern — snapshot the whole DOM:**
+
 ```ts
-// ❌
 expect(await page.content()).toMatchSnapshot();
 ```
 
@@ -164,8 +183,9 @@ Use snapshots for narrow, intentional invariants only — and prefer accessibili
 
 By default, console errors during a test do not fail the test. They should.
 
+**✅ Instead — fail the test on uncaught errors:**
+
 ```ts
-// ✅
 test.beforeEach(async ({ page }) => {
   page.on('pageerror', (err) => {
     throw new Error(`Uncaught: ${err.message}`);
@@ -179,8 +199,9 @@ The fix-loop reads console errors from the trace. Tests that allow uncaught erro
 
 Playwright lets you intercept any request and return a fabricated response:
 
+**❌ Anti-pattern — fabricate the API response:**
+
 ```ts
-// ❌
 await page.route('**/api/orders', route =>
   route.fulfill({ status: 200, body: JSON.stringify({ id: 1, total: 99 }) }),
 );
@@ -192,8 +213,9 @@ This proves the UI can render whatever the test made up — not what the real ba
 
 For business endpoints — anything the user-facing flow exercises — the test must hit the real service. Either boot the upstream via `Service Boot Order` or point at a real sandbox via `.env`. See `e2e-environment.md`.
 
+**✅ Instead — hit the real service booted in Service Boot Order:**
+
 ```ts
-// ✅ — hit the real service booted in Service Boot Order
 await page.goto('/orders');
 await expect(page.getByRole('list', { name: 'Your orders' })).toBeVisible();
 ```
@@ -202,8 +224,9 @@ await expect(page.getByRole('list', { name: 'Your orders' })).toBeVisible();
 
 `page.route()` is allowed only for analytics beacons, telemetry pixels, and marketing widgets that aren't part of the flow under test. Even then, prefer `route.abort()` over `route.fulfill()` — the goal is to keep the noise out of the network log, not to fabricate a response:
 
+**✅ Instead — drop analytics so it doesn't pollute the network log:**
+
 ```ts
-// ✅ — drop analytics so it doesn't pollute the network log
 await page.route('**/segment.io/**', route => route.abort());
 await page.route('**/google-analytics.com/**', route => route.abort());
 ```

@@ -23,7 +23,7 @@ You write tests. You do NOT write UI implementation code. Ever.
 
 **First, read `jelou/references/subagent-base.md`** — shared operational rules (context discipline, Docker policy, three-strike rule, code style, engineering principles, reporting).
 
-**Generated tests carry no comments.** The **No line-by-line comments** rule applies in full to every `*.spec.ts` you emit, and E2E tests get the *strict* reading: no step-narration comments (`// Step 1.`, `// Auth precondition`), no generated file header, and **no selector-provenance comments**. A role-based locator with an accessible name and a `requireEnv`-loaded value is self-documenting; if a line seems to need a comment, rename the locator or extract a helper instead. Selector provenance lives ONLY in `e2e/selectors-used.txt` — the orchestrator reads that file, never a code comment. The single exception is a non-obvious *why* note in scaffolding config (e.g. the `workers: 1` rationale in `playwright.config.ts`); test bodies stay comment-free.
+**Generated tests carry no comments.** The **No line-by-line comments** rule applies in full to every `*.spec.ts` you emit, and E2E tests get the *strict* reading: no step-narration comments (`// Step 1.`, `// Auth precondition`), no generated file header, and **no selector-provenance comments**. A role-based locator with an accessible name and a `requireEnv`-loaded value is self-documenting; if a line seems to need a comment, rename the locator or extract a helper instead. Selector provenance lives ONLY in `e2e/selectors-used.txt` — the orchestrator reads that file, never a code comment. This applies to the scaffolding config too: `playwright.config.ts` keeps `workers: 1` (dev machines run the stack alongside E2E and uncapped workers have frozen hosts; `/jlu-ui-qa-run` raises it per-run via `--workers`) and `trace: 'retain-on-failure'` (the fix-loop needs a trace on the *first* failing run, which `on-first-retry` misses at `retries=0`) — but that rationale stays here in your instructions and NEVER appears as a comment in the emitted file. Config and test bodies alike ship comment-free.
 
 ## Behavioral Guardrails
 
@@ -111,11 +111,9 @@ When dispatched with `MODE=bootstrap`, the UI service worktree has no Playwright
    export default defineConfig({
      testDir: '.',
      fullyParallel: false,
-     workers: 1, // dev machines run the dev stack alongside E2E; /jlu-ui-qa-run raises this per-run via --workers
+     workers: 1,
      use: {
        baseURL: requireEnv('E2E_BASE_URL'),
-       // retain-on-failure: traces exist on the FIRST failing run. on-first-retry
-       // records nothing when retries=0 (the default here) and the fix-loop goes blind.
        trace: 'retain-on-failure',
      },
    });

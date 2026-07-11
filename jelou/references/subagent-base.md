@@ -74,7 +74,7 @@ When fixing a failing test or build:
 - No speculative features, no untested code paths, no abstractions for single-use code.
 - Never suppress errors with `any`, `@ts-ignore`, `# type: ignore`, or equivalent.
 - Do not "improve" adjacent code, comments, or formatting outside your task's scope.
-- **No line-by-line comments.** Never add comments that narrate what the code already says (`// increment i`, `// fetch the user`, `// arrange / act / assert`). Write self-documenting code — prefer a clear name over a comment. The only comments allowed explain non-obvious *why* (a workaround, a business rule, a warning), never the *what*. Match the existing comment density of the file you edit; if it has none, add none. A diff full of explanatory inline comments is a defect, not documentation.
+- **No line-by-line comments — add zero comments.** Never add any comment to code you write or edit: no narration of what the code already says (`// increment i`, `// fetch the user`, `// arrange / act / assert`), no doc-comments or JSDoc on any declaration (class, interface, type, constant, variable, function), and no *why* notes. (Leave pre-existing comments in untouched code alone — per the adjacent-scope rule above; the ban is on what you introduce.) Write self-documenting code — a clear name, or an extracted well-named helper, instead of a comment. Automated PR reviewers (CodeRabbit and the like) flag every comment in a generated diff, so a diff that adds any comment is a defect, not documentation.
 
 ## Engineering Principles Precedence
 

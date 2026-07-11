@@ -43,13 +43,14 @@ Codex has no structured question tool and limits subagent nesting. See
 
 ## Code style — no line-by-line comments
 
-When writing or editing code anywhere (this repo, generated PRs, agent output), do NOT
-add line-by-line comments that narrate what the code already says (`// increment i`,
-`// return the user`, `// arrange / act / assert`). Write self-documenting code: clear
-names over comments. The only comments allowed explain non-obvious *why* — a workaround,
-a business rule, a warning — never the *what*. Match the existing comment density of the
-file being edited; if a file has no comments, add none. This applies to commits and PRs:
-a diff full of explanatory inline comments is a defect, not documentation.
+When writing or editing code anywhere (this repo, generated PRs, agent output), write
+**zero comments**. Do NOT add line-by-line comments that narrate what the code already
+says (`// increment i`, `// return the user`, `// arrange / act / assert`), do NOT add
+doc-comments or JSDoc on any declaration (class, interface, type, constant, variable,
+function), and do NOT add *why* notes. Write self-documenting code: clear names, or an
+extracted well-named helper, over comments. Automated PR reviewers (CodeRabbit and the
+like) flag every comment in a generated diff, so a diff that adds any comment is a
+defect, not documentation.
 
 Subagents inherit this rule from `jelou/references/subagent-base.md` (the canonical
 source); this section is the runtime-contract restatement so Codex and OpenCode carry it

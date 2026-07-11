@@ -18,14 +18,18 @@ RED → GREEN → REFACTOR → (repeat)
 
 Test names and assertions describe what the system **does** for a caller, not how it does it internally.
 
+**Bad — tests how (implementation detail):**
+
 ```typescript
-// BAD — tests how (implementation detail)
 it("should call userRepository.findById with the correct ID", async () => {
   await service.getUser("user-123");
   expect(userRepository.findById).toHaveBeenCalledWith("user-123");
 });
+```
 
-// GOOD — tests what (observable behavior)
+**Good — tests what (observable behavior):**
+
+```typescript
 it("should return the user when a valid ID is provided", async () => {
   const user = await service.getUser("user-123");
   expect(user).toEqual({ id: "user-123", name: "Alice" });
@@ -86,22 +90,26 @@ This is about the *interface offered to callers*, not internal structure. Inside
 If a piece of code is hard to test, the test is telling you the *interface* needs work — not that the test needs more elaborate mocking.
 
 1. **Accept dependencies, don't create them.**
-   ```typescript
-   // Testable
-   function processOrder(order, paymentGateway) { /* ... */ }
 
-   // Hard to test
+   **Testable — dependency is injected:**
+   ```typescript
+   function processOrder(order, paymentGateway) {}
+   ```
+   **Hard to test — dependency is constructed internally:**
+   ```typescript
    function processOrder(order) {
      const gateway = new StripeGateway();
    }
    ```
 
 2. **Return results, don't produce side effects (when possible).**
-   ```typescript
-   // Testable
-   function calculateDiscount(cart): Discount { /* ... */ }
 
-   // Hard to test
+   **Testable — returns a result:**
+   ```typescript
+   function calculateDiscount(cart): Discount {}
+   ```
+   **Hard to test — mutates its input:**
+   ```typescript
    function applyDiscount(cart): void { cart.total -= discount; }
    ```
 
@@ -121,15 +129,19 @@ Mock only at *system boundaries*:
 
 If your code is hard to mock at the boundary, that's an interface-design problem (§5). Prefer SDK-style interfaces (one specific function per external operation) over generic fetchers (one method with a switch on endpoint):
 
+**Good — each function is independently mockable:**
+
 ```typescript
-// GOOD: Each function is independently mockable
 const api = {
   getUser: (id) => fetch(`/users/${id}`),
   getOrders: (userId) => fetch(`/users/${userId}/orders`),
   createOrder: (data) => fetch('/orders', { method: 'POST', body: data }),
 };
+```
 
-// BAD: Mocking requires conditional logic inside the mock
+**Bad — mocking requires conditional logic inside the mock:**
+
+```typescript
 const api = {
   fetch: (endpoint, options) => fetch(endpoint, options),
 };

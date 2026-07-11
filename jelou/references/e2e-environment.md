@@ -109,16 +109,15 @@ These are sourced with the rest of the E2E env (`set -a; . ./.env; . ./.env.e2e;
 
 ## `playwright.config.ts` requirements
 
-Consumer-owned, but must satisfy:
+Consumer-owned, but must satisfy the shape below. Load the env either with `import 'dotenv/config'` at the top of the config, or by running Playwright via `npx dotenv -e .env -e .env.e2e -- playwright test ...`. `requireEnv` throws when the variable is unset, so a missing `E2E_BASE_URL` fails at config load rather than mid-run:
 
 ```ts
-import 'dotenv/config';   // OR run via `npx dotenv -e .env -e .env.e2e -- playwright test ...`
+import 'dotenv/config';
 
 export default defineConfig({
   use: {
-    baseURL: requireEnv('E2E_BASE_URL'),    // throw if unset
+    baseURL: requireEnv('E2E_BASE_URL'),
   },
-  // ...
 });
 
 function requireEnv(name: string): string {
@@ -148,18 +147,16 @@ For every backend the UI talks to during a flow, choose exactly one:
 - Genuinely has no test mode (you tried, document why).
 - Is listed in the flow's `Out of Scope` section so reviewers see it at spec time, not test-review time.
 
-Allowed pattern (abort, don't fulfill):
+Allowed pattern — abort (never fulfill) so the dropped analytics doesn't pollute the network log:
 
 ```ts
-// ✅ — drop analytics so it doesn't pollute the network log
 await page.route('**/segment.io/**', route => route.abort());
 await page.route('**/google-analytics.com/**', route => route.abort());
 ```
 
-Disallowed pattern:
+Disallowed pattern — fabricating a business response:
 
 ```ts
-// ❌ — fabricating a business response
 await page.route('**/api/orders', route =>
   route.fulfill({ status: 200, body: JSON.stringify({ id: 1 }) }),
 );
