@@ -64,6 +64,20 @@ On `span_end` additionally:
 | `payload_capped` | any | `true` when emitter trimmed `outcome`/`artifacts` |
 | `reconciled` | span_end | `true` when synthesized by `trace-reconcile.mjs` |
 | `unmatched_start` | span_end | `true` when `trace-end-span.mjs` could not find the matching start |
+| `gen_ai.usage.input_tokens` | agent_dispatch | input tokens for the dispatch; best-effort, present only when the runtime exposes usage |
+| `gen_ai.usage.output_tokens` | agent_dispatch | output tokens for the dispatch; best-effort |
+| `gen_ai.usage.reasoning_tokens` | agent_dispatch | reasoning tokens when the runtime reports them |
+| `gen_ai.usage.cache_read_tokens` | agent_dispatch | cache-read tokens when the runtime reports them |
+| `cost_usd` | agent_dispatch | USD cost; `--cost` if given, else derived from tokens × the tier price table (`bin/lib/trace/cost.mjs`). Advisory, not a billing source of truth |
+| `success` | phase, execute_task | correctness from the RED oracle: `pass@1` \| `pass@k` \| `fail` (distinct from `status`) |
+| `attempts_to_green` | phase, agent_dispatch | attempt count to reach green (k in pass@k) |
+| `pr_outcome` | ship, close_task | `merged_clean` \| `merged_churned` \| `reverted` \| `open` (Stage 2) |
+| `quality_score` / `quality_dims` | phase, agent_dispatch, eval | LLM-judge score (Stage 3); attached via an `eval` event |
+| `failure_mode` | any failed/blocked span | controlled MAST-seeded enum: `spec` \| `coordination` \| `verification` \| `execution` \| `unknown` (Stage 5) |
+
+Cost is **best-effort and advisory**: token usage is populated only when a runtime exposes it, and the price table drifts. Treat `cost_usd` as a trend signal, never a billing figure.
+
+Traces can be exported to the OpenInference / OTel-GenAI attribute shape (for Phoenix / Langfuse / Datadog) with `node bin/trace-export-otlp.mjs` — an offline alias over the same store, no re-instrumentation.
 
 ## How to add a new span name
 

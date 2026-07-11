@@ -11,6 +11,16 @@
 //   --error-sig <hex>          optional — attrs.error_signature
 //   --escalation <reason>      optional — attrs.escalation_reason
 //   --artifacts <a,b,c>        optional — attrs.artifacts (comma-separated)
+//   --tokens-in <n>            optional — attrs["gen_ai.usage.input_tokens"]
+//   --tokens-out <n>           optional — attrs["gen_ai.usage.output_tokens"]
+//   --reasoning-tokens <n>     optional — attrs["gen_ai.usage.reasoning_tokens"]
+//   --cache-read-tokens <n>    optional — attrs["gen_ai.usage.cache_read_tokens"]
+//   --cost <usd>               optional — attrs.cost_usd (overrides derivation)
+//   --success <pass@1|pass@k|fail>  optional — attrs.success
+//   --attempts <n>             optional — attrs.attempts_to_green
+//
+// When --cost is absent but token counts and the start span's model_used are
+// present, cost_usd is derived from the tier price table (best-effort).
 //
 // Behavior:
 //   - Looks up the matching span_start in TRACE_FILE to derive trace_id, scope,
@@ -31,9 +41,11 @@
 import { resolve } from 'node:path';
 import { appendSpan } from './lib/trace/emitter.mjs';
 import { readSpans, listRotatedFiles } from './lib/trace/reader.mjs';
-import { EVENT_KIND, STATUS } from './lib/trace/schema.mjs';
+import { EVENT_KIND, STATUS, SUCCESS, ATTR } from './lib/trace/schema.mjs';
+import { deriveCost } from './lib/trace/cost.mjs';
 
 const VALID_STATUSES = new Set(Object.values(STATUS));
+const VALID_SUCCESS = new Set(Object.values(SUCCESS));
 
 function parseArgs(argv) {
   const out = {};
@@ -75,6 +87,9 @@ if (!args.status) die('--status required');
 if (!VALID_STATUSES.has(args.status)) {
   die(`--status must be one of ${[...VALID_STATUSES].join(', ')}`);
 }
+if (args.success != null && !VALID_SUCCESS.has(args.success)) {
+  die(`--success must be one of ${[...VALID_SUCCESS].join(', ')}`);
+}
 
 const traceFile = resolveTraceFile();
 const start = findStart(traceFile, args.span);
@@ -90,6 +105,23 @@ if (args['diff-size'] != null) attrs.diff_size_loc = Number(args['diff-size']);
 if (args['error-sig']) attrs.error_signature = args['error-sig'];
 if (args.escalation) attrs.escalation_reason = args.escalation;
 if (args.artifacts) attrs.artifacts = args.artifacts.split(',').map((s) => s.trim());
+
+const tokensIn = args['tokens-in'] != null ? Number(args['tokens-in']) : undefined;
+const tokensOut = args['tokens-out'] != null ? Number(args['tokens-out']) : undefined;
+if (tokensIn != null) attrs[ATTR.INPUT_TOKENS] = tokensIn;
+if (tokensOut != null) attrs[ATTR.OUTPUT_TOKENS] = tokensOut;
+if (args['reasoning-tokens'] != null) attrs[ATTR.REASONING_TOKENS] = Number(args['reasoning-tokens']);
+if (args['cache-read-tokens'] != null) attrs[ATTR.CACHE_READ_TOKENS] = Number(args['cache-read-tokens']);
+if (args.success != null) attrs[ATTR.SUCCESS] = args.success;
+if (args.attempts != null) attrs[ATTR.ATTEMPTS_TO_GREEN] = Number(args.attempts);
+
+if (args.cost != null) {
+  attrs[ATTR.COST_USD] = Number(args.cost);
+} else if (tokensIn != null && tokensOut != null) {
+  const derived = deriveCost(start?.attrs?.model_used, tokensIn, tokensOut);
+  if (derived != null) attrs[ATTR.COST_USD] = derived;
+}
+
 if (!start) attrs.unmatched_start = true;
 
 appendSpan(traceFile, {

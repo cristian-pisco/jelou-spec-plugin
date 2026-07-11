@@ -429,6 +429,7 @@ Extract from the report:
 - `$AGENT_OUTCOME` — the `outcome` field (may be absent)
 - `$DIFF_SIZE_LOC` — LOC added+removed from `git diff --shortstat` over reported artifacts (may be absent)
 - `$ERROR_SIG` — `sha256(normalized_error_message)[:8]` when status is `blocked` or `failed`, else absent
+- `$TOKENS_IN` / `$TOKENS_OUT` — dispatch token usage when the runtime exposes it in the report (`usage.input_tokens` / `usage.output_tokens`); best-effort, absent otherwise. When present, `cost_usd` is derived from the span's model tier automatically.
 
 Then close the span:
 
@@ -438,7 +439,9 @@ node "${PLUGIN_ROOT:-.}/bin/trace-end-span.mjs" \
   ${AGENT_RETRIES:+--retries "$AGENT_RETRIES"} \
   ${AGENT_OUTCOME:+--outcome "$AGENT_OUTCOME"} \
   ${DIFF_SIZE_LOC:+--diff-size "$DIFF_SIZE_LOC"} \
-  ${ERROR_SIG:+--error-sig "$ERROR_SIG"}
+  ${ERROR_SIG:+--error-sig "$ERROR_SIG"} \
+  ${TOKENS_IN:+--tokens-in "$TOKENS_IN"} \
+  ${TOKENS_OUT:+--tokens-out "$TOKENS_OUT"}
 ```
 
 Empty `DISPATCH_SPAN_ID` (when `TRACE_DISABLED=1`) makes the close a no-op.
@@ -890,10 +893,19 @@ Determine `$PHASE_OUTCOME`:
 - `blocked` — three-strike rule fired
 - `failed` — phase aborted (non-recoverable)
 
+Determine `$PHASE_SUCCESS` — the correctness signal from the RED test oracle, independent of `$PHASE_OUTCOME` (`ok` means "did not crash", not "was correct first try"):
+- `pass@1` — tests went green on the implementer's first attempt (`$AGENT_RETRIES == 0`)
+- `pass@k` — green only after retries (`$AGENT_RETRIES > 0`)
+- `fail` — the phase never reached green (`blocked`/`failed`)
+
+Set `$PHASE_ATTEMPTS` to the implementer's attempt count (`$AGENT_RETRIES + 1`). Both are absent for `docs`-mode phases with no test oracle.
+
 Run:
 ```bash
 node "${PLUGIN_ROOT:-.}/bin/trace-end-span.mjs" \
-  --span "$PHASE_SPAN_ID" --status "$PHASE_OUTCOME"
+  --span "$PHASE_SPAN_ID" --status "$PHASE_OUTCOME" \
+  ${PHASE_SUCCESS:+--success "$PHASE_SUCCESS"} \
+  ${PHASE_ATTEMPTS:+--attempts "$PHASE_ATTEMPTS"}
 ```
 
 ---

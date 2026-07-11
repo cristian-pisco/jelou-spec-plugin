@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.273] — 2026-07-11
+
+### Added
+- trace deterministic eval signals — token/cost, task-success (pass@1/pass@k), OpenInference export
+
 ## [0.3.272] — 2026-07-11
 
 ### Added

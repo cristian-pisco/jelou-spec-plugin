@@ -40,3 +40,38 @@ export const PAYLOAD_CAP_BYTES = 3500;
 
 // Threshold for reconciler to declare a span_start orphaned.
 export const RECONCILE_AFTER_MS = 30 * 60 * 1000;
+
+export const SUCCESS = Object.freeze({
+  PASS_1: 'pass@1',
+  PASS_K: 'pass@k',
+  FAIL: 'fail',
+});
+
+export const FAILURE_MODE = Object.freeze({
+  SPEC: 'spec',
+  COORDINATION: 'coordination',
+  VERIFICATION: 'verification',
+  EXECUTION: 'execution',
+  UNKNOWN: 'unknown',
+});
+
+export const EVAL_EVENT_NAME = 'eval';
+
+export const MIN_SAMPLE = 10;
+
+export const ATTR = Object.freeze({
+  INPUT_TOKENS: 'gen_ai.usage.input_tokens',
+  OUTPUT_TOKENS: 'gen_ai.usage.output_tokens',
+  REASONING_TOKENS: 'gen_ai.usage.reasoning_tokens',
+  CACHE_READ_TOKENS: 'gen_ai.usage.cache_read_tokens',
+  COST_USD: 'cost_usd',
+  SUCCESS: 'success',
+  ATTEMPTS_TO_GREEN: 'attempts_to_green',
+  PR_OUTCOME: 'pr_outcome',
+  TRAJECTORY_MATCH: 'trajectory_match',
+  PROGRESS_RATE: 'progress_rate',
+  QUALITY_SCORE: 'quality_score',
+  QUALITY_DIMS: 'quality_dims',
+  FAILURE_MODE: 'failure_mode',
+  JUDGE_PANEL: 'judge_panel',
+});
