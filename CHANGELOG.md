@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.272] — 2026-07-11
+
+### Added
+- enforce zero-comment output across code-authoring agents
+
 ## [0.3.271] — 2026-07-07
 
 ### Fixed

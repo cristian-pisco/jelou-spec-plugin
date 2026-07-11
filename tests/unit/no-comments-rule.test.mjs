@@ -24,6 +24,7 @@ const read = (rel) => readFileSync(join(ROOT, rel), 'utf8');
 // from subagent-base.md. Keep this list in sync when adding a code-writing agent.
 const CODE_AUTHORING_AGENTS = [
   'jlu-build-validator',
+  'jlu-conflict-resolver',
   'jlu-implementer',
   'jlu-refactor-agent',
   'jlu-tdd-cycle',
