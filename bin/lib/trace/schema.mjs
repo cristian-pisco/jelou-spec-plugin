@@ -55,6 +55,19 @@ export const FAILURE_MODE = Object.freeze({
   UNKNOWN: 'unknown',
 });
 
+export const SIGNAL = Object.freeze({
+  ACCEPT: 'accept',
+  REJECT: 'reject',
+  IMPLICIT_NEGATIVE: 'implicit_negative',
+  EDIT: 'edit',
+});
+
+export const PR_OUTCOME = Object.freeze({
+  MERGED_CLEAN: 'merged_clean',
+  REVERTED: 'reverted',
+  OPEN: 'open',
+});
+
 export const EVAL_EVENT_NAME = 'eval';
 
 export const MIN_SAMPLE = 10;

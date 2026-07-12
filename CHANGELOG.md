@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.274] — 2026-07-11
+
+### Added
+- span-keyed feedback layer — free accept/reject ground-truth harvest at close-task
+
 ## [0.3.273] — 2026-07-11
 
 ### Added
