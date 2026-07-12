@@ -59,7 +59,7 @@ function resolveOutput({ output, span, cwd }) {
   }
 }
 
-function parseVerdict(text) {
+export function parseVerdict(text) {
   if (!text || !String(text).trim()) return null;
   const raw = String(text);
   const attempts = [raw.trim()];

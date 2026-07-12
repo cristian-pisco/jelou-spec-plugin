@@ -16,6 +16,8 @@ Run: `npm test` (equivalent to `node --test tests/unit/*.test.mjs`)
 
 Also run: `npm run check-sync` to confirm the runtime mirrors are in sync with their canonical sources — `.opencode/agents/` with `agents/` (OpenCode) and `.codex/agents/` + `.codex/prompts/` with `agents/` + `skills/` (Codex). After editing any `agents/*.md` or `skills/*/SKILL.md`, run `npm run sync` to regenerate both mirrors.
 
+Optional (opt-in, advisory only): when `OPENROUTER_API_KEY` is set you may also run `node bin/trace-regress.mjs` — the Stage-4 golden-set regression gate. It re-scores the golden examples with the LLM judge and compares against `tests/golden/baseline.json`, exiting `4` if agent-prompt quality has regressed. Without the key it SKIPS cleanly (exit 0) and prints a warning, so it never blocks the mandatory `npm test` + `check-sync` flow. This is not a hard gate yet — `tests/golden/` is still synthetic seed data (see `tests/golden/README.md`), so treat any exit-4 as advisory friction, not a stop.
+
 If any of these fails, do not push. Fix the failure first. Never push with a red suite — `release after every push to main` means a broken push becomes a broken release.
 
 ## Code style — no line-by-line comments

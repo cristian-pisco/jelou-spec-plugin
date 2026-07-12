@@ -1,0 +1,6 @@
+{
+  "id": "test-writer-001",
+  "agent_role": "test-writer",
+  "reference": "SPEC: clamp(n, lo, hi) returns n bounded to [lo, hi]. Cover below-range, in-range, and above-range inputs.",
+  "output": "test('clamps below, within, and above the range', () => {\n  assert.equal(clamp(-1, 0, 10), 0);\n  assert.equal(clamp(5, 0, 10), 5);\n  assert.equal(clamp(99, 0, 10), 10);\n});"
+}
