@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.280] — 2026-07-12
+
+### Added
+- add /jlu-eval-report — consolidated evaluation scorecard
+
 ## [0.3.279] — 2026-07-12
 
 ### Internal
