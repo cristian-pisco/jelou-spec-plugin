@@ -193,6 +193,30 @@ export async function runEval({
   return summary;
 }
 
+export function formatEvalSummary(summary) {
+  const scored = Array.isArray(summary?.scored) ? summary.scored : [];
+  const skipped = Array.isArray(summary?.skipped) ? summary.skipped : [];
+  if (scored.length === 0 && skipped.length === 0) {
+    return 'trace-eval: no judgeable spans matched';
+  }
+  const parts = [`scored ${scored.length}`];
+  const escalated = scored.filter((s) => s && s.escalate).length;
+  if (escalated > 0) parts.push(`${escalated} escalated`);
+  if (skipped.length > 0) {
+    const byReason = {};
+    for (const s of skipped) {
+      const reason = (s && s.reason) || 'unknown';
+      byReason[reason] = (byReason[reason] || 0) + 1;
+    }
+    const breakdown = Object.keys(byReason)
+      .sort()
+      .map((reason) => `${reason}=${byReason[reason]}`)
+      .join(', ');
+    parts.push(`skipped ${skipped.length} (${breakdown})`);
+  }
+  return `trace-eval: ${parts.join(', ')}`;
+}
+
 function resolveTraceFile() {
   if (process.env.TRACE_FILE) return process.env.TRACE_FILE;
   return resolve(process.cwd(), '.traces', 'spans.jsonl');
@@ -235,7 +259,7 @@ async function main() {
     ? args.models.split(',').map((s) => s.trim()).filter(Boolean)
     : EVAL_DEFAULT_MODELS;
 
-  await runEval({
+  const summary = await runEval({
     traceFile,
     feedbackFile,
     spanId: args.span,
@@ -247,6 +271,7 @@ async function main() {
     sampleRate: Number.isFinite(args.sampleRate) ? args.sampleRate : 1.0,
   });
 
+  if (!disabled()) process.stderr.write(formatEvalSummary(summary) + '\n');
   process.exit(0);
 }
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.281] — 2026-07-12
+
+### Added
+- surface trace-eval scored/skipped summary on stderr
+
 ## [0.3.280] — 2026-07-12
 
 ### Added
