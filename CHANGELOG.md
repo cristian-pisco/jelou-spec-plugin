@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.276] — 2026-07-11
+
+### Added
+- golden-set regression gate — opt-in VERIFY gate that blocks on agent-prompt quality drops
+
 ## [0.3.275] — 2026-07-11
 
 ### Added

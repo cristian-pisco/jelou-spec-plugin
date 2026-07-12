@@ -1,0 +1,6 @@
+{
+  "id": "implementer-001",
+  "agent_role": "implementer",
+  "reference": "RED: expect(add(2, 3)).toBe(5). SPEC: add(a, b) returns the arithmetic sum of two numbers.",
+  "output": "export function add(a, b) {\n  return a + b;\n}"
+}

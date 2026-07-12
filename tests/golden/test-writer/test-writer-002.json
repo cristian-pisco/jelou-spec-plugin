@@ -1,0 +1,6 @@
+{
+  "id": "test-writer-002",
+  "agent_role": "test-writer",
+  "reference": "SPEC: parseCsvRow(line) splits on commas and trims each cell; an empty line yields an empty array.",
+  "output": "test('splits and trims cells, empty line yields []', () => {\n  assert.deepEqual(parseCsvRow('a, b ,c'), ['a', 'b', 'c']);\n  assert.deepEqual(parseCsvRow(''), []);\n});"
+}

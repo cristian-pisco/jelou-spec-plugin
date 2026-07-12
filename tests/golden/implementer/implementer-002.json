@@ -1,0 +1,6 @@
+{
+  "id": "implementer-002",
+  "agent_role": "implementer",
+  "reference": "RED: expect(() => divide(1, 0)).toThrow('divide by zero'). SPEC: divide(a, b) throws on a zero divisor, otherwise returns a / b.",
+  "output": "export function divide(a, b) {\n  if (b === 0) throw new Error('divide by zero');\n  return a / b;\n}"
+}
