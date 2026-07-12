@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.277] — 2026-07-11
+
+### Added
+- Decision surface — falsifiable predictions, failure taxonomy, kappa-gated quality rules
+
 ## [0.3.276] — 2026-07-11
 
 ### Added

@@ -37,10 +37,13 @@ function makeDispatches(role, retryCounts) {
 }
 
 describe('RULES constants', () => {
-  test('exposes four rules with stable ids', () => {
+  test('exposes the stable rule ids', () => {
     assert.deepEqual(
       [...RULE_IDS].sort(),
-      ['bump_model_tier', 'extend_patterns', 'immediate_flag', 'suggest_parallelize']
+      [
+        'bump_model_tier', 'extend_patterns', 'faithfulness_below_baseline',
+        'immediate_flag', 'quality_regression', 'suggest_parallelize',
+      ]
     );
   });
 
@@ -208,5 +211,169 @@ describe('formatSuggestion(finding)', () => {
     assert.match(out, /implementer/);
     assert.match(out, /30%/);
     assert.match(out, /apply:|action:|y\/n/i);
+  });
+
+  test('renders a predict line when the finding carries expected_improvement', () => {
+    const out = formatSuggestion({
+      rule_id: 'bump_model_tier',
+      signature: 'implementer',
+      evidence: { retried_fraction: 0.6 },
+      message: 'implementer has 60% retry rate (6/10 last runs)',
+      expected_improvement: {
+        metric: 'retried_fraction', signature: 'implementer',
+        baseline: 0.6, target: 0.2, window_n: 10, direction: 'decrease',
+      },
+    });
+    assert.match(out, /predict: retried_fraction implementer 0\.60 → ≤0\.20 within 10 dispatches/);
+  });
+});
+
+describe('bump_model_tier: expected_improvement', () => {
+  test('the finding carries a falsifiable retried_fraction prediction', () => {
+    const pairs = makeDispatches('delta', [1, 1, 1, 1, 1, 1, 0, 0, 0, 0]);
+    const f = evaluate(pairs).find(x => x.rule_id === 'bump_model_tier' && x.signature === 'delta');
+    assert.ok(f);
+    assert.ok(f.expected_improvement);
+    assert.equal(f.expected_improvement.metric, 'retried_fraction');
+    assert.equal(f.expected_improvement.signature, 'delta');
+    assert.equal(f.expected_improvement.baseline, 0.6);
+    assert.equal(f.expected_improvement.target, 0.2);
+    assert.equal(f.expected_improvement.window_n, 10);
+    assert.equal(f.expected_improvement.direction, 'decrease');
+  });
+});
+
+function failedDispatch(span_id, trace_id, ts, role, status = 'failed') {
+  return {
+    start: { event_kind: 'span_start', span_id, trace_id, name: 'agent_dispatch',
+             agent_role: role, scope: 'task', task_slug: 'tcascade', ts },
+    end: { event_kind: 'span_end', span_id, status, ts,
+           attrs: { error_signature: `SIG_${span_id}` } },
+    duration_ms: 1000,
+  };
+}
+
+describe('immediate_flag: earliest-decisive attribution + cascade dedup', () => {
+  test('a single trace with cascading failures yields ONE flag at the earliest, with failure_mode', () => {
+    const base = Date.now() - 60 * 60 * 1000;
+    const pairs = [
+      failedDispatch('E1', 'T_CASCADE', new Date(base).toISOString(), 'implementer'),
+      failedDispatch('E2', 'T_CASCADE', new Date(base + 1000).toISOString(), 'implementer'),
+      failedDispatch('E3', 'T_CASCADE', new Date(base + 2000).toISOString(), 'implementer'),
+    ];
+    const findings = evaluate(pairs).filter(f => f.rule_id === 'immediate_flag');
+    assert.equal(findings.length, 1);
+    assert.equal(findings[0].evidence.span_id, 'E1');
+    assert.equal(findings[0].evidence.failure_mode, 'execution');
+    assert.equal(findings[0].evidence.failed_in_trace, 3);
+  });
+
+  test('independent failures in different traces each flag', () => {
+    const now = Date.now() - 30 * 60 * 1000;
+    const pairs = [
+      failedDispatch('A1', 'T_A', new Date(now).toISOString(), 'implementer'),
+      failedDispatch('B1', 'T_B', new Date(now + 1000).toISOString(), 'qa-agent'),
+    ];
+    const findings = evaluate(pairs).filter(f => f.rule_id === 'immediate_flag');
+    assert.equal(findings.length, 2);
+    const modes = findings.map(f => f.evidence.failure_mode).sort();
+    assert.deepEqual(modes, ['execution', 'verification']);
+  });
+
+  test('a phase span with multiple failed children attributes to coordination', () => {
+    const base = Date.now() - 60 * 60 * 1000;
+    const phasePair = {
+      start: { event_kind: 'span_start', span_id: 'PH', trace_id: 'T_COORD', name: 'phase',
+               service_id: 'svc-x', phase_num: 3, scope: 'task', task_slug: 'tc', ts: new Date(base).toISOString() },
+      end: { event_kind: 'span_end', span_id: 'PH', status: 'failed', ts: new Date(base).toISOString(), attrs: {} },
+      duration_ms: 1000,
+    };
+    const pairs = [
+      phasePair,
+      failedDispatch('C1', 'T_COORD', new Date(base + 1000).toISOString(), 'implementer'),
+      failedDispatch('C2', 'T_COORD', new Date(base + 2000).toISOString(), 'implementer'),
+    ];
+    const findings = evaluate(pairs).filter(f => f.rule_id === 'immediate_flag');
+    assert.equal(findings.length, 1);
+    assert.equal(findings[0].evidence.span_id, 'PH');
+    assert.equal(findings[0].evidence.failure_mode, 'coordination');
+  });
+});
+
+function buildCalibration({ role = 'implementer', faithfulness = 0.3, aligned = true, feedbackCount = 10 } = {}) {
+  const events = [];
+  const feedback = [];
+  const base = Date.parse('2026-07-11T09:00:00Z');
+  for (let i = 0; i < 10; i++) {
+    const spanId = `A${i}`;
+    const ts = new Date(base + i * 1000).toISOString();
+    const highScore = i % 2 === 0;
+    const quality_score = highScore ? 0.9 : 0.2;
+    events.push({ event_kind: 'span_start', span_id: spanId, trace_id: `T${i}`, name: 'agent_dispatch', agent_role: role, ts });
+    events.push({
+      event_kind: 'event', name: 'eval', span_id: `EV${i}`, parent_span_id: spanId, ts,
+      attrs: { quality_score, quality_dims: { correctness: faithfulness, faithfulness_to_spec: faithfulness, task_completion: faithfulness } },
+    });
+    if (i < feedbackCount) {
+      const accept = aligned ? highScore : !highScore;
+      feedback.push({ span_id: spanId, signal: accept ? 'accept' : 'reject', ts });
+    }
+  }
+  return { events, feedback };
+}
+
+function buildPhaseRegression() {
+  const events = [];
+  const base = Date.parse('2026-07-11T09:30:00Z');
+  for (let i = 0; i < 10; i++) {
+    const spanId = `P${i}`;
+    const ts = new Date(base + i * 1000).toISOString();
+    const quality_score = i === 9 ? 0.5 : 0.9;
+    events.push({ event_kind: 'span_start', span_id: spanId, trace_id: `TP${i}`, name: 'phase', service_id: 'svc-x', phase_num: 1, ts });
+    events.push({
+      event_kind: 'event', name: 'eval', span_id: `PEV${i}`, parent_span_id: spanId, ts,
+      attrs: { quality_score, quality_dims: { correctness: 0.9, faithfulness_to_spec: 0.9, task_completion: 0.9 } },
+    });
+  }
+  return events;
+}
+
+describe('quality rules: kappa gate', () => {
+  test('faithfulness_below_baseline FIRES when judge calibrated and floor breached', () => {
+    const { events, feedback } = buildCalibration({ faithfulness: 0.3, aligned: true });
+    const findings = evaluate([], { events, feedback }).filter(f => f.rule_id === 'faithfulness_below_baseline');
+    assert.equal(findings.length, 1);
+    assert.equal(findings[0].signature, 'implementer');
+    assert.equal(findings[0].expected_improvement.metric, 'faithfulness_to_spec');
+    assert.equal(findings[0].expected_improvement.direction, 'increase');
+    assert.ok(findings[0].expected_improvement.baseline < 0.6);
+  });
+
+  test('faithfulness_below_baseline DORMANT when too few calibration pairs', () => {
+    const { events, feedback } = buildCalibration({ faithfulness: 0.3, aligned: true, feedbackCount: 5 });
+    const findings = evaluate([], { events, feedback }).filter(f => f.rule_id === 'faithfulness_below_baseline');
+    assert.equal(findings.length, 0);
+  });
+
+  test('faithfulness_below_baseline DORMANT when kappa below floor', () => {
+    const { events, feedback } = buildCalibration({ faithfulness: 0.3, aligned: false });
+    const findings = evaluate([], { events, feedback }).filter(f => f.rule_id === 'faithfulness_below_baseline');
+    assert.equal(findings.length, 0);
+  });
+
+  test('quality_regression FIRES for a calibrated judge when a phase drops below its median', () => {
+    const { events, feedback } = buildCalibration({ faithfulness: 0.9, aligned: true });
+    const allEvents = [...events, ...buildPhaseRegression()];
+    const findings = evaluate([], { events: allEvents, feedback }).filter(f => f.rule_id === 'quality_regression');
+    assert.equal(findings.length, 1);
+    assert.equal(findings[0].signature, 'svc-x:1');
+    assert.ok(findings[0].evidence.recent_score < findings[0].evidence.historical_median);
+  });
+
+  test('quality_regression DORMANT when judge uncalibrated', () => {
+    const { events, feedback } = buildCalibration({ faithfulness: 0.9, aligned: false });
+    const allEvents = [...events, ...buildPhaseRegression()];
+    const findings = evaluate([], { events: allEvents, feedback }).filter(f => f.rule_id === 'quality_regression');
+    assert.equal(findings.length, 0);
   });
 });
