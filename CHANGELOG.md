@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.278] — 2026-07-11
+
+### Fixed
+- attribute cascade failures to the decisive sub-span, not the workflow wrapper
+
 ## [0.3.277] — 2026-07-11
 
 ### Added
