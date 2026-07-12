@@ -62,6 +62,35 @@ describe('earliestDecisiveFailure', () => {
     assert.equal(p.start.span_id, 'A');
   });
 
+  const wrap = (span_id, name, ts, status, extra = {}) => ({
+    start: { span_id, trace_id: 'T', name, ts, ...extra },
+    end: { span_id, status, ts, attrs: {} },
+    duration_ms: 1000,
+  });
+
+  test('excludes the top-level workflow wrapper (blocked as a consequence of children)', () => {
+    const pairs = [
+      wrap('WS', 'execute_task', '2026-07-11T10:00:00Z', 'blocked'),
+      wrap('PH', 'phase', '2026-07-11T10:00:30Z', 'blocked'),
+      wrap('IMPL', 'agent_dispatch', '2026-07-11T10:01:00Z', 'failed', { agent_role: 'implementer' }),
+    ];
+    assert.equal(earliestDecisiveFailure(pairs).start.span_id, 'PH');
+  });
+
+  test('attributes to the earliest failed agent when no phase failed', () => {
+    const pairs = [
+      wrap('WS', 'execute_task', '2026-07-11T10:00:00Z', 'blocked'),
+      wrap('IMPL', 'agent_dispatch', '2026-07-11T10:01:00Z', 'failed', { agent_role: 'implementer' }),
+      wrap('BUILD', 'agent_dispatch', '2026-07-11T10:02:00Z', 'failed', { agent_role: 'build-validator' }),
+    ];
+    assert.equal(earliestDecisiveFailure(pairs).start.span_id, 'IMPL');
+  });
+
+  test('falls back to a workflow wrapper only when nothing more specific failed', () => {
+    const pairs = [wrap('WS', 'execute_task', '2026-07-11T10:00:00Z', 'blocked')];
+    assert.equal(earliestDecisiveFailure(pairs).start.span_id, 'WS');
+  });
+
   test('ignores ok spans', () => {
     const pairs = [
       pair('OK', '2026-07-11T09:00:00Z', 'ok'),
