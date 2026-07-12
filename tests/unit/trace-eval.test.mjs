@@ -3,7 +3,7 @@ import { strict as assert } from 'node:assert';
 import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { runEval, EVAL_DEFAULT_MODELS } from '../../bin/trace-eval.mjs';
+import { runEval, EVAL_DEFAULT_MODELS, formatEvalSummary } from '../../bin/trace-eval.mjs';
 
 const JUDGED = {
   event_kind: 'span_start',
@@ -206,5 +206,44 @@ describe('runEval', () => {
     assert.ok(Array.isArray(EVAL_DEFAULT_MODELS));
     assert.ok(EVAL_DEFAULT_MODELS.length >= 2);
     assert.ok(!EVAL_DEFAULT_MODELS.some((m) => /anthropic|claude/i.test(m)));
+  });
+});
+
+describe('formatEvalSummary', () => {
+  test('empty run reports that nothing matched', () => {
+    assert.equal(formatEvalSummary({ scored: [], skipped: [] }), 'trace-eval: no judgeable spans matched');
+    assert.equal(formatEvalSummary({}), 'trace-eval: no judgeable spans matched');
+    assert.equal(formatEvalSummary(null), 'trace-eval: no judgeable spans matched');
+  });
+
+  test('scored-only run reports the count', () => {
+    const summary = { scored: [{ escalate: false }, { escalate: false }], skipped: [] };
+    assert.equal(formatEvalSummary(summary), 'trace-eval: scored 2');
+  });
+
+  test('surfaces escalations among scored spans', () => {
+    const summary = { scored: [{ escalate: true }, { escalate: false }, { escalate: true }], skipped: [] };
+    assert.equal(formatEvalSummary(summary), 'trace-eval: scored 3, 2 escalated');
+  });
+
+  test('all spans skipped for no_verdicts is visible, not silent (the stale-slug case)', () => {
+    const summary = {
+      scored: [],
+      skipped: [{ reason: 'no_verdicts' }, { reason: 'no_verdicts' }, { reason: 'no_verdicts' }],
+    };
+    assert.equal(formatEvalSummary(summary), 'trace-eval: scored 0, skipped 3 (no_verdicts=3)');
+  });
+
+  test('breaks skip reasons down and sorts them deterministically', () => {
+    const summary = {
+      scored: [{ escalate: false }],
+      skipped: [{ reason: 'no_output' }, { reason: 'sampled_out' }, { reason: 'no_output' }],
+    };
+    assert.equal(formatEvalSummary(summary), 'trace-eval: scored 1, skipped 3 (no_output=2, sampled_out=1)');
+  });
+
+  test('missing skip reason falls back to unknown', () => {
+    const summary = { scored: [], skipped: [{}, { reason: 'no_output' }] };
+    assert.equal(formatEvalSummary(summary), 'trace-eval: scored 0, skipped 2 (no_output=1, unknown=1)');
   });
 });
