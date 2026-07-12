@@ -66,7 +66,16 @@ WORKFLOW_TRACE_ID=$(echo "$WF_OUT" | jq -r '.trace_id // ""')
 
 For each affected service:
 
-3. **Trunk PR** (required): `gh pr view <trunk-pr-url> --json state,mergedAt`. Must be in `MERGED` state. If not, present the same options as today (check different URL / skip PR check / abort).
+3. **Trunk PR** (required): `gh pr view <trunk-pr-url> --json state,mergedAt`. Must be in `MERGED` state.
+   - When `MERGED`: proceed, and record the free accept ground-truth signal keyed by the ship span_id. This is the zero-cost accept/reject harvest that feeds the eval layer (Stage 2). Best-effort — tolerate empty output / `TRACE_DISABLED` (the CLI never fails closure):
+     ```bash
+     node "${PLUGIN_ROOT:-.}/bin/trace-feedback.mjs" --task "$TASK_SLUG" --signal accept --source pr_merge --note merged_clean
+     ```
+   - When `CLOSED` but not merged: record the reject signal (same best-effort tolerance — this is the other half of the free ground-truth harvest), then present the same options as today (check different URL / skip PR check / abort):
+     ```bash
+     node "${PLUGIN_ROOT:-.}/bin/trace-feedback.mjs" --task "$TASK_SLUG" --signal reject --source pr_close --note reverted
+     ```
+   - For any other non-merged state: present the same options as today (check different URL / skip PR check / abort).
 4. **Alpha PR** (if DUAL_PR = yes): `gh pr view <alpha-pr-url> --json state,mergedAt`. **Not required to be merged.** Record its state for later teardown (Step 4).
 
 If NO PR information is found:

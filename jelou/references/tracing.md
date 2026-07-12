@@ -79,6 +79,27 @@ Cost is **best-effort and advisory**: token usage is populated only when a runti
 
 Traces can be exported to the OpenInference / OTel-GenAI attribute shape (for Phoenix / Langfuse / Datadog) with `node bin/trace-export-otlp.mjs` — an offline alias over the same store, no re-instrumentation.
 
+## Feedback store
+
+Stage 2 adds a sidecar store `<WORKSPACE>/.traces/feedback.jsonl` — the first quality ground truth, keyed by `span_id` and harvested for free. Spans are append-only (a span's end is written once), so feedback never mutates a closed span; it lives in this separate store.
+
+Each line:
+
+| Field | Type | Notes |
+|---|---|---|
+| `ts` | ISO-8601 UTC | defaults to write time |
+| `span_id` | ULID | the span the signal is about (e.g. the `ship` span) |
+| `signal` | `accept` \| `reject` \| `implicit_negative` \| `edit` | see `SIGNAL` in `schema.mjs` |
+| `source` | string | provenance, e.g. `pr_merge`, `pr_close`, `re_dispatch` |
+| `note` | string | free-form, e.g. `merged_clean`, `reverted` |
+
+Undefined fields are omitted. Writes are best-effort — short-circuit on `TRACE_DISABLED=1`, stderr warning on error, never throw — via `bin/lib/trace/feedback.mjs` (`appendFeedback` / `readFeedback`) and the `bin/trace-feedback.mjs` CLI. The CLI resolves the store from `FEEDBACK_FILE`, else `feedback.jsonl` alongside `TRACE_FILE`, else `<cwd>/.traces/feedback.jsonl`.
+
+Harvest points:
+- **`accept`** — recorded at `/jlu-close-task` Step 2b when the trunk PR is confirmed `MERGED` (`--source pr_merge --note merged_clean`), keyed to the ship span_id resolved from the trace store.
+- **`reject`** — recorded at `/jlu-close-task` Step 2b when the trunk PR is found `CLOSED` but not merged (`--source pr_close --note reverted`).
+- **`implicit_negative`** — **derived on demand, never written** by any workflow: `harvestImplicitNegatives(pairs)` returns one per `agent_dispatch` pair whose `end.attrs.retry_count > 0` (`source: re_dispatch`).
+
 ## How to add a new span name
 
 1. Add the constant to `bin/lib/trace/schema.mjs` under `SPAN_NAMES`.

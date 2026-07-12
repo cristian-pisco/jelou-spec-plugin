@@ -146,6 +146,18 @@ describe('close-task workflow — trace instrumentation', () => {
     assert.match(wf, /_traces\/snapshot\.jsonl/);
     assert.match(wf, /task_slug/);
   });
+
+  test('harvests the free accept ground-truth via trace-feedback.mjs on PR merge', () => {
+    assert.match(wf, /trace-feedback\.mjs[\s\S]*?--signal accept/,
+      'close-task must record the accept signal at PR merge');
+    assert.match(wf, /--source pr_merge/,
+      'accept signal must carry --source pr_merge');
+  });
+
+  test('harvests the reject ground-truth when the trunk PR is closed unmerged', () => {
+    assert.match(wf, /trace-feedback\.mjs[\s\S]*?--signal reject/);
+    assert.match(wf, /--source pr_close/);
+  });
 });
 
 describe('execute-task — Stage-1 deterministic quality signals', () => {
