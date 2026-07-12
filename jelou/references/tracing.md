@@ -50,6 +50,15 @@ On `span_end` additionally:
 | `agent_dispatch` | task | execute-task per-dispatch (Phase 2) |
 | `pane_started`, `pane_dead`, `pattern_match`, `ready` | daemon | dev-env daemon (Phase 2 migration) |
 
+## Discrete events (`event_kind: event`)
+
+Not every trace record is a start/end pair. A discrete event stands alone and
+attaches to a span via `parent_span_id`.
+
+| Name | Scope | Emitted by | Notes |
+|---|---|---|---|
+| `eval` | task | `bin/trace-eval.mjs` (Stage 3) | One per judged span; carries the LLM-judge quality attrs below. Advisory — no rule consumes it until Stage 5. See `eval.md`. |
+
 ## Canonical `attrs` keys
 
 | Key | Where | Notes |
@@ -72,7 +81,11 @@ On `span_end` additionally:
 | `success` | phase, execute_task | correctness from the RED oracle: `pass@1` \| `pass@k` \| `fail` (distinct from `status`) |
 | `attempts_to_green` | phase, agent_dispatch | attempt count to reach green (k in pass@k) |
 | `pr_outcome` | ship, close_task | `merged_clean` \| `merged_churned` \| `reverted` \| `open` (Stage 2) |
-| `quality_score` / `quality_dims` | phase, agent_dispatch, eval | LLM-judge score (Stage 3); attached via an `eval` event |
+| `quality_score` / `quality_dims` | eval | LLM-judge composite in `[0,1]` and its per-dimension breakdown (`correctness`, `faithfulness_to_spec`, `task_completion`); Stage 3, see `eval.md` |
+| `evaluator` | eval | comma-joined judge model ids that produced the score |
+| `panel_agreement` | eval | `1` minus the population std-dev of per-judge composite scores, clamped to `[0,1]` (`1.0` for a single judge) |
+| `escalate` | eval | `true` when `panel_agreement < 0.7` or the judges straddle the `0.5` composite line; flags a verdict for human review, never blocks |
+| `rationale` | eval | first judge's brief rationale, truncated to keep the line under the payload cap |
 | `failure_mode` | any failed/blocked span | controlled MAST-seeded enum: `spec` \| `coordination` \| `verification` \| `execution` \| `unknown` (Stage 5) |
 
 Cost is **best-effort and advisory**: token usage is populated only when a runtime exposes it, and the price table drifts. Treat `cost_usd` as a trend signal, never a billing figure.

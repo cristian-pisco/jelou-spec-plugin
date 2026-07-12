@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.275] — 2026-07-11
+
+### Added
+- advisory LLM-judge quality layer — cross-family panel, offline, calibration-gated
+
 ## [0.3.274] — 2026-07-11
 
 ### Added

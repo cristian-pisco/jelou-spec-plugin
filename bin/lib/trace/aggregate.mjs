@@ -153,3 +153,34 @@ export function progressRate(completed, planned) {
   if (!planned || planned <= 0) return 0;
   return completed / planned;
 }
+
+export function binarizeScore(score, threshold = 0.5) {
+  return Number(score) >= threshold ? 'positive' : 'negative';
+}
+
+export function cohensKappa(pairs) {
+  const list = Array.isArray(pairs) ? pairs : [];
+  const n = list.length;
+  if (n === 0) return 1;
+
+  let agree = 0;
+  const aCount = {};
+  const bCount = {};
+  const categories = new Set();
+  for (const { a, b } of list) {
+    if (a === b) agree += 1;
+    aCount[a] = (aCount[a] || 0) + 1;
+    bCount[b] = (bCount[b] || 0) + 1;
+    categories.add(a);
+    categories.add(b);
+  }
+
+  const observed = agree / n;
+  let expected = 0;
+  for (const category of categories) {
+    expected += ((aCount[category] || 0) / n) * ((bCount[category] || 0) / n);
+  }
+
+  if (expected >= 1) return 1;
+  return (observed - expected) / (1 - expected);
+}

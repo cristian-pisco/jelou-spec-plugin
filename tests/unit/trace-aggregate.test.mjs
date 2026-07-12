@@ -13,6 +13,8 @@ import {
   retriedFraction,
   wilsonLowerBound,
   pairSpans,
+  binarizeScore,
+  cohensKappa,
 } from '../../bin/lib/trace/aggregate.mjs';
 import { readSpans } from '../../bin/lib/trace/reader.mjs';
 
@@ -153,5 +155,64 @@ describe('retriedFraction(agentPairs)', () => {
 
   test('empty list yields a zero fraction', () => {
     assert.deepEqual(retriedFraction([]), { k: 0, n: 0, fraction: 0 });
+  });
+});
+
+describe('binarizeScore(score, threshold)', () => {
+  test('at or above the default threshold is positive', () => {
+    assert.equal(binarizeScore(0.5), 'positive');
+    assert.equal(binarizeScore(0.91), 'positive');
+  });
+
+  test('below the default threshold is negative', () => {
+    assert.equal(binarizeScore(0.49), 'negative');
+    assert.equal(binarizeScore(0), 'negative');
+  });
+
+  test('honors a custom threshold', () => {
+    assert.equal(binarizeScore(0.7, 0.8), 'negative');
+    assert.equal(binarizeScore(0.8, 0.8), 'positive');
+  });
+});
+
+describe('cohensKappa(pairs)', () => {
+  test('empty input returns 1', () => {
+    assert.equal(cohensKappa([]), 1);
+  });
+
+  test('perfect agreement across two categories returns 1', () => {
+    const pairs = [
+      { a: 'positive', b: 'positive' },
+      { a: 'negative', b: 'negative' },
+      { a: 'positive', b: 'positive' },
+      { a: 'negative', b: 'negative' },
+    ];
+    assert.equal(cohensKappa(pairs), 1);
+  });
+
+  test('single-category perfect agreement returns 1 (guards expected agreement of 1)', () => {
+    const pairs = [
+      { a: 'positive', b: 'positive' },
+      { a: 'positive', b: 'positive' },
+    ];
+    assert.equal(cohensKappa(pairs), 1);
+  });
+
+  test('chance / independent agreement is approximately 0', () => {
+    const pairs = [
+      { a: 'positive', b: 'positive' },
+      { a: 'positive', b: 'negative' },
+      { a: 'negative', b: 'positive' },
+      { a: 'negative', b: 'negative' },
+    ];
+    assert.ok(Math.abs(cohensKappa(pairs)) < 1e-9);
+  });
+
+  test('total disagreement yields a negative kappa', () => {
+    const pairs = [
+      { a: 'positive', b: 'negative' },
+      { a: 'negative', b: 'positive' },
+    ];
+    assert.ok(cohensKappa(pairs) < 0);
   });
 });
