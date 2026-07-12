@@ -251,6 +251,7 @@ OpenCode command definitions live in `.opencode/commands/`. All commands use the
 | `/jlu-architecture-review [<service-id>] [--cross-service]` | Surface deepening opportunities (single-service or cross-service); interactive grilling loop; lazy ADRs |
 | `/jlu-production-like [task-slug]` | Run the full production-like QA suite for a task — auto-detects fullstack vs full-backend, boots the dev infra once, runs the UI Playwright suite and the backend unit/integration + Testcontainers backend-E2E phases against the live stack, then tears down. The single QA entry point for a finished task. |
 | `/jlu-trace-report` | Query the workspace trace store: by-agent / by-phase / by-task / trends |
+| `/jlu-eval-report` | Consolidated evaluation scorecard: task success, cost-per-task, per-agent quality, calibration, failure taxonomy, suggestion hit-rate |
 | `/jlu-investigate "<question>" [--engine perplexity\|fusion]` | Stateful research/decision command. Runs one engine per call (default Perplexity; OpenRouter Fusion via `--engine fusion`), persists each investigation as a resumable Obsidian note (local-file fallback), resumes by topic slug. Not a debugger — use `/jlu-diagnose` for failures. |
 | `/jlu-update [--ref <ref>]` | Update the plugin to the latest version for the current runtime — pulls or bootstraps the shared `~/.jelou-spec-plugin` git cache, or uses the updater's own checkout, and reinstalls. Primary update path for Codex and OpenCode. |
 
@@ -759,6 +760,17 @@ You don't instrument anything by hand: running the normal lifecycle emits the wh
 # qa-agent     1   1.0s   1.0s    0%          100%
 
 node bin/trace-analyze.mjs --by-task add-auth   # full span tree for one task
+```
+
+For the consolidated north-star view — task success, cost-per-successful-task, per-agent quality, judge calibration, failure taxonomy, feedback, and suggestion hit-rate in one place — run the scorecard:
+
+```bash
+/jlu-eval-report            # or: node bin/trace-eval-report.mjs [--json | --task <slug>]
+# Tasks & success   total=2  pass@1=0  pass@k=1  fail=0  autonomy=50%
+# Cost              total=$0.79  cost_per_successful_task=$0.79
+# Judge calibration kappa=1.00  pairs=12  calibrated=true
+# Failure taxonomy  execution=1  (spec/coordination/verification/unknown=0)
+# Suggestion hit-rate  verified=3  met=0  hit_rate=0%
 ```
 
 Token counts and a derived `cost_usd` ride on each `agent_dispatch` span (best-effort), so cost-per-task rolls up from the same store.
