@@ -9,7 +9,7 @@
 import { test, describe, beforeEach, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -111,6 +111,30 @@ describe('suggester end-to-end against synthetic trace store', () => {
     });
     assert.equal(r.status, 0);
     assert.doesNotMatch(r.stdout, /bump_model_tier/);
+  });
+
+  test('verifies a prior approved prediction against the accrued window and records the outcome', () => {
+    seedRuns(traceFile, 12, 0.0);
+    const approvalTs = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+    mkdirSync(dirname(historyFile), { recursive: true });
+    writeFileSync(historyFile, JSON.stringify({
+      rule_id: 'bump_model_tier', signature: 'implementer', action: 'approved', ts: approvalTs,
+      expected_improvement: {
+        metric: 'retried_fraction', signature: 'implementer',
+        baseline: 0.6, target: 0.2, window_n: 10, direction: 'decrease',
+      },
+    }) + '\n');
+
+    const r = spawnSync('node', [SUGGEST], {
+      encoding: 'utf8',
+      env: { ...process.env, TRACE_FILE: traceFile, TRACE_SUGGEST_HISTORY: historyFile },
+    });
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /prediction check:/);
+    assert.match(r.stdout, /prior \[bump_model_tier\] implementer:.*MET/);
+
+    const records = readFileSync(historyFile, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l));
+    assert.ok(records.some(e => e.kind === 'verification' && e.rule_id === 'bump_model_tier'));
   });
 
   test('cooldown: declining a suggestion suppresses it on the next run', () => {

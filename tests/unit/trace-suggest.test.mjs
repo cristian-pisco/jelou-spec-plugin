@@ -5,7 +5,7 @@
 import { test, describe, beforeEach, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, copyFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, copyFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -79,5 +79,51 @@ describe('bin/trace-suggest.mjs', () => {
     const r = run();
     assert.equal(r.status, 0);
     assert.equal(r.stdout.trim(), '');
+  });
+
+  test('prints the dormant-judge line when eval events exist but the judge is uncalibrated', () => {
+    const ts = new Date().toISOString();
+    const lines = [
+      JSON.stringify({ ts, event_kind: 'span_start', span_id: 'S0', trace_id: 'T0', scope: 'task', name: 'agent_dispatch', agent_role: 'implementer' }),
+      JSON.stringify({ ts, event_kind: 'span_end', span_id: 'S0', trace_id: 'T0', scope: 'task', name: 'agent_dispatch', status: 'ok', duration_ms: 1000, attrs: { retry_count: 0 } }),
+      JSON.stringify({ ts, event_kind: 'event', name: 'eval', span_id: 'EV0', parent_span_id: 'S0', attrs: { quality_score: 0.8, quality_dims: { correctness: 0.8, faithfulness_to_spec: 0.8, task_completion: 0.8 } } }),
+    ];
+    writeFileSync(traceFile, lines.join('\n') + '\n');
+    const r = run();
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /quality rules dormant: judge uncalibrated/);
+    assert.match(r.stdout, /pairs=0/);
+    assert.match(r.stdout, /need kappa>=0\.4 & pairs>=10/);
+  });
+
+  test('prints a prediction-check section and appends verification records', () => {
+    writeFileSync(traceFile, '');
+    const approvalTs = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const lines = [];
+    for (let i = 0; i < 3; i++) {
+      const ts = new Date(Date.now() - (30 - i) * 60 * 1000).toISOString();
+      lines.push(JSON.stringify({ ts, event_kind: 'span_start', span_id: `D${i}`, trace_id: `TD${i}`, scope: 'task', name: 'agent_dispatch', agent_role: 'implementer' }));
+      lines.push(JSON.stringify({ ts, event_kind: 'span_end', span_id: `D${i}`, trace_id: `TD${i}`, scope: 'task', name: 'agent_dispatch', status: 'ok', duration_ms: 1000, attrs: { retry_count: 0 } }));
+    }
+    writeFileSync(traceFile, lines.join('\n') + '\n');
+    mkdirSync(dirname(historyFile), { recursive: true });
+    writeFileSync(historyFile, JSON.stringify({
+      rule_id: 'bump_model_tier', signature: 'implementer', action: 'approved', ts: approvalTs,
+      expected_improvement: {
+        metric: 'retried_fraction', signature: 'implementer',
+        baseline: 0.6, target: 0.2, window_n: 3, direction: 'decrease',
+      },
+    }) + '\n');
+
+    const r = run();
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /prediction check:/);
+    assert.match(r.stdout, /prior \[bump_model_tier\] implementer: predicted ≤0\.20 → actual 0\.00 MET/);
+
+    const appended = readFileSync(historyFile, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l));
+    const verification = appended.find(e => e.kind === 'verification');
+    assert.ok(verification);
+    assert.equal(verification.rule_id, 'bump_model_tier');
+    assert.equal(verification.met, true);
   });
 });

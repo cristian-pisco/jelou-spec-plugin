@@ -67,6 +67,30 @@ corrected for chance. Kappa is `1` for perfect agreement, `≈0` for chance, and
 negative for systematic disagreement. Only once kappa clears an agreed bar does
 Stage 5 wire the score into a rule.
 
+## Kappa-gated quality rules (Stage 5) — dormant until calibrated
+
+Stage 5 wires the `eval` score into two suggestion rules in
+`bin/lib/trace/rules.mjs`. Both are **dormant** — they emit nothing — until the
+judge is proven calibrated. This is the safety property: an uncalibrated judge
+must never drive a change.
+
+- `faithfulness_below_baseline` — per `agent_role`, over `>= MIN_SAMPLE` eval'd
+  dispatches, mean `quality_dims.faithfulness_to_spec` below `FAITHFULNESS_FLOOR`
+  (0.6) → suggest tightening the prompt / escalating. Carries an
+  `expected_improvement` (`faithfulness_to_spec`, direction `increase`).
+- `quality_regression` — a phase whose most recent `quality_score` is below its
+  own historical median by `QUALITY_REGRESSION_MARGIN` → flag likely prompt
+  regression.
+
+**The gate** (`judgeCalibration({ events, feedback })`): compute `cohensKappa`
+over paired `(binarizeScore(quality_score), feedbackSignal)` across spans that
+have BOTH an `eval` event and a `feedback` entry (feedback `accept` → `positive`,
+`reject` → `negative`). The rules fire **only** when paired count `>= MIN_SAMPLE`
+(10) AND `kappa >= KAPPA_FLOOR` (0.4). Below the floor or too few pairs, both
+rules return `[]`. `bin/trace-suggest.mjs` prints one line when eval events exist
+but the gate is closed:
+`quality rules dormant: judge uncalibrated (kappa=<x>, pairs=<n>, need kappa>=0.4 & pairs>=10)`.
+
 ## Offline and sampled
 
 The judge **never runs on a task's critical path.** `bin/trace-eval.mjs` is an

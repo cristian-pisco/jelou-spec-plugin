@@ -113,6 +113,53 @@ Harvest points:
 - **`reject`** — recorded at `/jlu-close-task` Step 2b when the trunk PR is found `CLOSED` but not merged (`--source pr_close --note reverted`).
 - **`implicit_negative`** — **derived on demand, never written** by any workflow: `harvestImplicitNegatives(pairs)` returns one per `agent_dispatch` pair whose `end.attrs.retry_count > 0` (`source: re_dispatch`).
 
+## Decision surface — suggestion rules (Stage 5)
+
+`bin/trace-suggest.mjs` scans the store and emits blocking suggestions from the
+rules in `bin/lib/trace/rules.mjs`. Each finding is
+`{ rule_id, signature, evidence, message }`; a finding that **proposes a change**
+also carries `expected_improvement`.
+
+### Falsifiable predictions + the verification loop
+
+- `expected_improvement` is `{ metric, signature, baseline, target, window_n, direction }`.
+  `bump_model_tier` predicts `retried_fraction` will `decrease` from its current
+  fraction to `RETRY_RATE_THRESHOLD` (0.20) within `N_WINDOW` (10) dispatches; the
+  two quality rules predict `faithfulness_to_spec` / `quality_score` will `increase`.
+  `formatSuggestion` renders it as a `predict:` line
+  (`predict: retried_fraction implementer 0.60 → ≤0.20 within 10 dispatches`).
+- **When the user approves a suggestion, the approval record persisted to
+  `suggestion-history.jsonl` must include the finding's `expected_improvement`** —
+  that is what makes the prediction verifiable on a later run.
+- `verifyPredictions(pairs, history, { now })` (`bin/lib/trace/verify.mjs`) is pure:
+  for every `action: 'approved'` history record that carries an
+  `expected_improvement` and whose `window_n` dispatches have accrued after its
+  `ts`, it recomputes the metric over that post-approval window and returns
+  `{ rule_id, signature, metric, predicted_target, actual, met, ts }`. Nothing
+  verifiable yet → `[]`.
+- `trace-suggest` prints a `prediction check:` section
+  (`prior [bump_model_tier] implementer: predicted ≤0.20 → actual 0.15 MET`) and
+  appends best-effort `{ kind: 'verification', rule_id, signature, met, actual, ts }`
+  lines to the history file. These records are the suggestion-hit-rate signal.
+- History readers are tolerant of both extensions: `applyCooldown` skips
+  `kind: 'verification'` records (they never start a cooldown) and ignores the
+  extra `expected_improvement` on approval records.
+
+### `failure_mode` classification + earliest-decisive attribution
+
+- `classifyFailureMode({ name, agent_role, escalation_reason })`
+  (`bin/lib/trace/failure.mjs`) is role/context based — never the hashed
+  `error_signature`: `qa-agent`/`test-writer`/`spec-reviewer` → `verification`;
+  `spec-interviewer`/`proposal-agent` → `spec`; an `escalation_reason` indicating
+  coordination (or a phase span with multiple failed children) → `coordination`;
+  `implementer`/`build-validator`/`refactor-agent` → `execution`; otherwise
+  `unknown`. It returns a `FAILURE_MODE` value.
+- `immediate_flag` groups recent failed/blocked/orphaned spans by `trace_id` and
+  emits **one** finding per trace, attributed to `earliestDecisiveFailure` (the
+  decisive span with the earliest `start.ts`) with a `failure_mode` in its
+  evidence. A single trace with three cascading failures yields one flag, not
+  three; independent failures in different traces still each flag.
+
 ## How to add a new span name
 
 1. Add the constant to `bin/lib/trace/schema.mjs` under `SPAN_NAMES`.
