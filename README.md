@@ -18,7 +18,7 @@ Follows the conventions established by [OpenSpec](https://github.com/Fission-AI/
 - **Ubiquitous language**: `/jlu-ubiquitous-language` discovers and curates the workspace's domain glossary across services, anchoring each term to the services where it's implemented and referenced.
 - **Architecture review**: `/jlu-architecture-review` surfaces deepening opportunities (single-service or cross-service) — refactors that turn shallow modules into deep ones — runs an interactive grilling loop on a chosen candidate, and lazily records ADRs when candidates are rejected with load-bearing reasons.
 - **Dev environment diagnose**: `/jlu-diagnose` reads recent failure events and a TMUX pane capture from your dev environment, dispatches a focused diagnoser agent to triage the failure, and proposes a structured fix (host or container) that you confirm before it runs. Failure patterns can be registered with `/jlu-add-failure-pattern` so the daemon picks them up on the next match.
-- **Tracing & observability**: Plugin-native JSONL span store at `<WORKSPACE>/.traces/spans.jsonl` with five CLIs (`trace-start-span`, `trace-end-span`, `trace-reconcile`, `trace-analyze`, `trace-suggest`) for emitting, recovering, querying, and getting improvement suggestions from workflow/phase/agent-dispatch spans. ULID-based, payload-capped under `PIPE_BUF` for atomic appends, `TRACE_DISABLED=1` short-circuits everything. Phase 1 laid the foundation; Phase 2 wired automatic workflow instrumentation; Phase 3 ships the analyzer, suggester, and `/jlu-trace-report` skill.
+- **Tracing, evaluation & observability**: Plugin-native JSONL span store at `<WORKSPACE>/.traces/spans.jsonl` that traces every workflow/phase/agent-dispatch, evaluates the quality of what they produced, and turns the evidence into verifiable improvement suggestions — the full **TRACE → EVALUATE → ANALYZE → IMPROVE → VERIFY** loop. Captures token/cost and `pass@1`/`pass@k` task-success, scores outputs with a cross-family LLM-judge (calibrated against harvested accept/reject feedback), exports to OpenInference/OTel for Phoenix/Langfuse/Datadog, and gates prompt changes with a golden-set regression check. ULID-based, payload-capped under `PIPE_BUF` for atomic appends; `TRACE_DISABLED=1` / `EVAL_DISABLED=1` short-circuit emission and judging. See [Tracing & Observability](#tracing--observability).
 
 ## Prerequisites
 
@@ -610,9 +610,9 @@ See [`jelou/references/dev-orchestrator.md`](./jelou/references/dev-orchestrator
 
 ## Tracing & Observability
 
-Plugin-native tracing layer for the full task lifecycle. Every workflow step, phase, and agent dispatch can emit a structured span to a workspace-local JSONL store, enabling bottleneck analysis, retry hot-spot detection, and harness self-improvement. Three observable surfaces (Component / Experience / Decision) following the 2026 harness-engineering canon.
+Plugin-native tracing **and evaluation** layer for the full task lifecycle. Every workflow step, phase, and agent dispatch emits a structured span to a workspace-local JSONL store; the plugin then evaluates the quality of what those actions produced and turns the evidence into improvement suggestions it can verify. This is the complete 2026 harness-engineering loop — **TRACE → EVALUATE → ANALYZE → IMPROVE → VERIFY** — across all three observable surfaces (Component / Experience / Decision).
 
-> **Status:** All three phases shipped. Phase 1 laid the emission, storage, and orphan-recovery foundation. Phase 2 wired automatic instrumentation into all six lifecycle workflows and migrated the dev-environment daemon into the same store. Phase 3 ships the analyzer (`bin/trace-analyze.mjs`), suggester (`bin/trace-suggest.mjs`), and the `/jlu-trace-report` skill.
+> **Status:** Fully shipped. The foundation (V1) laid emission, storage, orphan recovery, automatic instrumentation of all six lifecycle workflows, the analyzer, and the operational suggester. The evaluation layer (V2) added the **Decision surface**: deterministic quality signals (token/cost, `pass@1`/`pass@k` task-success), an OpenInference/OTel exporter, a `span_id`-keyed feedback store, an advisory cross-family LLM-judge, an opt-in golden-set regression gate, and falsifiable `expected_improvement` predictions the suggester verifies on the next run. Rate rules are gated behind a Wilson lower bound; quality rules stay dormant until the judge is calibrated against feedback (Cohen's κ).
 
 ### Where traces live
 
@@ -629,9 +629,13 @@ Plugin-native tracing layer for the full task lifecycle. Every workflow step, ph
 | `bin/trace-end-span.mjs` | Emit a matching `span_end`, compute `duration_ms` from start lookup | nothing |
 | `bin/trace-reconcile.mjs` | Sweep orphan spans older than 30 min (process killed mid-workflow); emit synthetic `span_end` with `status: "orphaned"` | `reconciled: <N>` to stdout |
 | `bin/trace-analyze.mjs` | Read-side queries: `--by-agent` / `--by-phase` / `--by-task <slug>` / `--trends` | tabular output to stdout |
-| `bin/trace-suggest.mjs` | Scan recent traces, emit blocking suggestions per the four rules | one SUGGEST block per finding |
+| `bin/trace-suggest.mjs` | Scan recent traces + feedback, emit blocking suggestions and verify prior predictions | SUGGEST blocks + prediction-check |
+| `bin/trace-export-otlp.mjs` | Re-emit the store in OpenInference / OTel-GenAI attribute shape (for Phoenix / Langfuse / Datadog) | JSON document to stdout / `--out` |
+| `bin/trace-feedback.mjs` | Record a `span_id`-keyed feedback signal (`accept` / `reject` / …) into `feedback.jsonl` | nothing |
+| `bin/trace-eval.mjs` | Score span outputs with a cross-family LLM-judge panel, emit `eval` events (advisory, needs `OPENROUTER_API_KEY`) | scored summary |
+| `bin/trace-regress.mjs` | Golden-set regression gate — block on an agent-prompt quality drop | exit `4` on regression, `0` on pass/skip |
 
-All three are stdlib-only Node ESM scripts. No npm deps. Idempotent. Best-effort instrumentation — write failures fall back to stderr without aborting the caller.
+All are stdlib-only Node ESM scripts (the judge/regress reach OpenRouter over `fetch`). No npm deps. Idempotent. Best-effort instrumentation — write failures fall back to stderr without aborting the caller, and the judge/regress skip cleanly when no API key is present.
 
 ### Manual usage (Phase 1)
 
@@ -700,6 +704,10 @@ Per span, the JSONL record carries: `ts`, `event_kind`, `span_id`, `parent_span_
 
 On `span_end` additionally: `duration_ms`, `status` (`ok` | `blocked` | `failed` | `escalated` | `orphaned`), and attrs like `model_used`, `retry_count`, `escalation_reason`, `diff_size_loc`, `error_signature`, `outcome`, `artifacts`.
 
+**Evaluation attrs (Decision surface):** agent-dispatch spans also carry `gen_ai.usage.input_tokens` / `output_tokens` (best-effort, populated when the runtime exposes usage) and a derived `cost_usd`; phase / workflow spans carry `success` (`pass@1` | `pass@k` | `fail`, from the RED test oracle) and `attempts_to_green`. Failed/blocked spans carry a MAST-seeded `failure_mode` (`spec` | `coordination` | `verification` | `execution` | `unknown`). Quality scores live on discrete `eval` events (`event_kind: "event"`, `name: "eval"`) attached to the judged span via `parent_span_id`, carrying `quality_score`, `quality_dims`, `panel_agreement`, and `escalate`.
+
+**Feedback store:** `<WORKSPACE>/.traces/feedback.jsonl` holds `span_id`-keyed ground truth — `{ ts, span_id, signal, source, note }` where `signal` is `accept` | `reject` | `implicit_negative` | `edit`. `accept`/`reject` are harvested for free at `/jlu-close-task` from the PR outcome; `implicit_negative` is derived from `retry_count`.
+
 Identifiers are ULIDs (26-char Crockford base32, monotonic by ms-prefix). Payloads over 3500 bytes drop `outcome`/`artifacts` first, then `attrs` entirely, so every append stays under `PIPE_BUF` (4 KB) and remains atomic under concurrent writers.
 
 ### Reading the trace store
@@ -718,20 +726,97 @@ Other modes: `--by-phase` (durations grouped by `service:phase_num`), `--by-task
 
 ### Suggestions before heavy workflows
 
-The three heavy workflows (`/jlu-execute-task`, `/jlu-refine-task`, `/jlu-ship`) run the suggester at Step 0.5 right after the reconciler. The suggester applies four rules over recent traces:
+The three heavy workflows (`/jlu-execute-task`, `/jlu-refine-task`, `/jlu-ship`) run the suggester at Step 0.5 right after the reconciler. The suggester applies these rules over recent traces, feedback, and eval events:
 
-- **`bump_model_tier`** — agent retry rate > 20% over last 10 dispatches → suggests upgrading that agent's model tier
+- **`bump_model_tier`** — the **Wilson 95% lower bound** of an agent's retried-dispatch fraction exceeds 20% over ≥ 10 dispatches → suggests upgrading that agent's model tier. The lower-bound gate means thin evidence (e.g. 3/10) never fires.
 - **`extend_patterns`** — same `error_signature` ≥ 3x in 30 days → suggests adding it to the daemon's failure-pattern matcher via `/jlu-add-failure-pattern`
 - **`suggest_parallelize`** — phase p95 / median > 3.0× → suggests enabling per-service-parallel waves
-- **`immediate_flag`** — any blocked/failed span in last 24h → surfaces it for review
+- **`immediate_flag`** — a blocked/failed/orphaned span in the last 24h → surfaces **one** flag per trace at the earliest-decisive failure (cascades are deduped, workflow-root wrappers excluded), tagged with its `failure_mode`
+- **`faithfulness_below_baseline`** / **`quality_regression`** *(quality rules)* — an agent's mean faithfulness-to-spec below floor, or a phase's quality score below its historical median → suggests tightening the prompt. These stay **dormant** until the LLM-judge is calibrated: they fire only when Cohen's κ between judge scores and feedback labels clears 0.4 over ≥ 10 paired spans.
 
-Each suggestion is presented as a single `y/n` question with inline evidence (retry counts, error signatures, p95/median ratios). User responses persist to `.spec-workspace/.cache/suggestion-history.jsonl` with a 7-day cooldown per `(rule, signature)` pair — the same finding never re-prompts within a week.
+Each change-proposing suggestion declares a falsifiable **`expected_improvement`** (e.g. *"retried_fraction implementer 0.60 → ≤0.20 within 10 dispatches"*). On the next run the suggester **verifies** approved predictions and prints a `prediction check:` section (MET / UNMET), recording the outcome so the engine learns which of its own suggestions actually work.
+
+Each suggestion is presented as a single `y/n` question with inline evidence. Responses persist to `.spec-workspace/.cache/suggestion-history.jsonl` with a 7-day cooldown per `(rule, signature)` pair — the same finding never re-prompts within a week.
+
+### Evaluating action quality — an end-to-end example
+
+You don't instrument anything by hand: running the normal lifecycle emits the whole span tree automatically. This walkthrough shows how to read, evaluate, and improve from what a task left behind. All commands resolve the store from `TRACE_FILE` (default `<cwd>/.traces/spans.jsonl`).
+
+**1. Run a task normally — traces accrue by themselves.**
+
+```bash
+/jlu-new-task        # → SPEC.md
+/jlu-execute-task    # → per-phase TDD; emits execute_task → phase → agent_dispatch spans
+/jlu-ship            # → PR; emits a ship span
+```
+
+**2. See what happened and what it cost.**
+
+```bash
+/jlu-trace-report --by-agent
+# agent_role   n   p50    p95     retry_rate  escalation_rate
+# implementer  19  1.0s   1.0s    42%         0%
+# qa-agent     1   1.0s   1.0s    0%          100%
+
+node bin/trace-analyze.mjs --by-task add-auth   # full span tree for one task
+```
+
+Token counts and a derived `cost_usd` ride on each `agent_dispatch` span (best-effort), so cost-per-task rolls up from the same store.
+
+**3. Get improvement suggestions (also runs automatically at Step 0.5 of heavy workflows).**
+
+```bash
+node bin/trace-suggest.mjs
+# SUGGEST [immediate_flag] agent_dispatch cafe1234 failed on task=fix-billing [execution]
+#   evidence: agent_role=implementer · failure_mode=execution · failed_in_trace=5 ...
+#   apply: y/n?
+#
+# SUGGEST [faithfulness_below_baseline] implementer faithfulness_to_spec 0.50 below floor 0.6 over 12 evals
+#   predict: faithfulness_to_spec implementer 0.50 → ≥0.60 within 10 dispatches
+#   apply: y/n?
+#
+# prediction check:
+# prior [bump_model_tier] implementer: predicted ≤0.20 → actual 0.15 MET
+```
+
+**4. Score output quality with the LLM-judge (advisory; needs a key).**
+
+```bash
+export OPENROUTER_API_KEY=sk-or-...
+node bin/trace-eval.mjs --task add-auth          # emits eval events with quality_score
+# Judge scores against SPEC/TASKS/RED with a cross-family panel. Quality *rules*
+# stay dormant until the judge is calibrated (Cohen's κ ≥ 0.4 vs your accept/reject feedback).
+```
+
+**5. Feedback is harvested for free** — `/jlu-close-task` writes `accept` on PR merge and `reject` on close-without-merge. To record one by hand:
+
+```bash
+node bin/trace-feedback.mjs --task add-auth --signal accept --source manual
+```
+
+**6. Ship the traces to a real observability backend** (Phoenix / Langfuse / Datadog):
+
+```bash
+node bin/trace-export-otlp.mjs --out traces.openinference.json
+# spans typed as AGENT / CHAIN / EVALUATOR with gen_ai.* + gen_ai.evaluation.score.value attrs
+```
+
+**7. Guard against quality regressions before you push** (opt-in; skips cleanly without a key):
+
+```bash
+OPENROUTER_API_KEY=sk-or-... node bin/trace-regress.mjs
+# → exit 4 if agent-prompt quality dropped vs the golden baseline, else exit 0
+node bin/trace-regress.mjs --update-baseline      # record the current scores as the new baseline
+```
+
+Everything above is best-effort and disable-able: `TRACE_DISABLED=1` turns off all emission, and `EVAL_DISABLED=1` turns off just the judge — neither ever blocks a workflow.
 
 ### Reference
 
 - **[`jelou/references/tracing.md`](./jelou/references/tracing.md)** — full schema, canonical span names, attrs canon, "how to add a new span" guide
-- **[Design spec](./docs/superpowers/specs/2026-05-23-tracing-observability-design.md)** — architecture, suggestion rules, error handling, out-of-scope V1
-- **[Phase 1 plan](./docs/superpowers/plans/2026-05-23-tracing-observability-phase1-foundation.md)** — task-by-task implementation breakdown
+- **[`jelou/references/eval.md`](./jelou/references/eval.md)** — the LLM-judge rubric, cross-family panel, calibration, and the dormant-until-calibrated posture
+- **[Tracing design spec](./docs/superpowers/specs/2026-05-23-tracing-observability-design.md)** — V1 architecture, suggestion rules, error handling
+- **[Evaluation & Decision-surface design](./docs/superpowers/specs/2026-07-11-evaluation-decision-surface-design.md)** — V2 architecture: the TRACE→EVALUATE→ANALYZE→IMPROVE→VERIFY loop, staged build order, and gaps closed
 
 ## Workspace Structure
 

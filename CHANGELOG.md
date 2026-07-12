@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.279] — 2026-07-12
+
+### Internal
+- document the evaluation + Decision-surface loop in the README with an end-to-end usage example
+
 ## [0.3.278] — 2026-07-11
 
 ### Fixed
