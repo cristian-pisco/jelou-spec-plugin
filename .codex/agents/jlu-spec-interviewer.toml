@@ -150,6 +150,27 @@ Before writing the final SPEC.md, verify:
 - [ ] **If a UI service is in scope, at least one Success Criterion describes a browser-level end-to-end flow.** The spec must NOT contain phrasing that defers E2E ("not required for MVP", "manual QA only"). If it does, rewrite that criterion as a concrete user-flow.
 - [ ] The spec doesn't contradict existing architecture or conventions from the codebase knowledge.
 
+## Step 3b — Author user-story files (decentralized specs)
+
+SPEC.md stays the record. In addition, decompose it into small, self-contained **user-story**
+files under `<TASK_DIR>/stories/` — one per deliverable behavior (a single story for a small
+task). These are the units the TDD agents consume: each carries its own acceptance so an agent
+needs nothing outside the story plus the codebase docs.
+
+For each story, write `<TASK_DIR>/stories/<NN>-<slug>.story.md` from `templates/user-story.md`:
+- **Frontmatter**: `id` (`us-<N>`), `title`, `actor`, `services` (≥1, each present in
+  `registry/services.yaml`), `depends-on` (`[]` or story ids), `service-order` (`[]` or the
+  intra-story service order when a cross-service contract exists), and `covers` — the SPEC FR
+  ids this story delivers (e.g. `[FR-1, FR-3]`).
+- **`## Acceptance Criteria`**: self-contained labeled bullets
+  `[success]`/`[rejection]`/`[realistic]`/`[boundary]` — do NOT reference "the SPEC". Every
+  story needs ≥1 `[success]`.
+- **`## Phase Mapping`** is optional — leave the template stub.
+
+**Coverage invariant**: every FR in SPEC.md is covered by ≥1 story (matched by FR id in
+`covers`, not prose); no story covers an FR SPEC.md does not define. A coherence gate
+(`bin/validate-stories.mjs`) enforces this in `new-task`/`refine-task` before `status=planned`.
+
 ## Step 4 — Present for Approval
 
 After writing, print the SPEC.md location on its own line as an absolute path (terminals render it clickable), then ask for review using AskUserQuestion. **Never print the SPEC.md content in the terminal** — the user reviews the spec by opening the file in their editor. The user must explicitly approve before the task transitions to `planned` state. If the user wants changes, make them and re-present (print the path line again after each rewrite).

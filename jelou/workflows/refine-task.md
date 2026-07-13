@@ -157,7 +157,7 @@ Rules:
 - **Continue until complete** — keep interviewing until you can confidently update all affected sections
 - **Respect the user** — if they say "that's enough" or "move on", stop and update with what you have
 
-### 5c — Update SPEC.md
+### 5c — Update SPEC.md and re-sync stories
 
 1. Update only the affected sections of `<TASK_DIR>/SPEC.md`, preserving everything else.
 2. Maintain numbered requirements for traceability (FR-N, NFR-N, SC-N). Continue the existing numbering sequence for new requirements.
@@ -165,6 +165,31 @@ Rules:
 4. Removed requirement: mark as "Removed" (do not renumber).
 
 Write to `<TASK_DIR>/SPEC.md`.
+
+5. **Re-sync affected user stories.** SPEC.md and `<TASK_DIR>/stories/` are kept coherent — an
+   edited FR must not leave a stale story behind. For every FR you added, changed, or removed,
+   update the matching story file(s) under `<TASK_DIR>/stories/` (the story whose `covers`
+   includes that FR):
+   - **Changed FR** → update that story's acceptance/text to match; keep its `id` and `covers`.
+   - **New FR** → extend an existing story's `covers` + acceptance, or author a new
+     `<NN>-<slug>.story.md` from `<plugin-root>/jelou/templates/user-story.md` that covers it.
+   - **Removed FR** → drop it from the covering story's `covers`; delete the story if it now
+     covers nothing.
+   Skip this sub-step **only** when `<TASK_DIR>/stories/` does not exist (legacy task).
+
+6. **Coherence gate (mandatory).** Run:
+
+   ```
+   node "${PLUGIN_ROOT:-.}/bin/validate-stories.mjs" <TASK_DIR>/stories \
+     --services <WORKSPACE_PATH>/registry/services.yaml \
+     --spec <TASK_DIR>/SPEC.md
+   ```
+
+   - **`storiesPresent: false`** → legacy task, nothing to sync; continue.
+   - **Exit 0** → SPEC and stories are coherent; continue to 5d.
+   - **Exit 1** → print the stderr lines verbatim, fix the stories, and re-run until green. Do NOT
+     present for approval or move the task back to `planned` while the gate is red — a stale story
+     shipping alongside an edited SPEC is exactly the silent drift this gate prevents.
 
 ### 5d — Present for Approval
 

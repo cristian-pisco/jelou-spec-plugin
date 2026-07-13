@@ -33,14 +33,33 @@ The Testing Strategy section MUST list the user-visible flows that will be cover
 The orchestrator INLINES only what it already has in its own context. Everything else, you read yourself with `Read` (you have the tool). This keeps the orchestrator's context small so downstream agent dispatches stay cheap.
 
 **Inlined in your prompt**:
-- **SPEC.md** — the approved specification (required)
+- **SPEC.md** — the approved specification (the record; required)
 - **Affected services list** — each entry has `{id, path, stack, docker?}` from `services.yaml`
 - **Global strategy draft** — only present in Pass 2 (per-service detail pass)
 
 **Read yourself, on demand, from the absolute paths the orchestrator provides**:
+- **`<TASK_DIR>/stories/*.story.md`** — the authored user-story files (the decentralized specs).
+  When present, these are your **primary** requirement source; SPEC.md is the umbrella record.
+  Each story carries its own self-contained acceptance (`[success]`/`[rejection]`/`[realistic]`/
+  `[boundary]`), the `services` it touches, and a `covers: [FR-…]` map back to SPEC.md.
 - `<WORKSPACE_PATH>/principles/ENGINEERING_PRINCIPLES.md` — global engineering principles
 - `<WORKSPACE_PATH>/registry/services.yaml` — full registry (only if you need a service not in the affected list)
 - Per affected service, the 6 codebase files at `<WORKSPACE_PATH>/services/<service-id>/codebase/{ARCHITECTURE,STACK,CONVENTIONS,INTEGRATIONS,STRUCTURE,CONCERNS}.md`
+
+**Story-first sourcing (fallback to SPEC.md).** Glob `<TASK_DIR>/stories/*.story.md`:
+- **Stories present** → derive phases from them. A story is single-source-of-truth for its own
+  acceptance; when a story lists multiple `services`, split it into one phase per service (the
+  story still owns the acceptance). Copy each story's acceptance bullets **inline** into the
+  phase files it produces (see Phase Files below) so the TDD agent reads nothing outside the
+  phase. Trace every phase back to the story via `covers`/`Source story`.
+- **Stories absent** (legacy task) → fall back to SPEC.md exactly as before. Do not abort.
+
+**Fail-fast on a malformed story.** Before generating, sanity-check each story you read against
+`registry/services.yaml`: every `services` entry must exist in the registry, and the story must
+carry ≥1 `[success]` bullet and a non-empty `covers`. If a story is malformed, STOP and report
+the offending story file + field (e.g. `stories/02-attach-filter.story.md: service 'gatway' not
+in services.yaml`) rather than guessing. The orchestrator runs the same check deterministically
+via `bin/validate-stories.mjs` before dispatching you; this is your in-agent backstop.
 
 If a path doesn't resolve, skip silently and proceed with whatever is available. Don't abort for missing codebase files — the orchestrator already validated SPEC.md exists, which is the only required input.
 
@@ -157,10 +176,19 @@ Each phase file follows the Decision #19 format:
 ```markdown
 # Phase 01: <Phase Name>
 
+## Source story
+us-<N> — <story title> (stories/<NN>-<slug>.story.md)
+
 ## Requirements (immutable)
 <!-- Generated from PROPOSAL.md. Do not modify. -->
 - FR-1: <requirement from SPEC.md>
 - <specific implementation requirements for this phase>
+
+## Acceptance (immutable — inlined from the source story)
+- [success] <copied verbatim from the story>
+- [rejection ...] <copied verbatim>
+- [realistic] <copied verbatim>
+- [boundary] <copied verbatim>
 
 ## Execution (mutable)
 <!-- Updated by agents during implementation -->
@@ -171,6 +199,10 @@ Each phase file follows the Decision #19 format:
 
 ### Deviations
 ```
+
+When stories are present, the `## Source story` and `## Acceptance` sections are mandatory —
+they make the phase self-contained. When falling back to SPEC.md (no stories), omit
+`## Source story` and derive `## Acceptance` from the relevant SPEC Success Criteria as before.
 
 ## Before You Submit
 Before finalizing the proposal, verify:

@@ -598,6 +598,31 @@ Rules for writing:
 
 **Case-Coverage self-check (before the spec may reach `status=planned`).** For every FR that validates or types input — request body, typed query parameters, or a cross-field reference — confirm the Success Criteria include at least one `[rejection]` criterion per validation rule and at least one `[realistic]` populated-reference criterion. The "that's enough" / "1-2 rounds" escape hatches (Principles, lines 17 and 20) do NOT waive this floor for a validated-input FR — if the user stops the interview early, write the missing `[rejection]` / `[realistic]` criteria from the validation rules you already gathered rather than shipping a happy-path-only spec. This is the spec-side expression of the case-matrix floor that `jlu-test-writer` and `jlu-tdd-cycle` enforce at the test layer.
 
+### 14c-2 — Author user-story files (decentralized specs)
+
+The SPEC.md written in 14c stays the record. In addition, decompose it into small,
+self-contained **user-story** files under `<TASK_DIR>/stories/` — one per deliverable
+behavior (a single story for a small task). These are the units the TDD agents consume
+during `/jlu-execute-task`; each carries its own acceptance so an agent needs nothing
+outside the story plus the codebase docs.
+
+For each story, write `<TASK_DIR>/stories/<NN>-<slug>.story.md` from the template at
+`<PLUGIN_ROOT>/jelou/templates/user-story.md`, where `<NN>` is a two-digit order prefix
+(`01`, `02`, …). Fill:
+- **Frontmatter**: `id` (`us-<N>`), `title`, `actor`, `services` (≥1, each must exist in
+  `<WORKSPACE_PATH>/registry/services.yaml`), `depends-on` (story ids this one needs, or `[]`),
+  `service-order` (intra-story service order when a cross-service contract exists, else `[]`),
+  and `covers` — the SPEC FR ids this story delivers (e.g. `[FR-1, FR-3]`).
+- **`## Acceptance Criteria`**: self-contained labeled bullets
+  `[success]`/`[rejection]`/`[realistic]`/`[boundary]` — do NOT reference "the SPEC". Reuse the
+  case taxonomy already written in `## Success Criteria`. Every story needs ≥1 `[success]`.
+- **`## Phase Mapping`** is optional — leave the template stub as-is.
+
+**Coverage invariant** (enforced by the Step 15 gate before `status=planned`): every FR in
+SPEC.md is covered by ≥1 story (matched by FR id in `covers`, not by prose), and no story
+covers an FR that SPEC.md does not define. If a UI service is in scope, at least one story
+touching it carries a browser-level `[success]` criterion — the E2E guard is not waived here.
+
 ### 14d — Present for Approval
 
 > **Never print the SPEC.md content in the terminal.** The user reviews the spec by opening the file in their editor — the terminal carries only the file path and a short summary. Dumping the full spec into the conversation is a defect.
@@ -637,7 +662,21 @@ After the user approves (or declines) the spec:
        Templates auto-detected: <DETECTED_TEMPLATES or "none">
        ```
 
-2. If the user **approved** the spec:
+1c. **Coherence gate (stories ↔ SPEC) — mandatory before `planned`.** Run:
+
+    ```
+    node <PLUGIN_ROOT>/bin/validate-stories.mjs <TASK_DIR>/stories \
+      --services <WORKSPACE_PATH>/registry/services.yaml \
+      --spec <TASK_DIR>/SPEC.md
+    ```
+
+    - **Exit 0** → every story is well-formed and every FR is covered; continue.
+    - **Exit 1** → print the stderr lines verbatim (they name the offending story + field, the
+      uncovered FR, or the orphan story). Do NOT transition the task to `planned`. Fix the story
+      files (re-run 14c-2, or re-interview) and re-run the gate until it passes. Skipping this
+      gate lets SPEC↔story drift ship silently — it is not optional.
+
+2. If the user **approved** the spec AND the Step 1c gate passed:
    a. Update `<TASK_DIR>/TASKS.md`:
       - Replace the existing `## Status: refining` line in place with `## Status: planned` (do not append a second status heading)
       - Add transition timestamp: `- Planned: <current-datetime-ISO>`
