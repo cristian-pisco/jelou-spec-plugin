@@ -45,6 +45,27 @@ describe('SPEC Success Criteria taxonomy', () => {
   });
 });
 
+describe('user-story template — acceptance labels subset of taxonomy', () => {
+  const TAXONOMY = new Set(['success', 'rejection', 'realistic', 'boundary']);
+
+  test('every [label] bullet in user-story.md is within the taxonomy', () => {
+    const t = read('jelou/templates/user-story.md');
+    const labels = [...t.matchAll(/^\s*-\s*\[([a-z]+)\b/gm)].map((m) => m[1]);
+    assert.ok(labels.length >= 1, 'template must ship labeled acceptance bullets');
+    for (const label of labels) {
+      assert.ok(TAXONOMY.has(label), `unknown acceptance label [${label}] in user-story.md`);
+    }
+    assert.ok(labels.includes('success'), 'template must include a [success] bullet');
+  });
+
+  test('user-story.md carries the story frontmatter fields', () => {
+    const t = read('jelou/templates/user-story.md');
+    for (const field of ['id:', 'services:', 'covers:']) {
+      assert.match(t, new RegExp(`^${field}`, 'm'));
+    }
+  });
+});
+
 describe('QA gate — breadth-aware coverage', () => {
   test('qa-smell-catalog.md adds the Coverage-Breadth Smells', () => {
     const c = read('jelou/references/qa-smell-catalog.md');

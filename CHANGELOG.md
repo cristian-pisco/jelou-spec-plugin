@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.282] — 2026-07-12
+
+### Added
+- decentralized user-story specs with SPEC-story coherence gate (v1)
+
 ## [0.3.281] — 2026-07-12
 
 ### Added

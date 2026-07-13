@@ -176,6 +176,25 @@ Continue to Step 4.
 
 If `<TASK_DIR>/PROPOSAL.md` does NOT exist:
 
+### 4.0-pre — Validate authored stories (deterministic gate)
+
+Before any proposal work, validate the decentralized story specs so a malformed story fails
+here — not mid-execution. Run:
+
+```
+node <plugin-root>/bin/validate-stories.mjs <TASK_DIR>/stories \
+  --services <WORKSPACE_PATH>/registry/services.yaml \
+  --spec <TASK_DIR>/SPEC.md
+```
+
+- **`storiesPresent: false`** (legacy task, no `stories/` dir) → skip silently; the proposal-agent
+  falls back to SPEC.md.
+- **Exit 0** → stories are well-formed and every FR is covered; continue.
+- **Exit 1** → print the stderr lines verbatim (they name the offending story + field, the
+  uncovered FR, or the orphan story) and STOP. Do not generate a proposal from a broken story
+  set — fix the stories (or re-run `/jlu-refine-task`) first. This is the same script the
+  `new-task`/`refine-task` coherence gates run.
+
 ### 4.0 — Task Triviality Classification
 
 Before invoking `jlu-proposal-agent`, classify the task to decide whether to synthesize PROPOSAL.md inline or run the full two-pass agent flow.
