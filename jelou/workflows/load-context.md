@@ -187,10 +187,26 @@ Present the loaded context in this structured format:
 
 ## Step 9 — Task Summary
 
-Dispatch `jlu-summary-agent` with model: **sonnet**:
-- Pass `TASK_DIR` (the resolved task directory path from Step 2)
-- Pass `CONTEXT_HINT` = `context-load`
-- Print the agent's output before the closing message.
+Print a compact task summary inline — **no agent dispatch**. You already have every field: TASKS.md (Step 3), git data (Step 4), and the lifecycle state + recommended next step (Step 6). Do not re-derive any of it from a subagent.
+
+```
+## Task Summary — <slug>
+
+Status: <lifecycle-state> — <human-label from Step 6>
+
+### Summary
+- Phases: <done>/<total>[ per <service-id> if multi-service]
+- Tests: <unit> unit, <integration> integration, <e2e> e2e (omit any type with 0 count)
+- Commits: <count> on <branch-name>
+- Files changed: <count> · Lines: +<added> / -<removed>
+
+### Next Steps
+- <recommended next step from the Step 6 state → command mapping>
+```
+
+**Never fabricate data.** Every number must come from TASKS.md or the git output already gathered — never estimate. If a metric is unavailable, show `—`; an honest gap beats a plausible guess.
+
+**Never invent commands. The `/jlu:*` vocabulary is closed.** Every `/jlu:*` you name in Next Steps must be a command that actually ships in this plugin — the lifecycle set is `/jlu:new-task`, `/jlu:execute-task`, `/jlu:refine-task`, `/jlu:extend-phase`, `/jlu:test-suite`, `/jlu:production-like`, `/jlu:ship`, `/jlu:close-task`. Outward-facing or deploy-time work that no plugin command performs — deploying a service, setting a gateway env var, flipping a feature flag, running a live external E2E — is a **plain-prose manual/ops step**, never a `/jlu:*` command. There is no `jlu:land-and-deploy` command and no `jlu:deploy` command; if you are reaching for one, you are hallucinating — write the action in prose instead.
 
 After the summary, tell the user:
 > Context loaded. You can ask me anything about this task. When making changes, I'll use the worktree paths shown above. I can read any artifact from the inventory for more detail.

@@ -15,5 +15,5 @@ Whenever the orchestrator dispatches a subagent that has the `Bash` tool, prepen
 
 ## When NOT to inject
 
-- Read-only / planning agents (proposal-agent, qa-agent in static mode without Bash, summary-agent).
+- Read-only / planning agents (proposal-agent, qa-agent in static mode without Bash).
 - Inline orchestrator Bash that the orchestrator itself runs (the orchestrator is governed by its own system prompt, not by this gate).

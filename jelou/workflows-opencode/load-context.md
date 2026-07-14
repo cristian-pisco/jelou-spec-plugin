@@ -147,11 +147,23 @@ Present:
 5. Artifact inventory with file paths.
 6. Status summary + recommended next command.
 
-Then dispatch `jlu-summary-agent` with:
-- `TASK_DIR`
-- `CONTEXT_HINT=context-load`
+Then print a compact task summary inline (no subagent — you already have TASKS.md, git data, and the status/next-command from the steps above):
 
-Print the summary agent result.
+```
+## Task Summary — <slug>
+
+Status: <lifecycle-state> — <human-label>
+
+### Summary
+- Phases: <done>/<total>
+- Tests: <unit> unit, <integration> integration, <e2e> e2e (omit types with 0)
+- Commits: <count> on <branch> · Files: <count> · Lines: +<added> / -<removed>
+
+### Next Steps
+- <recommended next command from the status → command mapping>
+```
+
+Never fabricate a number — pull each from TASKS.md or git, or show `—`. The `/jlu:*` vocabulary is closed: any command you name in Next Steps must actually ship in this plugin. Deploy-time or outward-facing work that no plugin command performs is a plain-prose manual/ops step, never a `/jlu:*` command.
 
 Close with:
 

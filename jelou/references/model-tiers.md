@@ -68,7 +68,7 @@ Users can override model assignments by adding a `models` section to `.spec-work
 | `research` | sonnet | codebase-analyzer-structural, codebase-analyzer-operational |
 | `proposal` | sonnet | proposal-agent |
 | `code` | sonnet | test-writer, implementer, qa-agent, build-validator |
-| `operational` | haiku | git-agent, tasks-agent, summary-agent |
+| `operational` | haiku | git-agent, tasks-agent |
 
 ### Resolution Order
 

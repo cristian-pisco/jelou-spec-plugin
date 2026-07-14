@@ -1003,7 +1003,6 @@ flowchart TB
         qa["qa-agent"]
         tasks_ag["tasks-agent"]
         build["build-validator"]
-        summary["summary-agent"]
         gloss_x["glossary-extractor"]
         gloss_c["glossary-curator"]
         arch_x["architecture-explorer"]
