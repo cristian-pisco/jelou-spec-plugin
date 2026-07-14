@@ -1,15 +1,17 @@
-// tests/unit/summary-next-steps-command-guard.test.mjs
+// tests/unit/next-steps-command-guard.test.mjs
 //
-// Run: `node --test tests/unit/summary-next-steps-command-guard.test.mjs`
+// Run: `node --test tests/unit/next-steps-command-guard.test.mjs`
 //
-// jlu-summary-agent prints a "Next Steps" block at the end of execution. The
-// canonical guidance is `/jlu:ship` → `/jlu:close-task`, but a run was observed
-// emitting `/jlu:land-and-deploy` — a command that does not exist (it conflated
-// gstack's `land-and-deploy` into the jlu namespace, and invented a command for
-// deferred deploy-time work). The runtime guard is the closed-vocabulary rule in
-// the agent prompt; this suite guards the source: no canonical doc may name a
-// `/jlu:*` command that does not resolve to a real skill, and the summary agent
-// must keep carrying the closed-vocabulary guardrail.
+// The load-context workflow prints a "Next Steps" block at the end of a
+// context load. The canonical guidance is `/jlu:ship` → `/jlu:close-task`, but a
+// run was once observed emitting `/jlu:land-and-deploy` — a command that does not
+// exist (it conflated gstack's `land-and-deploy` into the jlu namespace, and
+// invented a command for deferred deploy-time work). The former jlu-summary-agent
+// carried the closed-vocabulary guardrail; that agent is retired and the summary
+// is now printed inline by the load-context workflow, which must keep carrying the
+// guardrail. This suite guards the source: no canonical doc may name a `/jlu:*`
+// command that does not resolve to a real skill, and the load-context workflow
+// must keep the closed-vocabulary guardrail.
 
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
@@ -25,8 +27,6 @@ const realCommands = new Set(
     .map((e) => e.name),
 );
 
-// Matches a slash-command invocation `/jlu:<name>` or `/jlu-<name>` and captures
-// the bare command name. Mirrors the bash audit used to vet the current source.
 const CMD_RE = /\/jlu[:-]([a-z][a-z-]+)/g;
 
 function commandRefs(src) {
@@ -43,17 +43,17 @@ function mdFilesUnder(dir) {
   return out;
 }
 
-const SUMMARY_AGENT = join(ROOT, 'agents', 'jlu-summary-agent.md');
+const LOAD_CONTEXT = join(ROOT, 'jelou', 'workflows', 'load-context.md');
 
-describe('summary agent — closed /jlu:* command vocabulary', () => {
-  const src = readFileSync(SUMMARY_AGENT, 'utf8');
+describe('load-context Task Summary — closed /jlu:* command vocabulary', () => {
+  const src = readFileSync(LOAD_CONTEXT, 'utf8');
 
   test('every /jlu command it names resolves to a real skill', () => {
     const phantoms = [...new Set(commandRefs(src))].filter((c) => !realCommands.has(c));
     assert.deepEqual(
       phantoms,
       [],
-      `jlu-summary-agent names commands that do not exist: ${phantoms.map((c) => `/jlu:${c}`).join(', ')}`,
+      `load-context.md names commands that do not exist: ${phantoms.map((c) => `/jlu:${c}`).join(', ')}`,
     );
   });
 

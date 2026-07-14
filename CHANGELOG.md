@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.283] — 2026-07-13
+
+### Internal
+- retire jlu-summary-agent; inline the load-context task summary
+
 ## [0.3.282] — 2026-07-12
 
 ### Added

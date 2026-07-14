@@ -113,7 +113,6 @@ Read `.spec-workspace.json` once at the start of this step (if present) and cach
    - For proposal-agent: use `MODEL_CONFIG.proposal` or default `"sonnet"`
    - For test-writer, implementer, qa-agent, build-validator: use `MODEL_CONFIG.code` or default `"sonnet"`
    - For git-agent, tasks-agent: use `MODEL_CONFIG.operational` or default `"haiku"`
-   - For summary-agent: use `MODEL_CONFIG.operational` or default `"sonnet"`
 
 ---
 
