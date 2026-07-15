@@ -105,34 +105,21 @@ classify_mode() {
     fi
   fi
 
-  # Decide the mode.
+  # Decide the mode: docs (validated override) or tdd (everything else).
+  # The vertical/horizontal distinction is retired — one authoring mechanism.
   if [[ "$OVERRIDE" == "docs" ]] && [[ "$DOCS_VALIDATION" == "passed" ]]; then
     MODE="docs"
     REASON="frontmatter_override_validated"
   elif [[ "$OVERRIDE" == "docs" ]]; then
-    # Override rejected — fall through to size gate.
-    if [[ "$FR_NFR_COUNT" -le 5 ]] && [[ "$CLASSIFY_SERVICES_IN_PHASE" -eq 1 ]]; then
-      MODE="vertical"
-    else
-      MODE="horizontal"
-    fi
+    MODE="tdd"
     REASON="docs_override_rejected"
-  elif [[ "$OVERRIDE" == "horizontal" ]]; then
-    MODE="horizontal"
-    REASON="frontmatter_override"
-  elif [[ "$OVERRIDE" == "vertical" ]] && [[ "$FR_NFR_COUNT" -le 5 ]] && [[ "$CLASSIFY_SERVICES_IN_PHASE" -eq 1 ]]; then
-    MODE="vertical"
-    REASON="frontmatter_override"
-  elif [[ "$OVERRIDE" == "vertical" ]]; then
-    # Vertical override rejected by size gate — fall through to default.
-    MODE="horizontal"
-    REASON="vertical_override_rejected_by_size_gate"
-  elif [[ "$FR_NFR_COUNT" -le 5 ]] && [[ "$CLASSIFY_SERVICES_IN_PHASE" -eq 1 ]]; then
-    MODE="vertical"
-    REASON="size_gate"
+  elif [[ "$OVERRIDE" == "vertical" ]] || [[ "$OVERRIDE" == "horizontal" ]]; then
+    MODE="tdd"
+    REASON="legacy_mode_override"
+    echo "note: legacy Mode: $OVERRIDE treated as tdd (vertical/horizontal retired)" >&2
   else
-    MODE="horizontal"
-    REASON="size_gate"
+    MODE="tdd"
+    REASON="default"
   fi
 
   echo "mode=$MODE"
