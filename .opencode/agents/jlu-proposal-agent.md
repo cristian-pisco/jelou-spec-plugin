@@ -177,6 +177,7 @@ Each phase file follows the Decision #19 format:
 
 ```markdown
 # Phase 01: <Phase Name>
+**Needs:** <same-service phase ids this phase depends on, comma-separated, or `none`>
 
 ## Source story
 us-<N> — <story title> (stories/<NN>-<slug>.story.md)
@@ -205,6 +206,8 @@ us-<N> — <story title> (stories/<NN>-<slug>.story.md)
 When stories are present, the `## Source story` and `## Acceptance` sections are mandatory —
 they make the phase self-contained. When falling back to SPEC.md (no stories), omit
 `## Source story` and derive `## Acceptance` from the relevant SPEC Success Criteria as before.
+
+**`**Needs:**` derivation:** project the per-phase `- **Dependencies**:` entries from the `## Phases` section onto each phase file, keeping ONLY dependencies on phases of the SAME service (cross-service ordering stays expressed by `Execution Strategy`, not by `**Needs:**`). A foundation phase, or a phase whose only dependencies are in other services, gets `**Needs:** none`. Never reference a later phase — dependency order is strictly forward. `bin/plan-phase-waves.mjs` reads these lines; a cycle or a reference to a non-existent same-service phase makes it exit 3.
 
 ## Before You Submit
 Before finalizing the proposal, verify:

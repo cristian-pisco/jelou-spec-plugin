@@ -48,6 +48,19 @@ function mkTaskDir(services) {
   return root;
 }
 
+function mkTaskDirWithNeeds(services) {
+  const root = mkdtempSync(join(tmpdir(), 'plan-waves-needs-'));
+  for (const [svc, phases] of Object.entries(services)) {
+    const phasesDir = join(root, 'services', svc, 'phases');
+    mkdirSync(phasesDir, { recursive: true });
+    for (const [phaseName, needs] of Object.entries(phases)) {
+      const line = needs === undefined ? '' : `\n**Needs:** ${needs}`;
+      writeFileSync(join(phasesDir, `${phaseName}.md`), `# ${phaseName}${line}\n`);
+    }
+  }
+  return root;
+}
+
 describe('plan-phase-waves — validation', () => {
   test('errors when task-dir is missing', () => {
     const r = runScript([]);
@@ -232,6 +245,103 @@ describe('plan-phase-waves — phase id parsing', () => {
       const r = runScript([`--task-dir=${dir}`]);
       const phases = r.parsed.waves.map(w => w[0].phase);
       assert.deepEqual(phases, ['03a', '03b', '04']);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('intra-service needs', () => {
+  test('two independent phases in one service share a level (per-service-parallel, cap 2)', () => {
+    const dir = mkTaskDirWithNeeds({
+      'svc-a': { '01-base': 'none', '02-x': '01', '03-y': '01' },
+    });
+    try {
+      const r = runScript([`--task-dir=${dir}`, '--strategy=per-service-parallel', '--phase-parallelism=2']);
+      assert.equal(r.code, 0);
+      assert.equal(r.parsed.waves.length, 2);
+      assert.deepEqual(r.parsed.waves[0].map((p) => p.phase), ['01']);
+      assert.deepEqual(r.parsed.waves[1].map((p) => p.phase).sort(), ['02', '03']);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('cap 1 re-serializes a shared level (dormant)', () => {
+    const dir = mkTaskDirWithNeeds({
+      'svc-a': { '01-base': 'none', '02-x': '01', '03-y': '01' },
+    });
+    try {
+      const r = runScript([`--task-dir=${dir}`, '--strategy=per-service-parallel', '--phase-parallelism=1']);
+      assert.equal(r.code, 0);
+      assert.equal(r.parsed.waves.length, 3);
+      assert.deepEqual(r.parsed.waves.map((w) => w[0].phase), ['01', '02', '03']);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('sequential exploits levels for a single service (cap 2)', () => {
+    const dir = mkTaskDirWithNeeds({
+      'svc-a': { '01-base': 'none', '02-x': '01', '03-y': '01' },
+    });
+    try {
+      const r = runScript([`--task-dir=${dir}`, '--strategy=sequential', '--phase-parallelism=2']);
+      assert.equal(r.code, 0);
+      assert.equal(r.parsed.waves.length, 2);
+      assert.deepEqual(r.parsed.waves[1].map((p) => p.phase).sort(), ['02', '03']);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('no **Needs:** lines → identical to today (backward compat)', () => {
+    const dir = mkTaskDir({ 'svc-a': ['01-a', '02-a', '03-a'] });
+    try {
+      const r = runScript([`--task-dir=${dir}`, '--strategy=per-service-parallel', '--phase-parallelism=2']);
+      assert.equal(r.code, 0);
+      assert.deepEqual(
+        r.parsed.waves.map((w) => w.map((p) => `${p.service}:${p.phase}`)),
+        [['svc-a:01'], ['svc-a:02'], ['svc-a:03']],
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('an empty **Needs:** line does not read into following lines', () => {
+    const root = mkdtempSync(join(tmpdir(), 'plan-waves-empty-'));
+    const phasesDir = join(root, 'services', 'svc-a', 'phases');
+    mkdirSync(phasesDir, { recursive: true });
+    writeFileSync(join(phasesDir, '01-base.md'), '# 01-base\n**Needs:** none\n');
+    writeFileSync(join(phasesDir, '02-x.md'), '# 02-x\n**Needs:**\n\n## Requirements (immutable)\n- FR-1: a thing\n');
+    try {
+      const r = runScript([`--task-dir=${root}`, '--strategy=sequential']);
+      assert.equal(r.code, 0);
+      assert.equal(r.parsed.waves.length, 2);
+      assert.deepEqual(r.parsed.waves.map((w) => w[0].phase), ['01', '02']);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('a **Needs:** reference to a non-existent phase exits 3', () => {
+    const dir = mkTaskDirWithNeeds({ 'svc-a': { '01-base': 'none', '02-x': '99' } });
+    try {
+      const r = runScript([`--task-dir=${dir}`, '--strategy=sequential']);
+      assert.equal(r.code, 3);
+      assert.match(r.stderr, /phase '02' needs '99' which is not a phase/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('a dependency cycle exits 3', () => {
+    const dir = mkTaskDirWithNeeds({ 'svc-a': { '01-base': 'none', '02-x': '03', '03-y': '02' } });
+    try {
+      const r = runScript([`--task-dir=${dir}`, '--strategy=sequential']);
+      assert.equal(r.code, 3);
+      assert.match(r.stderr, /dependency cycle/);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

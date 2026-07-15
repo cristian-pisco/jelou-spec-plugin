@@ -390,8 +390,10 @@ node <plugin-root>/bin/plan-phase-waves.mjs \
 Parse the JSON once, store as `WAVE_PLAN`, and iterate `WAVE_PLAN.waves` for the rest of Step 7. The script handles:
 
 - **Sequential**: one phase per wave, services alphabetical, phases lex within service.
-- **Per-service-parallel**: zip per-service lanes by index, then chunk each wave by `PHASE_PARALLELISM` cap when a wave's phase count exceeds the cap.
+- **Per-service-parallel**: zip per-service lanes by dependency level, then chunk each wave by `PHASE_PARALLELISM` cap when a wave's phase count exceeds the cap.
 - **Phase id parsing**: filenames like `03a-name.md` yield `phase=03a` so sub-phases (3a, 3b, 3c) stay in order.
+
+Each wave lists the phases that may run together. With intra-service `**Needs:**` edges declared on the phase files, a wave can now contain more than one phase from the *same* service (an independent "level"); absent `**Needs:**`, each phase defaults to depending on its predecessor and waves stay one-phase-per-service as before. `PHASE_PARALLELISM` (default 1) still chunks every wave, so behavior is unchanged until the cap is raised.
 
 #### Concurrency cap
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.286] — 2026-07-15
+
+### Added
+- intra-service phase parallelism via Needs edges (dormant, cap=1)
+
 ## [0.3.285] — 2026-07-15
 
 ### Added
