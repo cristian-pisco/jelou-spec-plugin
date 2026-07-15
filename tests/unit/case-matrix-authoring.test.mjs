@@ -22,7 +22,11 @@ describe('jlu-tdd-cycle.md — case-matrix RED floor', () => {
   const a = read('agents/jlu-tdd-cycle.md');
   test('mandates a per-requirement case matrix', () => {
     assert.match(a, /case matrix/i);
-    assert.match(a, /per validation decorator/);
+    assert.match(a, /per decorator\/type constraint/);
+  });
+  test('links to the canonical case-matrix derivation procedure instead of restating it', () => {
+    assert.match(a, /Case-Matrix Derivation Procedure/);
+    assert.match(a, /non-negotiable/);
   });
   test('drops the "one behavior, not all of them" minimalism', () => {
     assert.doesNotMatch(a, /one happy path, or one error path, or one edge case — not all of them/);
