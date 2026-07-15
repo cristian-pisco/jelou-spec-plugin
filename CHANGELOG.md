@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.284] — 2026-07-14
+
+### Internal
+- consolidate TDD to a single authoring agent (retire vertical/horizontal split + dispute)
+
 ## [0.3.283] — 2026-07-13
 
 ### Internal
