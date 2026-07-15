@@ -355,7 +355,7 @@ Before the per-phase loop starts, decide whether this task runs sequentially (le
 #### Detect the strategy
 
 1. Read PROPOSAL.md and look for a `## Execution Strategy` section. Recognized values:
-   - `sequential` (or missing section) — current behavior. Phases run one at a time in PROPOSAL.md order. No parallelism beyond what 7d/7e already do for multi-service-per-phase fan-out.
+   - `sequential` (or missing section) — current behavior. Phases run one at a time in PROPOSAL.md order. No parallelism beyond what 7d already does for multi-service-per-phase fan-out.
    - `per-service-parallel` — opt-in. Phases are grouped by their owning service, and same-index phases from different services run concurrently (one orchestrator message with multiple `Agent` calls).
 2. If `Execution Strategy` is missing, default to `sequential`. The proposal-agent SHOULD emit this section explicitly; treat its absence as a conservative default, not as opt-in.
 
@@ -528,7 +528,7 @@ Tests, build, lint, and format all run on the host runtime against this path —
 
 ### 7c.1. Phase Mode Classification
 
-Determine whether this phase runs in **docs** mode (no TDD — direct commit of documentation edits), **vertical** mode (one combined `jlu-tdd-cycle` agent doing RED→GREEN per FR), or **horizontal** mode (separate `jlu-test-writer` then `jlu-implementer`). The choice is delegated to `bin/classify-phase.sh mode` — the orchestrator no longer counts FR/NFR bullets inline or runs awk against frontmatter.
+Determine whether this phase runs in **docs** mode (no TDD — direct commit of documentation edits) or **tdd** mode (the single `jlu-tdd-cycle` agent authors RED→GREEN per FR). The choice is delegated to `bin/classify-phase.sh mode` — the orchestrator no longer counts FR/NFR bullets inline or runs awk against frontmatter.
 
 **Invocation**:
 
@@ -540,7 +540,7 @@ CLASSIFY_SERVICES_IN_PHASE="<K>" \
 
 **Output (key=value)**:
 
-- `mode=docs|vertical|horizontal`
+- `mode=docs|tdd`
 - `fr_nfr_count=<N>`
 - `frontmatter_override=docs|vertical|horizontal|trivial|none`
 - `docs_validation=passed|failed|n/a`
@@ -550,23 +550,20 @@ CLASSIFY_SERVICES_IN_PHASE="<K>" \
 The script enforces:
 
 - **Docs mode** requires explicit `**Mode: docs**` / `mode: docs` frontmatter AND zero code-change verbs (`implement`, `add endpoint`, `wire`, `inject`, `migrate`, `handler`, `controller`, `service`, `module`) in the requirements section. Heuristic-only docs detection is forbidden — the orchestrator cannot promote a phase to docs from inference.
-- **Vertical mode** threshold: `fr_nfr_count ≤ 5` AND `services_in_phase == 1`. Above either: `horizontal`.
-- **Mode: vertical** frontmatter override is rejected when the size gate disagrees (returns `horizontal` + `reason=vertical_override_rejected_by_size_gate`).
-- **Mode: horizontal** frontmatter override is always honored (developers can opt into the dispute mechanism).
+- **tdd mode**: the default for any non-docs phase. Dispatches jlu-tdd-cycle (one per service for multi-service phases).
 
-If `mode=docs`, skip the vertical/horizontal TDD path and jump to **Step 7df** (Docs Path).
+If `mode=docs`, skip the TDD path and jump to **Step 7df** (Docs Path).
 
 Log to terminal:
 
 - `Phase <NN> mode: docs (<N> doc requirements, <K> service(s)) — skipping TDD pipeline, going to commit-only path.`
-- `Phase <NN> mode: vertical (<N> FR/NFR, 1 service) — dispatching jlu-tdd-cycle.`
-- `Phase <NN> mode: horizontal (<N> FR/NFR, <K> services) — dispatching jlu-test-writer then jlu-implementer.`
+- `Phase <NN> mode: tdd (<N> FR/NFR, <K> service(s)) — dispatching jlu-tdd-cycle.`
 
 **Store**: `PHASE_MODE`, `FR_NFR_COUNT`.
 
 ### 7df. Docs Path (docs mode only)
 
-**Skip this step unless `PHASE_MODE == docs`.** For docs phases, the orchestrator does NOT dispatch test-writer, implementer, refactor, per-phase QA, or build-validator. The developer (or the parent orchestrator in nested-execution mode) is expected to have already made the documentation edits on the task branch before invoking execution; the orchestrator's job here is to scope-check and commit them.
+**Skip this step unless `PHASE_MODE == docs`.** For docs phases, the orchestrator does NOT dispatch the tdd-cycle agent, refactor, per-phase QA, or build-validator. The developer (or the parent orchestrator in nested-execution mode) is expected to have already made the documentation edits on the task branch before invoking execution; the orchestrator's job here is to scope-check and commit them.
 
 1. Capture the current diff on the task branch:
    ```bash
@@ -583,103 +580,39 @@ Log to terminal:
 
 Log: `Phase <NN> docs path complete — <N> doc files committed.`
 
-### 7d. TDD Red — Spawn Test Writer (horizontal mode only)
+### 7d. TDD Cycle — Spawn the Authoring Agent
 
-**If `PHASE_MODE == vertical`, skip 7d AND 7e entirely — both are replaced by 7de. If `PHASE_MODE == docs`, skip all of 7d-7k — the docs path at 7df handles the phase.**
+**Skip all of 7d if `PHASE_MODE == docs`** — the docs path (7df) handles the phase.
 
-
-
-When the phase affects multiple services with no cross-service contract being defined this phase, dispatch one `jlu-test-writer` per service **in a single orchestrator message** only when `PHASE_PARALLELISM > 1`. Otherwise run sequentially. See `jelou/references/parallel-dispatch.md` for the pattern, scope-isolation rules, and conflict-detection on return.
-
-Spawn `jlu-test-writer` agent with model: **MODEL_CONFIG.code** (default: sonnet):
-- **Input**:
-  - Phase requirements (from the phase file's immutable section)
-  - `<WORKSPACE_PATH>/services/<service-id>/codebase/CONVENTIONS.md`
-  - Service source path (worktree or repo)
-  - SPEC.md relevant sections
-  - `TEST_TIER: 1` (TDD cycle — fast, isolated tests only)
-- **Task**: Write failing tests that cover the phase requirements.
-- **Output**: Test file paths and a summary of what was tested.
-
-**Red verification (trust-the-report)**: the test-writer already ran tests in its own session and reports `Status` + `Command`. Don't re-run in the orchestrator unless the report is incomplete or flags an unexpected pass.
-
-1. Parse the test-writer's report.
-2. If the report includes `Status: RED` AND a `Command:` line with the exact test runner invocation: trust the result. Continue to Step 7e.
-3. If the report is missing either field, or the report explicitly notes any unexpected pass: re-run the new test files locally (`<command>` on the host) and validate.
-4. If a test passes unexpectedly (either flagged in the report or surfaced by the local re-run):
-   - Log to terminal: "Test `<test-name>` passes without implementation — auto-investigating."
-   - Spawn a fresh `jlu-test-writer` with model: **MODEL_CONFIG.code** (default: sonnet) to evaluate whether the test is correct or the requirement is already implemented.
-   - If already implemented: mark requirement as covered, skip to next.
-   - If test is incorrect: rewrite and re-verify Red state.
-
-### 7e. TDD Green — Spawn Implementer (horizontal mode only)
-
-**If `PHASE_MODE == vertical`, skip this step — it is replaced by 7de.**
-
-When the phase affects multiple services with no shared file edits, dispatch one `jlu-implementer` per service **in a single orchestrator message** only when `PHASE_PARALLELISM > 1`. Otherwise run sequentially. See `jelou/references/parallel-dispatch.md`. After all implementers return, compare `artifacts` arrays to detect any unintended overlap before running per-phase QA.
-
-Spawn `jlu-implementer` agent with model: **MODEL_CONFIG.code** (default: sonnet):
-- **Input**:
-  - Phase requirements
-  - Test file paths (from the test writer)
-  - `<WORKSPACE_PATH>/services/<service-id>/codebase/CONVENTIONS.md`
-  - Service source path
-- **Task**: Implement the minimum code to make all tests pass.
-- **Output**: Implementation file paths and a summary.
-
-**Post-Green lint/format** (delegated to `bin/format-changed-files.sh`):
-
-The orchestrator no longer decides which format command to run — that detection chain (CONVENTIONS.md → package.json scripts → JS/TS default → skip) lives in the script. One Bash invocation, deterministic.
-
-1. Build `CHANGED_FILES` from the union of the implementer's `Files Modified` and the test-writer's `Tests Written` (newline-separated). If empty, the script will return `status=skip reason=no_files` — no harm in still calling it, but you can also short-circuit.
-2. Invoke:
-   ```bash
-   FORMAT_SOURCE_PATH="<SERVICE_SOURCE_PATH>" \
-   FORMAT_CHANGED_FILES="$(printf '%s\n' <file-1> <file-2> ...)" \
-   FORMAT_CONVENTIONS="<WORKSPACE_PATH>/services/<service-id>/codebase/CONVENTIONS.md" \
-   <plugin-root>/bin/format-changed-files.sh
-   ```
-3. Parse the key=value output:
-   - `status=ok` + `command=<cmd>` + `files_count=<N>` — format ran. Continue to Green verification, but treat this as "files may have been modified" — re-run the phase test files to confirm Green is maintained.
-   - `status=skip` + `reason=no_files|no_command_detected` — nothing to do; continue without re-running tests.
-   - `status=failed` + `reason=format_failed` — the format command itself errored. Log the stderr, do NOT retry; surface the failure and continue to Green verification (the failure is informational for the developer, not a phase blocker on its own).
-
-**Green verification (trust-the-report)**: the implementer already ran phase tests in its own session and reports `Status` + `Command`. Don't re-run in the orchestrator unless the report is incomplete or post-Green lint/format modified files without re-verification.
-
-1. Parse the implementer's report.
-2. If the report includes `Status: GREEN` AND a `Command:` line with the exact test runner invocation: trust the result. Continue to Step 7e.1.
-3. If the report is missing either field, OR the post-Green lint/format step modified files (and the implementer didn't re-verify), OR `PHASE_IS_TRIVIAL` cannot yet be classified due to missing diff data: re-run the phase test files locally (`<command>` on the host) and confirm Green.
-4. If verification fails (either the trusted report turns out wrong on a sanity spot-check, or the orchestrator's re-run fails):
-   - Log failures to terminal.
-   - Spawn a fresh `jlu-implementer` with model: **MODEL_CONFIG.code** (default: sonnet) and accumulated failure context (Decision #1).
-   - Retry up to 5 times total.
-   - If still failing after 5 attempts: pause and notify user (see Escalation Format below).
-
-### 7de. TDD Vertical Cycle — Spawn TDD Cycle Agent (vertical mode only)
-
-**Skip this step if `PHASE_MODE == horizontal` — RED→GREEN is handled by 7d and 7e in that mode.**
-
-When `PHASE_MODE == vertical`, dispatch a single `jlu-tdd-cycle` agent with model: **MODEL_CONFIG.code** (default: sonnet). The agent runs RED→GREEN per FR within one session — see `tdd-principles.md` §3 and `tdd-cycle.md` "Agent Separation".
+Dispatch `jlu-tdd-cycle` (model: **MODEL_CONFIG.code**, default sonnet). For a
+multi-service phase, dispatch one per service in a single orchestrator message when
+`PHASE_PARALLELISM > 1` (sequential otherwise) — see `jelou/references/parallel-dispatch.md`.
+After all return, compare `artifacts` arrays to detect cross-service file overlap.
 
 - **Input**:
   - Phase requirements (from the phase file's immutable section)
-  - `<WORKSPACE_PATH>/services/<service-id>/codebase/CONVENTIONS.md`
-  - `<WORKSPACE_PATH>/services/<service-id>/codebase/STACK.md`
-  - `<WORKSPACE_PATH>/services/<service-id>/codebase/STRUCTURE.md`
-  - `<WORKSPACE_PATH>/services/<service-id>/codebase/ARCHITECTURE.md`
+  - `<WORKSPACE_PATH>/services/<service-id>/codebase/{CONVENTIONS,STACK,STRUCTURE,ARCHITECTURE}.md`
   - Service source path (worktree or repo)
   - SPEC.md relevant sections
   - `TEST_TIER: 1` (TDD cycle — fast, isolated tests only; Tier 2 deferred to Step 8a)
-- **Task**: For each requirement in the phase, write one failing test (RED), implement the minimum code to make it pass (GREEN), then move to the next requirement. Self-correct without silently rewriting tests — any rewrites must be documented under `Test Rewrites` with a spec quote.
-- **Output**: A `TDD Cycle Report — Phase <N>` covering all slices, with `Files Modified`, `Tests Written`, `Refactor Candidates`, `Test Rewrites`, and a final `Command:` line.
+- **Task**: For each requirement, write one failing test (RED), implement the minimum
+  code to make it pass (GREEN), then move to the next. Derive coverage from the canonical
+  case-matrix procedure. Document any test rewrite under `Test Rewrites` with a spec quote.
+- **Output**: a `TDD Cycle Report — Phase <N>` with `Files Modified`, `Tests Written`,
+  `Refactor Candidates`, `Test Rewrites`, and a final `Command:` line.
 
-**Verification (trust-the-report)**: the agent already ran every slice's tests in its own session and reports `Final Test Run` status and command. Don't re-run in the orchestrator unless the report is incomplete.
+**Verification (trust-the-report)**: the agent already ran every slice's tests in its own
+session and reports `Status` + `Command:` + a per-slice table. Trust it when the report
+includes `Status: GREEN` AND a `Command:` line AND an all-GREEN slice table. Only re-run
+the listed test files locally when the report is incomplete or flags `status: blocked`. On a
+genuine failure (local re-run shows red the agent reported green, or the agent reports
+blocked), spawn a fresh `jlu-tdd-cycle` with accumulated failure context; retry up to 5
+times total; pause and notify the user after the 5th (see Escalation Format).
 
-1. Parse the report.
-2. If the report includes `Status: GREEN` AND a `Command:` line AND a slice table where every row is `GREEN`: trust the result. Continue.
-3. If any of those is missing, OR the report flags `status: blocked`: re-run the test files listed in `Tests Written` locally (`<command>` on the host) and validate. If the local re-run shows red tests that the agent reported green, treat this as a phase failure and follow the standard retry path (spawn a fresh `jlu-tdd-cycle` with accumulated failure context, retry up to 5 times; pause and notify user after the 5th attempt).
-
-**Post-Green lint/format**: invoke `bin/format-changed-files.sh` exactly as in Step 7e. `CHANGED_FILES` here is the union of the `jlu-tdd-cycle` agent's `Files Modified` + `Tests Written`. Same output handling (`status=ok` re-runs phase tests, `status=skip` continues, `status=failed` surfaces).
+**Post-Green lint/format**: invoke `bin/format-changed-files.sh` over the union of the
+report's `Files Modified` + `Tests Written`, exactly as before (`status=ok` → re-run the
+phase test files to confirm Green held; `status=skip` → continue; `status=failed` → surface
+the stderr and continue).
 
 ### 7e.1 — Phase Triviality Classification
 
@@ -717,34 +650,19 @@ Log to terminal:
 
 **Store**: `PHASE_IS_TRIVIAL` (from `trivial` field).
 
-### 7f. Test Dispute Resolution (Decision #5) — horizontal mode only
-
-**Skip if `PHASE_MODE == vertical`.** Vertical mode has no separate dispute mechanism because the `jlu-tdd-cycle` agent owns both test and implementation. Test rewrites in vertical mode are surfaced under the agent's `Test Rewrites` section (each with a spec quote) and verified at per-phase QA (7h) and final QA (8c). If `Test Rewrites` is non-empty, log a one-line warning and pass the rewrites list through to per-phase QA for scrutiny.
-
-If the implementer flags that a test is incorrect:
-1. Spawn a **fresh** `jlu-test-writer` agent with model: **MODEL_CONFIG.code** (default: sonnet) and:
-   - The original phase requirements from SPEC.md and the phase file
-   - The implementer's objection (what it believes is wrong with the test)
-   - The test code in question
-2. The new test agent evaluates independently:
-   - If it agrees the test is wrong: it rewrites the test.
-   - If it confirms the test is correct: it responds with justification.
-3. If the test was rewritten:
-   - Re-run TDD Green (spawn implementer again with updated tests).
-
 ### 7g. Refactor Pass
 
 **Skip if `PHASE_IS_TRIVIAL`.** Trivial phases (≤ 20 LOC, ≤ 3 files, no lockfile/migration/exported-symbol changes) don't earn the refactor pass overhead.
 
-**Skip if the implementer (horizontal) or tdd-cycle (vertical) report's `Refactor Candidates` section is empty or contains only `None`.** No candidates means there is nothing for the refactor agent to act on — dispatching it would burn a sub-agent dispatch to return `NO_CHANGES`. Log `Phase <NN> refactor skipped — implementer reported no candidates.` and continue to 7h.
+**Skip if the tdd-cycle agent's report's `Refactor Candidates` section is empty or contains only `None`.** No candidates means there is nothing for the refactor agent to act on — dispatching it would burn a sub-agent dispatch to return `NO_CHANGES`. Log `Phase <NN> refactor skipped — tdd-cycle agent reported no candidates.` and continue to 7h.
 
 Otherwise, spawn `jlu-refactor-agent` with model: **MODEL_CONFIG.code** (default: sonnet). The agent applies surgical refactors guided by `jelou/references/tdd-principles.md` §7, keeping tests green at every step.
 
 - **Input**:
   - Phase context (phase number, service-id)
   - Service source path (worktree or repo)
-  - The implementer's full report (especially `Files Modified` and `Refactor Candidates`)
-  - The exact test command the implementer reported (so the agent runs the same suite)
+  - The tdd-cycle agent's full report (especially `Files Modified` and `Refactor Candidates`)
+  - The exact test command the tdd-cycle agent reported (so the agent runs the same suite)
   - `<WORKSPACE_PATH>/services/<service-id>/codebase/CONVENTIONS.md`
   - `<WORKSPACE_PATH>/services/<service-id>/codebase/ARCHITECTURE.md`
 - **Task**: Apply refactor candidates one at a time. Re-run the phase test files after each. Roll back any refactor that goes red. Stay within `Files Modified`. Never touch test files. Never change a public API.
@@ -762,7 +680,7 @@ No re-run of the phase tests is needed at the orchestrator level — the refacto
 
 **Skip if `PHASE_IS_TRIVIAL`.** Comprehensive QA still runs at Step 8c against the full task scope.
 
-**Skip if the phase is purely additive AND the implementer reported no issues.** A phase is purely additive when:
+**Skip if the phase is purely additive AND the tdd-cycle agent reported no issues.** A phase is purely additive when:
 
 1. `bin/classify-phase.sh additive` returns `additive=true`. Invocation:
    ```bash
@@ -770,20 +688,19 @@ No re-run of the phase tests is needed at the orchestrator level — the refacto
    <plugin-root>/bin/classify-phase.sh additive
    ```
    The script computes `git diff --diff-filter=M` and `--diff-filter=D` and returns `additive=true` only when both are empty. Output also includes `modified_count` and `deleted_count` for logging.
-2. The implementer's report (horizontal) or tdd-cycle report (vertical) lists no `Test Objections` AND no `Deviations from Expected Approach`. Both fields must be either absent or contain only the literal "None".
+2. The tdd-cycle agent's report lists no `Test Objections` AND no `Deviations from Expected Approach`. Both fields must be either absent or contain only the literal "None".
 3. The refactor agent — if it ran — returned `Status: NO_CHANGES` (or 7g was skipped because there were no candidates).
 
-The reasoning: per-phase QA's primary value is catching convention drift and pattern violations in *modified* code. For purely additive code that ran clean through implementer + refactor, the static review is duplicate effort with the final QA at Step 8c (which sees the same files). The risk of deferral is bounded — Step 8c catches any issues before the task transitions to `ready_to_publish`.
+The reasoning: per-phase QA's primary value is catching convention drift and pattern violations in *modified* code. For purely additive code that ran clean through the tdd-cycle agent + refactor, the static review is duplicate effort with the final QA at Step 8c (which sees the same files). The risk of deferral is bounded — Step 8c catches any issues before the task transitions to `ready_to_publish`.
 
-Log `Phase <NN> per-phase QA skipped — purely additive, implementer clean, deferred to final QA (8c).` and pass the phase's `Files Modified` list through to a `DEFERRED_QA_PHASES` accumulator that Step 8c reads.
+Log `Phase <NN> per-phase QA skipped — purely additive, tdd-cycle agent clean, deferred to final QA (8c).` and pass the phase's `Files Modified` list through to a `DEFERRED_QA_PHASES` accumulator that Step 8c reads.
 
 Otherwise, spawn `jlu-qa-agent` with model: **MODEL_CONFIG.code** (default: sonnet) for a static per-phase review:
 - Phase file with requirements
 - List of files created/modified in this phase
 - `<WORKSPACE_PATH>/services/<service-id>/codebase/CONVENTIONS.md`
 - `<WORKSPACE_PATH>/services/<service-id>/codebase/STRUCTURE.md`
-- The `PHASE_MODE` (vertical or horizontal) so QA can apply mode-specific scrutiny
-- If `PHASE_MODE == vertical` AND the `jlu-tdd-cycle` report had a non-empty `Test Rewrites` section: pass the rewrites list and ask QA to verify each rewrite has a valid spec quote and that the rewritten tests still describe behavior, not implementation.
+- If the `jlu-tdd-cycle` report had a non-empty `Test Rewrites` section: pass the rewrites list and ask QA to verify each rewrite has a valid spec quote and that the rewritten tests still describe behavior, not implementation.
 
 The QA agent performs static analysis ONLY — it reads code and checks conventions. It does NOT run tests. Test execution is reserved for Step 8.
 
@@ -801,7 +718,7 @@ The orchestrator edits TASKS.md directly via `Edit` — no agent dispatch needed
 1. Locate the phase entry in `<TASK_DIR>/TASKS.md`.
 2. Update via `Edit`:
    - Status: `pending` → `done`
-   - Add: test pass/fail counts (from the Green verification step), artifacts list (file paths from test-writer + implementer reports), and any deviations noted by the implementer.
+   - Add: test pass/fail counts (from the Green verification step), artifacts list (file paths from the tdd-cycle agent's report), and any deviations it noted.
 3. The commit SHA is appended in Step 7l after the inline commit in Step 7j; do not record it here.
 
 ### 7j. Git Commit (batched via finalize-phase.sh)
@@ -822,7 +739,7 @@ FINALIZE_EXPECTED="$(printf '%s\n' <declared-file-1> <declared-file-2> ...)" \
 ```
 
 **Inputs**:
-- `FINALIZE_EXPECTED` is the union of declared artifacts from the test-writer's `Tests Written` and the implementer's `Files Modified` (horizontal mode) or the tdd-cycle agent's combined `Files Modified` + `Tests Written` (vertical mode). For docs mode, use the diff's actual content. The script appends known auto-staged manifests internally (`package.json`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `composer.lock`, `poetry.lock`, `Cargo.lock`, `go.sum`); do not include them in `FINALIZE_EXPECTED`.
+- `FINALIZE_EXPECTED` is the union of the tdd-cycle agent's `Files Modified` + `Tests Written`. For docs mode, use the diff's actual content. The script appends known auto-staged manifests internally (`package.json`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `composer.lock`, `poetry.lock`, `Cargo.lock`, `go.sum`); do not include them in `FINALIZE_EXPECTED`.
 - `<type>` selection: `feat` for new functionality, `fix` for bug fixes, `test` for test-only phases, `refactor` for refactoring without behavior change, `docs` for documentation-only.
 
 **Output parsing**:
@@ -853,7 +770,7 @@ The script writes `key=value` lines to stdout. Parse them:
 
 **Skip if `PHASE_IS_TRIVIAL`.** Tier 2 build/regression check still runs at Step 8b.
 
-**Skip if no compilable source files changed.** Build `CHANGED_FILES` the same way as Step 7e (union of test-writer and implementer artifacts; in vertical mode, the tdd-cycle agent's `Files Modified` + `Tests Written`). Delegate the check to `bin/classify-phase.sh compilable`:
+**Skip if no compilable source files changed.** Build `CHANGED_FILES` the same way as Step 7d (the tdd-cycle agent's `Files Modified` + `Tests Written`). Delegate the check to `bin/classify-phase.sh compilable`:
 
 ```bash
 CLASSIFY_FILES="$(printf '%s\n' <file-1> <file-2> ...)" \
@@ -1198,8 +1115,7 @@ If validation fails or phases have unresolved issues:
 | Task not in `planned` or `implementing` state | Stop with status message |
 | SPEC.md missing | Stop — cannot execute without spec |
 | Codebase files missing | Warn, proceed (agents will have less context) |
-| Test writer agent fails | Kill, spawn fresh with failure context — up to 5 attempts (Decision #1) |
-| Implementer agent fails | Kill, spawn fresh with failure context — up to 5 attempts (Decision #1) |
+| TDD cycle agent fails | Kill, spawn fresh with failure context — up to 5 attempts (Decision #1) |
 | Tests never go green after 5 retries | Pause and notify user (see Escalation Format) |
 | QA auto-fix fails after 5 retries | Pause and notify user (see Escalation Format) |
 | Git commit fails | Report error, do not block phase execution |
@@ -1253,8 +1169,7 @@ Awaiting your input to proceed.
 
 | Decision | Application |
 |----------|-------------|
-| #4 | Separate test-writer + implementer agents per TDD cycle |
-| #5 | Orchestrator mediates test disputes |
+| #4 | Single authoring agent per phase (jlu-tdd-cycle) |
 | #7 | PROPOSAL.md bridges SPEC.md and implementation |
 | #9 | Dependency-driven multi-service execution order |
 | #10 | User stories auto-generated from spec in hybrid format |
