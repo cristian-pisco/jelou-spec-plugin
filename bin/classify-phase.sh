@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # classify-phase.sh — consolidates the 4 phase classifiers used by execute-task
-# Steps 7c.1, 7e.1, 7h, and 7k.
+# Steps 7c.1, 7e, 7h, and 7k.
 #
 # Invoked with a subcommand as the first positional arg:
-#   classify-phase.sh mode         (Step 7c.1: docs | vertical | horizontal)
-#   classify-phase.sh trivial      (Step 7e.1: trivial yes/no, with safety override)
+#   classify-phase.sh mode         (Step 7c.1: docs | tdd)
+#   classify-phase.sh trivial      (Step 7e: trivial yes/no, with safety override)
 #   classify-phase.sh additive     (Step 7h:  purely-additive diff yes/no)
 #   classify-phase.sh compilable   (Step 7k:  compilable source file present yes/no)
 #
@@ -105,34 +105,19 @@ classify_mode() {
     fi
   fi
 
-  # Decide the mode.
   if [[ "$OVERRIDE" == "docs" ]] && [[ "$DOCS_VALIDATION" == "passed" ]]; then
     MODE="docs"
     REASON="frontmatter_override_validated"
   elif [[ "$OVERRIDE" == "docs" ]]; then
-    # Override rejected — fall through to size gate.
-    if [[ "$FR_NFR_COUNT" -le 5 ]] && [[ "$CLASSIFY_SERVICES_IN_PHASE" -eq 1 ]]; then
-      MODE="vertical"
-    else
-      MODE="horizontal"
-    fi
+    MODE="tdd"
     REASON="docs_override_rejected"
-  elif [[ "$OVERRIDE" == "horizontal" ]]; then
-    MODE="horizontal"
-    REASON="frontmatter_override"
-  elif [[ "$OVERRIDE" == "vertical" ]] && [[ "$FR_NFR_COUNT" -le 5 ]] && [[ "$CLASSIFY_SERVICES_IN_PHASE" -eq 1 ]]; then
-    MODE="vertical"
-    REASON="frontmatter_override"
-  elif [[ "$OVERRIDE" == "vertical" ]]; then
-    # Vertical override rejected by size gate — fall through to default.
-    MODE="horizontal"
-    REASON="vertical_override_rejected_by_size_gate"
-  elif [[ "$FR_NFR_COUNT" -le 5 ]] && [[ "$CLASSIFY_SERVICES_IN_PHASE" -eq 1 ]]; then
-    MODE="vertical"
-    REASON="size_gate"
+  elif [[ "$OVERRIDE" == "vertical" ]] || [[ "$OVERRIDE" == "horizontal" ]]; then
+    MODE="tdd"
+    REASON="legacy_mode_override"
+    echo "note: legacy Mode: $OVERRIDE treated as tdd (vertical/horizontal retired)" >&2
   else
-    MODE="horizontal"
-    REASON="size_gate"
+    MODE="tdd"
+    REASON="default"
   fi
 
   echo "mode=$MODE"

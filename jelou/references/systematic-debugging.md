@@ -14,7 +14,7 @@ If you have not completed Phase 1, you cannot propose a fix. Symptom fixes are f
 
 - Implementer's tests do not go green after **2 fix attempts**
 - Build-validator's compile fails after **round 2**
-- Test-writer is re-invoked with an implementer objection (Decision #5) and the test does not obviously violate the spec
+- The `jlu-tdd-cycle` agent cannot make a test go green after repeated attempts and suspects the failure is architectural (not a wrong test)
 - Cross-service contract failure where it is unclear which side is wrong
 - Same fix is being attempted with minor variations
 - Each fix surfaces a new symptom in a different file or service

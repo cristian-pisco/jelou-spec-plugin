@@ -1,6 +1,6 @@
 # TDD Principles
 
-> Canonical philosophical reference for `jlu-test-writer`, `jlu-implementer`, `jlu-tdd-cycle`, `jlu-refactor-agent`, and `jlu-qa-agent`. The *operational* protocol (which agent runs when, dispute mediation, tier system) lives in `tdd-cycle.md`. This doc is the shared *philosophical* source — every agent in the TDD pipeline must apply these principles regardless of which step it owns.
+> Canonical philosophical reference for `jlu-test-writer`, `jlu-implementer`, `jlu-tdd-cycle`, `jlu-refactor-agent`, and `jlu-qa-agent`. The *operational* protocol (which agent runs when, tier system) lives in `tdd-cycle.md`. This doc is the shared *philosophical* source — every agent in the TDD pipeline must apply these principles regardless of which step it owns.
 
 ## 1. The Cycle
 
@@ -64,8 +64,9 @@ Why: tests written in bulk test *imagined* behavior, not *actual* behavior. They
 
 How this plugin applies it:
 
-- `jlu-tdd-cycle` runs vertical slicing literally (one agent, FR-by-FR loop).
-- `jlu-test-writer` + `jlu-implementer` run horizontal slicing within a phase. The phase boundary is the safety: keep phases small (the proposal agent should split phases with > 3 FRs), and let the test dispute protocol (Decision #5, `tdd-cycle.md`) catch imagined-vs-actual mismatches.
+- `jlu-tdd-cycle` runs vertical slicing literally (one agent, FR-by-FR loop) for every
+  phase. Keep phases small (the proposal agent splits large phases) so a single session
+  stays within its context budget.
 
 ## 4. Deep Modules
 
@@ -190,4 +191,4 @@ If a test feels impossible to write cleanly:
 - Look at the interface, not the test. §5 is usually the answer.
 
 If a test is wrong:
-- File an objection (Decision #5 in `tdd-cycle.md`). Never modify the test silently to make it pass.
+- Never modify it silently to make it pass. If you are the phase's authoring agent (`jlu-tdd-cycle`), follow the Self-Correction Rule in `jlu-tdd-cycle.md` (document the issue, rewrite the test, quote the spec justification). Otherwise, flag it in your report instead of editing it.

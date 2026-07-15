@@ -22,7 +22,11 @@ describe('jlu-tdd-cycle.md — case-matrix RED floor', () => {
   const a = read('agents/jlu-tdd-cycle.md');
   test('mandates a per-requirement case matrix', () => {
     assert.match(a, /case matrix/i);
-    assert.match(a, /per validation decorator/);
+    assert.match(a, /per decorator\/type constraint/);
+  });
+  test('links to the canonical case-matrix derivation procedure instead of restating it', () => {
+    assert.match(a, /Case-Matrix Derivation Procedure/);
+    assert.match(a, /non-negotiable/);
   });
   test('drops the "one behavior, not all of them" minimalism', () => {
     assert.doesNotMatch(a, /one happy path, or one error path, or one edge case — not all of them/);
@@ -34,11 +38,11 @@ describe('jlu-tdd-cycle.md — case-matrix RED floor', () => {
 
 describe('jlu-test-writer.md — rejection + realistic mandate', () => {
   const a = read('agents/jlu-test-writer.md');
-  test('mandates a rejecting payload per validation decorator', () => {
-    assert.match(a, /rejecting payload per validation decorator/);
+  test('links to the canonical case-matrix derivation procedure instead of restating it', () => {
+    assert.match(a, /Case-Matrix Derivation Procedure/);
   });
-  test('mandates a realistic payload populating cross-field references', () => {
-    assert.match(a, /populates every cross-field reference/);
+  test('still mandates rejection and realistic cases as non-negotiable', () => {
+    assert.match(a, /rejection and realistic cases are mandatory/);
   });
   test('drops the anti-coverage / no-speculative-edge-case guardrails', () => {
     assert.doesNotMatch(a, /Don't write tests for the sake of coverage/);
@@ -64,5 +68,16 @@ describe('tdd-cycle.md — case-matrix floor promoted from a "should"', () => {
   });
   test('lists the realistic / cross-field path class', () => {
     assert.match(ref, /Realistic \/ cross-field paths/);
+  });
+  test('hosts the canonical case-matrix derivation procedure', () => {
+    assert.match(ref, /Case-Matrix Derivation Procedure \(canonical\)/);
+  });
+  test('mandates one rejection slice per validation decorator/type constraint', () => {
+    assert.match(ref, /one \*\*rejection\*\* slice per/);
+  });
+  test('canonical derivation procedure is not duplicated in the agent bodies', () => {
+    assert.match(ref, /this list IS the rejection list/);
+    assert.doesNotMatch(read('agents/jlu-tdd-cycle.md'), /this list IS the rejection list/);
+    assert.doesNotMatch(read('agents/jlu-test-writer.md'), /this list IS the rejection list/);
   });
 });

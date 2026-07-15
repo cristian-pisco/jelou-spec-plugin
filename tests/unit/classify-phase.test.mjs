@@ -75,7 +75,7 @@ describe('classify-phase.sh mode', () => {
     assert.match(r.stderr, /phase file not found/);
   });
 
-  test('vertical when FR count ≤ 5 and single service', () => {
+  test('tdd when FR count ≤ 5 and single service', () => {
     const dir = mkdtempSync(join(tmpdir(), 'classify-mode-'));
     try {
       const path = writePhase(dir, [
@@ -91,7 +91,7 @@ describe('classify-phase.sh mode', () => {
         CLASSIFY_SERVICES_IN_PHASE: '1',
       });
       assert.equal(r.code, 0);
-      assert.equal(r.parsed.mode, 'vertical');
+      assert.equal(r.parsed.mode, 'tdd');
       assert.equal(r.parsed.fr_nfr_count, '3');
       assert.equal(r.parsed.frontmatter_override, 'none');
     } finally {
@@ -99,7 +99,7 @@ describe('classify-phase.sh mode', () => {
     }
   });
 
-  test('horizontal when FR count > 5', () => {
+  test('tdd when FR count > 5', () => {
     const dir = mkdtempSync(join(tmpdir(), 'classify-mode-'));
     try {
       const reqs = [1, 2, 3, 4, 5, 6, 7].map(i => `- FR-${i}: req ${i}`).join('\n');
@@ -114,14 +114,14 @@ describe('classify-phase.sh mode', () => {
         CLASSIFY_SERVICES_IN_PHASE: '1',
       });
       assert.equal(r.code, 0);
-      assert.equal(r.parsed.mode, 'horizontal');
+      assert.equal(r.parsed.mode, 'tdd');
       assert.equal(r.parsed.fr_nfr_count, '7');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  test('horizontal when multi-service even with ≤5 FRs', () => {
+  test('tdd when multi-service even with ≤5 FRs', () => {
     const dir = mkdtempSync(join(tmpdir(), 'classify-mode-'));
     try {
       const path = writePhase(dir, [
@@ -134,7 +134,7 @@ describe('classify-phase.sh mode', () => {
         CLASSIFY_PHASE_FILE: path,
         CLASSIFY_SERVICES_IN_PHASE: '2',
       });
-      assert.equal(r.parsed.mode, 'horizontal');
+      assert.equal(r.parsed.mode, 'tdd');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -180,7 +180,7 @@ describe('classify-phase.sh mode', () => {
         CLASSIFY_PHASE_FILE: path,
         CLASSIFY_SERVICES_IN_PHASE: '1',
       });
-      assert.equal(r.parsed.mode, 'vertical'); // falls back to size gate
+      assert.equal(r.parsed.mode, 'tdd');
       assert.equal(r.parsed.docs_validation, 'failed');
       assert.match(r.parsed.docs_rejection_reason, /implement|controller/);
     } finally {
@@ -203,35 +203,22 @@ describe('classify-phase.sh mode', () => {
         CLASSIFY_PHASE_FILE: path,
         CLASSIFY_SERVICES_IN_PHASE: '1',
       });
-      assert.equal(r.parsed.mode, 'horizontal');
+      assert.equal(r.parsed.mode, 'tdd');
       assert.equal(r.parsed.frontmatter_override, 'horizontal');
-      assert.equal(r.parsed.reason, 'frontmatter_override');
+      assert.equal(r.parsed.reason, 'legacy_mode_override');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  test('vertical frontmatter override rejected by size gate', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'classify-mode-'));
-    try {
-      const reqs = [1, 2, 3, 4, 5, 6].map(i => `- FR-${i}: req`).join('\n');
-      const path = writePhase(dir, [
-        '# Phase 04',
-        '',
-        '**Mode: vertical**',
-        '',
-        '## Requirements (immutable)',
-        reqs,
-      ].join('\n'));
-      const r = runScript('mode', {
-        CLASSIFY_PHASE_FILE: path,
-        CLASSIFY_SERVICES_IN_PHASE: '1',
-      });
-      assert.equal(r.parsed.mode, 'horizontal');
-      assert.equal(r.parsed.reason, 'vertical_override_rejected_by_size_gate');
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
+  test('legacy Mode: horizontal frontmatter maps to tdd', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'legacy-mode-'));
+    const path = join(dir, 'phase.md');
+    writeFileSync(path, `# Phase 01\n\n**Mode: horizontal**\n\n## Requirements (immutable)\n- FR-1: x\n`);
+    const r = runScript('mode', { CLASSIFY_PHASE_FILE: path, CLASSIFY_SERVICES_IN_PHASE: '2' });
+    assert.equal(r.parsed.mode, 'tdd');
+    assert.equal(r.parsed.reason, 'legacy_mode_override');
+    rmSync(dir, { recursive: true, force: true });
   });
 });
 

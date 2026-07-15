@@ -86,7 +86,7 @@
 }
 ```
 
-### Implementer Blocked (Test Dispute)
+### Implementer Blocked (Suspected Test Defect)
 
 ```json
 {
@@ -99,12 +99,12 @@
     {
       "description": "Test assertions may not match the actual service architecture",
       "severity": "medium",
-      "mitigation": "Spawn fresh test-writer agent with this objection per Decision #5"
+      "mitigation": "Escalate with spec-vs-test evidence per systematic-debugging.md; do not attempt a 4th fix"
     }
   ],
   "next_actions": [
     {
-      "action": "Mediate test dispute: spawn fresh test-writer with objection context",
+      "action": "Apply the three-strike escalation flow: present the spec-vs-test evidence to the orchestrator for a retry/escalation decision",
       "owner": "orchestrator"
     }
   ],
