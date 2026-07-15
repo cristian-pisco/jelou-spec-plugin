@@ -572,7 +572,7 @@ Log to terminal:
    ```
 2. **Scope check** (mirrors Step 7j's intent but enforces docs-only): every file in the diff MUST match a documentation extension or path: `.md`, `.mdx`, `.txt`, `.rst`, `README*`, `CHANGELOG*`, files under `docs/`, `verification.md`. If any non-doc file appears, abort with:
 
-   > "Phase <NN> declared `mode: docs` but the diff contains code changes: `<file-list>`. Either remove the non-doc edits or change the phase's mode to vertical/horizontal."
+   > "Phase <NN> declared `mode: docs` but the diff contains code changes: `<file-list>`. Either remove the non-doc edits or change the phase's mode to `tdd`."
 
 3. If the diff is empty, abort: `Phase <NN> declared mode: docs but the working tree contains no documentation changes. Make the edits or remove the phase.`
 4. Stage and commit using Step 7j's commit procedure but with `<type> = docs`. The commit message body still references `Phase <NN> of production/<TASK_SLUG>`.

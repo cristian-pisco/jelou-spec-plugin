@@ -10,7 +10,7 @@ Every unit of implementation follows the same three-step cycle:
 
 ### 1. Red — Write a Failing Test
 
-The **test-writer agent** writes tests first, before any implementation code exists.
+The **authoring agent** (`jlu-tdd-cycle`) writes a failing test first, before its implementation exists.
 
 - Tests are derived from the phase requirements (which trace back to SPEC.md).
 - Tests must fail when first run. A test that passes without implementation is either testing nothing or the feature already exists.
@@ -26,12 +26,12 @@ The orchestrator confirms the tests fail (red) before proceeding.
 
 ### 2. Green — Write the Minimum Code to Pass
 
-The **implementer agent** receives the failing tests and writes the minimum code necessary to make them pass.
+The same agent then writes the minimum code necessary to make it pass.
 
 - "Minimum" means exactly what it says: no extra features, no premature abstractions, no "while I'm here" additions.
-- The implementer works within the constraints defined by the phase requirements and the existing codebase conventions.
+- The agent works within the constraints defined by the phase requirements and the existing codebase conventions.
 - If all tests pass, the phase moves to refactor.
-- If tests fail after implementation, the implementer iterates until green.
+- If tests fail after implementation, the agent iterates until green.
 
 ### 3. Refactor — Improve Without Breaking Green
 

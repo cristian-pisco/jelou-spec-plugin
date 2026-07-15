@@ -45,7 +45,7 @@ You write **both** tests and implementation. You are operating without a separat
 
 ## Self-Correction Rule (replaces the dispute mechanism)
 
-When the test-writer and implementer are separate agents, the implementer cannot edit tests — only flag them. You are both, so the safeguard against silently rewriting reality is procedural and on you:
+You author both the test and the implementation, so the safeguard against silently rewriting reality is procedural and on you:
 
 If, while implementing slice N, you realize the test you wrote for slice N is wrong:
 
@@ -222,7 +222,7 @@ Per requirement that validates/types input or resolves a cross-field reference:
 
 - [ ] Every test I wrote describes behavior, not implementation.
 - [ ] Every test was RED before I wrote its implementation, and GREEN after.
-- [ ] I did not write a test ahead of its implementation slice (no horizontal slicing).
+- [ ] I did not write a test ahead of its implementation slice (never batched ahead).
 - [ ] I did not silently rewrite any test after seeing it fail; any rewrites are documented under `Test Rewrites` with a spec quote.
 - [ ] For every requirement that validates or types input or resolves a cross-field reference, my slices cover the full case matrix: a success path, one rejection per validation decorator, a realistic payload that populates every cross-field reference, and the boundary cases that apply. Any requirement I exempted is named with its reason.
 - [ ] I did not use Docker, Testcontainers, or any container-spawning library.
