@@ -65,4 +65,10 @@ describe('tdd-cycle.md — case-matrix floor promoted from a "should"', () => {
   test('lists the realistic / cross-field path class', () => {
     assert.match(ref, /Realistic \/ cross-field paths/);
   });
+  test('hosts the canonical case-matrix derivation procedure', () => {
+    assert.match(ref, /Case-Matrix Derivation Procedure \(canonical\)/);
+  });
+  test('mandates one rejection slice per validation decorator/type constraint', () => {
+    assert.match(ref, /one \*\*rejection\*\* slice per/);
+  });
 });

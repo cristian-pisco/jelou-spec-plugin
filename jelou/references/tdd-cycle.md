@@ -45,51 +45,28 @@ After all tests pass, `jlu-refactor-agent` runs in Step 7g (skipped when `PHASE_
 
 **Critical rule**: Tests must remain green after every refactor step. If a refactor breaks a test, it is rolled back.
 
-## Agent Separation (Decision #4)
+## The Authoring Agent (Decision #4)
 
-The TDD cycle has two execution modes — **horizontal** (default, two-agent) and **vertical** (small-phase, one-agent):
-
-### Horizontal mode (default)
-
-Used when the phase has > 3 FR/NFR items, or affects more than one service, or `PHASE_MODE` is explicitly forced to `horizontal`.
+Every TDD phase is authored by a single agent, `jlu-tdd-cycle`, which drives the
+RED→GREEN loop per requirement in one session. Multi-service phases fan out one
+`jlu-tdd-cycle` per service (see `parallel-dispatch.md`).
 
 | Agent | Role | Model Tier |
 |-------|------|------------|
-| **test-writer** | Writes failing tests from requirements (RED) | Sonnet |
-| **implementer** | Makes tests pass with minimum code (GREEN) | Sonnet |
-| **refactor-agent** | Surfaces refactor candidates after GREEN (Step 7g) | Sonnet |
+| **tdd-cycle** | Per-FR loop: write one failing test → RED → implement → GREEN → next FR | Sonnet |
+| **refactor-agent** | Surfaces/applies refactor candidates after GREEN (Step 7g) | Sonnet |
 
-The test-writer/implementer separation prevents the common failure mode where a single agent writes tests that match its own implementation rather than the specification. The dispute mechanism (Decision #5) is the safety net when the implementer believes a test is wrong.
-
-### Vertical mode (small phases)
-
-Used when the phase has ≤ 3 FR/NFR items AND affects exactly one service. Recommended in `tdd-principles.md` §3.
-
-| Agent | Role | Model Tier |
-|-------|------|------------|
-| **tdd-cycle** | Per-FR loop: write one failing test → run it (RED) → implement → run it (GREEN) → repeat for next FR | Sonnet |
-| **refactor-agent** | Surfaces refactor candidates after GREEN (Step 7g) | Sonnet |
-
-Vertical mode is faster on small phases (one dispatch instead of two) and produces tests that respond to what the previous cycle revealed. It does not have a separate dispute mechanism because the same agent owns both sides — agents in this mode must self-correct without rewriting tests retroactively to match a regrettable implementation.
-
-## Test Dispute Mediation (Decision #5)
-
-Sometimes the implementer agent discovers that a test is incorrect — it tests the wrong behavior, makes invalid assumptions, or conflicts with the spec.
-
-When this happens:
-
-1. The implementer flags the disputed test with a structured objection explaining why the test is wrong.
-2. The orchestrator does **not** let the implementer modify or delete the test.
-3. The orchestrator spawns a **fresh test-writer agent** with:
-   - The original SPEC.md requirements for this phase.
-   - The implementer's objection and reasoning.
-   - The current test suite.
-4. The fresh test agent evaluates the dispute and either:
-   - **Upholds the test**: The implementer must find another way to pass it.
-   - **Revises the test**: Writes a corrected version that still verifies the spec requirement.
-5. The decision and reasoning are logged in the phase file under Deviations.
-
-**Distinction from systematic debugging:** Test dispute is for cases where the implementer believes a test asserts the wrong behavior. When the test is correct but the implementer cannot make it green after multiple attempts, that is not a dispute — apply `jelou/references/systematic-debugging.md` to trace the root cause before further fixes. The three-strike rule there governs when to escalate as `status: blocked` instead of attempting another fix.
+`jlu-test-writer` and `jlu-implementer` are not part of per-phase authoring. They
+retain other roles: `jlu-test-writer` authors Tier 2 integration tests (Step 8a) and
+backend E2E suites (Step 8f); `jlu-implementer` applies fixes (QA-fix in 7h,
+affected-test fix in 8b) and Tier 2 wiring. There is no separate test-dispute
+mechanism — the authoring agent owns both test and implementation, and the
+Self-Correction rule (documented test rewrites with a spec quote, audited by QA)
+is the safeguard. When a test is correct but the agent cannot make it green after
+multiple attempts, that is not a self-correction case — apply
+`jelou/references/systematic-debugging.md` to trace the root cause before further
+fixes; the three-strike rule there governs when to escalate as `status: blocked`
+instead of attempting another fix.
 
 ## Coverage Requirements
 
@@ -108,6 +85,23 @@ When this happens:
 - **Realistic / cross-field paths**: At least one payload populating every cross-field reference the requirement resolves; collections exercised non-empty, never only the empty stub.
 - **Edge cases**: Boundary values, empty collections, null inputs, concurrent mutations.
 
+### Case-Matrix Derivation Procedure (canonical)
+
+Authoring agents (`jlu-tdd-cycle` for phases; `jlu-test-writer` for Tier 2 / E2E)
+derive each requirement's coverage from the INPUT CONTRACT, not the happy path:
+
+a. Locate the input surface (controller method + DTO/`class-validator` decorators,
+   Zod/Joi schema, validation pipe, typed query params). A requirement with no input
+   and no cross-field reference is **exempt** — name the exemption in the report.
+b. Enumerate every validation rule on that surface — this list IS the rejection list.
+   A field typed `number`/`string`/`uuid` with no visible decorator still carries a
+   type constraint; count it.
+c. Assemble the matrix: one **success** slice; one **rejection** slice per
+   decorator/type constraint (violating value → documented 4xx + error shape); one
+   **realistic** slice populating every cross-field reference (collections non-empty,
+   never the empty stub); **boundary** slices where they apply.
+d. Work the matrix one slice at a time (vertical slicing still holds).
+
 ### Multi-Service Closure (Section 14.3)
 
 A task is not considered complete until:
@@ -125,7 +119,7 @@ The TDD cycle uses a tiered testing strategy to keep the feedback loop fast whil
 - No external infrastructure (no databases, no running services, no containers).
 - Mocks at system boundaries only — see `tdd-principles.md` §6.
 - Must run in under 5 seconds per phase.
-- Used during Red-Green-Refactor (Steps 7d, 7e, 7g).
+- Used during Red-Green-Refactor (Steps 7d, 7g).
 - Run only the phase's test files, not the full suite.
 - Every run carries the worker cap — see `subagent-base.md` "Test Execution Resource Limits".
 
@@ -149,8 +143,7 @@ The TDD cycle's value comes from speed. Integration tests' value comes from fide
 
 | Step | What runs | Times |
 |------|-----------|-------|
-| 7d Red | Phase test files only (Tier 1) | 1 per phase |
-| 7e Green | Phase test files only (Tier 1) | 1-5 per phase |
+| 7d TDD Cycle | Phase test files only (Tier 1) | per slice |
 | 7g Refactor | Phase test files only (Tier 1) | 0-1 per phase |
 | 7h QA | Nothing (static analysis) | 0 |
 | 7k Build | Nothing (compile only) | 0 |
