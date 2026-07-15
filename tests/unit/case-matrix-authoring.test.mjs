@@ -38,11 +38,11 @@ describe('jlu-tdd-cycle.md — case-matrix RED floor', () => {
 
 describe('jlu-test-writer.md — rejection + realistic mandate', () => {
   const a = read('agents/jlu-test-writer.md');
-  test('mandates a rejecting payload per validation decorator', () => {
-    assert.match(a, /rejecting payload per validation decorator/);
+  test('links to the canonical case-matrix derivation procedure instead of restating it', () => {
+    assert.match(a, /Case-Matrix Derivation Procedure/);
   });
-  test('mandates a realistic payload populating cross-field references', () => {
-    assert.match(a, /populates every cross-field reference/);
+  test('still mandates rejection and realistic cases as non-negotiable', () => {
+    assert.match(a, /rejection and realistic cases are mandatory/);
   });
   test('drops the anti-coverage / no-speculative-edge-case guardrails', () => {
     assert.doesNotMatch(a, /Don't write tests for the sake of coverage/);
