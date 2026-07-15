@@ -545,7 +545,7 @@ CLASSIFY_SERVICES_IN_PHASE="<K>" \
 - `frontmatter_override=docs|vertical|horizontal|trivial|none`
 - `docs_validation=passed|failed|n/a`
 - `docs_rejection_reason=<verb>` (only when override was `docs` and validation failed)
-- `reason=size_gate|frontmatter_override|frontmatter_override_validated|docs_override_rejected|vertical_override_rejected_by_size_gate`
+- `reason=frontmatter_override_validated|docs_override_rejected|legacy_mode_override|default`
 
 The script enforces:
 
@@ -614,7 +614,7 @@ report's `Files Modified` + `Tests Written`, exactly as before (`status=ok` → 
 phase test files to confirm Green held; `status=skip` → continue; `status=failed` → surface
 the stderr and continue).
 
-### 7e.1 — Phase Triviality Classification
+### 7e — Phase Triviality Classification
 
 After Green is verified, classify the phase to gate downstream agents (refactor, per-phase QA, build-validator). Delegated to `bin/classify-phase.sh trivial` — the orchestrator no longer runs `git diff --shortstat` + grep loops inline.
 
@@ -829,11 +829,11 @@ Determine `$PHASE_OUTCOME`:
 - `failed` — phase aborted (non-recoverable)
 
 Determine `$PHASE_SUCCESS` — the correctness signal from the RED test oracle, independent of `$PHASE_OUTCOME` (`ok` means "did not crash", not "was correct first try"):
-- `pass@1` — tests went green on the implementer's first attempt (`$AGENT_RETRIES == 0`)
+- `pass@1` — tests went green on the tdd-cycle agent's first attempt (`$AGENT_RETRIES == 0`)
 - `pass@k` — green only after retries (`$AGENT_RETRIES > 0`)
 - `fail` — the phase never reached green (`blocked`/`failed`)
 
-Set `$PHASE_ATTEMPTS` to the implementer's attempt count (`$AGENT_RETRIES + 1`). Both are absent for `docs`-mode phases with no test oracle.
+Set `$PHASE_ATTEMPTS` to the tdd-cycle agent's attempt count (`$AGENT_RETRIES + 1`). Both are absent for `docs`-mode phases with no test oracle.
 
 Run:
 ```bash
@@ -951,7 +951,7 @@ Spawn `jlu-qa-agent` with model: **MODEL_CONFIG.code** (default: sonnet) for a *
 Pass the QA agent the captured Step 8b results (affected-tests verdict per service):
 
 - **Step 8b affected-tests results** (`AFFECTED_TESTS_RESULT` from 8b.6): PASS/FAIL/SKIPPED/NO_DIFF per service, exact command run, failing tests if any
-- **Deferred per-phase QA review** (`DEFERRED_QA_PHASES` from Step 7h): the list of phases that skipped per-phase QA because they were purely additive with a clean implementer report. For each deferred phase, the entry includes `{phase_id, service_id, files_modified}`. The QA agent must explicitly include these phases' `files_modified` in its convention/code-smell/over-engineering scan and flag any issue it would have flagged in per-phase QA. If `DEFERRED_QA_PHASES` is empty, treat this as the normal final-validation case.
+- **Deferred per-phase QA review** (`DEFERRED_QA_PHASES` from Step 7h): the list of phases that skipped per-phase QA because they were purely additive with a clean tdd-cycle agent report. For each deferred phase, the entry includes `{phase_id, service_id, files_modified}`. The QA agent must explicitly include these phases' `files_modified` in its convention/code-smell/over-engineering scan and flag any issue it would have flagged in per-phase QA. If `DEFERRED_QA_PHASES` is empty, treat this as the normal final-validation case.
 - **Full coverage analysis**: Are all requirements from SPEC.md covered by tests? (read SPEC.md and test files; do not run them). Note: this is static — checking that every requirement has at least one test file asserting the behavior, not measuring runtime coverage percentages
 - **Pre-PR recommendation**: if any service's 8b result was SKIPPED (mocha, plugin-less pytest, or only config files changed), the QA agent surfaces a clear note in its report:
   > `Pre-PR action: run /jlu-test-suite from <service-path> before opening the pull request to confirm no regressions in the full suite.`
@@ -1133,7 +1133,7 @@ When any retry limit (5 attempts) is exhausted, this is the **only** point where
 ## Execution Paused — Manual Intervention Needed
 
 Phase <NN>: <Phase Name> (<service-id>)
-Failure type: <test-writer | implementer | build | qa>
+Failure type: <tdd-cycle | build | qa>
 Attempts: 5/5
 
 Last error:

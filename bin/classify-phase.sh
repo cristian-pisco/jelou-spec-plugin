@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # classify-phase.sh — consolidates the 4 phase classifiers used by execute-task
-# Steps 7c.1, 7e.1, 7h, and 7k.
+# Steps 7c.1, 7e, 7h, and 7k.
 #
 # Invoked with a subcommand as the first positional arg:
-#   classify-phase.sh mode         (Step 7c.1: docs | vertical | horizontal)
-#   classify-phase.sh trivial      (Step 7e.1: trivial yes/no, with safety override)
+#   classify-phase.sh mode         (Step 7c.1: docs | tdd)
+#   classify-phase.sh trivial      (Step 7e: trivial yes/no, with safety override)
 #   classify-phase.sh additive     (Step 7h:  purely-additive diff yes/no)
 #   classify-phase.sh compilable   (Step 7k:  compilable source file present yes/no)
 #
@@ -105,8 +105,6 @@ classify_mode() {
     fi
   fi
 
-  # Decide the mode: docs (validated override) or tdd (everything else).
-  # The vertical/horizontal distinction is retired — one authoring mechanism.
   if [[ "$OVERRIDE" == "docs" ]] && [[ "$DOCS_VALIDATION" == "passed" ]]; then
     MODE="docs"
     REASON="frontmatter_override_validated"

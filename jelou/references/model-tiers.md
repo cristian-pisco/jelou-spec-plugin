@@ -8,7 +8,7 @@
 
 | Agent | Justification |
 |-------|---------------|
-| **main-orchestrator** | Coordinates all agents, makes delegation decisions, mediates disputes, enforces lifecycle gates. Requires the strongest reasoning. |
+| **main-orchestrator** | Coordinates all agents, makes delegation decisions, enforces lifecycle gates. Requires the strongest reasoning. |
 | **spec-interviewer** | Conducts structured interviews, performs gap analysis against codebase, produces the foundational SPEC.md. Quality here determines everything downstream. |
 
 ### Tier 2: Sonnet — Implementation and Analysis Roles

@@ -54,4 +54,12 @@ describe('single TDD mechanism', () => {
     assert.doesNotMatch(read('agents/jlu-implementer.md'), /Decision #5/);
     assert.doesNotMatch(read('agents/jlu-test-writer.md'), /Handling Test Disputes/i);
   });
+
+  test('reference docs drop the dispute (Decision #5) machinery', () => {
+    for (const rel of ['jelou/references/subagent-contract.md', 'jelou/references/systematic-debugging.md']) {
+      const doc = read(rel);
+      assert.doesNotMatch(doc, /Decision #5/);
+      assert.doesNotMatch(doc, /test dispute/i);
+    }
+  });
 });

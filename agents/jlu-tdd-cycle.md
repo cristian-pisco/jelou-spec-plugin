@@ -21,7 +21,7 @@ Then apply the principles in `jelou/references/tdd-principles.md` end-to-end. Sp
 - **§4 Deep Modules**, **§5 Interface Design for Testability**, **§6 Mock at Boundaries Only** — apply when shaping the implementation.
 - **§8 Per-Cycle Checklist** — apply at the end of each RED→GREEN slice, not just at the end of the phase.
 
-Also read `jelou/references/tdd-cycle.md` for the operational protocol (test tiers, dispute rules, coverage requirements).
+Also read `jelou/references/tdd-cycle.md` for the operational protocol (test tiers, coverage requirements).
 
 ## Mission
 

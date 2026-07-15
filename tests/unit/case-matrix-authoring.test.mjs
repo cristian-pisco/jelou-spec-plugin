@@ -75,4 +75,9 @@ describe('tdd-cycle.md — case-matrix floor promoted from a "should"', () => {
   test('mandates one rejection slice per validation decorator/type constraint', () => {
     assert.match(ref, /one \*\*rejection\*\* slice per/);
   });
+  test('canonical derivation procedure is not duplicated in the agent bodies', () => {
+    assert.match(ref, /this list IS the rejection list/);
+    assert.doesNotMatch(read('agents/jlu-tdd-cycle.md'), /this list IS the rejection list/);
+    assert.doesNotMatch(read('agents/jlu-test-writer.md'), /this list IS the rejection list/);
+  });
 });
