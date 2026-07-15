@@ -468,7 +468,7 @@ This wrapper applies to every `task` (OpenCode) / `Agent` (Claude Code) dispatch
 
 ### 7a. Report Persistence Discipline (context-saturation guard)
 
-For every sub-agent dispatched within this Step 7 loop (`jlu-test-writer`, `jlu-implementer`, `jlu-tdd-cycle`, `jlu-refactor-agent`, `jlu-qa-agent`, `jlu-build-validator`), the orchestrator MUST follow this protocol to keep its own context window bounded across an N-phase task:
+For every sub-agent dispatched within this Step 7 loop (`jlu-test-writer`, `jlu-implementer`, `jlu-tdd-cycle`, `jlu-refactor-agent`, `jlu-qa-agent`), the orchestrator MUST follow this protocol to keep its own context window bounded across an N-phase task:
 
 1. **Receive the agent's full report** as the tool result. Parse the structured sections immediately.
 2. **Persist the full report to disk** at `<TASK_DIR>/services/<service-id>/phases/<NN>-reports/<agent-name>-<round>.md`. Round suffix is `1` for the first dispatch in this phase, `2` for the first retry, etc. Create the parent directory on first write.
@@ -563,7 +563,7 @@ Log to terminal:
 
 ### 7df. Docs Path (docs mode only)
 
-**Skip this step unless `PHASE_MODE == docs`.** For docs phases, the orchestrator does NOT dispatch the tdd-cycle agent, refactor, per-phase QA, or build-validator. The developer (or the parent orchestrator in nested-execution mode) is expected to have already made the documentation edits on the task branch before invoking execution; the orchestrator's job here is to scope-check and commit them.
+**Skip this step unless `PHASE_MODE == docs`.** For docs phases, the orchestrator does NOT dispatch the tdd-cycle agent, refactor, or per-phase QA. The developer (or the parent orchestrator in nested-execution mode) is expected to have already made the documentation edits on the task branch before invoking execution; the orchestrator's job here is to scope-check and commit them.
 
 1. Capture the current diff on the task branch:
    ```bash
@@ -576,7 +576,7 @@ Log to terminal:
 
 3. If the diff is empty, abort: `Phase <NN> declared mode: docs but the working tree contains no documentation changes. Make the edits or remove the phase.`
 4. Stage and commit using Step 7j's commit procedure but with `<type> = docs`. The commit message body still references `Phase <NN> of production/<TASK_SLUG>`.
-5. Skip refactor (7g), per-phase QA (7h), and build-validator (7k) for docs phases — they have nothing to evaluate. Jump straight to Step 7l (Complete Phase) after the commit lands.
+5. Skip refactor (7g) and per-phase QA (7h) for docs phases — they have nothing to evaluate. Jump straight to Step 7l (Complete Phase) after the commit lands.
 
 Log: `Phase <NN> docs path complete — <N> doc files committed.`
 
@@ -616,7 +616,7 @@ the stderr and continue).
 
 ### 7e — Phase Triviality Classification
 
-After Green is verified, classify the phase to gate downstream agents (refactor, per-phase QA, build-validator). Delegated to `bin/classify-phase.sh trivial` — the orchestrator no longer runs `git diff --shortstat` + grep loops inline.
+After Green is verified, classify the phase to gate downstream agents (refactor, per-phase QA). Delegated to `bin/classify-phase.sh trivial` — the orchestrator no longer runs `git diff --shortstat` + grep loops inline.
 
 **Invocation**:
 
@@ -644,7 +644,7 @@ The script enforces:
 
 Log to terminal:
 
-- If trivial: `Phase <NN> classified as trivial — skipping refactor (7g), per-phase QA (7h), and build-validator (7k).`
+- If trivial: `Phase <NN> classified as trivial — skipping refactor (7g) and per-phase QA (7h).`
 - If not trivial: `Phase <NN> non-trivial — running full per-phase pipeline.`
 - If a frontmatter override was downgraded: `Phase <NN> trivial override rejected — <downgrade_reason>.`
 
@@ -766,44 +766,6 @@ The script writes `key=value` lines to stdout. Parse them:
 - `git branch -D`
 - `git commit --no-verify`
 
-### 7k. Build Validation
-
-**Skip if `PHASE_IS_TRIVIAL`.** Tier 2 build/regression check still runs at Step 8b.
-
-**Skip if no compilable source files changed.** Build `CHANGED_FILES` the same way as Step 7d (the tdd-cycle agent's `Files Modified` + `Tests Written`). Delegate the check to `bin/classify-phase.sh compilable`:
-
-```bash
-CLASSIFY_FILES="$(printf '%s\n' <file-1> <file-2> ...)" \
-<plugin-root>/bin/classify-phase.sh compilable
-```
-
-**Output (key=value)**:
-
-- `compilable=true|false`
-- `forcing_file=<path>` (only when a forcing file like `package.json` or `tsconfig*.json` flips the result to true)
-- `extensions=<csv>` (unique non-compilable extensions seen)
-
-The script's allowlist of non-compilable extensions: `.md`, `.mdx`, `.txt`, `.rst`, `.yaml`, `.yml`, `.toml`, `.ini`, `.env`, `.env.*`, `.example`, `.css`, `.scss`, `.sass`, `.less`, `.html`, `.htm`, `.svg`, `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.ico`, `.pdf`, and plain `.json` (except `package.json` / `tsconfig*.json` which always force a build).
-
-If `compilable=false`: log `Phase <NN> build skipped — no compilable source files changed (only <extensions>).` and continue to 7l.
-
-Otherwise, spawn `jlu-build-validator` agent with model: **MODEL_CONFIG.code** (default: sonnet):
-- **Input**:
-  - Service source path (worktree or repo)
-  - `<WORKSPACE_PATH>/services/<service-id>/codebase/CONVENTIONS.md`
-  - Phase context (phase number, service-id)
-- **Task**: Run the project build command on the host and fix any compilation failures. Do NOT run the test suite.
-
-**If the agent reports PASS** (with or without fixes):
-- If fixes were applied: re-run ONLY the phase test files to confirm Green is maintained. Then commit the build fixes inline using the same procedure as Step 7j (with message `fix(<service-id>): resolve build errors from phase <NN>`).
-- If no fixes needed: continue to 7l.
-
-**If the agent reports SKIP** (no build command detected):
-- Continue to 7l. No action needed.
-
-**If the agent reports FAIL** (5 rounds exhausted):
-- Pause and notify user (see Escalation Format below).
-
 ### 7l. Complete Phase
 
 1. Update phase file status to `done`.
@@ -860,6 +822,38 @@ Otherwise, for each service that has Tier 2 deferred requirements:
    - **TEST_TIER: 2** (integration tests against host-resident infrastructure only — no containers, no Testcontainers)
    - **Task**: Write integration tests for all deferred requirements. Assume any required real dependency (database, queue, peer service) is already running on the host; if it isn't, mark the test skipped with a clear reason rather than starting anything yourself.
 3. Spawn `jlu-implementer` with model: **MODEL_CONFIG.code** (default: sonnet) if the integration tests reveal missing wiring (e.g., a repository method needs a real database query that was mocked in Tier 1).
+
+### 8a.5 — Build Validation (once per service)
+
+The build now runs exactly once per affected service here, against the task's full diff, instead of once per phase. The last per-phase build always subsumed the earlier ones — this removes that O(M) waste while still catching compile errors, including any introduced by the Tier 2 wiring in Step 8a, before the affected-tests regression in Step 8b.
+
+For each affected service (honor `PHASE_PARALLELISM` for cross-service fan-out; default sequential):
+
+1. Gate on compilable changes, computed inline (no scratch file — the diff feeds the classifier through an env var, exactly as the old per-phase check did):
+   ```bash
+   cd <SERVICE_SOURCE_PATH[service-id]>
+   PRE_SHA=<pre-execution commit cached in TASKS.md "Commit Tracking" for this service>
+   CHANGED_FILES="$(git diff --name-only "$PRE_SHA"..HEAD)"
+   CLASSIFY_FILES="$CHANGED_FILES" <plugin-root>/bin/classify-phase.sh compilable
+   ```
+   If `compilable=false`, log `Build skipped for <service-id> — no compilable source changed (<extensions>).` and continue to the next service.
+2. Otherwise dispatch `jlu-build-validator` (model: **MODEL_CONFIG.code**, default sonnet) with the service source path and `<WORKSPACE_PATH>/services/<service-id>/codebase/CONVENTIONS.md`. Wrap the dispatch in the span wrapper (per the dispatch-wrapper block above; `--agent build-validator`).
+3. Handle the agent's verdict:
+   - **PASS, no fixes** → continue.
+   - **SKIP** (no build command detected) → continue.
+   - **PASS with fixes** → commit the build fixes with the same `finalize-phase.sh` call as Step 7j, using the build-validator's reported file list as scope:
+     ```bash
+     FINALIZE_SOURCE_PATH="<SERVICE_SOURCE_PATH>" \
+     FINALIZE_TASK_SLUG="<TASK_SLUG>" \
+     FINALIZE_PHASE_NN="final" \
+     FINALIZE_PHASE_TITLE="resolve build errors from final validation" \
+     FINALIZE_SERVICE_ID="<service-id>" \
+     FINALIZE_COMMIT_TYPE="fix" \
+     FINALIZE_EXPECTED="$(printf '%s\n' <build-validator Fixes Applied file 1> <file 2> ...)" \
+     <plugin-root>/bin/finalize-phase.sh
+     ```
+     Parse the output exactly as Step 7j does (same abort-reason table).
+   - **FAIL** (5 rounds exhausted) → pause and notify the user (Escalation Format).
 
 ### 8b. Affected-Tests Regression Check
 

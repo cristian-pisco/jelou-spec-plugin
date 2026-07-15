@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.285] — 2026-07-15
+
+### Added
+- run build once per service at final validation (drop per-phase 7k)
+
 ## [0.3.284] — 2026-07-14
 
 ### Internal

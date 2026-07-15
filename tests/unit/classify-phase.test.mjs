@@ -2,7 +2,7 @@
 //
 // Tests for bin/classify-phase.sh — the 4 subcommands (mode | trivial |
 // additive | compilable) that replace inline Bash classifiers in
-// execute-task.md Steps 7c.1, 7e.1, 7h, and 7k.
+// execute-task.md Steps 7c.1, 7e.1, 7h, and 8a.5.
 //
 // Run: `node --test tests/unit/classify-phase.test.mjs`
 

@@ -79,7 +79,7 @@ After all agents return:
 Two distinct fan-out axes apply in `execute-task.md`:
 
 1. **Wave-level fan-out (H7)** — when `PROPOSAL.md` declares `Execution Strategy: per-service-parallel`, Step 7.0 builds waves where each wave contains one phase per service. All phases in a wave dispatch concurrently in a single orchestrator message, capped by `PHASE_PARALLELISM`. See `bin/plan-phase-waves.mjs` for the deterministic plan.
-2. **Per-phase fan-out** — within a single phase that affects multiple services (rarer with H7 since most multi-service phases get split into per-service phases by the proposal-agent), 7d/7h/7k dispatch one agent per service.
+2. **Per-phase fan-out** — within a single phase that affects multiple services (rarer with H7 since most multi-service phases get split into per-service phases by the proposal-agent), 7d/7h dispatch one agent per service.
 
 Per-phase fan-out points:
 
@@ -87,7 +87,6 @@ Per-phase fan-out points:
 |------|-------|-------------------|
 | 7d (TDD Cycle) | `jlu-tdd-cycle` | N affected services for this phase |
 | 7h (Per-Phase QA) | `jlu-qa-agent` | N affected services for this phase |
-| 7k (Build Validation) | `jlu-build-validator` | N services for this phase with compilable diffs |
 | 8b (Affected Tests) | (no agent — orchestrator `Bash`) | N affected services for the task |
 
 Per-task fan-out points (also gated by `PHASE_PARALLELISM`; sequential by default):
@@ -97,6 +96,7 @@ Per-task fan-out points (also gated by `PHASE_PARALLELISM`; sequential by defaul
 | `map-codebase` | Batch B4 | `jlu-codebase-mapper` per discovered service |
 | `map-codebase` | Step 5 | structural + operational analyzers for a single service |
 | `execute-task` | Step 4c (proposal) | `jlu-proposal-agent` per service (multi-service tasks only) |
+| `execute-task` | Step 8a.5 (build) | `jlu-build-validator` per affected service with a compilable diff |
 | `new-task` | Step 8 (worktree setup) | per-service git worktree creation |
 
 These were previously dispatched in parallel by precedent. They're now gated by `PHASE_PARALLELISM` so a developer running multiple agents under heavy local load can flip a single env var and get full sequential behavior.

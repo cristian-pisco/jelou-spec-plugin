@@ -146,8 +146,8 @@ The TDD cycle's value comes from speed. Integration tests' value comes from fide
 | 7d TDD Cycle | Phase test files only (Tier 1) | per slice |
 | 7g Refactor | Phase test files only (Tier 1) | 0-1 per phase |
 | 7h QA | Nothing (static analysis) | 0 |
-| 7k Build | Nothing (compile only) | 0 |
 | Step 8a Tier 2 | Deferred Tier 2 test files only | ≤1 total |
+| Step 8a.5 Build | Nothing (compile only) | 1 per service |
 | Step 8b Regression | Affected tests only (`--maxWorkers=2`) | 1 total |
 
 ## QA Agent Validation (Decision #13)

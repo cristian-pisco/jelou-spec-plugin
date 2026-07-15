@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # classify-phase.sh — consolidates the 4 phase classifiers used by execute-task
-# Steps 7c.1, 7e, 7h, and 7k.
+# Steps 7c.1, 7e, 7h, and 8a.5.
 #
 # Invoked with a subcommand as the first positional arg:
 #   classify-phase.sh mode         (Step 7c.1: docs | tdd)
 #   classify-phase.sh trivial      (Step 7e: trivial yes/no, with safety override)
 #   classify-phase.sh additive     (Step 7h:  purely-additive diff yes/no)
-#   classify-phase.sh compilable   (Step 7k:  compilable source file present yes/no)
+#   classify-phase.sh compilable   (Step 8a.5:  compilable source file present yes/no)
 #
 # Output (stdout, key=value lines) is subcommand-specific. See each subcommand
 # for the full schema.
@@ -26,7 +26,7 @@ if [[ -z "$SUBCOMMAND" ]]; then
   exit 1
 fi
 
-# Non-compilable extension allowlist (Step 7k).
+# Non-compilable extension allowlist (Step 8a.5).
 NON_COMPILABLE_EXTS=(
   md mdx txt rst
   yaml yml toml ini env example
