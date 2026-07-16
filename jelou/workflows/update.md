@@ -54,6 +54,20 @@ re-runs `setup --host <your-host>` to refresh that runtime's installed files. On
 Code it drives the plugin CLI and prints the CLI's result (e.g. `already at the latest
 version` or the upgrade), then a restart reminder.
 
+## Step 3b — Ensure E2E settings exist
+
+After the updater returns, seed the plugin's E2E settings file so it is present without the user
+ever creating it by hand. Idempotent — it creates `~/.jlu/e2e-settings.json` from the shipped
+template only when absent, and never clobbers a file the user has edited:
+
+```bash
+node "<plugin-root>/bin/seed-e2e-settings.mjs"
+```
+
+This is belt-and-suspenders: the plugin's `SessionStart` hook and `/jlu-ui-qa-run` also seed it,
+so an update via the native plugin CLI (which does not re-run `setup`) still lands the file on the
+next session or E2E run.
+
 ## Step 4 — Report
 
 Relay the script's outcome to the user in one or two lines: the version transition (or
