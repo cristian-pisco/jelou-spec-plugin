@@ -105,11 +105,12 @@ Why: the spec describes user-facing contract. The DB schema is implementation. W
 - Test description = exact text of the spec's first assertion (so a failing test reads like the spec).
 - No file header comment. Generated tests are comment-free; the spec→test mapping is recorded in `INDEX.md` and selector provenance in `selectors-used.txt`, never as a comment in the `.spec.ts`.
 
-## Trace and screenshot policy
+## Trace, video, and screenshot policy
 
-- The `playwright.config.ts` `use.trace` is whatever the consumer set; never override.
-- jelou-ui-qa's run command (M2) sets `--trace=on-first-retry` at the CLI level when running.
-- On failure, the M3 trace extractor unzips the trace and emits `trace-summary.json` for the fix-loop. Tests don't need to do anything special for this.
+- The `playwright.config.ts` `use.trace` is whatever the consumer set; `/jlu-ui-qa-run` additionally forces `--trace=retain-on-failure` at the CLI level so a trace exists on the FIRST failure (no retries are configured, so `on-first-retry` would record nothing and blind the fix-loop).
+- **Video is recorded for every run — pass or fail.** Playwright has no `--video` CLI flag, so video cannot be forced like `--trace`; instead `/jlu-ui-qa-run` exports `JLU_E2E_VIDEO` (default `on`, resolved from `~/.jlu/e2e-settings.json`, seeded from `jelou/config/e2e-settings.json` on first use and never clobbered). A consumer `playwright.config.ts` opts in by reading `process.env.JLU_E2E_VIDEO` for its `use.video` — the bootstrap scaffold does this by default; a pre-existing consumer config must add the one-line read to record video (otherwise its own `use.video` wins and passing runs are discarded). The point is to let a human watch what a *passing* test actually exercised, not only failures.
+- Videos are written as `.webm` under the run's `playwright-output/` (gitignored, local-only), listed in the run report's artifacts section, and swept by `/jlu-ui-qa-cleanup` after `retentionDays` (from the same settings file).
+- On failure, the trace extractor unzips the trace and emits `trace-summary.json` for the fix-loop. Tests don't need to do anything special for this.
 
 ## What the writer does NOT do
 

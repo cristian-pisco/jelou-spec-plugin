@@ -115,9 +115,16 @@ When dispatched with `MODE=bootstrap`, the UI service worktree has no Playwright
      use: {
        baseURL: requireEnv('E2E_BASE_URL'),
        trace: 'retain-on-failure',
+       video: (process.env.JLU_E2E_VIDEO as 'on' | 'retain-on-failure' | 'on-first-retry' | 'off') ?? 'retain-on-failure',
      },
    });
    ```
+
+   The `video` line honors the plugin's E2E video contract: `/jlu-ui-qa-run` exports
+   `JLU_E2E_VIDEO` (default `on`, resolved from `~/.jlu/e2e-settings.json`) so every run is
+   recorded for review — not only failures. Reading it from `process.env` keeps the scaffold
+   consumer-neutral: a manual `npx playwright test` without the plugin falls back to
+   `retain-on-failure`. See `references/playwright-conventions.md`.
 
 2. **`<UI_SERVICE_WORKTREE>/tests/e2e/fixtures/auth.ts`** — auth fixture stub the implementer wires up during GREEN:
 

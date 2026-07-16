@@ -1,0 +1,7 @@
+{
+  "video": {
+    "mode": "on",
+    "size": { "width": 1280, "height": 720 }
+  },
+  "retentionDays": 14
+}

@@ -82,9 +82,17 @@ done
 
 ```bash
 find "$TASK_DIR/services" -path '*/e2e/trace/*.zip' -mtime +14 -print -delete
+
+# E2E videos (playwright-output/**/*.webm) are large and local-only (gitignored). Sweep them on
+# the same cadence as traces, using the retention window from the plugin's E2E settings
+# (~/.jlu/e2e-settings.json → retentionDays, default 14). $PLUGIN_ROOT is resolved by the skill
+# bootstrap; the `|| echo 14` keeps the sweep working if it is unset.
+RETENTION_DAYS="$(node "$PLUGIN_ROOT/bin/seed-e2e-settings.mjs" --print-retention 2>/dev/null || echo 14)"
+find "$TASK_DIR/services" -path '*/e2e/playwright-output/*' -name '*.webm' -mtime +"$RETENTION_DAYS" -print -delete
 ```
 
-Don't sweep `.png` screenshots or `.json` trace summaries — those are committed and small.
+Don't sweep `.png` screenshots or `.json` trace summaries — those are committed and small. The
+`.webm` videos ARE swept (they are large, gitignored, and reproducible on the next run).
 
 ## Output
 
@@ -100,6 +108,7 @@ Ports freed:
   - 3000 (was: next dev, PID 12345)
 Stale worktrees: 0
 Old traces deleted: 4 (47.2 MB freed)
+Old videos deleted: 6 (118.4 MB freed)
 
 Status: clean
 ```

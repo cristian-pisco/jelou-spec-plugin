@@ -25,8 +25,9 @@ Follow `jelou/workflows/ui-qa-run.md` steps 15–22 (the execution body only):
 
 1. Run Playwright in `<UI_SERVICE_WORKTREE>` with the env contract of step 15
    (source `.env` then `.env.e2e`; `E2E_BASE_URL` required; anti-prod gate via
-   `bin/classify-e2e-target.mjs` unless `<ALLOW_PROD_TARGET>`; `--trace=retain-on-failure`).
-   Do NOT boot — the stack is up.
+   `bin/classify-e2e-target.mjs` unless `<ALLOW_PROD_TARGET>`; `--trace=retain-on-failure`;
+   `export JLU_E2E_VIDEO` from `bin/seed-e2e-settings.mjs --print-video` so the consumer config
+   records video for every run, default `on`). Do NOT boot — the stack is up.
 2. Apply the **zero-test guard** and the **minimal-input guard** (step 16): a green
    exit on an empty or one-text-column / zero-filter suite is NOT a pass — return the
    uncovered field/reference dimensions in `ui_breadth_gaps`.

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.287] — 2026-07-16
+
+### Added
+- Force Playwright video via JLU_E2E_VIDEO env (Playwright has no --video CLI flag); default mode 'on' records passing runs too, not only failures.
+- Plugin-global settings at ~/.jlu/e2e-settings.json, auto-seeded (SessionStart hook + /jlu-update step + lazy-seed on E2E run) and never clobbered.
+- ui-qa-run exports the mode and lists .webm artifacts; ui-qa-cleanup sweeps videos by retentionDays; bootstrap scaffold and jelou-apps config read the env var.
+
 ## [0.3.286] — 2026-07-15
 
 ### Added

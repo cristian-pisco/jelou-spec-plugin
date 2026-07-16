@@ -23,6 +23,16 @@
           }
         ]
       }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/bin/seed-e2e-settings.mjs\""
+          }
+        ]
+      }
     ]
   }
 }

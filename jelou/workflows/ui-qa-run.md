@@ -425,6 +425,15 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
     CONFIG_FLAG=""
     [ -n "$PLAYWRIGHT_CONFIG" ] && [ "$PLAYWRIGHT_CONFIG" != "playwright.config.ts" ] && CONFIG_FLAG="--config=$PLAYWRIGHT_CONFIG"
 
+    # Video contract. Playwright has NO --video CLI flag (unlike --trace), so recording is forced
+    # through the config's use.video, which reads JLU_E2E_VIDEO. Seed the plugin's E2E settings
+    # (~/.jlu/e2e-settings.json — created from jelou/config/e2e-settings.json on first use; an
+    # existing file is never clobbered) and resolve the mode. Precedence: a value already in the
+    # env wins, else the settings file, else 'on'. Exporting it lets a consumer config that reads
+    # process.env.JLU_E2E_VIDEO record EVERY run (pass or fail), so a human can watch what the
+    # automated E2E actually exercised — not only the failures.
+    export JLU_E2E_VIDEO="$(node "$PLUGIN_ROOT/bin/seed-e2e-settings.mjs" --print-video 2>/dev/null || echo on)"
+
     # --trace=retain-on-failure: produces a trace.zip for every failing test on its FIRST
     # run. Never use on-first-retry here — no retries are configured, so on-first-retry
     # records nothing and the fix-loop goes blind; adding retries would double the wall
@@ -544,6 +553,15 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
     ```
 
 20. **Write the run report** to `$TASK_DIR/services/$UI_SERVICE/e2e/run-$(date -u +%Y%m%dT%H%M%SZ).md`. Include pre-flight, boot order, per-test pass/fail/flagged, fix-loop activity, artifacts, summary.
+
+    In the **artifacts** section, enumerate the E2E videos: list each
+    `services/<ui>/e2e/playwright-output/**/*.webm` with its test title and path (one row per
+    test). Videos are recorded for every test — pass or fail — via the `JLU_E2E_VIDEO` contract
+    (step 15), precisely so a reviewer can watch what a *passing* test actually did, not only the
+    failures. They live under the gitignored `playwright-output/` (local-only) and are swept by
+    `/jlu-ui-qa-cleanup` after the retention window. If the reporter run collected zero `.webm`
+    files while `JLU_E2E_VIDEO` was non-`off`, note it — the consumer `playwright.config.ts` is
+    not reading `process.env.JLU_E2E_VIDEO` (see `references/playwright-conventions.md`).
 
     Include a "Questions and feedback" section when step 18c fired: one row per question —
     | # | What was missing | What was tried | User's answer | Outcome |
