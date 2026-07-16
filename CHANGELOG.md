@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.288] — 2026-07-16
+
+### Added
+- enforce non-bypassable backend E2E gate with declared-glob recognition
+
 ## [0.3.287] — 2026-07-16
 
 ### Added
