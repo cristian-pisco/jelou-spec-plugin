@@ -1027,10 +1027,14 @@ note — it has no controller→DB flow to E2E.
 For each affected backend service that clears the gate:
 
 1. Resolve its active worktree (`jelou/references/worktree-resolution.md`).
-2. If a `test/e2e/**` / `*.e2e-spec.ts` suite already covers the touched endpoints → no-op.
-3. Otherwise dispatch `jlu-test-writer` with an **E2E target** (`test/e2e/**`,
-   dependencies-only Testcontainers permitted for DB/Redis/etc.), instructing it to
-   author the suite from `SPEC.md` following the assertion doctrine in
+2. If a suite matching the service's declared E2E glob(s) (`services.yaml` `e2e.globs`;
+   default `test/e2e/**` / `*.e2e-spec.ts`) already covers the touched endpoints → no-op. A
+   repo whose real-DB HTTP tier is the `*.integration-spec.ts` convention declares it there,
+   so the integration spec the TDD cycle already authored satisfies this step (do not author
+   a duplicate parallel tree).
+3. Otherwise dispatch `jlu-test-writer` with an **E2E target** (the declared convention;
+   default `test/e2e/**`, dependencies-only Testcontainers permitted for DB/Redis/etc.),
+   instructing it to author the suite from `SPEC.md` following the assertion doctrine in
    `jelou/references/backend-e2e-authoring.md` — every mutating endpoint reads its
    entity back through a fresh request and asserts the DB-persistence + cache side
    effects, never just the HTTP 2xx.

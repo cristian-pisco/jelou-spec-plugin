@@ -16,17 +16,23 @@ and never leave orphan containers.
 - `<SERVICE_ID>`, `<SERVICE_WORKTREE>` (refuse to write outside it), `<TASK_DIR>`,
   `<PLUGIN_ROOT>`, `<WORKERS>` (default 1; obey `subagent-base.md` worker caps and its
   "Testcontainers E2E" clause).
+- `E2E_GLOBS` — the discovery glob(s) the orchestrator resolved from the service's
+  `services.yaml` `e2e.globs`. Default `["test/e2e/**/*.e2e-spec.ts"]` when the orchestrator
+  passes none. A repo whose real-DB HTTP tier uses another convention
+  (e.g. `*.integration-spec.ts`) declares it there; you run whatever the globs match.
 
 ## What you do
 
 1. `cd "<SERVICE_WORKTREE>"`.
-2. Discover E2E suites by the path convention `test/e2e/**` / `*.e2e-spec.ts`.
+2. Discover E2E suites by the globs in `E2E_GLOBS` (default `test/e2e/**` / `*.e2e-spec.ts`).
 3. **Suites exist →** run them. Bring up one dependency set at a time via
    Testcontainers (dependencies only) and **tear it down before the next service** —
    no orphaned containers. Record PASS/FAIL.
-4. **No suites exist →** do NOT author them. Return `STATUS: NO_E2E_SUITE` so the
-   orchestrator can route authoring to `jlu-test-writer` (with `--allow-test-edits`,
-   E2E target `test/e2e/**`, dependencies-only) and re-dispatch you.
+4. **No suites exist →** do NOT author them. Return `STATUS: NO_E2E_SUITE`. This is NOT a
+   waiver: it signals the orchestrator to route **mandatory** authoring to `jlu-test-writer`
+   (with `--allow-test-edits`, E2E target `test/e2e/**`, dependencies-only) and re-dispatch
+   you. You never emit `N/A` / `skipped` — the only outcomes are the four `STATUS:` lines
+   below.
 
 ## Status protocol
 

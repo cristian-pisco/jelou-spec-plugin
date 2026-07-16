@@ -150,18 +150,42 @@ No seed system: reuses `dev` blocks + `data_isolation: per-run`. Testcontainers 
     Parse its `STATUS:` line; record PASS/FAIL + grouped failures + `breadth` gaps.
     Do NOT abort the run on failure.
 
-### Phase 3.5 — Backend E2E (delegated)
+### Phase 3.5 — Backend E2E (delegated; mandatory, never bypassable)
+
+The backend real-dependencies-over-HTTP gate is **mandatory** for every backend service —
+integration/E2E coverage is indispensable and NO subagent (the orchestrator included) may
+skip it, report it as `N/A` / "not applicable" / "skipped", or credit the Phase 3
+integration run as if it were this phase. The orchestrator MUST dispatch the runner; it
+MUST NOT substitute its own `find`/glob check to short-circuit the dispatch, and MUST NOT
+decide on its own that "integration already covers it". The only sanctioned way for a repo
+whose real-DB HTTP tier uses a non-default convention (e.g. `*.integration-spec.ts`) to
+satisfy this phase is by declaring its suite glob in `services.yaml` (`e2e.globs`, step
+11b.1) — which the runner then actually RUNS. Recognition is by that declared glob, never by
+orchestrator narrative.
 
 11b. For each service in `backend_services`, serially (concurrency = `WORKERS`):
-    dispatch `jlu-backend-e2e-runner` (it runs the Testcontainers dependencies-only
-    E2E suites under `test/e2e/**` / `*.e2e-spec.ts`). On `NO_E2E_SUITE`, route
-    authoring to `jlu-test-writer` (`--allow-test-edits`, E2E target `test/e2e/**`,
-    dependencies-only, following the assertion doctrine in
-    `jelou/references/backend-e2e-authoring.md` — assert DB-persistence + cache side
-    effects, not just the 2xx), then re-dispatch the runner once. Record PASS/FAIL;
-    never abort. Normally the suite already exists, authored shift-left at
-    `/jlu-execute-task` Step 8f; this reactive authoring is the fallback when a task was
-    shipped before that step ran.
+
+   1. **Resolve the E2E discovery glob(s).** Read the service's `e2e.globs` from
+      `services.yaml` (`jelou/templates/services-yaml.md`); default
+      `["test/e2e/**/*.e2e-spec.ts"]` when absent. Pass them to the runner as `E2E_GLOBS`.
+   2. **Dispatch `jlu-backend-e2e-runner`** (it runs the matched suites with Testcontainers
+      dependencies only, real HTTP). Parse its `STATUS:` line.
+   3. **`PASS` / `FAIL`** → record it; never abort the run.
+   4. **`NO_E2E_SUITE`** → authoring is **MANDATORY, not discretionary**: route to
+      `jlu-test-writer` (`--allow-test-edits`, E2E target = the declared convention, default
+      `test/e2e/**`, dependencies-only, following the assertion doctrine in
+      `jelou/references/backend-e2e-authoring.md` — assert DB-persistence + cache side
+      effects, not just the 2xx), then re-dispatch the runner **once**. The orchestrator may
+      NOT skip authoring on the grounds that another tier "already covers it": if that tier
+      is the real E2E surface it is declared via `e2e.globs` (step 11b.1) and the runner runs
+      it — otherwise the suite is authored here.
+   5. **Still `NO_E2E_SUITE` after re-dispatch** (or a `NEEDS_CONTEXT` that cannot be
+      resolved) → the service's backend E2E is **UNSATISFIED**. Record it as such; per step
+      14 it forces the overall verdict to NOT be `PASS` — never silently pass.
+
+   Normally the suite already exists, authored shift-left at `/jlu-execute-task` Step 8f (or
+   found via `e2e.globs`); the reactive authoring in 11b.4 is the fallback when a task was
+   shipped before that step ran.
 
 ### Phase 3.75 — Auth gate (orchestrator-owned)
 
@@ -253,10 +277,17 @@ file), so the runners' live probes are safe to mutate.
     registered at boot and runs on every exit path (success, failure, abort).
 14. **Aggregate report.** Print: `scope`, services booted, a backend section (per-service
     PASS/FAIL with `test-suite`'s grouped failures, plus the Testcontainers backend-E2E PASS/FAIL), a UI section (per-service PASS/FAIL),
-    and an overall verdict: `PASS` (all green AND the Phase 4.5 breadth gate clean),
-    `PASS-THIN / NEEDS-BREADTH` (all suites green but the breadth gate found uncovered
-    validator/reference dimensions — names them and the re-dispatch outcome; advisory, self-heals),
-    `FAIL` (any suite failed), or `BLOCKED` (could not boot / pre-flight refused).
+    and an overall verdict. **`PASS` is granted ONLY when every backend service ended in an
+    actual backend-E2E runner `PASS` AND every UI service ended in an actual UI-E2E runner
+    `PASS` — a missing, skipped, or `N/A` E2E phase is NEVER a `PASS`.** The verdicts:
+    - `PASS` — all suites green: unit+integration, backend E2E, and UI E2E each actually ran
+      and passed, AND the Phase 4.5 breadth gate is clean.
+    - `PASS-THIN / NEEDS-BREADTH` — all suites green but the breadth gate found uncovered
+      validator/reference dimensions (names them and the re-dispatch outcome; advisory, self-heals).
+    - `FAIL` — any suite failed, OR any backend/UI service's E2E phase is **UNSATISFIED**
+      (a `NO_E2E_SUITE` that authoring could not resolve, or a runner that never produced a
+      `PASS`/`FAIL`). There is no verdict path where a bypassed E2E yields `PASS`.
+    - `BLOCKED` — could not boot / pre-flight refused.
 
 ## Failure modes & UX
 
@@ -278,6 +309,16 @@ file), so the runners' live probes are safe to mutate.
   `jlu-ui-qa-runner`; all authoring to `jlu-ui-e2e-writer` / `jlu-test-writer`. The
   orchestrator MUST NOT write any `.spec.ts` itself — inline `prodlike-*.spec.ts`
   probe specs are forbidden. Its only execution is the OTP auth gate (Phase 3.75).
+- **The backend E2E phase is mandatory and non-bypassable.** The orchestrator MUST dispatch
+  `jlu-backend-e2e-runner` for every backend service; it MUST NOT short-circuit with its own
+  file search, report the phase as `N/A` / `skipped` / `not applicable`, or credit the Phase
+  3 integration run as the E2E phase. `NO_E2E_SUITE` triggers **mandatory** authoring
+  (`jlu-test-writer`) plus one re-dispatch — declining to author "because integration covers
+  it" is the exact bypass this rule forbids. An E2E phase that never produced a runner `PASS`
+  is `UNSATISFIED` and makes the overall verdict `FAIL`, never `PASS`. A repo whose real-DB
+  HTTP tier uses a non-default convention (`*.integration-spec.ts`) declares it in
+  `services.yaml` `e2e.globs` so the runner actually runs it — recognition is by the declared
+  glob, never by narrative.
 - **Suite derivation is unconditional and silent.** Never ask "how should I scope this run?"
   and never fabricate a "Phase-10 / deferred-manual / manual-E2E wall" — it does not
   exist. A missing suite is materialized in step 7.5 by `jlu-ui-e2e-writer`.
