@@ -1,7 +1,7 @@
 # Workflow: task-clickup
 
 > Orchestrator workflow for `/jlu-task-clickup [task-slug]`
-> Create or update ClickUp macro task and subtasks from user stories.
+> Create or update a single ClickUp macro task from the workspace artifacts.
 
 > **Tool requirement**: All prompts, questions, and confirmations to the user in this workflow MUST use `question`. Never output questions as plain text.
 
@@ -47,7 +47,6 @@ If MCP is already configured, this may be a transient ClickUp API error. Try re-
    - `SPEC.md` — task title, problem statement, requirements
    - `PROPOSAL.md` — strategy, phases, risks
    - `TASKS.md` — current status, sprint number, affected services, phase progress
-   - `uh/` directory — user story files for subtasks
 4. Read `CLICKUP_TASK.json` (if it exists) for previous sync state.
 
 ## Step 2 — Resolve Target List
@@ -100,9 +99,8 @@ If MCP is already configured, this may be a transient ClickUp API error. Try re-
 
 ## Step 4 — Infer Fields
 
-Infer these fields inline (no pm-agent). Steps 4a–4c MUST run in order; later
-steps depend on earlier ones (Story Points calibrates the time_estimate, OKR
-selection feeds the description).
+Infer these fields inline (no pm-agent). Steps 4a–4b MUST run in order; later
+steps depend on earlier ones (OKR selection feeds the description).
 
 ### Step 4a — Select OKR
 
@@ -141,37 +139,9 @@ Read `<plugin-root>/jelou/references/story-points-estimation.md` and apply the
 6. **Sprint Points = Story Points** (always equal). Both fields take the same
    integer.
 
-### Step 4c — time_estimate (REQUIRED)
-
-Calibrated from Step 4b's Story Points using the SP→ms table in
-`story-points-estimation.md`:
-
-| SP  | hours | ms             |
-|-----|-------|----------------|
-| 1   | 8     | 28,800,000     |
-| 2   | 16    | 57,600,000     |
-| 3   | 24    | 86,400,000     |
-| 5   | 40    | 144,000,000    |
-| 8   | 64    | 230,400,000    |
-
-Override only when there is **specific evidence** the task will take less time
-than its SP suggests (e.g., a fix that's 15 min of coding plus a half-day of
-manual validation should still be SP 2 / 16h, not 1h). Document the override
-reason in `syncHistory.details`.
-
-For subtasks: divide the macro `time_estimate` proportionally to the
-requirement coverage. Round to the nearest 3,600,000 ms (1 hour). Never set a
-subtask below 3,600,000 ms (1 hour).
-
-`time_estimate` is in **milliseconds** and must be passed as a JSON
-**integer**, not a string. Per the ClickUp API
-([`/reference/createtask`](https://developer.clickup.com/reference/createtask),
-[`/reference/updatetask`](https://developer.clickup.com/reference/updatetask)),
-the field is typed `integer`; `"120"` (string) and `120` (integer minutes)
-both end up stored as `120` ms — effectively zero. The value sent to the MCP
-must be the same number that lives under `time_estimate_ms` in
-`CLICKUP_TASK.json` (no minute conversion, no string wrapping). Display to
-the user as natural language (e.g., "1d 4h").
+Story Points measure relative size, not work hours. This workflow does **not**
+set a `time_estimate` on any task — never pass `time_estimate` to any ClickUp
+create or update call.
 
 ### Step 4d — Other fields
 
@@ -209,8 +179,8 @@ NEVER auto-set.
      month/day in the current year (roll to next year only if the end month
      is earlier than the start month), then compute ms with Bash:
      `date -d '<YYYY-MM-DD> 23:59' +%s%3N`.
-  3. Else fall back to `start_date` + the Step 4c `time_estimate` rounded up
-     to whole days, so `due_date` is never empty.
+  3. Else fall back to `start_date` + 5 business days (one working week) so
+     `due_date` is never empty.
 - Set `start_date_time` and `due_date_time` to `false` (date-only, no
   time-of-day component).
 - On **update** of an existing macro task, do NOT overwrite a `start_date`
@@ -236,12 +206,6 @@ Compose the description from the artifacts in this order:
 
 ### 5b. Create (no existing macro task in CLICKUP_TASK.json)
 
-Pass `time_estimate` **directly in the create call** — the official ClickUp
-MCP `clickup_create_task` accepts `time_estimate` (milliseconds) as an
-optional parameter. Do NOT use a follow-up `clickup_update_task` only to set
-the estimate; it has historically been a source of "1m" defaults when the
-follow-up was skipped.
-
 ```
 clickup_create_task(
   list_id: "<list-id>",
@@ -250,7 +214,6 @@ clickup_create_task(
   assignees: [<user-id-int>],          # top-level, flat array of integers
   priority: <1-4>,
   task_type: "<inferred type>",
-  time_estimate: <milliseconds-from-step-4c>,
   start_date: <ms-from-step-4e>,       # built-in task date (today)
   due_date: <ms-from-step-4e>,         # built-in task date (sprint end)
   start_date_time: false,
@@ -259,6 +222,8 @@ clickup_create_task(
   custom_fields: [<all mapped fields from Step 3-4>]
 )
 ```
+
+Never pass `time_estimate` — this workflow does not set work hours on tasks.
 
 `points` is the documented top-level Sprint Points / Story Points field
 (see Step 3 note 5). Same numeric value used for both — do not duplicate it
@@ -293,7 +258,6 @@ custom-field writes to a separate endpoint
 ```
 clickup_update_task(
   task_id: "<macro-task-id>",
-  time_estimate: <milliseconds-from-step-4c>,
   start_date: <ms-from-step-4e>,        # omit if macroTask.start_date_ms already set
   due_date: <ms-from-step-4e>,          # refresh when the sprint changed
   start_date_time: false,
@@ -304,6 +268,8 @@ clickup_update_task(
   ...other changed fields                              # NO custom_fields here
 )
 ```
+
+Never pass `time_estimate` — this workflow does not set work hours on tasks.
 
 For each custom field that changed, issue a separate call:
 
@@ -359,13 +325,10 @@ whose value the inference step in Step 4d resolved as empty. Never write
 `Fecha límite modificada` or `Fecha de entrega al Cliente` — those are
 human-curated.
 
-### 5d. Verify time_estimate, dates, and Cliente landed
+### 5d. Verify dates and Cliente landed
 
 Immediately after create or update, call `clickup_get_task(task_id=<id>)` and
-read the returned `time_estimate` field.
-
-On that **same** re-fetch, also confirm the required Step-4e/Cliente fields
-landed:
+confirm the required Step-4e / Cliente fields landed:
 
 - `returned.start_date` and `returned.due_date` are both non-null. If either
   is missing, re-send it once via `clickup_update_task`, re-fetch, and — if
@@ -374,23 +337,8 @@ landed:
   is empty, resolve it per Step 4d (infer or ASK) and set it before
   continuing — the sync must not finish with an empty Cliente.
 
-- If `returned.time_estimate == sent.time_estimate` **and**
-  `returned.time_estimate >= 3,600,000` (≥ 1 h) → continue.
-- If `returned.time_estimate == 60000` (the ClickUp "1m" default), `null`,
-  `< 3,600,000` ms (smells like wrong-unit conversion: e.g., 120 ms means
-  someone sent `"120"` thinking minutes), or differs from
-  `sent.time_estimate` by more than 1000 ms → call
-  `clickup_update_task(task_id=<id>, time_estimate=<sent>)` once as a
-  fallback, then re-fetch and re-verify.
-- If still mismatched after the fallback → record the mismatch in
-  `syncHistory.details` ("time_estimate verification failed: sent=<x> got=<y>")
-  and surface a warning in the Step 9 summary. Do **not** abort the rest of
-  the sync — partial fields are better than nothing.
-
-Persist `time_estimate_ms` in `CLICKUP_TASK.json` only after verification
-passes; do not write the persisted value if the verification step ended in
-warning state (use the actual `returned.time_estimate` instead, so future
-runs reflect reality, not intent).
+Do **not** abort the rest of the sync on a warning — partial fields are better
+than nothing.
 
 ### Status Mapping
 
@@ -416,64 +364,7 @@ runs reflect reality, not intent).
    - <service-id-2>: <pr-url-2>
    ```
 
-## Step 7 — Create or Update Subtasks from User Stories
-
-### 7a. Generate User Stories (if missing)
-
-1. Check if `<TASK_DIR>/services/<primary-service>/uh/` directory exists and has `.md` files.
-2. If user stories already exist, skip to 7b.
-3. If no user stories exist:
-   a. Read `<TASK_DIR>/SPEC.md` and `<TASK_DIR>/PROPOSAL.md`.
-   b. For each affected service, derive user stories from requirements (FR-1, FR-2, etc.):
-      - Format: "As a [user], I want [action], so that [benefit]."
-      - Each story has acceptance criteria in Given/When/Then format.
-      - Each story maps to one or more phases from PROPOSAL.md.
-   c. Write story files to `<TASK_DIR>/services/<service-id>/uh/<story-slug>.md`.
-   d. Use the user-story.md template from `<plugin-root>/jelou/templates/user-story.md` if available.
-
-### 7b. Sync Subtasks to ClickUp
-
-For each user story file in `uh/`:
-
-1. Match existing subtasks by slug via CLICKUP_TASK.json.
-2. **Create new**: Use `clickup_create_task` with `parent` = macro task ID.
-   Pass `time_estimate` **in the same create call** (do not split into
-   create + update — the same "1m" default risk applies to subtasks).
-   ```
-   clickup_create_task(
-     list_id: "<list-id>",
-     parent: "<macro-task-id>",
-     name: "<subtask name>",
-     markdown_description: "<story body>",
-     assignees: [<user-id-int>],
-     time_estimate: <subtask-ms-from-step-4c>,
-     start_date: <parent-start_date-ms>,   # inherit the parent's sprint window
-     due_date: <parent-due_date-ms>,
-     start_date_time: false,
-     due_date_time: false,
-     points: <subtask-points-from-step-4b>,
-     custom_fields: [<inherited fields, including Responsable {add, rem}>]
-   )
-   ```
-   Same dual-write contract as 5b: top-level `assignees` flat array AND
-   the Responsable custom field with `{add, rem}` shape.
-3. **Subtasks inherit ALL parent custom fields**: Riesgo, Equipo, Tipo
-   proyecto, Solicitante, Front, Talla, Responsable, Sprint, Necesita
-   Diseno, OKR (Tech), Estado del diseño, Proyecto, QA Asignado, Cliente.
-   Sprint / Story Points are passed via the top-level `points` parameter,
-   not as a custom field — same value as the parent (or a proportional
-   fraction for subtasks). For the OKR (Tech) labels field, reuse the
-   parent's resolved option UUID — do **not** re-resolve from list options.
-   Subtasks also inherit the parent's built-in `start_date` / `due_date`
-   (same sprint window) — pass the parent's persisted ms values directly.
-4. **Update existing**: Use `clickup_update_task` with `time_estimate` and any changed fields in a single call.
-5. **Verify** `time_estimate` on every subtask using the same protocol as
-   Step 5d (call `clickup_get_task`, fall back to `clickup_update_task` once,
-   record mismatches). Subtasks must never end the sync at the ClickUp "1m"
-   default.
-6. **Never delete subtasks** (Decision #27).
-
-## Step 8 — Persist to CLICKUP_TASK.json
+## Step 7 — Persist to CLICKUP_TASK.json
 
 Write the updated sync state:
 
@@ -513,20 +404,9 @@ Write the updated sync state:
     "id": "<clickup-task-id>",
     "url": "<clickup-url>",
     "status": "<current-status>",
-    "time_estimate_ms": "<milliseconds>",
     "start_date_ms": "<milliseconds>",
     "due_date_ms": "<milliseconds>",
     "lastSynced": "<ISO-8601>"
-  },
-  "subtasks": {
-    "<story-slug>": {
-      "id": "<clickup-task-id>",
-      "url": "<clickup-url>",
-      "time_estimate_ms": "<milliseconds>",
-      "start_date_ms": "<milliseconds>",
-      "due_date_ms": "<milliseconds>",
-      "lastSynced": "<ISO-8601>"
-    }
   },
   "sprint": "<sprint-name>",
   "pr": {
@@ -542,7 +422,7 @@ Write the updated sync state:
 }
 ```
 
-## Step 9 — Report Summary
+## Step 8 — Report Summary
 
 Present the sync results to the user:
 
@@ -554,16 +434,9 @@ Present the sync results to the user:
 - URL: <clickup-url>
 - Story Points: <SP> (Talla: <talla>)
 - OKR: KR <n.n> — <description>
-- Time Estimate: <human-readable> (sent: <ms>, verified: <ms>)
 - Dates: <start YYYY-MM-DD> → <due YYYY-MM-DD> (sprint end)
 - Client: <Cliente option chosen, or "asked user">
 - Status: <clickup-status>
-
-### Subtasks
-- Created: <N>
-- Updated: <N>
-- Unchanged: <N>
-- Time-estimate mismatches: <N> (see Warnings if non-zero)
 
 ### PR Comments
 - <Attached / No PRs found>
@@ -572,29 +445,27 @@ Present the sync results to the user:
 - <list of fields that were successfully mapped and set>
 
 ### Warnings
-- <any unmapped fields or time_estimate verification failures>
+- <any unmapped fields or verification failures>
 ```
 
 ## Rules
 
 - Sync is **idempotent** — running it multiple times produces the same result.
-- Never delete ClickUp tasks or subtasks. Only create and update.
-- `time_estimate` is **REQUIRED** on every task and subtask. Never skip it.
-  Pass it directly in the create/update call (Step 5b/5c/7b), never as a
-  trailing-only update — the trailing-only pattern has historically left
-  tasks at the ClickUp "1m" default when the trailing call was skipped.
-- **Verify time_estimate** after every create or update via Step 5d. Persist
-  the verified value (not the intended value) to `CLICKUP_TASK.json`.
+- **Only the macro task is created — no subtasks.** This workflow never creates
+  subtasks and never derives user stories for ClickUp. One task per spec.
+- Never delete ClickUp tasks. Only create and update.
+- **Never set `time_estimate` (work hours)** on any task. Story Points / Talla
+  (the `points` field) express relative size; do not translate them into an
+  hour estimate and never pass `time_estimate` to any create or update call.
 - **OKR is mandatory** in **both** the macro task description **and** the
   `OKR (Tech)` custom field. Pick exactly one KR from
   `jelou/references/okr-mapping.md` per Step 4a; resolve its option UUID by
   matching the KR-code prefix on the field's option labels (see Step 5e and
-  `references/okr-mapping.md`). Subtasks inherit the parent's resolved
-  option UUID and do not repeat the markdown OKR block.
-- **`start_date` and `due_date` are REQUIRED** on every macro task and
-  subtask (Step 4e): `start_date` = today, `due_date` = destination sprint
-  end. These are the **built-in** task dates — set them on create/update.
-  Do not confuse them with the human-curated custom fields below.
+  `references/okr-mapping.md`).
+- **`start_date` and `due_date` are REQUIRED** on the macro task (Step 4e):
+  `start_date` = today, `due_date` = destination sprint end. These are the
+  **built-in** task dates — set them on create/update. Do not confuse them
+  with the human-curated custom fields below.
 - **Cliente is REQUIRED — never skip it.** Infer from SPEC / task context;
   if there is no confident match, ASK the user via question and persist the
   choice in `defaults.cliente`. Never leave the task without a Cliente.

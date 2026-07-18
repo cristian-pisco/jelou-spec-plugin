@@ -44,15 +44,9 @@ describe('task-clickup workflow — Step 4 OKR + CUE wiring', () => {
   test('Step 4b instructs to abort with DIVIDIR for SP >= 13', () => {
     assert.match(wf, /13\/21|DIVIDIR before syncing|DIVIDIR/);
   });
-
-  test('Step 4c contains the SP→ms calibration table', () => {
-    assert.match(wf, /28,800,000/);
-    assert.match(wf, /57,600,000/);
-    assert.match(wf, /144,000,000/);
-  });
 });
 
-describe('task-clickup workflow — Step 5 time_estimate + OKR injection', () => {
+describe('task-clickup workflow — Step 5 macro task + OKR injection', () => {
   const wf = read('jelou/workflows/task-clickup.md');
 
   test('5a appends OKR block to markdown_description', () => {
@@ -60,37 +54,41 @@ describe('task-clickup workflow — Step 5 time_estimate + OKR injection', () =>
     assert.match(wf, /OKR block from Step 4a/);
   });
 
-  test('5b passes time_estimate directly in the create call', () => {
+  test('5b passes points in the create call', () => {
     assert.match(wf, /5b\.\s+Create/);
-    assert.match(wf, /time_estimate.*directly in the create call/);
-    assert.match(wf, /clickup_create_task[\s\S]{0,400}time_estimate:/);
+    assert.match(wf, /clickup_create_task[\s\S]{0,600}points:/);
   });
 
-  test('5b warns against the trailing-only update pattern', () => {
-    assert.match(wf, /Do NOT use a follow-up `clickup_update_task` only to set\s+the estimate/);
-    assert.match(wf, /"1m" default/);
-  });
-
-  test('5d defines a verification protocol with fallback', () => {
-    assert.match(wf, /5d\.\s+Verify time_estimate/);
+  test('5d verifies dates and Cliente landed', () => {
+    assert.match(wf, /5d\.\s+Verify dates and Cliente landed/);
     assert.match(wf, /clickup_get_task/);
-    assert.match(wf, /60000/);
-    assert.match(wf, /fallback/i);
+    assert.match(wf, /returned\.start_date/);
+    assert.match(wf, /Cliente/);
     assert.match(wf, /syncHistory\.details/);
   });
+});
 
-  test('subtasks (Step 7b) also pass time_estimate in create + verify', () => {
-    assert.match(wf, /Pass `time_estimate` \*\*in the same create call/);
-    assert.match(wf, /Verify\*\* `time_estimate` on every subtask/);
+describe('task-clickup workflow — no work hours, no subtasks', () => {
+  const wf = read('jelou/workflows/task-clickup.md');
+
+  test('workflow never passes time_estimate to a ClickUp call', () => {
+    assert.doesNotMatch(wf, /time_estimate:/);
+    assert.doesNotMatch(wf, /time_estimate_ms/);
+  });
+
+  test('Rules explicitly forbid setting time_estimate / work hours', () => {
+    assert.match(wf, /Never set `time_estimate` \(work hours\)/);
+  });
+
+  test('workflow does not create subtasks or derive user stories', () => {
+    assert.doesNotMatch(wf, /parent:/);
+    assert.doesNotMatch(wf, /uh\//);
+    assert.match(wf, /Only the macro task is created — no subtasks/);
   });
 });
 
 describe('task-clickup workflow — Rules section', () => {
   const wf = read('jelou/workflows/task-clickup.md');
-
-  test('Rules forbid trailing-only time_estimate updates', () => {
-    assert.match(wf, /never as a\s+trailing-only update/);
-  });
 
   test('Rules require OKR in macro task description', () => {
     assert.match(wf, /OKR is mandatory/);
@@ -164,14 +162,6 @@ describe('task-clickup workflow — extended field coverage', () => {
     assert.match(wf, /"okr_option_map":/);
   });
 
-  test('subtasks inherit the extended custom-field set', () => {
-    assert.match(wf, /Subtasks inherit ALL parent custom fields[\s\S]{0,400}OKR \(Tech\)/);
-    assert.match(wf, /Subtasks inherit ALL parent custom fields[\s\S]{0,400}Estado del diseño/);
-    assert.match(wf, /Subtasks inherit ALL parent custom fields[\s\S]{0,400}Proyecto/);
-    assert.match(wf, /Subtasks inherit ALL parent custom fields[\s\S]{0,400}QA Asignado/);
-    assert.match(wf, /Subtasks inherit ALL parent custom fields[\s\S]{0,400}Cliente/);
-  });
-
   test('Rules section forbids auto-setting human-curated date fields', () => {
     assert.match(wf, /Fecha límite modificada/);
     assert.match(wf, /Fecha de entrega al Cliente/);
@@ -200,10 +190,6 @@ describe('task-clickup workflow — task dates + required Cliente', () => {
   test('create + update calls pass start_date and due_date', () => {
     assert.match(wf, /clickup_create_task[\s\S]{0,500}start_date:[\s\S]{0,120}due_date:/);
     assert.match(wf, /clickup_update_task[\s\S]{0,500}start_date:[\s\S]{0,120}due_date:/);
-  });
-
-  test('subtasks inherit the parent sprint window', () => {
-    assert.match(wf, /Subtasks also inherit the parent's built-in `start_date` \/ `due_date`/);
   });
 
   test('Step 8 persists start_date_ms and due_date_ms', () => {
@@ -256,12 +242,9 @@ describe('Story Points reference doc', () => {
     assert.match(sp, /N archivos \/ N PRs \/ N repos no infla SP/);
   });
 
-  test('publishes the SP → ms mapping consumed by Step 4c', () => {
-    assert.match(sp, /28,800,000/);
-    assert.match(sp, /57,600,000/);
-    assert.match(sp, /86,400,000/);
-    assert.match(sp, /144,000,000/);
-    assert.match(sp, /230,400,000/);
+  test('no longer maps SP to work-hour time estimates', () => {
+    assert.doesNotMatch(sp, /time_estimate/);
+    assert.doesNotMatch(sp, /28,800,000/);
   });
 
   test('asserts Sprint Points = Story Points invariant', () => {

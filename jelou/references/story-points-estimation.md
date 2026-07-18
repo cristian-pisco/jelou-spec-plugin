@@ -88,28 +88,8 @@ puede terminar esto en menos de medio día?" → Sí ⇒ XS (1 SP).
 - **8 SP** — Feature full-stack con integración externa + coordinación de
   deploys; cambio de arquitectura que afecta múltiples servicios.
 
-## Velocity de referencia (calibración del time_estimate)
-
-- **1 SP ≈ 1 día de trabajo** (ancla base de Jelou)
-- Sprint de 2 semanas = 10 días hábiles
-- Squad de 3 integrantes
-
-## Mapping SP → time_estimate (ms)
-
-Use this exact mapping when setting `time_estimate` on a ClickUp macro task.
-Express the value in **milliseconds** (ms = hours × 3,600,000):
-
-| SP  | Hours equivalent  | Milliseconds   |
-|-----|-------------------|----------------|
-| 1   | 8h (1 day)        | 28,800,000     |
-| 2   | 16h (2 days)      | 57,600,000     |
-| 3   | 24h (3 days)      | 86,400,000     |
-| 5   | 40h (1 week)      | 144,000,000    |
-| 8   | 64h (~8 days)     | 230,400,000    |
-
-For subtasks, divide the macro `time_estimate` proportionally to the requirement
-coverage (e.g., a subtask covering 50% of the task's requirements gets 50% of
-the macro estimate). Round to the nearest hour (3,600,000 ms).
+## Sprint Points
 
 **Sprint-Points = Story-Points** (always equal — both fields take the same
-value).
+value). Story Points miden tamaño relativo, no horas de trabajo: este flujo no
+asigna horas de trabajo a las tareas de ClickUp.
