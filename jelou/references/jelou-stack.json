@@ -1,0 +1,44 @@
+{
+  "network": "devlabs_mynetwork",
+  "composeNetworkAlias": "app-network",
+  "basePort": 3100,
+  "authInjectPort": 7788,
+  "infra": ["mysql", "redis", "mongo"],
+  "services": [
+    { "name": "jelou-api", "path": "/home/cristianp/jelou-projects/jelou-api", "command": "yarn start:dev", "mode": "exec", "compose_file": "docker-compose.yml", "compose_service": "app", "port_mappings": [{ "internal": 8080, "port_env": "APP_PORT", "primary": true }, { "internal": 9001, "port_env": "SUPERVISOR_PORT", "primary": false }], "readiness": { "type": "http", "url": "http://localhost:8383/v1/company" }, "peers": { "chatbot-server": "CHATBOT_SERVER_URL" } },
+    { "name": "jelou-auth-service", "path": "/home/cristianp/jelou-projects/auth-service", "command": "yarn start:dev", "mode": "exec", "compose_file": "docker-compose.yml", "compose_service": "app", "port_mappings": [{ "internal": 8080, "port_env": "APP_PORT", "primary": true }, { "internal": 50051, "port_env": "GRPC_PORT", "primary": false }, { "internal": 9001, "port_env": "DEBUG_PORT", "primary": false }], "readiness": { "type": "http", "url": "http://localhost:8229/" }, "peers": { "jelou-api": "JELOU_API_BASE_URL" } },
+    { "name": "api-gateway-service", "path": "/home/cristianp/jelou-projects/api-gateway-service", "command": "yarn start:dev", "mode": "exec", "compose_file": "docker-compose.yml", "compose_service": "app", "port_mappings": [{ "internal": 8080, "port_env": "APP_PORT", "primary": true }, { "internal": 9001, "port_env": "DEBUG_PORT", "primary": false }], "readiness": { "type": "http", "url": "http://localhost:8998/" }, "peers": { "jelou-auth-service": "GRPC_AUTH_SERVER_URL", "marketplace-service": "MARKETPLACE_SERVER_URL", "jelou-functions-api": "JELOU_FUNCTIONS_API_URL", "dashboard-server": "DASHBOARD_SERVER_URL", "chatbot-server": "CHATBOT_SERVER_URL" } },
+    { "name": "dashboard-server", "path": "/home/cristianp/jelou-projects/dashboard-server", "command": "yarn start:dev", "mode": "exec", "compose_file": "docker-compose.yml", "compose_service": "app", "port_mappings": [{ "internal": 8080, "port_env": "APP_PORT", "primary": true }, { "internal": 9001, "port_env": "SUPERVISOR_PORT", "primary": false }], "readiness": { "type": "http", "url": "http://localhost:8484/api/v1/auth/me" }, "peers": {} },
+    { "name": "chatbot-server", "path": "/home/cristianp/jelou-projects/chatbot-server", "command": "npm run start:dev", "mode": "exec", "compose_file": "docker-compose.yml", "compose_service": "chatbot_app", "port_mappings": [{ "internal": 8080, "port_env": "APP_PORT", "primary": true }], "readiness": { "type": "http", "url": "http://localhost:9090/" }, "peers": { "jelou-api": "JELOU_API_URL", "workflows-service": "JELOU_WORKFLOW_URL", "orchestrator-service": "POCKET_SERVICE_URL" } },
+    { "name": "workflows-service", "path": "/home/cristianp/jelou-projects/workflows-service", "command": "yarn start:dev", "mode": "exec", "compose_file": "docker-compose.yml", "compose_service": "app", "port_mappings": [{ "internal": 8080, "port_env": "APP_PORT", "primary": true }, { "internal": 9229, "port_env": "DEBUG_PORT", "primary": false }], "readiness": { "type": "http", "url": "http://localhost:8686/" }, "peers": {} },
+    { "name": "workflow-engine-service", "path": "/home/cristianp/jelou-projects/workflow-engine-service", "command": "yarn start:dev", "mode": "exec", "compose_file": "docker-compose.yml", "compose_service": "app", "port_mappings": [{ "internal": 8080, "port_env": "APP_PORT", "primary": true }, { "internal": 9229, "port_env": "DEBUG_PORT", "primary": false }], "readiness": { "type": "http", "url": "http://localhost:8123/" }, "peers": { "jelou-api": "JELOU_API_SERVER_URL", "chatbot-server": "CHATBOT_SERVER_URL", "workflows-service": "WORKFLOWS_SERVER_URL", "orchestrator-service": "ROUTER_SERVER_URL" } },
+    { "name": "orchestrator-service", "path": "/home/cristianp/jelou-projects/orchestrator-service", "command": "npm run start:dev", "mode": "exec", "compose_file": "docker-compose.yml", "compose_service": "app", "port_mappings": [{ "internal": 8080, "port_env": "APP_PORT", "primary": true }, { "internal": 9001, "port_env": "DEBUG_PORT", "primary": false }], "readiness": { "type": "http", "url": "http://localhost:8989/" }, "peers": {} },
+    { "name": "marketplace-service", "path": "/home/cristianp/jelou-projects/marketplace-service", "command": "pnpm start:dev", "mode": "exec", "compose_file": "docker-compose.yml", "compose_service": "app", "port_mappings": [{ "internal": 8080, "port_env": "APP_PORT", "primary": true }, { "internal": 9001, "port_env": "DEBUG_PORT", "primary": false }], "readiness": { "type": "http", "url": "http://localhost:8902/" }, "peers": { "jelou-api": "JELOU_API_SERVER_URL", "orchestrator-service": "ORCHESTRATOR_API_SERVER_URL", "workflows-service": "WORKFLOW_API_SERVER_URL" } },
+    { "name": "agent-harness-service", "path": "/home/cristianp/jelou-projects/agent-harness-service", "command": "pnpm dev", "mode": "start", "compose_file": "docker-compose.yml", "compose_service": "app", "port_mappings": [{ "internal": 3000, "port_env": "PORT", "primary": true }], "readiness": { "type": "http", "url": "http://localhost:3002/health" }, "peers": {} },
+    { "name": "mcp-server", "path": "/home/cristianp/jelou-projects/jelou-cli/packages/mcp-server", "command": "cd packages/mcp-server && pnpm dev", "mode": "exec", "compose_file": "docker-compose.dev.yml", "compose_service": "mcp-server", "port_mappings": [{ "internal": 8080, "port_env": "PORT", "primary": true }], "readiness": { "type": "http", "url": "http://localhost:8080/" }, "peers": {} },
+    { "name": "jelou-functions-api", "path": "/home/cristianp/jelou-projects/jelou-functions-api", "command": "docker compose up -d app", "mode": "compose", "compose_file": "docker-compose.yml", "compose_service": "app", "port_mappings": [{ "internal": 8905, "port_env": "APP_PORT", "primary": true }], "readiness": { "type": "http", "url": "http://localhost:8000/up" }, "peers": {} }
+  ],
+  "frontend": {
+    "name": "jelou-apps",
+    "path": "/home/cristianp/jelou-projects/jelou-apps",
+    "command": "yarn start --host 127.0.0.1 --port 5175 --strictPort",
+    "port": 5175,
+    "readiness": { "type": "http", "url": "http://localhost:5175/" },
+    "envFile": ".env",
+    "envBackup": ".env.jelou-local-stack.bak",
+    "envLocal": {
+      "NX_REACT_APP_JELOU_API_BASE": "http://localhost:8383",
+      "NX_REACT_APP_DASHBOARD_SERVER_BASE": "http://localhost:8484/api",
+      "NX_REACT_APP_API_GATEWAY_BASE_URL": "http://localhost:8998"
+    },
+    "envBlank": ["NX_REACT_APP_API_GATEWAY_TEMPORAL_API_KEY"]
+  },
+  "auth": {
+    "cookieName": "jelou_auth",
+    "loginUrl": "http://localhost:8484/api/v1/auth/login",
+    "verifyMfaUrl": "http://localhost:8484/api/v1/auth/login/verify_mfa",
+    "credentials": { "envFile": "/home/cristianp/jelou-projects/jelou-apps/.env.e2e", "emailVar": "E2E_USER_EMAIL", "passwordVar": "E2E_USER_PASSWORD" },
+    "otpFallback": { "redisContainer": "redis", "redisDb": 0, "keyPrefix": "2fa-code-" },
+    "verifyUrls": ["http://localhost:8383/v1/company", "http://localhost:8484/api/v1/auth/me"]
+  }
+}
