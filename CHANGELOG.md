@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.291] — 2026-07-18
+
+### Added
+- task-aware local stack F2-a — backend boot to green (compose+exec per task, readiness poll)
+
 ## [0.3.290] — 2026-07-18
 
 ### Added
