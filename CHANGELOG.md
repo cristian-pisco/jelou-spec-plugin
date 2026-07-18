@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.289] — 2026-07-17
+
+### Added
+- drop work-hour estimates and subtasks from task-clickup — macro task only
+
 ## [0.3.288] — 2026-07-16
 
 ### Added
