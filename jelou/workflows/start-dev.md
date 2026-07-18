@@ -175,6 +175,61 @@ Capture the JSON `{ green, down, services }` result.
 
 This path assumes the Jelou dev containers' base images already exist (idle images that `sleep infinity` until a command is exec'd into them). If a per-task container cannot be created because its base image was never built, treat that as a one-time local setup precondition to report to the user — do not attempt to auto-build the image.
 
+### Observer — background log watch (F3-a)
+
+> Once Step C reports `green`, start a backgrounded log observer over the booted stack. This runs independently of Steps D–I (frontend + auth) below — start it right after the backend-boot green report, then proceed with D–I in parallel.
+
+The observer needs a `plan` shaped like `{ name, mode, projectName }` per service — the same shape `buildTaskStack` produces internally, but the Step B/C result's `services` array only carries `{ name, url, host, ports }`, not `mode`/`projectName`. Rebuild the observer's `plan` straight from the registry instead of re-deriving ports:
+
+```bash
+node -e "
+Promise.all([
+  import('{plugin-root}/bin/lib/dev-orchestrator/stack/registry.mjs'),
+  import('{plugin-root}/bin/lib/dev-orchestrator/stack/override.mjs')
+]).then(([{ loadStack }, { projectName }]) => {
+  const stack = loadStack(process.argv[1]);
+  const slug = process.argv[2];
+  const plan = stack.services.map((svc) => ({ name: svc.name, mode: svc.mode, projectName: projectName(svc.name, slug) }));
+  process.stdout.write(JSON.stringify(plan));
+});
+" "{plugin-root}/jelou/references/jelou-stack.json" "{slug}" > /tmp/jlu-observer-plan-{slug}.json
+```
+
+Then start the interval loop as a **backgrounded** process — like Steps F and H, a synchronous invocation would block the orchestrator. Construct `cooldown = Cooldown(effectiveDefaults(config).notification_cooldown_seconds)` **once**, outside the loop, so cooldown state is shared across every pass, and poll on `effectiveDefaults(config).poll_interval_ms`:
+
+```bash
+node -e "
+Promise.all([
+  import('{plugin-root}/bin/lib/dev-orchestrator/stack/observer-runtime.mjs'),
+  import('{plugin-root}/bin/lib/dev-orchestrator/config.mjs'),
+  import('node:fs')
+]).then(([{ runObserverPass, Cooldown }, { readConfig, effectiveDefaults }, fs]) => {
+  const config = readConfig(process.argv[1]);
+  const plan = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+  const workspaceId = process.argv[3];
+  const slug = process.argv[4];
+  const errLog = process.argv[5];
+  const defaults = effectiveDefaults(config);
+  const cooldown = Cooldown(defaults.notification_cooldown_seconds);
+  setInterval(() => {
+    try {
+      runObserverPass({ plan, config, workspaceId, slug, cooldown });
+    } catch (e) {
+      fs.appendFileSync(errLog, \`observer-pass-error: \${e.message}\n\`);
+    }
+  }, defaults.poll_interval_ms);
+});
+" "{configPath}" "/tmp/jlu-observer-plan-{slug}.json" "{workspaceId}" "{slug}" "/tmp/jlu-observer-{slug}.log" > /tmp/jlu-observer-{slug}.log 2>&1 &
+```
+
+`runObserverPass` (`stack/observer-runtime.mjs`) reads each service's docker log source (`docker logs …` for `mode: "start"` services, `docker exec … tail …` for `mode: "exec"` services, via `logSourceArgs`), diffs it against the previous pass, and matches new lines against that service's effective failure patterns (`effectiveFailurePatterns` — the config's global `defaults.log_failure_patterns` plus any per-service override). Every match appends a `pattern_match` event to `eventsLogPath({ workspaceId, slug })` — the exact same JSONL file the existing `/jlu-diagnose` command reads — and, gated by the shared `cooldown`, fires a cooldown-gated OS notification (`notifyOs`) naming the failing service.
+
+Retain the backgrounded process's PID (or the `setInterval` handle, if launched in-process) — like Vite (Step F) and the inject server (Step H), it is a long-running handle that must be torn down explicitly; teardown is F3-c and is not wired yet, so do not let it leak past the end of this workflow without telling the user it's still running.
+
+Tell the user: the observer is now watching the booted stack's container logs in the background. Any service it flags can be inspected with the existing `/jlu-diagnose <service>` command, which reads the same events log this observer writes to. **The automatic diagnose-and-fix loop is F3-b and is not wired yet** — this step only reports and notifies; diagnosis today is still the manual `/jlu-diagnose <service>`.
+
+**Known F3-a simplification.** `runObserverPass` allocates a fresh per-service capture (`prevCaptures = {}`) on every call, so it has no memory of what it already tailed on the previous pass — the same trailing log lines can re-match across consecutive passes. In this version, the shared `cooldown` (constructed once, outside the loop, as above) is what actually suppresses duplicate notifications per service — without it, every pass would re-notify on an unchanged tail. F3-b will tighten this by having the loop retain per-service capture state across passes, so only genuinely new log lines match at all.
+
 ### Step D — Allocate frontend + inject host ports
 
 Once the backend boot report is green, collect the host ports already in use: every `services[].host` and every `services[].ports[].host` from the Step B/C result. Union them into a single `occupied` set.
