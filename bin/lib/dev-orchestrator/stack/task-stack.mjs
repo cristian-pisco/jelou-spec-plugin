@@ -23,7 +23,7 @@ export function buildTaskStack({ stack, slug, worktreePaths, occupied, readEnv }
     const envText = readEnv(svc, cwd);
     const wiredEnv = wireEnv({ envText, peers: svc.peers || {}, slug, peerInternalPort });
 
-    plan.push({ name: svc.name, projectName: projectName(svc.name, slug), cwd, mode: svc.mode, composeFile: svc.compose_file, readiness: svc.readiness, ports, overrideYaml, wiredEnv });
+    plan.push({ name: svc.name, projectName: projectName(svc.name, slug), cwd, mode: svc.mode, command: svc.command, composeFile: svc.compose_file, readiness: svc.readiness, ports, overrideYaml, wiredEnv });
   }
   return plan;
 }

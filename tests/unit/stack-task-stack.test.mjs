@@ -34,6 +34,7 @@ describe('buildTaskStack', () => {
     assert.deepEqual(a.readiness, { type: 'http', url: 'http://localhost:8080/' });
 
     assert.equal(a.projectName, 'svc-a-task-x');
+    assert.equal(a.command, 'yarn dev');
     assert.ok(a.overrideYaml.includes('container_name: svc-a-task-x'));
     assert.ok(a.wiredEnv.includes('SVC_B_URL=http://svc-b-task-x:8080'));
     assert.equal(b.wiredEnv, 'FOO=bar\n');
