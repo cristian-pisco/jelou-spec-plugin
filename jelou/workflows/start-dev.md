@@ -183,13 +183,15 @@ Once the backend boot report is green, collect the host ports already in use: ev
 node -e "
 import('{plugin-root}/bin/lib/dev-orchestrator/stack/ports.mjs').then(({ allocateHostPorts }) => {
   const occupied = new Set(JSON.parse(process.argv[1]));
-  const frontend = allocateHostPorts({ mappings: [{ internal: 0 }], occupied, basePort: process.argv[2] })[0].host;
+  const frontend = allocateHostPorts({ mappings: [{ internal: 0 }], occupied, basePort: Number(process.argv[2]) })[0].host;
   occupied.add(frontend);
-  const inject = allocateHostPorts({ mappings: [{ internal: 0 }], occupied, basePort: process.argv[3] })[0].host;
+  const inject = allocateHostPorts({ mappings: [{ internal: 0 }], occupied, basePort: Number(process.argv[3]) })[0].host;
   process.stdout.write(JSON.stringify({ frontendPort: frontend, injectPort: inject }));
 });
 " '{occupiedPortsJson}' '{registry.frontend.port}' '{registry.authInjectPort}'
 ```
+
+`process.argv` values are always strings, so both `basePort` arguments must be coerced with `Number(...)` — `allocateHostPorts` compares `basePort` against a `Set` of numbers and does `next += 1`; a string `basePort` silently defeats collision-skipping and would string-concatenate instead of incrementing once a collision is hit.
 
 Also build `hostByService` — a plain object mapping each Step B/C `services[].name` to its `services[].host` — reused by every step below.
 
@@ -219,10 +221,10 @@ From `<frontend.path>`, run `<frontend.command> --port <frontendPort> --strictPo
 
 ### Step G — Login for the auth cookie
 
-Read `E2E_USER_EMAIL` / `E2E_USER_PASSWORD` from `<auth.credentials.envFile>` — never print these values or the resulting cookie. Resolve the auth URLs, then perform the login:
+Read `E2E_USER_EMAIL` / `E2E_USER_PASSWORD` from `<auth.credentials.envFile>` — never print these values or the resulting cookie. Resolve the auth URLs, then perform the login, passing the password via the `E2E_PASSWORD` environment variable rather than `process.argv` (argv is visible in `ps` output and in the logged Bash tool-call input; env vars are not):
 
 ```bash
-node -e "
+E2E_PASSWORD="{password}" node -e "
 Promise.all([
   import('{plugin-root}/bin/lib/dev-orchestrator/stack/auth-urls.mjs'),
   import('{plugin-root}/bin/lib/dev-orchestrator/stack/login-cookie.mjs'),
@@ -233,34 +235,36 @@ Promise.all([
   const { loginUrl, verifyMfaUrl, cookieName } = resolveAuthUrls({ auth, hostByService });
   const result = await loginForCookie({
     loginUrl, verifyMfaUrl, cookieName,
-    email: process.argv[3], password: process.argv[4],
+    email: process.argv[3], password: process.env.E2E_PASSWORD,
     postJson,
     readOtp: readOtpFromRedis(auth.otpFallback)
   });
   process.stdout.write(JSON.stringify({ status: result.status }));
 });
-" '{registry.authJson}' '{hostByServiceJson}' "{email}" "{password}"
+" '{registry.authJson}' '{hostByServiceJson}' "{email}"
 ```
 
 Capture the cookie value out-of-band (never echoed to stdout/logs). If `status` is not `ok`, map the cause and stop before touching the browser: `rejected` → bad credentials or an inactive account; `otp-missing` → no OTP found at the configured Redis key; `otp-rejected` → the OTP was read but the dashboard rejected it.
 
 ### Step H — Inject the cookie and open the browser
 
-Start the inject server:
+Start the inject server. `startInjectServer` calls `server.listen(...)` and keeps the Node event loop alive, so this must be launched as a **backgrounded** process (the same way Step F backgrounds the Vite boot) — a synchronous `node -e` invocation would never return and would hang the orchestrator. Pass the cookie value via the `JLU_INJECT_COOKIE` environment variable rather than `process.argv` (argv is visible in `ps` output and in the logged Bash tool-call input; env vars are not):
 
 ```bash
-node -e "
+JLU_INJECT_COOKIE="{cookieValue}" node -e "
 import('{plugin-root}/bin/lib/dev-orchestrator/stack/inject-page.mjs').then(({ renderInjectPage, startInjectServer }) => {
   const page = renderInjectPage({
     cookieName: process.argv[1],
-    cookieValue: process.argv[2],
-    appUrl: process.argv[3],
-    account: process.argv[4]
+    cookieValue: process.env.JLU_INJECT_COOKIE,
+    appUrl: process.argv[2],
+    account: process.argv[3]
   });
-  startInjectServer({ port: Number(process.argv[5]), page });
+  startInjectServer({ port: Number(process.argv[4]), page });
 });
-" "{cookieName}" "{cookieValue}" "http://localhost:{frontendPort}/" "{email}" "{injectPort}"
+" "{cookieName}" "http://localhost:{frontendPort}/" "{email}" "{injectPort}" > /tmp/jlu-inject-server-{slug}.log 2>&1 &
 ```
+
+Retain the backgrounded process's PID (and/or the `startInjectServer` return value if run in-process instead) — it is the inject server's handle for teardown; do not let it leak past the end of this workflow.
 
 Then, using `mcp__chrome-devtools__*`: `navigate_page` to `http://localhost:<injectPort>/`, `wait_for` the app to render, and if the page is blank reload once (Vite's cold-cache re-optimization can stall the first hit). Confirm the session is authenticated via `take_snapshot` — the URL must not be `/login` and real app content must be present — then close out with `take_screenshot`. Never print the cookie value in any tool output or report.
 

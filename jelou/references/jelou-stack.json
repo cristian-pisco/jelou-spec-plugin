@@ -23,7 +23,6 @@
     "path": "/home/cristianp/jelou-projects/jelou-apps",
     "command": "yarn start --host 127.0.0.1",
     "port": 5175,
-    "readiness": { "type": "http", "url": "http://localhost:5175/" },
     "envFile": ".env",
     "envBackup": ".env.jelou-local-stack.bak",
     "envLocal": {
