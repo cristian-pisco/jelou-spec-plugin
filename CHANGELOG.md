@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.292] — 2026-07-18
+
+### Added
+- task-aware local stack F2-b — frontend boot + real auth (login, cookie inject, authenticated browser)
+
 ## [0.3.291] — 2026-07-18
 
 ### Added
