@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.293] — 2026-07-18
+
+### Added
+- task-aware local stack F3-a — docker-log observer (per-mode log source, pattern match, events + notify)
+
 ## [0.3.292] — 2026-07-18
 
 ### Added
