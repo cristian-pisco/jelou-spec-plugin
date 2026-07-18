@@ -11,7 +11,7 @@ export function buildObserverServices(plan, { tailLines = 200 } = {}) {
   return plan.map((entry) => ({ name: entry.name, args: logSourceArgs({ mode: entry.mode, projectName: entry.projectName, tailLines }) }));
 }
 
-export function runObserverPass({ plan, config, workspaceId, slug, run = (args) => spawnSync('docker', args, { encoding: 'utf8' }), cooldown, notifier }) {
+export function runObserverPass({ plan, config, workspaceId, slug, run = (args) => spawnSync('sh', args, { encoding: 'utf8' }), cooldown, notifier, prevCaptures = {}, appendEventFn = appendEvent }) {
   const services = buildObserverServices(plan);
   const compiledByService = {};
   for (const entry of plan) {
@@ -19,12 +19,11 @@ export function runObserverPass({ plan, config, workspaceId, slug, run = (args) 
     compiledByService[entry.name] = compilePatterns(effectiveFailurePatterns(config, svc));
   }
   const logPath = eventsLogPath({ workspaceId, slug });
-  const prevCaptures = {};
   const onMatch = ({ service, pattern, line }) => {
-    appendEvent(logPath, { type: 'pattern_match', slug, service, pattern, line });
+    appendEventFn(logPath, { type: 'pattern_match', slug, service, pattern, line });
     const key = `${service}:soft`;
     if (cooldown.allow(key)) {
-      notifyOs({ title: `jlu-dev: ${service} log error`, body: `${pattern} — Run /jlu-diagnose ${service}`, urgency: 'critical', runner: notifier });
+      notifyOs({ title: `jlu-dev: ${service} log error`, body: `${pattern} — Run /jlu-diagnose ${service}`, urgency: 'normal', runner: notifier });
     }
   };
   observeTick({ services, run, compiledByService, prevCaptures, onMatch });

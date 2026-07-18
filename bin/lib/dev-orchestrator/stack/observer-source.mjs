@@ -1,6 +1,6 @@
 export function logSourceArgs({ mode, projectName, tailLines = 200 }) {
-  if (mode === 'exec') {
-    return ['exec', projectName, 'tail', '-n', String(tailLines), `/tmp/${projectName}.dev.log`];
-  }
-  return ['logs', '--tail', String(tailLines), projectName];
+  const cmd = mode === 'exec'
+    ? `docker exec ${projectName} tail -n ${tailLines} /tmp/${projectName}.dev.log 2>&1`
+    : `docker logs --tail ${tailLines} ${projectName} 2>&1`;
+  return ['-lc', cmd];
 }

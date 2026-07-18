@@ -10,21 +10,21 @@ describe('logSourceArgs', () => {
   test('exec mode tails the in-container dev log', () => {
     assert.deepEqual(
       logSourceArgs({ mode: 'exec', projectName: 'jelou-api-t', tailLines: 200 }),
-      ['exec', 'jelou-api-t', 'tail', '-n', '200', '/tmp/jelou-api-t.dev.log']
+      ['-lc', 'docker exec jelou-api-t tail -n 200 /tmp/jelou-api-t.dev.log 2>&1']
     );
   });
 
   test('start mode reads docker logs', () => {
     assert.deepEqual(
       logSourceArgs({ mode: 'start', projectName: 'agent-harness-t', tailLines: 200 }),
-      ['logs', '--tail', '200', 'agent-harness-t']
+      ['-lc', 'docker logs --tail 200 agent-harness-t 2>&1']
     );
   });
 
   test('compose mode reads docker logs', () => {
     assert.deepEqual(
       logSourceArgs({ mode: 'compose', projectName: 'jelou-functions-api-t', tailLines: 50 }),
-      ['logs', '--tail', '50', 'jelou-functions-api-t']
+      ['-lc', 'docker logs --tail 50 jelou-functions-api-t 2>&1']
     );
   });
 });

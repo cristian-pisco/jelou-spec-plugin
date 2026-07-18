@@ -195,7 +195,7 @@ Promise.all([
 " "{plugin-root}/jelou/references/jelou-stack.json" "{slug}" > /tmp/jlu-observer-plan-{slug}.json
 ```
 
-Then start the interval loop as a **backgrounded** process — like Steps F and H, a synchronous invocation would block the orchestrator. Construct `cooldown = Cooldown(effectiveDefaults(config).notification_cooldown_seconds)` **once**, outside the loop, so cooldown state is shared across every pass, and poll on `effectiveDefaults(config).poll_interval_ms`:
+Then start the interval loop as a **backgrounded** process — like Steps F and H, a synchronous invocation would block the orchestrator. Construct `cooldown = Cooldown(effectiveDefaults(config).notification_cooldown_seconds)` and `prevCaptures = {}` **once each**, outside the loop, so both cooldown state and per-service capture state are shared and retained across every pass, and poll on `effectiveDefaults(config).poll_interval_ms`:
 
 ```bash
 node -e "
@@ -211,9 +211,10 @@ Promise.all([
   const errLog = process.argv[5];
   const defaults = effectiveDefaults(config);
   const cooldown = Cooldown(defaults.notification_cooldown_seconds);
+  const prevCaptures = {};
   setInterval(() => {
     try {
-      runObserverPass({ plan, config, workspaceId, slug, cooldown });
+      runObserverPass({ plan, config, workspaceId, slug, cooldown, prevCaptures });
     } catch (e) {
       fs.appendFileSync(errLog, \`observer-pass-error: \${e.message}\n\`);
     }
@@ -228,7 +229,7 @@ Retain the backgrounded process's PID (or the `setInterval` handle, if launched 
 
 Tell the user: the observer is now watching the booted stack's container logs in the background. Any service it flags can be inspected with the existing `/jlu-diagnose <service>` command, which reads the same events log this observer writes to. **The automatic diagnose-and-fix loop is F3-b and is not wired yet** — this step only reports and notifies; diagnosis today is still the manual `/jlu-diagnose <service>`.
 
-**Known F3-a simplification.** `runObserverPass` allocates a fresh per-service capture (`prevCaptures = {}`) on every call, so it has no memory of what it already tailed on the previous pass — the same trailing log lines can re-match across consecutive passes. In this version, the shared `cooldown` (constructed once, outside the loop, as above) is what actually suppresses duplicate notifications per service — without it, every pass would re-notify on an unchanged tail. F3-b will tighten this by having the loop retain per-service capture state across passes, so only genuinely new log lines match at all.
+**Duplicate-event handling.** The duplicate-event problem from an earlier version of this step is fixed: `prevCaptures` is constructed once, outside the loop (alongside `cooldown`, as above), and threaded into every `runObserverPass` call, so capture state is retained across passes — a failing line matches exactly once on first appearance, and steady state (an unchanged tail) yields no re-match. The one remaining bounded limitation, shared with the existing daemon, is the tail window itself: a failing line older than the `--tail`/`tail -n` window (200 lines) that scrolls off and later reappears at the tail can re-match, since it looks like a new line to a capture diff that only ever sees the last 200 lines.
 
 ### Step D — Allocate frontend + inject host ports
 
