@@ -108,3 +108,69 @@ If `skipped` is non-empty, list the skipped services with reasons.
 - Phase 2 deliberately does NOT spawn a daemon. The `daemonSpawn` callback in `startDev` defaults to a stub returning `{ pid: 0 }`. Phase 3 will wire in the real daemon.
 - Use `/jlu-start-dev` in messages (works for both runtimes).
 - If the user is not inside tmux, the orchestrator creates a default `jlu-dev` session. The user may need to `tmux attach -t jlu-dev` afterwards.
+
+## Task-aware Jelou-stack boot (--jelou-stack)
+
+> Purpose: boot the registered Jelou backend services as per-task, per-service docker containers keyed by the active task slug — each service gets its own compose project (`<service>-<slug>`), its own allocated host ports, and peer env wiring — instead of the generic tmux pane path above. Use this path when the user passes `--jelou-stack` (or equivalent) to `/jlu:start-dev`, or asks to boot the Jelou backend stack for the current task.
+
+This path reads from the canonical registry at `{plugin-root}/jelou/references/jelou-stack.json`, not from `jlu-services.json`. It does not touch tmux.
+
+### Step A — Resolve the task slug and worktree paths
+
+```bash
+node -e "
+import('{plugin-root}/bin/lib/dev-orchestrator/task-context.mjs').then(({ resolveTaskSlug }) => {
+  const slug = resolveTaskSlug({ workspaceRoot: process.argv[1], cwd: process.argv[2] });
+  process.stdout.write(slug);
+});
+" "{root}" "{cwd}"
+```
+
+If the output starts with `AMBIGUOUS:`, prompt the user the same way as Step 2 of the generic path above.
+
+Build `worktreePaths` — a plain object mapping each registry service `name` to the absolute path of its worktree for this slug, for services that have one (`<serviceRepoPath>/.worktrees/<slug>`, when that directory exists). Services with no worktree for this slug are omitted; if none of the registered services have a worktree for this slug, `worktreePaths` is `{}`.
+
+### Step B — Boot the stack via the adapter
+
+```bash
+node -e "
+import('{plugin-root}/bin/lib/dev-orchestrator/stack/boot-runtime.mjs').then(async ({ bootBackendStack }) => {
+  const fs = await import('node:fs');
+  const slug = process.argv[1];
+  const worktreePaths = JSON.parse(process.argv[2]);
+  const readEnv = (svc, cwd) => {
+    const p = cwd + '/.env';
+    return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '';
+  };
+  const sleepImpl = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const result = await bootBackendStack({
+    registryPath: '{plugin-root}/jelou/references/jelou-stack.json',
+    slug,
+    worktreePaths,
+    readEnv,
+    fetchImpl: fetch,
+    sleepImpl
+  });
+  process.stdout.write(JSON.stringify(result));
+}).catch((e) => { console.error(e.message); process.exit(2); });
+" "{slug}" '{worktreePathsJson}'
+```
+
+`{worktreePathsJson}` is the JSON-stringified `worktreePaths` object built in Step A.
+
+### Step C — Report
+
+Capture the JSON `{ green, down, services }` result.
+
+- If `green` is `true`: list every service in `services` with its allocated primary host port (the `host` from the `primary: true` entry in that service's `ports`, as produced by `buildTaskStack`). Report as: `<service>: http://localhost:<host>`.
+- If `down` is non-empty: for each down service, surface its container logs by running (a shell command, not node):
+
+  ```bash
+  docker exec <service>-<slug> tail -n 30 /tmp/<service>-<slug>.dev.log
+  ```
+
+  (the container name and log path both follow the `<service>-<slug>` project-name convention used by the stack). Print the tail output for each down service so the failure is visible before reporting the overall boot as failed.
+
+### Precondition — base images
+
+This path assumes the Jelou dev containers' base images already exist (idle images that `sleep infinity` until a command is exec'd into them). If a per-task container cannot be created because its base image was never built, treat that as a one-time local setup precondition to report to the user — do not attempt to auto-build the image.
