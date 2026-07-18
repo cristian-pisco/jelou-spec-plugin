@@ -81,6 +81,27 @@ export function validateStack(stack) {
       }
     }
   });
+  const fe = stack.frontend;
+  if (fe && fe.envLocal && typeof fe.envLocal === 'object') {
+    for (const [key, spec] of Object.entries(fe.envLocal)) {
+      if (!spec || typeof spec !== 'object' || typeof spec.service !== 'string') {
+        errors.push(`frontend.envLocal.${key} must be an object with a service string`);
+      } else if (!names.has(spec.service)) {
+        errors.push(`frontend.envLocal.${key} references unregistered service: ${spec.service}`);
+      }
+    }
+  }
+  const au = stack.auth;
+  if (au) {
+    if (au.dashboardService !== undefined && !names.has(au.dashboardService)) {
+      errors.push(`auth.dashboardService references unregistered service: ${au.dashboardService}`);
+    }
+    for (const v of (Array.isArray(au.verify) ? au.verify : [])) {
+      if (!v || typeof v.service !== 'string' || !names.has(v.service)) {
+        errors.push(`auth.verify references unregistered service: ${v && v.service}`);
+      }
+    }
+  }
   return { valid: errors.length === 0, errors };
 }
 

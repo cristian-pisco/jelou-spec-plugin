@@ -61,4 +61,26 @@ describe('validateStack', () => {
     const result = validateStack(JSON.parse(readFileSync(registryPath, 'utf8')));
     assert.equal(result.valid, true, result.errors.join(', '));
   });
+
+  test('rejects a frontend envLocal entry referencing an unregistered service', () => {
+    const stack = load('valid-min.json');
+    stack.frontend = { envLocal: { FOO_URL: { service: 'ghost', suffix: '' } } };
+    const result = validateStack(stack);
+    assert.equal(result.valid, false);
+    assert.ok(result.errors.some((e) => e.includes('ghost')), result.errors.join(', '));
+  });
+
+  test('rejects an auth verify entry referencing an unregistered service', () => {
+    const stack = load('valid-min.json');
+    stack.auth = { verify: [{ service: 'ghost', path: '/x' }] };
+    const result = validateStack(stack);
+    assert.equal(result.valid, false);
+    assert.ok(result.errors.some((e) => e.includes('ghost')), result.errors.join(', '));
+  });
+
+  test('the shipped registry validates with reshaped frontend/auth', () => {
+    const registryPath = join(here, '..', '..', 'jelou', 'references', 'jelou-stack.json');
+    const result = validateStack(JSON.parse(readFileSync(registryPath, 'utf8')));
+    assert.equal(result.valid, true, result.errors.join(', '));
+  });
 });

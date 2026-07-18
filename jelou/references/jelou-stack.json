@@ -21,24 +21,28 @@
   "frontend": {
     "name": "jelou-apps",
     "path": "/home/cristianp/jelou-projects/jelou-apps",
-    "command": "yarn start --host 127.0.0.1 --port 5175 --strictPort",
+    "command": "yarn start --host 127.0.0.1",
     "port": 5175,
     "readiness": { "type": "http", "url": "http://localhost:5175/" },
     "envFile": ".env",
     "envBackup": ".env.jelou-local-stack.bak",
     "envLocal": {
-      "NX_REACT_APP_JELOU_API_BASE": "http://localhost:8383",
-      "NX_REACT_APP_DASHBOARD_SERVER_BASE": "http://localhost:8484/api",
-      "NX_REACT_APP_API_GATEWAY_BASE_URL": "http://localhost:8998"
+      "NX_REACT_APP_JELOU_API_BASE": { "service": "jelou-api", "suffix": "" },
+      "NX_REACT_APP_DASHBOARD_SERVER_BASE": { "service": "dashboard-server", "suffix": "/api" },
+      "NX_REACT_APP_API_GATEWAY_BASE_URL": { "service": "api-gateway-service", "suffix": "" }
     },
     "envBlank": ["NX_REACT_APP_API_GATEWAY_TEMPORAL_API_KEY"]
   },
   "auth": {
     "cookieName": "jelou_auth",
-    "loginUrl": "http://localhost:8484/api/v1/auth/login",
-    "verifyMfaUrl": "http://localhost:8484/api/v1/auth/login/verify_mfa",
+    "dashboardService": "dashboard-server",
+    "loginPath": "/api/v1/auth/login",
+    "verifyMfaPath": "/api/v1/auth/login/verify_mfa",
     "credentials": { "envFile": "/home/cristianp/jelou-projects/jelou-apps/.env.e2e", "emailVar": "E2E_USER_EMAIL", "passwordVar": "E2E_USER_PASSWORD" },
     "otpFallback": { "redisContainer": "redis", "redisDb": 0, "keyPrefix": "2fa-code-" },
-    "verifyUrls": ["http://localhost:8383/v1/company", "http://localhost:8484/api/v1/auth/me"]
+    "verify": [
+      { "service": "jelou-api", "path": "/v1/company" },
+      { "service": "dashboard-server", "path": "/api/v1/auth/me" }
+    ]
   }
 }
