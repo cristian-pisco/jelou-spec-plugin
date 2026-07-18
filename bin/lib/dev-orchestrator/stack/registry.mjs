@@ -16,6 +16,12 @@ export function validateStack(stack) {
   if (!stack || typeof stack !== 'object') {
     return { valid: false, errors: ['stack must be an object'] };
   }
+  if (!Number.isInteger(stack.basePort) || stack.basePort < 1 || stack.basePort > 65535) {
+    errors.push(`stack.basePort must be a port in 1..65535 (got ${JSON.stringify(stack.basePort)})`);
+  }
+  if (typeof stack.composeNetworkAlias !== 'string' || stack.composeNetworkAlias.length === 0) {
+    errors.push('stack.composeNetworkAlias must be a non-empty string');
+  }
   if (!Array.isArray(stack.services) || stack.services.length === 0) {
     errors.push('stack.services must be a non-empty array');
     return { valid: false, errors };

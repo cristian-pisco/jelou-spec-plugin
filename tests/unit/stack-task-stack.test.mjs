@@ -29,8 +29,9 @@ describe('buildTaskStack', () => {
     assert.equal(a.cwd, '/repo/a');
     assert.equal(b.cwd, '/repo/b/.worktrees/task-x');
 
-    assert.deepEqual(a.ports, [{ internal: 8080, host: 3100, portEnv: 'APP_PORT' }]);
-    assert.deepEqual(b.ports, [{ internal: 8080, host: 3101, portEnv: 'APP_PORT' }]);
+    assert.deepEqual(a.ports, [{ internal: 8080, host: 3100, portEnv: 'APP_PORT', primary: true }]);
+    assert.deepEqual(b.ports, [{ internal: 8080, host: 3101, portEnv: 'APP_PORT', primary: true }]);
+    assert.deepEqual(a.readiness, { type: 'http', url: 'http://localhost:8080/' });
 
     assert.equal(a.projectName, 'svc-a-task-x');
     assert.ok(a.overrideYaml.includes('container_name: svc-a-task-x'));

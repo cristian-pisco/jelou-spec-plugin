@@ -33,6 +33,14 @@ describe('validateStack', () => {
     assert.ok(result.errors.some(e => e.includes('ghost-service')), result.errors.join(', '));
   });
 
+  test('rejects a stack with a missing basePort', () => {
+    const stack = load('valid-min.json');
+    delete stack.basePort;
+    const result = validateStack(stack);
+    assert.equal(result.valid, false);
+    assert.ok(result.errors.some(e => e.includes('basePort')), result.errors.join(', '));
+  });
+
   test('loadStack parses and validates a file, throwing on invalid', () => {
     assert.throws(
       () => loadStack(join(fixtures, 'invalid-underscore-name.json')),
