@@ -16,7 +16,7 @@ export async function bootBackendStack({ registryPath, slug, worktreePaths, read
   const occupied = dockerOccupiedPorts(run);
   const plan = buildTaskStack({ stack, slug, worktreePaths, occupied, readEnv });
   const probe = async (url) => {
-    try { await fetchImpl(url, { method: 'GET' }); return true; } catch { return false; }
+    try { await fetchImpl(url, { method: 'GET', signal: AbortSignal.timeout(6000) }); return true; } catch { return false; }
   };
   return bootStack({ plan, writeFile: (p, c) => writeFileSync(p, c), run, probe, delay: () => sleepImpl(15000) });
 }

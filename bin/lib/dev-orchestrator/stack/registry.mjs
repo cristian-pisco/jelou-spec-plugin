@@ -52,6 +52,9 @@ export function validateStack(stack) {
     if (!ALLOWED_MODES.has(svc.mode)) errors.push(`${ctx}.mode must be one of ${[...ALLOWED_MODES].join(', ')}`);
     if (typeof svc.compose_file !== 'string' || svc.compose_file.length === 0) errors.push(`${ctx}.compose_file must be a non-empty string`);
     if (typeof svc.compose_service !== 'string' || svc.compose_service.length === 0) errors.push(`${ctx}.compose_service must be a non-empty string`);
+    if (!svc.readiness || typeof svc.readiness !== 'object' || typeof svc.readiness.url !== 'string' || svc.readiness.url.length === 0) {
+      errors.push(`${ctx}.readiness.url must be a non-empty string`);
+    }
     if (!Array.isArray(svc.port_mappings) || svc.port_mappings.length === 0) {
       errors.push(`${ctx}.port_mappings must be a non-empty array`);
     } else {

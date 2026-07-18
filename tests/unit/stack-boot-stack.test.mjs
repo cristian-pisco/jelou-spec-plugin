@@ -31,6 +31,8 @@ describe('bootStack', () => {
     });
     assert.equal(out.green, true);
     assert.deepEqual(out.down, []);
+    assert.equal(out.services.find((s) => s.name === 'a').host, 13100);
+    assert.equal(out.services.find((s) => s.name === 'b').host, 13200);
     assert.ok(runs.includes('compose'));
     assert.ok(runs.includes('exec'));
   });

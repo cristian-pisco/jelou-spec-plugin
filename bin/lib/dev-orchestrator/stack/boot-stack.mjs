@@ -5,7 +5,8 @@ import { bootService } from './boot-exec.mjs';
 export async function bootStack({ plan, writeFile, run, probe, delay, attempts = 10 }) {
   const services = plan.map((entry) => {
     bootService({ plan: bootPlan(entry), writeFile, run });
-    return { name: entry.name, url: readinessPollUrl(entry) };
+    const primary = entry.ports.find((p) => p.primary) || entry.ports[0];
+    return { name: entry.name, url: readinessPollUrl(entry), host: primary.host, ports: entry.ports };
   });
   const pending = new Set(services.map((s) => s.name));
   for (let i = 0; i < attempts && pending.size > 0; i += 1) {

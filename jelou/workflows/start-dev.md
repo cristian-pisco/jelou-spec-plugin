@@ -162,7 +162,7 @@ import('{plugin-root}/bin/lib/dev-orchestrator/stack/boot-runtime.mjs').then(asy
 
 Capture the JSON `{ green, down, services }` result.
 
-- If `green` is `true`: list every service in `services` with its allocated primary host port (the `host` from the `primary: true` entry in that service's `ports`, as produced by `buildTaskStack`). Report as: `<service>: http://localhost:<host>`.
+- If `green` is `true`: list every service in `services` with its allocated primary host port (`services[].host`, the port `bootStack` resolved from the `primary: true` entry in that service's port list). Report as: `<service>: http://localhost:<host>`. The full per-port list for a service is available at `services[].ports`, if needed.
 - If `down` is non-empty: for each down service, surface its container logs by running (a shell command, not node):
 
   ```bash

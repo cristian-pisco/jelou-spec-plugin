@@ -48,6 +48,14 @@ describe('validateStack', () => {
     );
   });
 
+  test('rejects a service missing readiness.url', () => {
+    const stack = load('valid-min.json');
+    delete stack.services[0].readiness;
+    const result = validateStack(stack);
+    assert.equal(result.valid, false);
+    assert.ok(result.errors.some((e) => e.includes('readiness')), result.errors.join(', '));
+  });
+
   test('the shipped jelou-stack.json registry is valid', () => {
     const registryPath = join(here, '..', '..', 'jelou', 'references', 'jelou-stack.json');
     const result = validateStack(JSON.parse(readFileSync(registryPath, 'utf8')));
