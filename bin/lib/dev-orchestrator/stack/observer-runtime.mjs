@@ -11,7 +11,7 @@ export function buildObserverServices(plan, { tailLines = 200 } = {}) {
   return plan.map((entry) => ({ name: entry.name, args: logSourceArgs({ mode: entry.mode, projectName: entry.projectName, tailLines }) }));
 }
 
-export function runObserverPass({ plan, config, workspaceId, slug, run = (args) => spawnSync('sh', args, { encoding: 'utf8' }), cooldown, notifier, prevCaptures = {}, appendEventFn = appendEvent }) {
+export function runObserverPass({ plan, config, workspaceId, slug, run = (args) => spawnSync('docker', args, { encoding: 'utf8' }), cooldown, notifier, prevCaptures = {}, appendEventFn = appendEvent }) {
   const services = buildObserverServices(plan);
   const compiledByService = {};
   for (const entry of plan) {

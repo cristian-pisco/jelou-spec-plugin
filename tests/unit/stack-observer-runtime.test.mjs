@@ -14,8 +14,8 @@ describe('buildObserverServices', () => {
     ];
     const out = buildObserverServices(plan, { tailLines: 200 });
     assert.deepEqual(out, [
-      { name: 'jelou-api', args: ['-lc', 'docker exec jelou-api-t tail -n 200 /tmp/jelou-api-t.dev.log 2>&1'] },
-      { name: 'agent-harness-service', args: ['-lc', 'docker logs --tail 200 agent-harness-service-t 2>&1'] }
+      { name: 'jelou-api', args: ['exec', 'jelou-api-t', 'tail', '-n', '200', '/tmp/jelou-api-t.dev.log'] },
+      { name: 'agent-harness-service', args: ['logs', '--tail', '200', 'agent-harness-service-t'] }
     ]);
   });
 });

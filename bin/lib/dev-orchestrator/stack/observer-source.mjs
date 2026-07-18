@@ -1,6 +1,9 @@
+const SAFE_NAME = /^[A-Za-z0-9._-]+$/;
+
 export function logSourceArgs({ mode, projectName, tailLines = 200 }) {
-  const cmd = mode === 'exec'
-    ? `docker exec ${projectName} tail -n ${tailLines} /tmp/${projectName}.dev.log 2>&1`
-    : `docker logs --tail ${tailLines} ${projectName} 2>&1`;
-  return ['-lc', cmd];
+  if (!SAFE_NAME.test(projectName)) throw new Error(`unsafe projectName for docker log source: ${JSON.stringify(projectName)}`);
+  if (mode === 'exec') {
+    return ['exec', projectName, 'tail', '-n', String(tailLines), `/tmp/${projectName}.dev.log`];
+  }
+  return ['logs', '--tail', String(tailLines), projectName];
 }
