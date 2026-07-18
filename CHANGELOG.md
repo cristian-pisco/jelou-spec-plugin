@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.290] — 2026-07-18
+
+### Added
+- task-aware local stack F1 — canonical registry + deterministic task-stack artifact generation
+
 ## [0.3.289] — 2026-07-17
 
 ### Added
