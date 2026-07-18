@@ -174,3 +174,101 @@ Capture the JSON `{ green, down, services }` result.
 ### Precondition — base images
 
 This path assumes the Jelou dev containers' base images already exist (idle images that `sleep infinity` until a command is exec'd into them). If a per-task container cannot be created because its base image was never built, treat that as a one-time local setup precondition to report to the user — do not attempt to auto-build the image.
+
+### Step D — Allocate frontend + inject host ports
+
+Once the backend boot report is green, collect the host ports already in use: every `services[].host` and every `services[].ports[].host` from the Step B/C result. Union them into a single `occupied` set.
+
+```bash
+node -e "
+import('{plugin-root}/bin/lib/dev-orchestrator/stack/ports.mjs').then(({ allocateHostPorts }) => {
+  const occupied = new Set(JSON.parse(process.argv[1]));
+  const frontend = allocateHostPorts({ mappings: [{ internal: 0 }], occupied, basePort: process.argv[2] })[0].host;
+  occupied.add(frontend);
+  const inject = allocateHostPorts({ mappings: [{ internal: 0 }], occupied, basePort: process.argv[3] })[0].host;
+  process.stdout.write(JSON.stringify({ frontendPort: frontend, injectPort: inject }));
+});
+" '{occupiedPortsJson}' '{registry.frontend.port}' '{registry.authInjectPort}'
+```
+
+Also build `hostByService` — a plain object mapping each Step B/C `services[].name` to its `services[].host` — reused by every step below.
+
+### Step E — Rewrite the frontend `.env`
+
+Back up `<frontend.path>/<frontend.envFile>` to `<frontend.path>/<frontend.envBackup>` (registry `frontend.envBackup`) if that backup does not already exist. Read the current `.env` contents (empty string if the file is absent), then:
+
+```bash
+node -e "
+import('{plugin-root}/bin/lib/dev-orchestrator/stack/frontend-env.mjs').then(({ rewriteFrontendEnv }) => {
+  const out = rewriteFrontendEnv({
+    envText: process.argv[1],
+    envLocal: JSON.parse(process.argv[2]),
+    envBlank: JSON.parse(process.argv[3]),
+    hostByService: JSON.parse(process.argv[4])
+  });
+  process.stdout.write(out);
+});
+" "{currentEnvText}" '{registry.frontend.envLocalJson}' '{registry.frontend.envBlankJson}' '{hostByServiceJson}'
+```
+
+Write the result back over `<frontend.path>/<frontend.envFile>`.
+
+### Step F — Boot Vite on the host
+
+From `<frontend.path>`, run `<frontend.command> --port <frontendPort> --strictPort` in the background, redirecting stdout/stderr to a runtime log file. Poll `http://localhost:<frontendPort>/` until it answers an HTTP request — Vite's first compile typically takes 30–90s, so re-poll roughly every 15s rather than failing fast.
+
+### Step G — Login for the auth cookie
+
+Read `E2E_USER_EMAIL` / `E2E_USER_PASSWORD` from `<auth.credentials.envFile>` — never print these values or the resulting cookie. Resolve the auth URLs, then perform the login:
+
+```bash
+node -e "
+Promise.all([
+  import('{plugin-root}/bin/lib/dev-orchestrator/stack/auth-urls.mjs'),
+  import('{plugin-root}/bin/lib/dev-orchestrator/stack/login-cookie.mjs'),
+  import('{plugin-root}/bin/lib/dev-orchestrator/stack/auth-runtime.mjs')
+]).then(async ([{ resolveAuthUrls }, { loginForCookie }, { postJson, readOtpFromRedis }]) => {
+  const auth = JSON.parse(process.argv[1]);
+  const hostByService = JSON.parse(process.argv[2]);
+  const { loginUrl, verifyMfaUrl, cookieName } = resolveAuthUrls({ auth, hostByService });
+  const result = await loginForCookie({
+    loginUrl, verifyMfaUrl, cookieName,
+    email: process.argv[3], password: process.argv[4],
+    postJson,
+    readOtp: readOtpFromRedis(auth.otpFallback)
+  });
+  process.stdout.write(JSON.stringify({ status: result.status }));
+});
+" '{registry.authJson}' '{hostByServiceJson}' "{email}" "{password}"
+```
+
+Capture the cookie value out-of-band (never echoed to stdout/logs). If `status` is not `ok`, map the cause and stop before touching the browser: `rejected` → bad credentials or an inactive account; `otp-missing` → no OTP found at the configured Redis key; `otp-rejected` → the OTP was read but the dashboard rejected it.
+
+### Step H — Inject the cookie and open the browser
+
+Start the inject server:
+
+```bash
+node -e "
+import('{plugin-root}/bin/lib/dev-orchestrator/stack/inject-page.mjs').then(({ renderInjectPage, startInjectServer }) => {
+  const page = renderInjectPage({
+    cookieName: process.argv[1],
+    cookieValue: process.argv[2],
+    appUrl: process.argv[3],
+    account: process.argv[4]
+  });
+  startInjectServer({ port: Number(process.argv[5]), page });
+});
+" "{cookieName}" "{cookieValue}" "http://localhost:{frontendPort}/" "{email}" "{injectPort}"
+```
+
+Then, using `mcp__chrome-devtools__*`: `navigate_page` to `http://localhost:<injectPort>/`, `wait_for` the app to render, and if the page is blank reload once (Vite's cold-cache re-optimization can stall the first hit). Confirm the session is authenticated via `take_snapshot` — the URL must not be `/login` and real app content must be present — then close out with `take_screenshot`. Never print the cookie value in any tool output or report.
+
+### Step I — Verify
+
+For each URL in `resolveAuthUrls({ auth, hostByService }).verifyUrls`, issue a request with header `Cookie: <cookieName>=<cookieValue>` and confirm a `200` response. Only declare auth green once every verify URL passes.
+
+### Notes — frontend + auth
+
+- **Browser MCP override.** This path drives the browser exclusively through `mcp__chrome-devtools__*`. That is a deliberate, standing override of the global "use `/browse` for all web browsing" preference — the preference concerns the separate `mcp__claude-in-chrome__*` MCP and does not apply to this local-stack auth path, per the same override documented by the `jelou-local-stack` skill.
+- **OTP key mismatch (informational).** `bin/lib/api-login.mjs`'s own CLI path uses `mfa-code-<email>` as the Redis key, while this path reads the registry's `auth.otpFallback.keyPrefix` (`2fa-code-`), per `jelou-local-stack`. The configured E2E account has 2FA disabled, so the OTP branch is normally never exercised — if 2FA is ever armed on that account, confirm which key prefix the auth-service actually writes before trusting `readOtpFromRedis`.
