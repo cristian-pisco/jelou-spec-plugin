@@ -179,3 +179,81 @@ The `dev` block is **strictly additive**. Existing `services.yaml` files without
 - `jelou/references/docker-conventions.md` — Docker-specific conventions for the sibling `docker` block.
 - `jelou/references/worktree-resolution.md` — how to map a service id to its active source path during a task. the UI QA workflow uses this resolver, not `services.yaml[*].path` directly.
 - `jelou/references/e2e-environment.md` — how `.env` flows into the Playwright runner; complements `env_files` (which targets the dev server) for the test runtime side.
+
+## Unified registry (consolidation #1)
+
+A separate, per-workspace registry — distinct from `services.yaml` and from `jelou-stack.json` — is now available: `<workspace>/registry/jelou-registry.yaml`. It is authored by a human (or seeded from a canonical template) in a strict YAML subset, **compiled** by `bin/compile-registry.mjs` (or seeded-then-compiled by `bin/seed-registry.mjs`) into `<workspace>/registry/registry.json`, and read at runtime by `readUnifiedRegistry(workspaceRoot)` (`bin/lib/registry/read.mjs`), which just `JSON.parse`s the compiled file. The canonical template ships at `jelou/config/jelou-registry.template.yaml`.
+
+This is **consolidation sub-project #1** — a step toward a single registry format. As of this writing, `/jlu-start-dev` and `/jlu-production-like` are **not yet migrated** onto it: they still read their existing registries (`jlu-services.json`, the `services.yaml` `dev` blocks documented above, and `jelou-stack.json`, respectively). This section documents the new format only; it does not change any existing workflow's behavior.
+
+### Additive fields (over the `dev` block above)
+
+The unified registry's per-service and top-level shape overlaps heavily with the `dev` block above, plus a few fields new to this format:
+
+- Per-service **`peers: { <targetServiceId>: <ENV_VAR> }`** — cross-service rewiring: which env var on this service holds another service's task URL, keyed by the target service's id.
+- Per-service **`dev.extra_ports: [<ENV_VAR>, ...]`** — secondary ports beyond the primary `dev.port_env` (e.g. a gRPC port, a debug port, a supervisor port). Sibling of `dev.docker` and `dev.port_env`, not nested inside `dev.docker`.
+- Top-level **`auth`** block:
+  ```yaml
+  auth:
+    cookieName: jelou_auth
+    dashboardService: dashboard-server
+    loginPath: /api/v1/auth/login
+    verifyMfaPath: /api/v1/auth/login/verify_mfa
+    verify:
+      jelou-api: /v1/company
+      dashboard-server: /api/v1/auth/me
+    otpFallback:
+      redisContainer: redis
+      redisDb: 0
+      keyPrefix: "2fa-code-"
+    credentials:
+      envFile: ../jelou-apps/.env.e2e
+      emailVar: E2E_USER_EMAIL
+      passwordVar: E2E_USER_PASSWORD
+  ```
+- Top-level **`frontend`** block:
+  ```yaml
+  frontend:
+    path: ../jelou-apps
+    command: "yarn start --host 127.0.0.1"
+    port: 5175
+    envFile: .env
+    envBackup: .env.jelou-local-stack.bak
+    envLocal:
+      NX_REACT_APP_JELOU_API_BASE:
+        service: jelou-api
+        suffix: ""
+      NX_REACT_APP_DASHBOARD_SERVER_BASE:
+        service: dashboard-server
+        suffix: "/api"
+    envBlank: [NX_REACT_APP_API_GATEWAY_TEMPORAL_API_KEY]
+  ```
+- Top-level **`base_port`** (int) and **`compose_network_alias`** (string).
+
+### `jelou-stack.json` → unified registry mapping
+
+| `jelou-stack.json` | unified registry |
+|---|---|
+| `mode: exec` | `dev.launcher: docker-exec` |
+| `mode: start` | `dev.launcher: npm` |
+| `mode: compose` | `dev.launcher: docker` |
+| `compose_service` | `dev.docker.service` |
+| `compose_file` | `dev.docker.compose_file` |
+| `command` | `dev.command` |
+| `readiness.url` | `dev.ready_signal` (NestJS: `stdout_match` on "Nest application successfully started") |
+| `port_mappings[primary].port_env` | `dev.port_env` |
+| `port_mappings[!primary].port_env` | `dev.extra_ports[]` |
+| `peers` | per-service `peers` |
+| top-level `auth`/`frontend`/`basePort`/`composeNetworkAlias` | top-level `auth`/`frontend`/`base_port`/`compose_network_alias` |
+
+> Note: `port_env` and `extra_ports` live directly under `dev` (siblings of `dev.docker`), not nested inside `dev.docker` — `dev.docker` itself carries only `service` and `compose_file`. See `jelou/config/jelou-registry.template.yaml` for a fully worked example across all current services.
+
+### Strict YAML subset
+
+`jelou-registry.yaml` (the template and any user edit of a seeded copy) MUST stay within a strict subset, because the hand-rolled parser (`bin/lib/registry/yaml-lite.mjs`) only understands it:
+
+- 2-space indentation, nested block maps only.
+- Scalars: bare words, `"double"` or `'single'` quoted strings, integers, `true`/`false`, `null`/`~`. Quote any value containing a `:` (e.g. `command: "yarn start:dev"`, `keyPrefix: "2fa-code-"`) — an unquoted `:` inside a value is parsed as a new key separator.
+- Flow scalar lists ONLY, written on one line: `extra_ports: [SUPERVISOR_PORT]`.
+- **No block `- ` lists and no list-of-maps.** Any collection that would naturally be a list — services, `auth.verify`, `frontend.envLocal` — is instead expressed as a **map keyed by id/name/key** (e.g. `services.<id>`, `auth.verify.<serviceId>`, `frontend.envLocal.<ENV_VAR>`).
+- `#` comments are allowed (a `#` starting a token outside quotes, at line-start or after a space).
