@@ -7,8 +7,6 @@ export function parseFixStatus(line) {
   return { status, reason };
 }
 
-export function nextAction({ status, attempt, maxAttempts }) {
-  if (!RERUN_OK.has(status)) return 'escalate';
-  if (attempt >= maxAttempts) return 'escalate';
-  return 'rerun';
+export function nextAction({ status }) {
+  return RERUN_OK.has(status) ? 'rerun' : 'escalate';
 }

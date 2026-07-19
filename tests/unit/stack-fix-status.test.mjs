@@ -31,7 +31,7 @@ describe('nextAction', () => {
     assert.equal(nextAction({ status: 'NEEDS_CONTEXT', attempt: 1, maxAttempts: 3 }), 'escalate');
   });
 
-  test('exhausting attempts escalates even on DONE', () => {
-    assert.equal(nextAction({ status: 'DONE', attempt: 3, maxAttempts: 3 }), 'escalate');
+  test('DONE reruns even on the final attempt (verify before the loop exhausts)', () => {
+    assert.equal(nextAction({ status: 'DONE', attempt: 3, maxAttempts: 3 }), 'rerun');
   });
 });

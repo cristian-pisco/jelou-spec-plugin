@@ -145,7 +145,9 @@ If `diagnosis.confidence === 'low'` OR `diagnosis.proposed_fix == null` → **ES
 
 ### 2c — Apply
 
-If `diagnosis.proposed_fix.runs_in === 'container'`:
+Branch on `diagnosis.proposed_fix.runs_in`. The two branches diverge at Decide — read both before implementing either.
+
+**Container fix branch** (`runs_in === 'container'`):
 
 ```bash
 node -e "
@@ -156,9 +158,13 @@ import('{plugin-root}/bin/lib/dev-orchestrator/diagnose.mjs').then(({ substitute
 " '{serviceForDiagnoseJson}' '{proposedFixJson}'
 ```
 
-If the output is `NULL` → **ESCALATE**: `Agent proposed a host fix for a containerized service. Manual review recommended.` and stop. Otherwise run the substituted command via `Bash` with working directory `{entry.cwd}` (so a relative `compose_file` resolves correctly). Capture stdout/stderr.
+If the output is `NULL` → **ESCALATE**: `Agent proposed a host fix for a containerized service. Manual review recommended.` and stop. Otherwise run the substituted command via `Bash` with working directory `{entry.cwd}` (so a relative `compose_file` resolves correctly). Capture stdout, stderr, and the exit code.
 
-Else (a code fix):
+This branch never produces a `STATUS:` line — the substituted command is raw shell output, not an implementer response — so it skips Decide's STATUS parse entirely:
+- Exit code non-zero → **ESCALATE**: `Container fix command failed (exit <code>): <captured stdout+stderr>` and stop.
+- Exit code 0 → go DIRECTLY to **Verify (2e)**, bypassing `parseFixStatus`, the same-hunk-twice check, and `nextAction` (there is no `STATUS:` line and no `hunk_hash` to extract).
+
+**Code fix branch** (`runs_in !== 'container'`, dispatched to `jlu-implementer`):
 
 ```bash
 node -e "
@@ -169,7 +175,7 @@ import('{plugin-root}/bin/lib/dev-orchestrator/stack/fix-target.mjs').then(({ re
 " "{argument}" '{worktreePathsJson}' "{stackEntry.path}"
 ```
 
-If `target.needsCleanGuard` is true, run `git -C {target.path} status --porcelain` via `Bash`, then:
+If `target.needsCleanGuard` is true, run the clean-tree check via `Bash`, using the canonical porcelain args from `gitStatusPorcelainArgs()` (`stack/clean-tree.mjs`) rather than inlining flags — `git -C {target.path} <gitStatusPorcelainArgs() joined with spaces>` (i.e. `git -C {target.path} status --porcelain`) — then:
 
 ```bash
 node -e "
@@ -186,9 +192,11 @@ Otherwise dispatch `Agent` with `subagent_type: "jlu:jlu-implementer"` (retry on
 - Any prior attempts on this same service this run (file + hunk_hash from `priorHunks`), so the implementer avoids repeating a dead-end edit.
 - The instruction: make exactly ONE atomic edit to fix `<cause>`, confined to `{target.path}`, no line-by-line comments, and return a final line following the fix-loop STATUS contract (`agents/jlu-ui-fix-loop.md`) — `STATUS: DONE — file=<path> hunk_hash=<hash> ...` (or `DONE_WITH_CONCERNS` / `BLOCKED reason=...` / `flagged reason=...`), including a `hunk_hash` computed as the SHA-1 of `<file>|<start line>|<replaced text>`.
 
-Capture the final `STATUS:` line.
+Capture the final `STATUS:` line, then proceed to **Decide (2d)** — only this branch runs Decide.
 
-### 2d — Decide
+### 2d — Decide (code-fix branch only)
+
+The container-fix branch never reaches this step — it already resolved to Verify or Escalate in 2c.
 
 ```bash
 node -e "
@@ -202,9 +210,9 @@ import('{plugin-root}/bin/lib/dev-orchestrator/stack/fix-status.mjs').then(({ pa
 
 Extract `hunk_hash` from `{statusLine}` (`/hunk_hash=([A-Za-z0-9]+)/`). If it is present and already in `priorHunks` → **ESCALATE**: `Same hunk edited twice ({hunk_hash}) — the implementer is repeating a dead-end fix.` and stop. Otherwise push it onto `priorHunks`.
 
-If `action === 'escalate'` → **ESCALATE**: surface `status` and `reason` (and any `details=` in `{statusLine}`) and stop — this covers a non-`DONE`/`DONE_WITH_CONCERNS` status (`BLOCKED`, `flagged`, `NEEDS_CONTEXT`, `UNKNOWN`) at any attempt, and it also covers a `DONE`/`DONE_WITH_CONCERNS` status on the FINAL attempt — the loop's budget is exhausted, so even an apparently successful last-attempt fix gets a human check rather than a silent verify-and-declare-victory.
+If `action === 'escalate'` → **ESCALATE**: surface `status` and `reason` (and any `details=` in `{statusLine}`) and stop — this covers any non-`DONE`/`DONE_WITH_CONCERNS` status (`BLOCKED`, `flagged`, `NEEDS_CONTEXT`, `UNKNOWN`), regardless of which attempt this is.
 
-If `action === 'rerun'` → proceed to Verify.
+If `action === 'rerun'` → proceed to Verify — a `DONE`/`DONE_WITH_CONCERNS` status always goes to Verify, on any attempt including the last; the attempt budget is enforced by the Step 2 loop itself (Step 3), not by this decision.
 
 ### 2e — Verify
 
@@ -238,7 +246,7 @@ Otherwise, continue to the next `attempt` (loop back to Evidence with the freshl
 
 ## Step 3 — Loop exhausted
 
-If the loop finishes all `maxAttempts` attempts without a verified fix (including the "escalate on final DONE" path from 2d) → **ESCALATE**: summarize every attempt (diagnosis cause + what was applied + why verify still failed, where known), print the last diagnosis in full, and suggest `/jlu-diagnose {argument}` for manual follow-up.
+If the loop finishes all `maxAttempts` attempts without a verified fix — every attempt reached Verify (2e) and Verify still failed each time — → **ESCALATE**: summarize every attempt (diagnosis cause + what was applied + why verify still failed, where known), print the last diagnosis in full, and suggest `/jlu-diagnose {argument}` for manual follow-up.
 
 ## Notes
 
