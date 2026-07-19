@@ -4,11 +4,13 @@
 
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdtempSync, mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { parseYamlLite } from '../../bin/lib/registry/yaml-lite.mjs';
 import { normalizeRegistry } from '../../bin/lib/registry/normalize.mjs';
+import { compileRegistry, registryJsonPath } from '../../bin/compile-registry.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const TEMPLATE = join(HERE, '..', '..', 'jelou', 'config', 'jelou-registry.template.yaml');
@@ -25,5 +27,26 @@ describe('canonical template', () => {
     assert.equal(reg.auth.dashboardService, 'dashboard-server');
     assert.ok(reg.frontend.path.endsWith('jelou-apps'));
     assert.equal(reg.network.basePort, 3100);
+  });
+});
+
+describe('compileRegistry', () => {
+  test('yaml -> normalized registry.json under <workspace>/registry', () => {
+    const ws = mkdtempSync(join(tmpdir(), 'jlu-reg-'));
+    mkdirSync(join(ws, 'registry'), { recursive: true });
+    writeFileSync(join(ws, 'registry', 'jelou-registry.yaml'), [
+      'base_port: 3100',
+      'services:',
+      '  jelou-api:',
+      '    path: ../jelou-api',
+      '    dev:',
+      '      launcher: docker-exec'
+    ].join('\n'));
+    const out = compileRegistry({ workspaceRoot: ws });
+    assert.equal(out, registryJsonPath(ws));
+    const reg = JSON.parse(readFileSync(registryJsonPath(ws), 'utf8'));
+    assert.equal(reg.services[0].id, 'jelou-api');
+    assert.ok(reg.services[0].path.endsWith('/jelou-api'));
+    assert.ok(existsSync(registryJsonPath(ws)));
   });
 });
