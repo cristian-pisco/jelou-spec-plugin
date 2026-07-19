@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.296] — 2026-07-18
+
+### Fixed
+- reuse canonical base image and idle exec containers in task-stack boot
+
 ## [0.3.295] — 2026-07-18
 
 ### Added
