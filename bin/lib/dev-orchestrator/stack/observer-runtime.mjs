@@ -8,7 +8,7 @@ import { logSourceArgs } from './observer-source.mjs';
 import { observeTick } from './observer.mjs';
 
 export function buildObserverServices(plan, { tailLines = 200 } = {}) {
-  return plan.map((entry) => ({ name: entry.name, args: logSourceArgs({ mode: entry.mode, projectName: entry.projectName, tailLines }) }));
+  return plan.map((entry) => ({ name: entry.name, args: logSourceArgs({ mode: entry.mode, logMode: entry.logMode, projectName: entry.projectName, container: entry.container, tailLines }) }));
 }
 
 export function runObserverPass({ plan, config, workspaceId, slug, run = (args) => spawnSync('docker', args, { encoding: 'utf8' }), cooldown, notifier, prevCaptures = {}, appendEventFn = appendEvent }) {

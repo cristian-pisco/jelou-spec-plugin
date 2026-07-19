@@ -34,4 +34,17 @@ describe('runObserverPass', () => {
     runObserverPass(opts);
     assert.equal(events.filter((e) => e.type === 'pattern_match').length, 1);
   });
+
+  test('reads a docker-logs service via docker logs <container>', () => {
+    const capturedArgs = [];
+    const cooldown = { allow: () => false };
+    const config = { services: [{ name: 'api' }] };
+    const plan = [{ name: 'api', logMode: 'docker-logs', container: 'api-dev-abc123' }];
+    const run = (args) => {
+      capturedArgs.push(args);
+      return { stdout: '' };
+    };
+    runObserverPass({ plan, config, workspaceId: 'w', slug: 's', run, cooldown, prevCaptures: {}, appendEventFn: () => {} });
+    assert.deepEqual(capturedArgs[0], ['logs', '--tail', '200', 'api-dev-abc123']);
+  });
 });

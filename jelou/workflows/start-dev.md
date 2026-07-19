@@ -289,21 +289,22 @@ This path assumes the Jelou dev containers' base images already exist (idle imag
 
 **`--auto-fix` flag.** The `--jelou-stack` boot accepts an optional `--auto-fix` flag alongside it (e.g. `/jlu:start-dev --jelou-stack --auto-fix`). This is opt-in and off by default. When NOT passed, the observer behaves exactly as documented below — it only reports (appends `pattern_match` events) and notifies; nothing auto-edits code. When passed, it additionally drives the bounded `/jlu:autofix <service>` loop (`jelou/workflows/autofix.md`) for any service the observer flags — **`--auto-fix` performs unattended code edits**; it is opt-in specifically because of that. `/jlu:autofix <service>` is always available as a manual, on-demand command regardless of this flag.
 
-The observer needs a `plan` shaped like `{ name, mode, projectName }` per service — the same shape `buildTaskStack` produces internally, but the Step B/C result's `services` array only carries `{ name, url, host, ports }`, not `mode`/`projectName`. Rebuild the observer's `plan` straight from the registry instead of re-deriving ports:
+The observer needs a per-service `plan` describing where to read each service's logs. Build it from the boot plan with `observerPlanFromBootPlan` (task-isolated → `logMode:'exec-file'` on `<service>-<slug>`; shared-reuse → `logMode:'docker-logs'`), then merge in each shared-reuse service's resolved dev container id (from Step B); drop any shared-reuse entry whose container did not resolve:
 
 ```bash
 node -e "
-Promise.all([
-  import('{plugin-root}/bin/lib/dev-orchestrator/stack/registry.mjs'),
-  import('{plugin-root}/bin/lib/dev-orchestrator/stack/override.mjs')
-]).then(([{ loadStack }, { projectName }]) => {
-  const stack = loadStack(process.argv[1]);
-  const slug = process.argv[2];
-  const plan = stack.services.map((svc) => ({ name: svc.name, mode: svc.mode, projectName: projectName(svc.name, slug) }));
-  process.stdout.write(JSON.stringify(plan));
+import('{plugin-root}/bin/lib/dev-orchestrator/stack/observer-plan.mjs').then(({ observerPlanFromBootPlan }) => {
+  const plan = JSON.parse(process.argv[1]);
+  const containers = JSON.parse(process.argv[2]);
+  const out = observerPlanFromBootPlan(plan)
+    .map((e) => e.policy === 'shared-reuse' ? { ...e, container: containers[e.name] } : e)
+    .filter((e) => e.policy !== 'shared-reuse' || e.container);
+  process.stdout.write(JSON.stringify(out));
 });
-" "{plugin-root}/jelou/references/jelou-stack.json" "{slug}" > /tmp/jlu-observer-plan-{slug}.json
+" '{planJson}' '{sharedReuseContainersJson}' > /tmp/jlu-observer-plan-{slug}.json
 ```
+
+`{sharedReuseContainersJson}` is the `{ <serviceId>: <containerId> }` map assembled from the Step B `compose ps -q` resolutions.
 
 Then start the interval loop as a **backgrounded** process — like Steps F and H, a synchronous invocation would block the orchestrator. Construct `cooldown = Cooldown(effectiveDefaults(config).notification_cooldown_seconds)` and `prevCaptures = {}` **once each**, outside the loop, so both cooldown state and per-service capture state are shared and retained across every pass, and poll on `effectiveDefaults(config).poll_interval_ms`:
 
@@ -333,7 +334,7 @@ Promise.all([
 " "{configPath}" "/tmp/jlu-observer-plan-{slug}.json" "{workspaceId}" "{slug}" "/tmp/jlu-observer-{slug}.log" > /tmp/jlu-observer-{slug}.log 2>&1 &
 ```
 
-`runObserverPass` (`stack/observer-runtime.mjs`) reads each service's docker log source (`docker logs …` for `mode: "start"` services, `docker exec … tail …` for `mode: "exec"` services, via `logSourceArgs`), diffs it against the previous pass, and matches new lines against that service's effective failure patterns (`effectiveFailurePatterns` — the config's global `defaults.log_failure_patterns` plus any per-service override). Every match appends a `pattern_match` event to `eventsLogPath({ workspaceId, slug })` — the exact same JSONL file the existing `/jlu-diagnose` command reads — and, gated by the shared `cooldown`, fires a cooldown-gated OS notification (`notifyOs`) naming the failing service.
+`runObserverPass` (`stack/observer-runtime.mjs`) reads each service's docker log source (via `logSourceArgs`: `exec-file` services are tailed with `docker exec <projectName> tail`; `docker-logs` services are read with `docker logs <container>`), diffs it against the previous pass, and matches new lines against that service's effective failure patterns (`effectiveFailurePatterns` — the config's global `defaults.log_failure_patterns` plus any per-service override). Every match appends a `pattern_match` event to `eventsLogPath({ workspaceId, slug })` — the exact same JSONL file the existing `/jlu-diagnose` command reads — and, gated by the shared `cooldown`, fires a cooldown-gated OS notification (`notifyOs`) naming the failing service.
 
 Immediately after the observer launches with `&`, capture its PID in the same shell (`OBSERVER_PID=$!`), then record its PID into stack-state (`kind: 'hostPid'`, role `observer`) so `/jlu:stop-dev` tears it down:
 
