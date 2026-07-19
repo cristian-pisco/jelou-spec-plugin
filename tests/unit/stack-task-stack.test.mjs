@@ -45,4 +45,29 @@ describe('buildTaskStack', () => {
     const hosts = plan.flatMap(p => p.ports.map(x => x.host));
     assert.equal(new Set(hosts).size, hosts.length);
   });
+
+  test('threads baseImages into the rendered override', () => {
+    const stack = {
+      basePort: 3100,
+      composeNetworkAlias: 'app-network',
+      services: [
+        { name: 'jelou-api', compose_service: 'app', mode: 'exec', compose_file: 'docker-compose.yml', path: '/repo/api', port_mappings: [{ internal: 8080, port_env: 'APP_PORT', primary: true }], peers: {} }
+      ]
+    };
+    const plan = buildTaskStack({ stack, slug: 't1', worktreePaths: {}, occupied: new Set(), readEnv: () => '', baseImages: { 'jelou-api': 'jelou-api-app' } });
+    assert.ok(plan[0].overrideYaml.includes('    image: jelou-api-app'));
+    assert.ok(plan[0].overrideYaml.includes('    entrypoint: ["sleep", "infinity"]'));
+  });
+
+  test('baseImages defaults to empty (no image line) without breaking', () => {
+    const stack = {
+      basePort: 3100,
+      composeNetworkAlias: 'app-network',
+      services: [
+        { name: 'jelou-api', compose_service: 'app', mode: 'exec', compose_file: 'docker-compose.yml', path: '/repo/api', port_mappings: [{ internal: 8080, port_env: 'APP_PORT', primary: true }], peers: {} }
+      ]
+    };
+    const plan = buildTaskStack({ stack, slug: 't1', worktreePaths: {}, occupied: new Set(), readEnv: () => '' });
+    assert.ok(!plan[0].overrideYaml.includes('image:'));
+  });
 });
