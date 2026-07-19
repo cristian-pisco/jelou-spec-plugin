@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.302] — 2026-07-19
+
+### Added
+- production-like boots eligible worktree backends task-isolated (consolidation #4)
+
 ## [0.3.301] — 2026-07-19
 
 ### Added
