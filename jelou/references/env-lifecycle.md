@@ -215,67 +215,75 @@ docker compose -f <compose_file> stop <service>
   `boot` once, and `teardown` once, around its delegated execution phases.
 - `test-suite.md` calls none — it runs on the host and only needs the infra reachable.
 
-## Plan-driven boot (consolidation #2)
+## Plan-driven boot (consolidation #3a)
 
 The boot decisions above — which launcher, which command, reuse-or-reboot, per-service
-teardown, task-isolated worktree containers — are being consolidated behind a single
-**boot plan** emitted by `bin/build-boot-plan.mjs`. This section is the **contract** a
-FUTURE `boot()` follows to consume that plan. It does NOT change the existing `boot()` /
-`teardown()` bash above — that rewrite is a later sub-project (see the note at the end).
+teardown, task-isolated worktree containers — are consolidated behind a single **boot plan**
+emitted by `bin/build-boot-plan.mjs` and executed via `bin/lib/boot-engine/execute.mjs`. This
+section is REAL: a `boot()` that consumes the plan runs the steps below. (The live workflow
+wiring — `start-dev.md` calling `build-boot-plan.mjs` → this boot — is consolidation #3b; #3a
+made this path real and tested but has not yet re-routed a workflow through it.)
 
 **The plan shape.** `bin/build-boot-plan.mjs --workspace <root> --slug <slug>` writes
-`{ services: [entry], network, slug }` to stdout. Every `entry` carries:
+`{ services: [entry], network, slug }` to stdout. Every `entry` carries
+`{ id, launcher, cwd, command, readiness, teardownCmd, ramEstimateMb, policy, wiredEnv }`; a
+`task-isolated` entry additionally carries
+`{ projectName, composeFile, overrideYaml, image, imageResolved, ports: [{ internal, host, portEnv, primary }] }`.
+`wiredEnv` is `null` unless the service peers a `task-isolated` service (a main-branch service
+A can carry a non-null `wiredEnv` pointing at a worktree peer B's task URL).
 
-```
-{ id, launcher, cwd, command, readiness, teardownCmd, ramEstimateMb, policy, wiredEnv }
-```
+**Do not build commands by hand.** For each plan entry, obtain its execution descriptor from
+`planEntryToCommands` — it owns all argv/file assembly, so the prose never hand-writes a
+`docker` flag or an `sh -lc` string:
 
-A `task-isolated` entry (the service has a worktree for this slug) additionally carries:
-
-```
-{ projectName, overrideYaml, image, imageResolved, ports: [{ internal, host, portEnv, primary }] }
-```
-
-`wiredEnv` is `null` unless the service peers a `task-isolated` service — a main-branch
-service A can carry a non-null `wiredEnv` pointing at a worktree peer B's task URL (the
-allocated host port), so A reaches B's per-task container instead of B's shared one. It is
-the rendered `.env` text to write before A (re)boots.
-
-**Per-entry, `boot()` branches on `entry.policy`** (NOT on `entry.launcher` — the launcher
-is one input the plan already folded into `command`/`overrideYaml`):
-
-`policy: shared-reuse`
-```
-This is the EXISTING docker-exec / npm|make|shell reuse-or-reboot path, unchanged: probe the
-developer's running container/process, reuse it if healthy, and reboot fresh only if it is
-unhealthy/stale (or ALWAYS, for a frontend — build-time-baked env, as above).
-If entry.wiredEnv is non-null, write it to <entry.cwd>/.env BEFORE the (re)boot, so this
-  main-branch service picks up a worktree peer's task URL.
-Register in BOOTED[]/TEARDOWN_CMD[] ONLY if this run actually (re)booted it — teardown is
-  entry.teardownCmd (kill-what-started). NEVER `compose down` the developer's shared container:
-  a healthy container this run reused belongs to the developer and is left running.
+```bash
+node -e "
+import('{plugin-root}/bin/lib/boot-engine/execute.mjs').then(({ planEntryToCommands }) => {
+  process.stdout.write(JSON.stringify(planEntryToCommands(JSON.parse(process.argv[1]))));
+});
+" '{entryJson}'
 ```
 
-`policy: task-isolated`
-```
-This run ALWAYS creates the container (a per-task throwaway), so it is ALWAYS registered for
-teardown. Steps:
-  1. Write entry.overrideYaml to <entry.cwd>/docker-compose.jlu.yml.
-  2. If entry.wiredEnv is non-null, write it to <entry.cwd>/.env.
-  3. docker compose -p <entry.projectName> -f <compose_file> -f docker-compose.jlu.yml up -d
-       (idle container; the base image is reused — NO rebuild).
-  4. docker exec -d <entry.projectName> sh -lc 'cd /app && <entry.command> > /tmp/<projectName>.dev.log 2>&1'
-  5. Wait for readiness per entry.readiness: an http_200/port_open uses the allocated host port
-       entry.readiness.port; a stdout_match tails the exec log (/tmp/<projectName>.dev.log).
-  6. Register teardown = entry.teardownCmd (`docker compose -p <projectName> down`), ALWAYS.
-If entry.imageResolved is false, WARN — the base image wasn't found, so the container may fail
-  to start (the plan left image null and the compose `up` has no local image to reuse).
-```
+The descriptor is `{ policy, cwd, files, ... }`. `files` is an array of `{ path, content }` to
+write verbatim. Branch on `descriptor.policy`:
 
-**This is the CONTRACT only.** The actual `boot()` rewrite to consume plans is a later
-sub-project: consolidation #3 (`start-dev`) and #4 (`production-like`). Those retire the
-F-series execution modules (`boot-commands` / `boot-exec` / `boot-runtime` / `boot-stack` /
-`task-stack.mjs`) in favour of this single plan → `boot()` path. The `task-isolated`
-teardown (`compose -p … down`) is safe precisely BECAUSE the container is a per-task
-throwaway this run created — unlike a `shared-reuse` service, whose container belongs to the
-developer and is only ever kill-what-started, never `compose down`.
+**`policy: task-isolated`** — this run ALWAYS creates the container (a per-task throwaway), so
+it is ALWAYS registered for teardown:
+1. Write every `descriptor.files[]` entry (`docker-compose.jlu.yml`, and `.env` when a
+   `wiredEnv` was present).
+2. If `descriptor.imageResolved` is `false`, WARN: the base image was not found, so the
+   `compose up` has no local image to reuse and the container may fail to start.
+3. `docker <descriptor.up>` — brings up the idle container (`compose -p <projectName> -f
+   <composeFile> -f docker-compose.jlu.yml up -d`); the base image is reused, NO rebuild.
+4. If `descriptor.exec` is non-null, `docker <descriptor.exec>` — execs the dev command into
+   the idle container, redirecting to `/tmp/<projectName>.dev.log`. (`exec` is null for a
+   non-`docker-exec` launcher, whose container runs its command from its own entrypoint.)
+5. Wait for readiness per `descriptor.readiness`: an `http_200`/`port_open` polls the allocated
+   host port (`descriptor.readiness.port`); a `stdout_match` tails `descriptor.readiness.logPath`
+   (`/tmp/<projectName>.dev.log`) for the pattern.
+6. Register teardown = `docker <descriptor.teardown>` (`compose -p <projectName> down`) in
+   `BOOTED[]`/`TEARDOWN_CMD[]`, ALWAYS.
+
+**`policy: shared-reuse`** — REUSE the developer's running container/process:
+1. If `descriptor.files` is non-empty, write it (the `wiredEnv` `.env`) BEFORE the reuse
+   check, so this main-branch service picks up a worktree peer's task URL.
+2. Then the EXISTING `docker-exec` / `npm` | `make` | `shell` reuse-or-reboot path
+   (`descriptor.launcher` / `descriptor.command` / `descriptor.cwd`), UNCHANGED: probe the
+   running container/process, reuse it if healthy, reboot fresh only if it is unhealthy/stale
+   (or ALWAYS, for a frontend — build-time-baked env). The reuse-or-reboot DECISION is a
+   runtime health branch that lives here, not in `planEntryToCommands`.
+3. Wait for readiness per `descriptor.readiness` (the dev-block signal on the service's normal
+   dev port).
+4. Register teardown = `descriptor.teardown` (kill-what-started) ONLY if this run actually
+   (re)booted it. NEVER `compose down` a container this run reused — it belongs to the
+   developer.
+
+**Teardown** iterates the registered entries in reverse: a `task-isolated` entry runs its
+`compose -p <projectName> down` (safe — a per-task throwaway this run created); a
+`shared-reuse` entry runs its kill-what-started `teardown` string only if this run started it.
+This mirrors the F3-c stack-state teardown (`stack-teardown.mjs`), which #3b feeds by recording
+each plan `projectName` into stack-state.
+
+This path supersedes the F-series execution modules (`boot-commands` / `boot-exec` /
+`boot-runtime` / `boot-stack` / `task-stack`); #3b (`start-dev`) and #3c (`autofix` + deletions)
+retire them.
