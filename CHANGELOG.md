@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.295] — 2026-07-18
+
+### Added
+- task-aware local stack teardown (F3-c)
+
 ## [0.3.294] — 2026-07-18
 
 ### Added
