@@ -233,31 +233,42 @@ If `action === 'rerun'` → proceed to Verify — a `DONE`/`DONE_WITH_CONCERNS` 
 
 ### 2e — Verify
 
-Restart the service:
-- If `entry.mode === 'exec'`: `docker exec -d {entry.projectName} sh -lc "cd /app && {entry.command} > /tmp/{entry.projectName}.dev.log 2>&1"`.
-- Else: `docker compose -p {entry.projectName} restart`.
+Restart the target, per its policy:
+- **task-isolated** (`entry.policy === 'task-isolated'`): `docker exec -d {entry.projectName} sh -lc "cd /app && {entry.command} > /tmp/{entry.projectName}.dev.log 2>&1"`.
+- **shared-reuse**: `docker compose -f {registryEntry.dev.docker.compose_file} restart {registryEntry.dev.docker.service}`, run with working directory `{entry.cwd}`. This restarts the developer's container (re-running its entrypoint) — it does NOT re-exec a second dev process, and `docker logs <container>` stays the evidence source.
 
-Wait briefly (a few seconds) for the process to come back up, then run exactly one observer pass scoped to this service, with a throwaway cooldown/capture state (this confirmatory pass is not the background F3-a observer — it does not share that observer's `cooldown`/`prevCaptures`):
+Wait briefly (a few seconds) for the process to come back up, then run exactly one observer pass scoped to this service, using the target's `observerEntry` (so the log source matches its policy) with a throwaway cooldown/capture state (this confirmatory pass is not the background F3-a observer):
 
 ```bash
 node -e "
 import('{plugin-root}/bin/lib/dev-orchestrator/stack/observer-runtime.mjs').then(({ runObserverPass, Cooldown }) => {
-  const plan = [{ name: process.argv[1], mode: process.argv[2], projectName: process.argv[3] }];
-  const config = JSON.parse(process.argv[4]);
+  const plan = [JSON.parse(process.argv[1])];
+  const config = JSON.parse(process.argv[2]);
   runObserverPass({
     plan, config,
-    workspaceId: process.argv[5], slug: process.argv[6],
+    workspaceId: process.argv[3], slug: process.argv[4],
     cooldown: Cooldown(0), prevCaptures: {}
   });
 });
-" "{entry.name}" "{entry.mode}" "{entry.projectName}" '{cfgJson}' "{ws.workspaceId}" "{slug}"
+" '{observerEntryJson}' '{cfgJson}' "{ws.workspaceId}" "{slug}"
 ```
 
 Compare `readRecentEvents({ logPath: eventsLogPath, service: argument, limit: 50 })` taken right before this pass against the same call taken right after — if a new `pattern_match` entry was appended, the service is still failing.
 
-Poll `readinessPollUrl(entry)` (from `stack/readiness-url.mjs`) for up to `effectiveDefaults(cfg).readiness_timeout_seconds` seconds.
+Then check readiness. Build the poll URL from the target's readiness + host:
 
-If NO new `pattern_match` for the service AND readiness polled green → **report DONE**: `Fixed {argument} in {attempt} attempt(s).` List every applied change (file/command per attempt) and stop — this is the only success exit.
+```bash
+node -e "
+import('{plugin-root}/bin/lib/boot-engine/readiness-target.mjs').then(({ readinessPollUrl }) => {
+  const url = readinessPollUrl({ readiness: JSON.parse(process.argv[1]), host: Number(process.argv[2]) });
+  process.stdout.write(url === null ? 'NONE' : url);
+});
+" '{entry.readinessJson}' "{targetHost}"
+```
+
+If the output is a URL, poll it for up to `effectiveDefaults(cfg).readiness_timeout_seconds` seconds (a `200` — or any answer for a `port_open` — is green). If the output is `NONE` (a `stdout_match` readiness), the observer pass above IS the readiness check — no URL poll is needed.
+
+If NO new `pattern_match` for the service AND (readiness polled green OR readiness was `NONE`) → **report DONE**: `Fixed {argument} in {attempt} attempt(s).` List every applied change (file/command per attempt) and stop — this is the only success exit.
 
 Otherwise, continue to the next `attempt` (loop back to Evidence with the freshly restarted container's state).
 
