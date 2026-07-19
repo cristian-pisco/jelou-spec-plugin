@@ -115,6 +115,27 @@ If `skipped` is non-empty, list the skipped services with reasons.
 
 This path reads from the canonical registry at `{plugin-root}/jelou/references/jelou-stack.json`, not from `jlu-services.json`. It does not touch tmux.
 
+### Stack-state recording
+
+The `--jelou-stack` path records a durable stack-state at each boot point so `/jlu:stop-dev` can tear it down. Wherever a single mutation is recorded below, use this reusable state-append pattern (read → pure mutate → write):
+
+```bash
+node -e "
+import('{plugin-root}/bin/lib/dev-orchestrator/stack/stack-state.mjs').then((m) => {
+  const opts = { workspaceId: process.argv[1], slug: process.argv[2] };
+  let s = m.readStackState(opts);
+  const mutation = JSON.parse(process.argv[3]);
+  if (mutation.kind === 'hostPid') s = m.addHostPid(s, mutation.value);
+  else if (mutation.kind === 'frontendEnv') s = m.setFrontendEnv(s, mutation.value);
+  else if (mutation.kind === 'backendEnvBackup') s = m.addBackendEnvBackup(s, mutation.value);
+  else if (mutation.kind === 'project') s = m.addProject(s, mutation.value);
+  m.writeStackState(opts, s);
+});
+" "{workspaceId}" "{slug}" '{mutationJson}'
+```
+
+Steps B0 and C below record several mutations in one pass and use their own fuller scripts; Steps E, F, H, and the observer each record one mutation and reference this pattern with a concrete `{mutationJson}`. `{workspaceId}` is the value captured in Step 1.
+
 ### Step A — Resolve the task slug and worktree paths
 
 ```bash
@@ -129,6 +150,34 @@ import('{plugin-root}/bin/lib/dev-orchestrator/task-context.mjs').then(({ resolv
 If the output starts with `AMBIGUOUS:`, prompt the user the same way as Step 2 of the generic path above.
 
 Build `worktreePaths` — a plain object mapping each registry service `name` to the absolute path of its worktree for this slug, for services that have one (`<serviceRepoPath>/.worktrees/<slug>`, when that directory exists). Services with no worktree for this slug are omitted; if none of the registered services have a worktree for this slug, `worktreePaths` is `{}`.
+
+### Step B0 — Back up non-worktree backend `.env`s
+
+Run this immediately before the Step B boot. It reverses the F2-a footgun where `bootPlan` writes `wiredEnv` into the real repo `.env` of a non-worktree service: back up each such `.env` first so `/jlu:stop-dev` can restore it. Worktree services are intentionally skipped — their checkout is disposable, so the rewrite is harmless there. For each pair `backendEnvBackupPlan` returns, if `path` exists and `backupPath` does not, copy `path`→`backupPath`, then record it into stack-state (`kind: 'backendEnvBackup'`).
+
+```bash
+node -e "
+Promise.all([
+  import('{plugin-root}/bin/lib/dev-orchestrator/stack/backend-env-backup.mjs'),
+  import('{plugin-root}/bin/lib/dev-orchestrator/stack/stack-state.mjs'),
+  import('node:fs')
+]).then(([{ backendEnvBackupPlan }, ss, fs]) => {
+  const services = JSON.parse(process.argv[3]);
+  const worktreePaths = JSON.parse(process.argv[4]);
+  const opts = { workspaceId: process.argv[1], slug: process.argv[2] };
+  let s = ss.readStackState(opts);
+  for (const pair of backendEnvBackupPlan({ services, worktreePaths, backupName: '.env.jelou-local-stack.bak' })) {
+    if (fs.existsSync(pair.path) && !fs.existsSync(pair.backupPath)) {
+      fs.copyFileSync(pair.path, pair.backupPath);
+      s = ss.addBackendEnvBackup(s, { path: pair.path, backupPath: pair.backupPath });
+    }
+  }
+  ss.writeStackState(opts, s);
+});
+" "{workspaceId}" "{slug}" '{registry.servicesJson}' '{worktreePathsJson}'
+```
+
+`{registry.servicesJson}` is the JSON-stringified `stack.services` array from the registry; `{worktreePathsJson}` is the same object built in Step A.
 
 ### Step B — Boot the stack via the adapter
 
@@ -158,6 +207,33 @@ import('{plugin-root}/bin/lib/dev-orchestrator/stack/boot-runtime.mjs').then(asy
 
 `{worktreePathsJson}` is the JSON-stringified `worktreePaths` object built in Step A.
 
+### Step B1 — Peer-var warning (non-blocking)
+
+`bootBackendStack` wires each service's env via `buildTaskStack`, rewriting a peer's URL only when the peer var already exists in that service's `.env`. Run a non-blocking advisory pass: for each service with a non-empty `peers` map, read its `.env` text and run `missingPeerVars({ envText, peers })`. If any are missing, print a warning; never fail the boot.
+
+```bash
+node -e "
+Promise.all([
+  import('{plugin-root}/bin/lib/dev-orchestrator/stack/peer-warn.mjs'),
+  import('node:fs')
+]).then(([{ missingPeerVars }, fs]) => {
+  const services = JSON.parse(process.argv[1]);
+  for (const svc of services) {
+    const peers = svc.peers || {};
+    if (Object.keys(peers).length === 0) continue;
+    const envPath = svc.path + '/.env';
+    const envText = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf8') : '';
+    const missing = missingPeerVars({ envText, peers });
+    if (missing.length > 0) {
+      process.stdout.write('WARN ' + svc.name + ' ' + missing.join(',') + '\n');
+    }
+  }
+});
+" '{registry.servicesJson}'
+```
+
+For each `WARN <service> <LIST>` line, surface to the user: `⚠ <service>: declared peer var(s) <LIST> not present in its .env — cross-service rewiring will silently no-op for those (service will keep its existing/prod URL).`
+
 ### Step C — Report
 
 Capture the JSON `{ green, down, services }` result.
@@ -170,6 +246,30 @@ Capture the JSON `{ green, down, services }` result.
   ```
 
   (the container name and log path both follow the `<service>-<slug>` project-name convention used by the stack). Print the tail output for each down service so the failure is visible before reporting the overall boot as failed.
+
+### Step C1 — Record booted projects
+
+Once Step C reports `green`, rebuild the per-service `{ projectName, cwd, composeFile }` from the registry via `buildTaskStack` and append one `project` mutation per entry with `overrideFile: 'docker-compose.jlu.yml'`, so `/jlu:stop-dev` knows which compose projects to tear down.
+
+```bash
+node -e "
+Promise.all([
+  import('{plugin-root}/bin/lib/dev-orchestrator/stack/registry.mjs'),
+  import('{plugin-root}/bin/lib/dev-orchestrator/stack/task-stack.mjs'),
+  import('{plugin-root}/bin/lib/dev-orchestrator/stack/stack-state.mjs')
+]).then(([{ loadStack }, { buildTaskStack }, ss]) => {
+  const stack = loadStack(process.argv[3]);
+  const worktreePaths = JSON.parse(process.argv[4]);
+  const opts = { workspaceId: process.argv[1], slug: process.argv[2] };
+  const plan = buildTaskStack({ stack, slug: process.argv[2], worktreePaths, occupied: [], readEnv: () => '' });
+  let s = ss.readStackState(opts);
+  for (const e of plan) s = ss.addProject(s, { projectName: e.projectName, cwd: e.cwd, composeFile: e.composeFile, overrideFile: 'docker-compose.jlu.yml' });
+  ss.writeStackState(opts, s);
+});
+" "{workspaceId}" "{slug}" "{plugin-root}/jelou/references/jelou-stack.json" '{worktreePathsJson}'
+```
+
+`occupied`/`readEnv` are irrelevant here — only `projectName`/`cwd`/`composeFile` are read from each entry, and those don't depend on port allocation or env contents, so passing `[]` and `() => ''` is safe.
 
 ### Precondition — base images
 
@@ -227,7 +327,21 @@ Promise.all([
 
 `runObserverPass` (`stack/observer-runtime.mjs`) reads each service's docker log source (`docker logs …` for `mode: "start"` services, `docker exec … tail …` for `mode: "exec"` services, via `logSourceArgs`), diffs it against the previous pass, and matches new lines against that service's effective failure patterns (`effectiveFailurePatterns` — the config's global `defaults.log_failure_patterns` plus any per-service override). Every match appends a `pattern_match` event to `eventsLogPath({ workspaceId, slug })` — the exact same JSONL file the existing `/jlu-diagnose` command reads — and, gated by the shared `cooldown`, fires a cooldown-gated OS notification (`notifyOs`) naming the failing service.
 
-Retain the backgrounded process's PID (or the `setInterval` handle, if launched in-process) — like Vite (Step F) and the inject server (Step H), it is a long-running handle that must be torn down explicitly; teardown is F3-c and is not wired yet, so do not let it leak past the end of this workflow without telling the user it's still running.
+Immediately after the observer launches with `&`, capture its PID in the same shell (`OBSERVER_PID=$!`), then record its PID into stack-state (`kind: 'hostPid'`, role `observer`) so `/jlu:stop-dev` tears it down:
+
+```bash
+node -e "
+import('{plugin-root}/bin/lib/dev-orchestrator/stack/stack-state.mjs').then((m) => {
+  const opts = { workspaceId: process.argv[1], slug: process.argv[2] };
+  let s = m.readStackState(opts);
+  const mutation = JSON.parse(process.argv[3]);
+  s = m.addHostPid(s, mutation.value);
+  m.writeStackState(opts, s);
+});
+" "{workspaceId}" "{slug}" '{"kind":"hostPid","value":{"role":"observer","pid":<OBSERVER_PID>}}'
+```
+
+Autofix is NOT recorded as a host PID — when `--auto-fix` is set it runs as an in-session `Agent` dispatch (see below), not a detached host process, so there is no separate process for teardown to kill.
 
 Tell the user: the observer is now watching the booted stack's container logs in the background. Any service it flags can be inspected with the existing `/jlu-diagnose <service>` command, which reads the same events log this observer writes to. If `--auto-fix` was passed, also tell the user the auto-fix loop is armed for this session and will invoke `/jlu-autofix <service>` automatically on a flagged service, always with an escalation back to them if it can't resolve it cleanly.
 
@@ -282,9 +396,39 @@ import('{plugin-root}/bin/lib/dev-orchestrator/stack/frontend-env.mjs').then(({ 
 
 Write the result back over `<frontend.path>/<frontend.envFile>`.
 
+Once the `.env` has been backed up and rewritten, record the backup into stack-state (`kind: 'frontendEnv'`) so `/jlu:stop-dev` can restore the original:
+
+```bash
+node -e "
+import('{plugin-root}/bin/lib/dev-orchestrator/stack/stack-state.mjs').then((m) => {
+  const opts = { workspaceId: process.argv[1], slug: process.argv[2] };
+  let s = m.readStackState(opts);
+  const mutation = JSON.parse(process.argv[3]);
+  s = m.setFrontendEnv(s, mutation.value);
+  m.writeStackState(opts, s);
+});
+" "{workspaceId}" "{slug}" '{"kind":"frontendEnv","value":{"path":"<frontend.path>","envFile":"<frontend.envFile>","envBackup":"<frontend.envBackup>"}}'
+```
+
+`<frontend.path>`, `<frontend.envFile>`, and `<frontend.envBackup>` come from the registry's `frontend` block.
+
 ### Step F — Boot Vite on the host
 
-From `<frontend.path>`, run `<frontend.command> --port <frontendPort> --strictPort` in the background, redirecting stdout/stderr to a runtime log file. Poll `http://localhost:<frontendPort>/` until it answers an HTTP request — Vite's first compile typically takes 30–90s, so re-poll roughly every 15s rather than failing fast.
+From `<frontend.path>`, run `<frontend.command> --port <frontendPort> --strictPort` in the background with `&`, redirecting stdout/stderr to a runtime log file. Poll `http://localhost:<frontendPort>/` until it answers an HTTP request — Vite's first compile typically takes 30–90s, so re-poll roughly every 15s rather than failing fast.
+
+Because the boot is backgrounded with `&`, capture its PID in the same shell (`VITE_PID=$!`), then record its PID into stack-state (`kind: 'hostPid'`, role `vite`) so `/jlu:stop-dev` tears it down:
+
+```bash
+node -e "
+import('{plugin-root}/bin/lib/dev-orchestrator/stack/stack-state.mjs').then((m) => {
+  const opts = { workspaceId: process.argv[1], slug: process.argv[2] };
+  let s = m.readStackState(opts);
+  const mutation = JSON.parse(process.argv[3]);
+  s = m.addHostPid(s, mutation.value);
+  m.writeStackState(opts, s);
+});
+" "{workspaceId}" "{slug}" '{"kind":"hostPid","value":{"role":"vite","pid":<VITE_PID>}}'
+```
 
 ### Step G — Login for the auth cookie
 
@@ -331,7 +475,19 @@ import('{plugin-root}/bin/lib/dev-orchestrator/stack/inject-page.mjs').then(({ r
 " "{cookieName}" "http://localhost:{frontendPort}/" "{email}" "{injectPort}" > /tmp/jlu-inject-server-{slug}.log 2>&1 &
 ```
 
-Retain the backgrounded process's PID (and/or the `startInjectServer` return value if run in-process instead) — it is the inject server's handle for teardown; do not let it leak past the end of this workflow.
+Immediately after the inject server launches with `&`, capture its PID in the same shell (`INJECT_PID=$!`), then record its PID into stack-state (`kind: 'hostPid'`, role `inject`) so `/jlu:stop-dev` tears it down:
+
+```bash
+node -e "
+import('{plugin-root}/bin/lib/dev-orchestrator/stack/stack-state.mjs').then((m) => {
+  const opts = { workspaceId: process.argv[1], slug: process.argv[2] };
+  let s = m.readStackState(opts);
+  const mutation = JSON.parse(process.argv[3]);
+  s = m.addHostPid(s, mutation.value);
+  m.writeStackState(opts, s);
+});
+" "{workspaceId}" "{slug}" '{"kind":"hostPid","value":{"role":"inject","pid":<INJECT_PID>}}'
+```
 
 Then, using `mcp__chrome-devtools__*`: `navigate_page` to `http://localhost:<injectPort>/`, `wait_for` the app to render, and if the page is blank reload once (Vite's cold-cache re-optimization can stall the first hit). Confirm the session is authenticated via `take_snapshot` — the URL must not be `/login` and real app content must be present — then close out with `take_screenshot`. Never print the cookie value in any tool output or report.
 
