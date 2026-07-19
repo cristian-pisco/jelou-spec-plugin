@@ -115,17 +115,17 @@ import('{plugin-root}/bin/lib/dev-orchestrator/diagnose.mjs').then(({ readRecent
 
 `eventsLogPath` is `eventsLogPath({ workspaceId: ws.workspaceId, slug })` from `state-daemon.mjs`.
 
-Fresh capture, merging stdout and stderr into one text blob for the diagnoser (the observer keeps the two streams separate for its own diffing; the diagnose input just needs the raw text):
+Fresh capture, merging stdout and stderr into one text blob for the diagnoser. The log source is the target's `observerEntry` from Step 1 — task-isolated tails `/tmp/<projectName>.dev.log` via `docker exec`; shared-reuse reads `docker logs <container>`:
 
 ```bash
 node -e "
 import('{plugin-root}/bin/lib/dev-orchestrator/stack/observer-source.mjs').then(({ logSourceArgs }) => {
   const { spawnSync } = require('node:child_process');
-  const args = logSourceArgs({ mode: process.argv[1], projectName: process.argv[2], tailLines: 200 });
+  const args = logSourceArgs(JSON.parse(process.argv[1]));
   const r = spawnSync('docker', args, { encoding: 'utf8' });
   process.stdout.write((r.stdout || '') + (r.stderr || ''));
 });
-" "{entry.mode}" "{entry.projectName}"
+" '{observerEntryJson}'
 ```
 
 ### 2b — Diagnose
