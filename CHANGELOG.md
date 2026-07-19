@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.301] — 2026-07-19
+
+### Added
+- migrate autofix to the plan engine and retire the F-series (consolidation #3c)
+
 ## [0.3.300] — 2026-07-19
 
 ### Added
