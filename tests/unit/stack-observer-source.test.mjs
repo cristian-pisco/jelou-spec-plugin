@@ -31,4 +31,22 @@ describe('logSourceArgs', () => {
   test('rejects a projectName containing shell metacharacters', () => {
     assert.throws(() => logSourceArgs({ mode: 'logs', projectName: 'x; rm -rf /', tailLines: 200 }), /unsafe/);
   });
+
+  test('logMode exec-file tails the in-container dev log', () => {
+    assert.deepEqual(
+      logSourceArgs({ logMode: 'exec-file', projectName: 'jelou-api-t1', tailLines: 200 }),
+      ['exec', 'jelou-api-t1', 'tail', '-n', '200', '/tmp/jelou-api-t1.dev.log']
+    );
+  });
+
+  test('logMode docker-logs reads docker logs of the resolved container', () => {
+    assert.deepEqual(
+      logSourceArgs({ logMode: 'docker-logs', container: 'jelou-apps-dashboard-server-1', tailLines: 200 }),
+      ['logs', '--tail', '200', 'jelou-apps-dashboard-server-1']
+    );
+  });
+
+  test('docker-logs rejects an unsafe container name', () => {
+    assert.throws(() => logSourceArgs({ logMode: 'docker-logs', container: 'x; rm -rf /' }), /unsafe/);
+  });
 });
