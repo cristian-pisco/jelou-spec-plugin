@@ -17,6 +17,9 @@ services:
       command: "yarn start:dev"
       port_env: APP_PORT
       extra_ports: [SUPERVISOR_PORT]
+      ports:
+        APP_PORT: 8080
+        SUPERVISOR_PORT: 9001
       ready_signal:
         type: stdout_match
         pattern: "Nest application successfully started"
@@ -34,6 +37,10 @@ services:
       command: "yarn start:dev"
       port_env: APP_PORT
       extra_ports: [GRPC_PORT, DEBUG_PORT]
+      ports:
+        APP_PORT: 8080
+        GRPC_PORT: 50051
+        DEBUG_PORT: 9001
       ready_signal:
         type: stdout_match
         pattern: "Nest application successfully started"
@@ -55,6 +62,9 @@ services:
       command: "yarn start:dev"
       port_env: APP_PORT
       extra_ports: [DEBUG_PORT]
+      ports:
+        APP_PORT: 8080
+        DEBUG_PORT: 9001
       ready_signal:
         type: stdout_match
         pattern: "Nest application successfully started"
@@ -70,6 +80,9 @@ services:
       command: "yarn start:dev"
       port_env: APP_PORT
       extra_ports: [SUPERVISOR_PORT]
+      ports:
+        APP_PORT: 8080
+        SUPERVISOR_PORT: 9001
       ready_signal:
         type: stdout_match
         pattern: "Nest application successfully started"
@@ -88,6 +101,8 @@ services:
         compose_file: docker-compose.yml
       command: "npm run start:dev"
       port_env: APP_PORT
+      ports:
+        APP_PORT: 8080
       ready_signal:
         type: stdout_match
         pattern: "Nest application successfully started"
@@ -103,6 +118,9 @@ services:
       command: "yarn start:dev"
       port_env: APP_PORT
       extra_ports: [DEBUG_PORT]
+      ports:
+        APP_PORT: 8080
+        DEBUG_PORT: 9229
       ready_signal:
         type: stdout_match
         pattern: "Nest application successfully started"
@@ -123,6 +141,9 @@ services:
       command: "yarn start:dev"
       port_env: APP_PORT
       extra_ports: [DEBUG_PORT]
+      ports:
+        APP_PORT: 8080
+        DEBUG_PORT: 9229
       ready_signal:
         type: stdout_match
         pattern: "Nest application successfully started"
@@ -138,6 +159,9 @@ services:
       command: "npm run start:dev"
       port_env: APP_PORT
       extra_ports: [DEBUG_PORT]
+      ports:
+        APP_PORT: 8080
+        DEBUG_PORT: 9001
       ready_signal:
         type: stdout_match
         pattern: "Nest application successfully started"
@@ -157,6 +181,9 @@ services:
       command: "pnpm start:dev"
       port_env: APP_PORT
       extra_ports: [DEBUG_PORT]
+      ports:
+        APP_PORT: 8080
+        DEBUG_PORT: 9001
       ready_signal:
         type: stdout_match
         pattern: "Nest application successfully started"
@@ -171,6 +198,8 @@ services:
         compose_file: docker-compose.yml
       command: "pnpm dev"
       port_env: PORT
+      ports:
+        PORT: 3000
       ready_signal:
         type: stdout_match
         pattern: "Nest application successfully started"
@@ -185,6 +214,8 @@ services:
         compose_file: docker-compose.dev.yml
       command: "cd packages/mcp-server && pnpm dev"
       port_env: PORT
+      ports:
+        PORT: 8080
       ready_signal:
         type: stdout_match
         pattern: "Nest application successfully started"
@@ -199,6 +230,8 @@ services:
         compose_file: docker-compose.yml
       command: "docker compose up -d app"
       port_env: APP_PORT
+      ports:
+        APP_PORT: 8905
       ready_signal:
         type: stdout_match
         pattern: "Nest application successfully started"

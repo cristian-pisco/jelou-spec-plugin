@@ -24,6 +24,8 @@ describe('canonical template', () => {
     const api = reg.services.find((s) => s.id === 'jelou-api');
     assert.equal(api.dev.launcher, 'docker-exec');
     assert.equal(api.dev.port_env, 'APP_PORT');
+    assert.equal(api.dev.ports.APP_PORT, 8080);
+    assert.equal(api.dev.ports.SUPERVISOR_PORT, 9001);
     assert.deepEqual(api.peers, { 'chatbot-server': 'CHATBOT_SERVER_URL' });
     assert.equal(reg.auth.dashboardService, 'dashboard-server');
     assert.ok(reg.frontend.path.endsWith('jelou-apps'));
