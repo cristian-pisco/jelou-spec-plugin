@@ -3,10 +3,19 @@
 > Purpose: a bounded, opt-in auto-fix loop for one failing service in the task-aware Jelou-stack (the `--jelou-stack` boot). The orchestrator owns the loop — evidence, diagnose, apply, decide, verify — and dispatches exactly ONE fix per attempt. It NEVER silently gives up: low diagnostic confidence, a dirty main checkout, a blocking fix-agent status, a repeated hunk, or an exhausted attempt budget all end in an explicit escalation to the user, never a quiet stop.
 
 Inputs:
-- `argument`: required service name (must be registered in `jelou/references/jelou-stack.json`).
+- `argument`: required service name (must be registered in the unified registry — `registry.services[].id`).
 - `cwd`: the user's current working directory.
 
-## Step 1 — Resolve workspace, slug, registries, and the target service
+## Step 1 — Resolve workspace, slug, registry, and the target service
+
+Ensure the unified registry exists and is compiled for this workspace (idempotent), then read it — the same Step A pattern as `/jlu:start-dev --jelou-stack`:
+
+```bash
+node {plugin-root}/bin/seed-registry.mjs --workspace {root}
+node {plugin-root}/bin/compile-registry.mjs --workspace {root}
+```
+
+Resolve the workspace, slug, config, and registry:
 
 ```bash
 node -e "
@@ -14,68 +23,76 @@ Promise.all([
   import('{plugin-root}/bin/lib/dev-orchestrator/workspace.mjs'),
   import('{plugin-root}/bin/lib/dev-orchestrator/task-context.mjs'),
   import('{plugin-root}/bin/lib/dev-orchestrator/config.mjs'),
-  import('{plugin-root}/bin/lib/dev-orchestrator/stack/registry.mjs')
+  import('{plugin-root}/bin/lib/registry/read.mjs')
 ]).then(([w, t, c, r]) => {
   const ws = w.resolveWorkspace(process.argv[1]);
   const slug = t.resolveTaskSlug({ workspaceRoot: ws.root, cwd: process.argv[1] });
   const cfg = c.readConfig(ws.configPath);
-  const stack = r.loadStack('{plugin-root}/jelou/references/jelou-stack.json');
-  process.stdout.write(JSON.stringify({ ws, slug, cfg, stack }));
+  const registry = r.readUnifiedRegistry(ws.root);
+  process.stdout.write(JSON.stringify({ ws, slug, cfg, registry }));
 }).catch(e => { console.error(e.message); process.exit(2); });
 " "{cwd}"
 ```
 
 If `slug` starts with `AMBIGUOUS:`, prompt via `question` exactly as `/jlu:start-dev` Step 2 does.
 
-**Resolve the target service.** `stackEntry = stack.services.find(s => s.name === argument)`. If not found, stop with:
+**Resolve the target service.** `registryEntry = registry.services.find(s => s.id === argument)`. If not found, stop with:
 
-> `Service '{argument}' is not registered in jelou-stack.json. /jlu:autofix only operates on the task-aware Jelou-stack (--jelou-stack boot). Registered services: <comma-joined stack.services names>.`
+> `Service '{argument}' is not registered in the unified registry. /jlu:autofix only operates on the task-aware Jelou-stack (--jelou-stack boot). Registered services: <comma-joined registry.services ids>.`
 
-**Build `worktreePaths`.** Same rule as `/jlu:start-dev`'s Step A: for every `stack.services` entry, check whether `<service.path>/.worktrees/<slug>` exists; if so, map `worktreePaths[service.name]` to that absolute path. Services with no worktree for this slug are omitted.
+**Build `worktreePaths`.** Same rule as `/jlu:start-dev`'s Step A: for every `registry.services` entry, check whether `<service.path>/.worktrees/<slug>` exists; if so, map `worktreePaths[service.id]` to that absolute path. Services with no worktree for this slug are omitted.
 
-**Build the full task-stack `plan`** (needed for ports/mode/projectName — the same plan `bootBackendStack` builds internally, computed fresh here since autofix runs as its own command invocation with no access to the original boot's in-memory result):
+**Build the boot `plan`** (the same plan `/jlu:start-dev --jelou-stack` builds, computed fresh here since autofix runs as its own command invocation):
+
+```bash
+node {plugin-root}/bin/build-boot-plan.mjs --workspace {root} --slug {slug}
+```
+
+Capture it as `{planJson}`. `entry = plan.services.find(e => e.id === argument)` — a common `{ id, cwd, command, readiness, policy, wiredEnv }` plus, when `policy === 'task-isolated'`, `{ projectName, composeFile, ports, overrideYaml }`. This `entry` is reused, unchanged, for every attempt of the loop below.
+
+**Build the target's observer entry** (drives Evidence 2a + the Verify observer pass). Start from `observerPlanFromBootPlan(plan)`, take the target's entry, and — when it is `shared-reuse` — resolve its running dev container id and set it as `container`:
 
 ```bash
 node -e "
-Promise.all([
-  import('{plugin-root}/bin/lib/dev-orchestrator/stack/boot-runtime.mjs'),
-  import('{plugin-root}/bin/lib/dev-orchestrator/stack/task-stack.mjs')
-]).then(([{ dockerOccupiedPorts }, { buildTaskStack }]) => {
-  const fs = require('node:fs');
-  const { spawnSync } = require('node:child_process');
-  const run = (bin, args, opts) => spawnSync(bin, args, { encoding: 'utf8', ...opts });
-  const stack = JSON.parse(process.argv[1]);
-  const slug = process.argv[2];
-  const worktreePaths = JSON.parse(process.argv[3]);
-  const occupied = dockerOccupiedPorts(run);
-  const readEnv = (svc, cwd) => {
-    const p = cwd + '/.env';
-    return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '';
-  };
-  const plan = buildTaskStack({ stack, slug, worktreePaths, occupied, readEnv });
-  process.stdout.write(JSON.stringify(plan));
+import('{plugin-root}/bin/lib/dev-orchestrator/stack/observer-plan.mjs').then(({ observerPlanFromBootPlan }) => {
+  const plan = JSON.parse(process.argv[1]);
+  const target = observerPlanFromBootPlan(plan).find((e) => e.name === process.argv[2]);
+  process.stdout.write(JSON.stringify(target));
 });
-" '{stackJson}' "{slug}" '{worktreePathsJson}'
+" '{planJson}' "{argument}"
 ```
 
-`entry = plan.find(p => p.name === argument)` — `{ name, projectName, cwd, mode, command, composeFile, readiness, ports, overrideYaml, wiredEnv }`. This `entry` is reused, unchanged, for every attempt of the loop below — it is not recomputed mid-loop (the restarts in the Verify step never remove/recreate the container, so its port bindings stay stable).
+If the target `observerEntry.policy === 'shared-reuse'`, resolve its dev container id with `docker compose -f <registryEntry.dev.docker.compose_file> ps -q <registryEntry.dev.docker.service>` (run in `entry.cwd`) and set `observerEntry.container` to it. If that resolves empty → **ESCALATE**: `Could not resolve {argument}'s running dev container — is the stack booted? Run /jlu:start-dev --jelou-stack first.` and stop.
 
-**Adapt the registry entry into the shape `diagnose.mjs` and `fix-target.mjs` expect.** These libraries were built against the legacy `jlu-services.json` service schema (`runtime.type`, `depends_on`, …); every `jelou-stack.json` service is, by construction, a Docker container, so synthesize:
+**Compute the target's reachable host** (for readiness polling in Verify):
+
+```bash
+node -e "
+import('{plugin-root}/bin/lib/boot-engine/host-map.mjs').then(({ hostByService }) => {
+  const out = hostByService({ plan: JSON.parse(process.argv[1]), registry: JSON.parse(process.argv[2]) });
+  process.stdout.write(String(out.hostByService[process.argv[3]]));
+});
+" '{planJson}' '{registryJson}' "{argument}"
+```
+
+Call this `{targetHost}`.
+
+**Adapt the registry entry into the shape `diagnose.mjs` and `fix-target.mjs` expect.** These libraries were built against a service schema with `runtime.type`/`depends_on`; every unified-registry service is a Docker container, so synthesize:
 
 ```js
 const serviceForDiagnose = {
-  name: stackEntry.name,
-  path: stackEntry.path,
-  depends_on: Object.keys(stackEntry.peers || {}),
-  readiness: stackEntry.readiness,
-  runtime: { type: 'docker-compose', compose_file: stackEntry.compose_file, compose_service: stackEntry.compose_service },
+  name: registryEntry.id,
+  path: registryEntry.path,
+  depends_on: Object.keys(registryEntry.peers || {}),
+  readiness: registryEntry.dev.ready_signal,
+  runtime: { type: 'docker-compose', compose_file: registryEntry.dev.docker.compose_file, compose_service: registryEntry.dev.docker.service },
   log_failure_patterns: []
 };
-const allServicesForDiagnose = stack.services.map((s) => ({
-  name: s.name,
+const allServicesForDiagnose = registry.services.map((s) => ({
+  name: s.id,
   path: s.path,
-  readiness: s.readiness,
-  runtime: { type: 'docker-compose', compose_file: s.compose_file, compose_service: s.compose_service }
+  readiness: s.dev.ready_signal,
+  runtime: { type: 'docker-compose', compose_file: s.dev.docker.compose_file, compose_service: s.dev.docker.service }
 }));
 ```
 
