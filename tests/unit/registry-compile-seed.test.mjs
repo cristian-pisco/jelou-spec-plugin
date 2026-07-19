@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { parseYamlLite } from '../../bin/lib/registry/yaml-lite.mjs';
 import { normalizeRegistry } from '../../bin/lib/registry/normalize.mjs';
 import { compileRegistry, registryJsonPath } from '../../bin/compile-registry.mjs';
+import { seedRegistry } from '../../bin/seed-registry.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const TEMPLATE = join(HERE, '..', '..', 'jelou', 'config', 'jelou-registry.template.yaml');
@@ -48,5 +49,19 @@ describe('compileRegistry', () => {
     assert.equal(reg.services[0].id, 'jelou-api');
     assert.ok(reg.services[0].path.endsWith('/jelou-api'));
     assert.ok(existsSync(registryJsonPath(ws)));
+  });
+});
+
+describe('seedRegistry', () => {
+  test('seeds the template when absent, then compiles; re-seed does not clobber', () => {
+    const ws = mkdtempSync(join(tmpdir(), 'jlu-seed-'));
+    const first = seedRegistry({ workspaceRoot: ws });
+    assert.equal(first.created, true);
+    assert.ok(existsSync(join(ws, 'registry', 'jelou-registry.yaml')));
+    assert.ok(existsSync(registryJsonPath(ws)));
+    writeFileSync(join(ws, 'registry', 'jelou-registry.yaml'), 'base_port: 9999\nservices:\n  x:\n    path: ../x\n    dev:\n      launcher: npm\n');
+    const second = seedRegistry({ workspaceRoot: ws });
+    assert.equal(second.created, false);
+    assert.equal(JSON.parse(readFileSync(registryJsonPath(ws), 'utf8')).network.basePort, 9999);
   });
 });
