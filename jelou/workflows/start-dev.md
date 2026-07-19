@@ -162,65 +162,61 @@ If the output starts with `AMBIGUOUS:`, prompt the user the same way as Step 2 o
 
 Build `worktreePaths` — a plain object mapping each registry service `id` to the absolute path of its worktree for this slug, for services that have one (`<service.path>/.worktrees/<slug>`, when that directory exists). Services with no worktree for this slug are omitted; if none have one, `worktreePaths` is `{}`. (`bin/build-boot-plan.mjs` resolves the same worktree paths internally; build this object here too for Steps B0/D that reference it directly.)
 
-### Step B0 — Back up non-worktree backend `.env`s
+### Step B0 — Back up the `.env`s of shared-reuse services that get a wiredEnv
 
-Run this immediately before the Step B boot. It reverses the F2-a footgun where `bootPlan` writes `wiredEnv` into the real repo `.env` of a non-worktree service: back up each such `.env` first so `/jlu:stop-dev` can restore it. Worktree services are intentionally skipped — their checkout is disposable, so the rewrite is harmless there. For each pair `backendEnvBackupPlan` returns, if `path` exists and `backupPath` does not, copy `path`→`backupPath`, then record it into stack-state (`kind: 'backendEnvBackup'`).
+Build the plan once (Step B does this too; reuse the same JSON). A `shared-reuse` plan entry with a non-null `wiredEnv` will have its real repo `.env` rewritten to point a peer var at a worktree peer's task URL — back up each such `.env` first so `/jlu:stop-dev` can restore it. Task-isolated services write to their disposable worktree `.env`, so they are skipped. For each shared-reuse entry with `wiredEnv`, if `<entry.cwd>/.env` exists and its backup does not, copy it and record `kind:'backendEnvBackup'`:
 
 ```bash
 node -e "
 Promise.all([
-  import('{plugin-root}/bin/lib/dev-orchestrator/stack/backend-env-backup.mjs'),
   import('{plugin-root}/bin/lib/dev-orchestrator/stack/stack-state.mjs'),
   import('node:fs')
-]).then(([{ backendEnvBackupPlan }, ss, fs]) => {
-  const services = JSON.parse(process.argv[3]);
-  const worktreePaths = JSON.parse(process.argv[4]);
+]).then(([ss, fs]) => {
+  const plan = JSON.parse(process.argv[3]);
   const opts = { workspaceId: process.argv[1], slug: process.argv[2] };
   let s = ss.readStackState(opts);
-  for (const pair of backendEnvBackupPlan({ services, worktreePaths, backupName: '.env.jelou-local-stack.bak' })) {
-    if (fs.existsSync(pair.path) && !fs.existsSync(pair.backupPath)) {
-      fs.copyFileSync(pair.path, pair.backupPath);
-      s = ss.addBackendEnvBackup(s, { path: pair.path, backupPath: pair.backupPath });
+  for (const entry of plan.services) {
+    if (entry.policy !== 'shared-reuse' || !entry.wiredEnv) continue;
+    const path = entry.cwd + '/.env';
+    const backupPath = entry.cwd + '/.env.jelou-local-stack.bak';
+    if (fs.existsSync(path) && !fs.existsSync(backupPath)) {
+      fs.copyFileSync(path, backupPath);
+      s = ss.addBackendEnvBackup(s, { path, backupPath });
     }
   }
   ss.writeStackState(opts, s);
 });
-" "{workspaceId}" "{slug}" '{registry.servicesJson}' '{worktreePathsJson}'
+" "{workspaceId}" "{slug}" '{planJson}'
 ```
 
-`{registry.servicesJson}` is the JSON-stringified `stack.services` array from the registry; `{worktreePathsJson}` is the same object built in Step A.
+`{planJson}` is the plan JSON from Step B.
 
-### Step B — Boot the stack via the adapter
+### Step B — Build the plan and boot each service
+
+Build the boot plan from the unified registry:
 
 ```bash
-node -e "
-import('{plugin-root}/bin/lib/dev-orchestrator/stack/boot-runtime.mjs').then(async ({ bootBackendStack }) => {
-  const fs = await import('node:fs');
-  const slug = process.argv[1];
-  const worktreePaths = JSON.parse(process.argv[2]);
-  const readEnv = (svc, cwd) => {
-    const p = cwd + '/.env';
-    return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '';
-  };
-  const sleepImpl = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-  const result = await bootBackendStack({
-    registryPath: '{plugin-root}/jelou/references/jelou-stack.json',
-    slug,
-    worktreePaths,
-    readEnv,
-    fetchImpl: fetch,
-    sleepImpl
-  });
-  process.stdout.write(JSON.stringify(result));
-}).catch((e) => { console.error(e.message); process.exit(2); });
-" "{slug}" '{worktreePathsJson}'
+node {plugin-root}/bin/build-boot-plan.mjs --workspace {root} --slug {slug}
 ```
 
-`{worktreePathsJson}` is the JSON-stringified `worktreePaths` object built in Step A.
+This prints `{ services: [entry], network, slug }` — capture it as `{planJson}` (also used by Steps B0, C, C1, D, and the observer). Each `entry` has a `policy` of `task-isolated` or `shared-reuse`.
+
+Then boot each entry by following the `## Plan-driven boot` contract in `jelou/references/env-lifecycle.md`: for each entry, obtain its descriptor from `planEntryToCommands` and execute it —
+
+- **task-isolated**: write `descriptor.files[]` → `docker <descriptor.up>` (idle container, image reused, no rebuild) → if `descriptor.exec` non-null `docker <descriptor.exec>` → poll `descriptor.readiness` (http/port on the allocated host port; stdout_match tails `descriptor.readiness.logPath`) → register `docker <descriptor.teardown>` (ALWAYS). WARN if `descriptor.imageResolved` is false.
+- **shared-reuse**: write `descriptor.files[]` (the `wiredEnv` `.env`) if present → the existing reuse-or-reboot path (`descriptor.launcher`/`command`/`cwd`): probe the developer's container, reuse if healthy, reboot only if unhealthy/stale → poll `descriptor.readiness` (the service's normal dev port) → register `descriptor.teardown` (kill-what-started) ONLY if this run rebooted it.
+
+Track `green` (every entry reached readiness) and `down` (the entries that did not). For each `shared-reuse` entry, resolve its dev container id for the observer (Step below) by running, in the service `cwd`:
+
+```bash
+docker compose -f <dev.docker.compose_file> ps -q <dev.docker.service>
+```
+
+Remember the resulting container id keyed by service id (used when building the observer plan). If it is empty, note that service's observer entry will be dropped (boot still proceeds).
 
 ### Step B1 — Peer-var warning (non-blocking)
 
-`bootBackendStack` wires each service's env via `buildTaskStack`, rewriting a peer's URL only when the peer var already exists in that service's `.env`. Run a non-blocking advisory pass: for each service with a non-empty `peers` map, read its `.env` text and run `missingPeerVars({ envText, peers })`. If any are missing, print a warning; never fail the boot.
+The plan's `wiredEnv` rewrites a peer's URL only when the peer var already exists in that service's `.env`. Run a non-blocking advisory pass over the unified registry services: for each service with a non-empty `peers` map, read its `.env` text and run `missingPeerVars({ envText, peers })`. If any are missing, warn; never fail the boot.
 
 ```bash
 node -e "
@@ -235,15 +231,13 @@ Promise.all([
     const envPath = svc.path + '/.env';
     const envText = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf8') : '';
     const missing = missingPeerVars({ envText, peers });
-    if (missing.length > 0) {
-      process.stdout.write('WARN ' + svc.name + ' ' + missing.join(',') + '\n');
-    }
+    if (missing.length > 0) process.stdout.write('WARN ' + svc.id + ' ' + missing.join(',') + '\n');
   }
 });
 " '{registry.servicesJson}'
 ```
 
-For each `WARN <service> <LIST>` line, surface to the user: `⚠ <service>: declared peer var(s) <LIST> not present in its .env — cross-service rewiring will silently no-op for those (service will keep its existing/prod URL).`
+`{registry.servicesJson}` is `JSON.stringify(registry.services)` from Step A. For each `WARN <service> <LIST>` line, surface: `⚠ <service>: declared peer var(s) <LIST> not present in its .env — cross-service rewiring will silently no-op for those (service will keep its existing/prod URL).`
 
 ### Step C — Report
 
