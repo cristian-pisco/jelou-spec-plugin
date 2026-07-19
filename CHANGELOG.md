@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.298] — 2026-07-19
+
+### Added
+- unified boot engine (consolidation #2) — buildBootPlan + CLI + plan-driven boot contract
+
 ## [0.3.297] — 2026-07-19
 
 ### Added
