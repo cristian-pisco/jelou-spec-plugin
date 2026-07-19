@@ -175,9 +175,11 @@ Capture the JSON `{ green, down, services }` result.
 
 This path assumes the Jelou dev containers' base images already exist (idle images that `sleep infinity` until a command is exec'd into them). If a per-task container cannot be created because its base image was never built, treat that as a one-time local setup precondition to report to the user — do not attempt to auto-build the image.
 
-### Observer — background log watch (F3-a)
+### Observer — background log watch (F3-a) + optional auto-fix (F3-b)
 
 > Once Step C reports `green`, start a backgrounded log observer over the booted stack. This runs independently of Steps D–I (frontend + auth) below — start it right after the backend-boot green report, then proceed with D–I in parallel.
+
+**`--auto-fix` flag.** The `--jelou-stack` boot accepts an optional `--auto-fix` flag alongside it (e.g. `/jlu:start-dev --jelou-stack --auto-fix`). This is opt-in and off by default. When NOT passed, the observer behaves exactly as documented below — it only reports (appends `pattern_match` events) and notifies; nothing auto-edits code. When passed, it additionally drives the bounded `/jlu:autofix <service>` loop (`jelou/workflows/autofix.md`) for any service the observer flags — **`--auto-fix` performs unattended code edits**; it is opt-in specifically because of that. `/jlu:autofix <service>` is always available as a manual, on-demand command regardless of this flag.
 
 The observer needs a `plan` shaped like `{ name, mode, projectName }` per service — the same shape `buildTaskStack` produces internally, but the Step B/C result's `services` array only carries `{ name, url, host, ports }`, not `mode`/`projectName`. Rebuild the observer's `plan` straight from the registry instead of re-deriving ports:
 
@@ -227,7 +229,16 @@ Promise.all([
 
 Retain the backgrounded process's PID (or the `setInterval` handle, if launched in-process) — like Vite (Step F) and the inject server (Step H), it is a long-running handle that must be torn down explicitly; teardown is F3-c and is not wired yet, so do not let it leak past the end of this workflow without telling the user it's still running.
 
-Tell the user: the observer is now watching the booted stack's container logs in the background. Any service it flags can be inspected with the existing `/jlu-diagnose <service>` command, which reads the same events log this observer writes to. **The automatic diagnose-and-fix loop is F3-b and is not wired yet** — this step only reports and notifies; diagnosis today is still the manual `/jlu-diagnose <service>`.
+Tell the user: the observer is now watching the booted stack's container logs in the background. Any service it flags can be inspected with the existing `/jlu-diagnose <service>` command, which reads the same events log this observer writes to. If `--auto-fix` was passed, also tell the user the auto-fix loop is armed for this session and will invoke `/jlu-autofix <service>` automatically on a flagged service, always with an escalation back to them if it can't resolve it cleanly.
+
+**`--auto-fix` wiring (F3-b).** The backgrounded observer script itself only ever appends events and fires OS notifications — a detached background process has no way to invoke the `Agent`/`Bash` tools that `/jlu-autofix` needs, so the auto-fix trigger has to live with the orchestrator (this session), not inside the `setInterval` loop. When `--auto-fix` is set:
+
+1. Maintain, for the lifetime of this session, an in-flight set (`autofixInFlight`, service names currently being auto-fixed) and reuse the SAME `cooldown` object the observer's `onMatch` notifier uses (`Cooldown(effectiveDefaults(config).notification_cooldown_seconds)`), so a service already inside its notification cooldown window is also skipped for auto-fix.
+2. At natural checkpoints during this session (after reporting the boot as green, and again whenever you next act on the user's behalf — e.g. before responding to their next message, or when explicitly asked to check the stack), read the tail of `eventsLogPath({ workspaceId, slug })` for new `pattern_match` events since the last checkpoint.
+3. For each service with a new `pattern_match`: if that service is already in `autofixInFlight`, skip (an autofix run is already active for it — never double-dispatch). If `cooldown.allow('<service>:autofix')` returns `false`, skip (still within cooldown). Otherwise add the service to `autofixInFlight` and dispatch the `/jlu:autofix <service>` workflow (`jelou/workflows/autofix.md`) for it.
+4. When that dispatch reports DONE or ESCALATE (autofix's own bounded loop always ends in one of those two — see `autofix.md`), remove the service from `autofixInFlight` and surface the result to the user. A DONE report closes the loop for that occurrence; an ESCALATE report hands it back to the user exactly as `/jlu:autofix` would if invoked manually.
+
+This keeps the debounce guarantee explicit: at most one autofix run in-flight per service at any time, and no re-fire for a service still inside its notification cooldown window.
 
 **Duplicate-event handling.** The duplicate-event problem from an earlier version of this step is fixed: `prevCaptures` is constructed once, outside the loop (alongside `cooldown`, as above), and threaded into every `runObserverPass` call, so capture state is retained across passes — a failing line matches exactly once on first appearance, and steady state (an unchanged tail) yields no re-match. The one remaining bounded limitation, shared with the existing daemon, is the tail window itself: a failing line older than the `--tail`/`tail -n` window (200 lines) that scrolls off and later reappears at the tail can re-match, since it looks like a new line to a capture diff that only ever sees the last 200 lines.
 

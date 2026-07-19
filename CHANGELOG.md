@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.294] — 2026-07-18
+
+### Added
+- add /jlu-autofix bounded auto-fix loop with --auto-fix opt-in
+
 ## [0.3.293] — 2026-07-18
 
 ### Added
