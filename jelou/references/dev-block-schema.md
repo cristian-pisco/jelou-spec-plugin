@@ -184,7 +184,7 @@ The `dev` block is **strictly additive**. Existing `services.yaml` files without
 
 A separate, per-workspace registry — distinct from `services.yaml` and from `jelou-stack.json` — is now available: `<workspace>/registry/jelou-registry.yaml`. It is authored by a human (or seeded from a canonical template) in a strict YAML subset, **compiled** by `bin/compile-registry.mjs` (or seeded-then-compiled by `bin/seed-registry.mjs`) into `<workspace>/registry/registry.json`, and read at runtime by `readUnifiedRegistry(workspaceRoot)` (`bin/lib/registry/read.mjs`), which just `JSON.parse`s the compiled file. The canonical template ships at `jelou/config/jelou-registry.template.yaml`.
 
-This is **consolidation sub-project #1** — a step toward a single registry format. As of this writing, `/jlu-start-dev` and `/jlu-production-like` are **not yet migrated** onto it: they still read their existing registries (`jlu-services.json`, the `services.yaml` `dev` blocks documented above, and `jelou-stack.json`, respectively). This section documents the new format only; it does not change any existing workflow's behavior.
+This is **consolidation sub-project #1** — the base of a single registry format. As of #3c, `/jlu-start-dev --jelou-stack` and `/jlu-autofix` are migrated onto it (via the plan-driven boot; the F-series `jelou-stack.json` boot was retired). Still pending: `/jlu-production-like` (#4) reads the `services.yaml` `dev` blocks documented above, and the generic tmux `/jlu-start-dev` path reads `jlu-services.json` (deprecated). The mapping table below is retained as historical provenance for how the retired `jelou-stack.json` fields map onto this format.
 
 ### Additive fields (over the `dev` block above)
 
