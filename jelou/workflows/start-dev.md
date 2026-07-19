@@ -241,40 +241,43 @@ Promise.all([
 
 ### Step C — Report
 
-Capture the JSON `{ green, down, services }` result.
-
-- If `green` is `true`: list every service in `services` with its allocated primary host port (`services[].host`, the port `bootStack` resolved from the `primary: true` entry in that service's port list). Report as: `<service>: http://localhost:<host>`. The full per-port list for a service is available at `services[].ports`, if needed.
-- If `down` is non-empty: for each down service, surface its container logs by running (a shell command, not node):
-
-  ```bash
-  docker exec <service>-<slug> tail -n 30 /tmp/<service>-<slug>.dev.log
-  ```
-
-  (the container name and log path both follow the `<service>-<slug>` project-name convention used by the stack). Print the tail output for each down service so the failure is visible before reporting the overall boot as failed.
-
-### Step C1 — Record booted projects
-
-Once Step C reports `green`, rebuild the per-service `{ projectName, cwd, composeFile }` from the registry via `buildTaskStack` and append one `project` mutation per entry with `overrideFile: 'docker-compose.jlu.yml'`, so `/jlu:stop-dev` knows which compose projects to tear down.
+Compute the policy-aware reachable host for each service:
 
 ```bash
 node -e "
-Promise.all([
-  import('{plugin-root}/bin/lib/dev-orchestrator/stack/registry.mjs'),
-  import('{plugin-root}/bin/lib/dev-orchestrator/stack/task-stack.mjs'),
-  import('{plugin-root}/bin/lib/dev-orchestrator/stack/stack-state.mjs')
-]).then(([{ loadStack }, { buildTaskStack }, ss]) => {
-  const stack = loadStack(process.argv[3]);
-  const worktreePaths = JSON.parse(process.argv[4]);
-  const opts = { workspaceId: process.argv[1], slug: process.argv[2] };
-  const plan = buildTaskStack({ stack, slug: process.argv[2], worktreePaths, occupied: [], readEnv: () => '' });
-  let s = ss.readStackState(opts);
-  for (const e of plan) s = ss.addProject(s, { projectName: e.projectName, cwd: e.cwd, composeFile: e.composeFile, overrideFile: 'docker-compose.jlu.yml' });
-  ss.writeStackState(opts, s);
+import('{plugin-root}/bin/lib/boot-engine/host-map.mjs').then(({ hostByService }) => {
+  const plan = JSON.parse(process.argv[1]);
+  const registry = JSON.parse(process.argv[2]);
+  process.stdout.write(JSON.stringify(hostByService({ plan, registry })));
 });
-" "{workspaceId}" "{slug}" "{plugin-root}/jelou/references/jelou-stack.json" '{worktreePathsJson}'
+" '{planJson}' '{registryJson}'
 ```
 
-`occupied`/`readEnv` are irrelevant here — only `projectName`/`cwd`/`composeFile` are read from each entry, and those don't depend on port allocation or env contents, so passing `[]` and `() => ''` is safe.
+This returns `{ hostByService: { <id>: host }, occupied: [host…] }` — `hostByService[id]` is the allocated primary host for a task-isolated service, or the normal dev port for a shared-reuse service. Reuse it in every step below.
+
+- If `green`: report each service as `<service>: http://localhost:<hostByService[service]>`.
+- For each `down` service, surface its log before failing: task-isolated → `docker exec <service>-<slug> tail -n 30 /tmp/<service>-<slug>.dev.log`; shared-reuse → `docker logs --tail 30 <resolved dev container id from Step B>`.
+
+### Step C1 — Record booted task projects
+
+For each `task-isolated` plan entry, append one `project` mutation so `/jlu:stop-dev` tears down its compose project. The fields come straight from the plan entry (no `buildTaskStack`). Shared-reuse services are not compose projects and record nothing (their reused container belongs to the developer).
+
+```bash
+node -e "
+import('{plugin-root}/bin/lib/dev-orchestrator/stack/stack-state.mjs').then((ss) => {
+  const plan = JSON.parse(process.argv[3]);
+  const opts = { workspaceId: process.argv[1], slug: process.argv[2] };
+  let s = ss.readStackState(opts);
+  for (const e of plan.services) {
+    if (e.policy !== 'task-isolated') continue;
+    s = ss.addProject(s, { projectName: e.projectName, cwd: e.cwd, composeFile: e.composeFile, overrideFile: 'docker-compose.jlu.yml' });
+  }
+  ss.writeStackState(opts, s);
+});
+" "{workspaceId}" "{slug}" '{planJson}'
+```
+
+`{registryJson}` is `JSON.stringify(registry)` (the full normalized registry from Step A); `{planJson}` is the plan JSON from Step B.
 
 ### Precondition — base images
 
