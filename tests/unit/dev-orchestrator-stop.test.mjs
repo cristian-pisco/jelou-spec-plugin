@@ -22,7 +22,8 @@ describe('stopDev', () => {
       workspaceId: 'wid', slug: '_global',
       runner: r,
       killServices: false,
-      killDaemon: () => { daemonKilled++; return { killed: true, pid: 9999 }; }
+      killDaemon: () => { daemonKilled++; return { killed: true, pid: 9999 }; },
+      tearDownStack: () => ({ projects: [], killed: [], missing: [], restored: [] })
     });
     assert.equal(daemonKilled, 1);
     assert.equal(out.daemon.killed, true);
@@ -36,7 +37,8 @@ describe('stopDev', () => {
       workspaceId: 'wid', slug: 'foo',
       runner: r,
       killServices: true,
-      killDaemon: () => ({ killed: false })
+      killDaemon: () => ({ killed: false }),
+      tearDownStack: () => ({ projects: [], killed: [], missing: [], restored: [] })
     });
     assert.equal(out.window.killed, true);
     const kw = r.calls.find(c => c[0] === 'kill-window');
@@ -50,8 +52,21 @@ describe('stopDev', () => {
       workspaceId: 'wid', slug: '_global',
       runner: r,
       killServices: false,
-      killDaemon: () => ({ killed: false })
+      killDaemon: () => ({ killed: false }),
+      tearDownStack: () => ({ projects: [], killed: [], missing: [], restored: [] })
     });
     assert.equal(out.daemon.killed, false);
+  });
+
+  test('stopDev runs stack teardown and surfaces its result', () => {
+    const calls = [];
+    const stackResult = { projects: ['a-t1'], killed: [10], missing: [], restored: ['/f/.env'] };
+    const out = stopDev({
+      workspaceId: '/ws', slug: 't1',
+      killDaemon: () => ({ killed: false }),
+      tearDownStack: (o) => { calls.push(o); return stackResult; }
+    });
+    assert.deepEqual(calls, [{ workspaceId: '/ws', slug: 't1' }]);
+    assert.deepEqual(out.stack, stackResult);
   });
 });

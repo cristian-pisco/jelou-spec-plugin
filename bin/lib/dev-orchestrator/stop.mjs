@@ -6,6 +6,7 @@
 import { killWindow } from './tmux.mjs';
 import { killDaemon as realKillDaemon } from './daemon-spawn.mjs';
 import { truncateEventsLog } from './state-daemon.mjs';
+import { tearDownStack as realTearDownStack } from './stack/stack-teardown.mjs';
 
 function windowNameFor(slug) {
   return `jlu-dev-${slug || '_global'}`;
@@ -15,9 +16,11 @@ export function stopDev({
   workspaceId, slug,
   runner,
   killServices = false,
-  killDaemon = realKillDaemon
+  killDaemon = realKillDaemon,
+  tearDownStack = realTearDownStack
 }) {
   const daemon = killDaemon({ workspaceId, slug });
+  const stack = tearDownStack({ workspaceId, slug });
   truncateEventsLog({ workspaceId, slug });
   const windowResult = { killed: false };
   if (killServices) {
@@ -26,5 +29,5 @@ export function stopDev({
     windowResult.killed = true;
     windowResult.target = target;
   }
-  return { daemon, window: windowResult };
+  return { daemon, stack, window: windowResult };
 }
