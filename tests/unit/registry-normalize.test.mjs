@@ -23,7 +23,7 @@ describe('normalizeRegistry', () => {
       }
     };
     const out = normalizeRegistry(raw, { resolve });
-    assert.deepEqual(out.network, { composeNetworkAlias: 'app-network', basePort: 3100 });
+    assert.deepEqual(out.network, { composeNetworkAlias: 'app-network', basePort: 3100, authInjectPort: null });
     assert.equal(out.services.length, 1);
     assert.deepEqual(out.services[0], {
       id: 'jelou-api',
@@ -43,7 +43,7 @@ describe('normalizeRegistry', () => {
     };
     const out = normalizeRegistry(raw, { resolve });
     assert.equal(out.auth.cookieName, 'jelou_auth');
-    assert.deepEqual(out.auth.verify, { 'jelou-api': '/v1/company' });
+    assert.deepEqual(out.auth.verify, [{ service: 'jelou-api', path: '/v1/company' }]);
     assert.equal(out.frontend.path, '/ws/jelou-apps');
     assert.deepEqual(out.frontend.envLocal, { NX_A: { service: 'jelou-api', suffix: '' } });
   });
@@ -55,5 +55,25 @@ describe('normalizeRegistry', () => {
     assert.deepEqual(out.services[0].peers, {});
     assert.deepEqual(out.services[0].depends_on, []);
     assert.deepEqual(out.services[0].dev.extra_ports, []);
+  });
+
+  test('network carries authInjectPort from auth_inject_port', () => {
+    const out = normalizeRegistry({ services: {}, base_port: 3100, auth_inject_port: 7788 }, { resolve });
+    assert.equal(out.network.authInjectPort, 7788);
+  });
+
+  test('auth.verify map is normalized to an ordered array', () => {
+    const raw = { services: {}, auth: { cookieName: 'c', verify: { 'jelou-api': '/v1/company', 'dashboard-server': '/api/v1/auth/me' } } };
+    const out = normalizeRegistry(raw, { resolve });
+    assert.deepEqual(out.auth.verify, [
+      { service: 'jelou-api', path: '/v1/company' },
+      { service: 'dashboard-server', path: '/api/v1/auth/me' }
+    ]);
+  });
+
+  test('auth without verify keeps verify undefined; no authInjectPort -> null', () => {
+    const out = normalizeRegistry({ services: {}, auth: { cookieName: 'c' } }, { resolve });
+    assert.equal(out.auth.verify, undefined);
+    assert.equal(out.network.authInjectPort, null);
   });
 });

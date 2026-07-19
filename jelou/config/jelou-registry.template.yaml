@@ -237,6 +237,7 @@ services:
         pattern: "Nest application successfully started"
 
 base_port: 3100
+auth_inject_port: 7788
 compose_network_alias: app-network
 
 auth:
