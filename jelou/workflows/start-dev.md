@@ -111,9 +111,9 @@ If `skipped` is non-empty, list the skipped services with reasons.
 
 ## Task-aware Jelou-stack boot (--jelou-stack)
 
-> Purpose: boot the registered Jelou backend services as per-task, per-service docker containers keyed by the active task slug — each service gets its own compose project (`<service>-<slug>`), its own allocated host ports, and peer env wiring — instead of the generic tmux pane path above. Use this path when the user passes `--jelou-stack` (or equivalent) to `/jlu:start-dev`, or asks to boot the Jelou backend stack for the current task.
+> Purpose: boot the registered Jelou backend services for the active task — services that have a worktree for this slug boot as fresh per-task docker containers (`<service>-<slug>`, own allocated host ports, peer env wiring); services on main branch REUSE the developer's healthy running container on its normal dev port. Use this path when the user passes `--jelou-stack` (or equivalent) to `/jlu:start-dev`, or asks to boot the Jelou backend stack for the current task.
 
-This path reads from the canonical registry at `{plugin-root}/jelou/references/jelou-stack.json`, not from `jlu-services.json`. It does not touch tmux.
+This path reads the per-workspace **unified registry** (`readUnifiedRegistry(<workspaceRoot>)`), boots via `bin/build-boot-plan.mjs` + the plan-driven boot contract in `jelou/references/env-lifecycle.md` (`## Plan-driven boot`), and does not touch tmux. Per service the plan chooses `task-isolated` (worktree present) or `shared-reuse` (main branch) — see the env-lifecycle contract for how each is executed.
 
 ### Stack-state recording
 
@@ -134,9 +134,20 @@ import('{plugin-root}/bin/lib/dev-orchestrator/stack/stack-state.mjs').then((m) 
 " "{workspaceId}" "{slug}" '{mutationJson}'
 ```
 
-Steps B0 and C below record several mutations in one pass and use their own fuller scripts; Steps E, F, H, and the observer each record one mutation and reference this pattern with a concrete `{mutationJson}`. `{workspaceId}` is the value captured in Step 1.
+Steps B0 and C1 below record several mutations in one pass and use their own fuller scripts; Steps E, F, H, and the observer each record one mutation and reference this pattern with a concrete `{mutationJson}`. `{workspaceId}` is the value captured in Step 1.
 
-### Step A — Resolve the task slug and worktree paths
+### Step A — Resolve the registry, task slug, and worktree paths
+
+First ensure the unified registry exists and is compiled for this workspace (both idempotent — safe every run), then read it:
+
+```bash
+node {plugin-root}/bin/seed-registry.mjs --workspace {root}
+node {plugin-root}/bin/compile-registry.mjs --workspace {root}
+```
+
+Read the normalized registry with `readUnifiedRegistry({root})` (`{plugin-root}/bin/lib/registry/read.mjs`) — this yields `{ services, auth, frontend, network }` and is the source for every `{registry.*}` substitution below (there is no more `jelou-stack.json` on this path). Each `service` carries `{ id, path (resolved absolute), peers, dev }`; the `dev` block carries `docker.{service,compose_file}`, `port_env`, `extra_ports`, `ports` (env→internal), `ready_signal`, `teardown`.
+
+Then resolve the slug:
 
 ```bash
 node -e "
@@ -149,7 +160,7 @@ import('{plugin-root}/bin/lib/dev-orchestrator/task-context.mjs').then(({ resolv
 
 If the output starts with `AMBIGUOUS:`, prompt the user the same way as Step 2 of the generic path above.
 
-Build `worktreePaths` — a plain object mapping each registry service `name` to the absolute path of its worktree for this slug, for services that have one (`<serviceRepoPath>/.worktrees/<slug>`, when that directory exists). Services with no worktree for this slug are omitted; if none of the registered services have a worktree for this slug, `worktreePaths` is `{}`.
+Build `worktreePaths` — a plain object mapping each registry service `id` to the absolute path of its worktree for this slug, for services that have one (`<service.path>/.worktrees/<slug>`, when that directory exists). Services with no worktree for this slug are omitted; if none have one, `worktreePaths` is `{}`. (`bin/build-boot-plan.mjs` resolves the same worktree paths internally; build this object here too for Steps B0/D that reference it directly.)
 
 ### Step B0 — Back up non-worktree backend `.env`s
 
