@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.297] — 2026-07-19
+
+### Added
+- unified registry (consolidation #1) — schema, template, seeder, compiler, reader
+
 ## [0.3.296] — 2026-07-18
 
 ### Fixed
