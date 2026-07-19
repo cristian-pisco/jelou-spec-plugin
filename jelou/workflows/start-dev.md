@@ -2,6 +2,8 @@
 
 > Purpose: Launch all registered services in a TMUX window dedicated to the active task slug.
 
+> **Deprecated:** the default tmux path (Steps 1–6 below) is deprecated in favor of the plan-driven `--jelou-stack` boot (see "Task-aware Jelou-stack boot" below), which reuses the developer's docker containers and wires task worktrees. The tmux path still works and `jlu-services.json` is untouched, but new work should pass `--jelou-stack`.
+
 Inputs:
 - `cwd`: the user's current working directory.
 

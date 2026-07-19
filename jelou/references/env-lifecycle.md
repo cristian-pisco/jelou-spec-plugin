@@ -284,6 +284,4 @@ it is ALWAYS registered for teardown:
 This mirrors the F3-c stack-state teardown (`stack-teardown.mjs`), which #3b feeds by recording
 each plan `projectName` into stack-state.
 
-This path supersedes the F-series execution modules (`boot-commands` / `boot-exec` /
-`boot-runtime` / `boot-stack` / `task-stack`); #3b (`start-dev`) and #3c (`autofix` + deletions)
-retire them.
+This path is the sole boot substrate: the F-series execution modules (`boot-commands` / `boot-exec` / `boot-stack` / `boot-runtime` / `task-stack` / `readiness-url` / `registry`) and `jelou-stack.json` were retired in consolidation #3c; `start-dev` (#3b) and `autofix` (#3c) both drive this plan.

@@ -1,6 +1,6 @@
-# Canonical Jelou unified-registry template.
-# Ported from jelou/references/jelou-stack.json, with relative (workspace-sibling)
-# paths so this file has no machine-specific absolutes. Task boot engines resolve
+# Canonical unified-registry template (relative, workspace-sibling paths). The legacy
+# jelou-stack.json it superseded was retired in consolidation #3c.
+# Task boot engines resolve
 # each `path` against the workspace root at runtime.
 
 services:
