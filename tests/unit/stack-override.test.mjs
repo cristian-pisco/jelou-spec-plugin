@@ -32,4 +32,57 @@ describe('renderOverride', () => {
   test('projectName helper joins name and slug', () => {
     assert.equal(renderOverride({ service, slug: 's', allocations, networkAlias: 'app-network' }).startsWith('name: api-gateway-service-s\n'), true);
   });
+
+  test('exec service injects image, pull_policy, build-reset, and idles the entrypoint', () => {
+    const yaml = renderOverride({
+      service: { name: 'jelou-api', compose_service: 'app', mode: 'exec' },
+      slug: 't42',
+      allocations: [{ host: 3100, internal: 8080 }],
+      networkAlias: 'app-network',
+      image: 'jelou-api-app'
+    });
+    assert.equal(yaml, [
+      'name: jelou-api-t42', '',
+      'services:',
+      '  app:',
+      '    container_name: jelou-api-t42',
+      '    image: jelou-api-app',
+      '    pull_policy: never',
+      '    build: !reset null',
+      '    entrypoint: ["sleep", "infinity"]',
+      '    command: !reset null',
+      '    ports: !override',
+      '      - "3100:8080"',
+      '    networks:',
+      '      app-network:',
+      '        aliases:',
+      '          - jelou-api-t42', ''
+    ].join('\n'));
+  });
+
+  test('non-exec service injects image but keeps its real command (no idle lines)', () => {
+    const yaml = renderOverride({
+      service: { name: 'agent-harness-service', compose_service: 'app', mode: 'start' },
+      slug: 't42',
+      allocations: [{ host: 3100, internal: 8080 }],
+      networkAlias: 'app-network',
+      image: 'agent-harness-service-app'
+    });
+    assert.ok(yaml.includes('    image: agent-harness-service-app'));
+    assert.ok(!yaml.includes('entrypoint'));
+    assert.ok(!yaml.includes('command:'));
+  });
+
+  test('no image resolved: omit image lines but still idle an exec service', () => {
+    const yaml = renderOverride({
+      service: { name: 'jelou-api', compose_service: 'app', mode: 'exec' },
+      slug: 't42',
+      allocations: [{ host: 3100, internal: 8080 }],
+      networkAlias: 'app-network',
+      image: null
+    });
+    assert.ok(!yaml.includes('image:'));
+    assert.ok(!yaml.includes('pull_policy'));
+    assert.ok(yaml.includes('    entrypoint: ["sleep", "infinity"]'));
+  });
 });
