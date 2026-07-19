@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.299] — 2026-07-19
+
+### Added
+- plan-driven boot executor (consolidation #3a)
+
 ## [0.3.298] — 2026-07-19
 
 ### Added
