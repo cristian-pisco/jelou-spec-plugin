@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.300] — 2026-07-19
+
+### Added
+- start-dev --jelou-stack on the plan-driven boot (consolidation #3b)
+
 ## [0.3.299] — 2026-07-19
 
 ### Added
