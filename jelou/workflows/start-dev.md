@@ -367,7 +367,7 @@ This keeps the debounce guarantee to what actually holds: at most one autofix ru
 
 ### Step D — Allocate frontend + inject host ports
 
-Once the backend boot report is green, collect the host ports already in use: every `services[].host` and every `services[].ports[].host` from the Step B/C result. Union them into a single `occupied` set.
+`occupied` and `hostByService` come from the Step C `hostByService({ plan, registry })` result — `occupied` already holds every task-isolated allocated host. Allocate the frontend and inject-server ports against it, using `network.basePort` and `network.authInjectPort` from the registry:
 
 ```bash
 node -e "
@@ -378,16 +378,14 @@ import('{plugin-root}/bin/lib/dev-orchestrator/stack/ports.mjs').then(({ allocat
   const inject = allocateHostPorts({ mappings: [{ internal: 0 }], occupied, basePort: Number(process.argv[3]) })[0].host;
   process.stdout.write(JSON.stringify({ frontendPort: frontend, injectPort: inject }));
 });
-" '{occupiedPortsJson}' '{registry.frontend.port}' '{registry.authInjectPort}'
+" '{occupiedJson}' '{registry.network.basePort}' '{registry.network.authInjectPort}'
 ```
 
-`process.argv` values are always strings, so both `basePort` arguments must be coerced with `Number(...)` — `allocateHostPorts` compares `basePort` against a `Set` of numbers and does `next += 1`; a string `basePort` silently defeats collision-skipping and would string-concatenate instead of incrementing once a collision is hit.
-
-Also build `hostByService` — a plain object mapping each Step B/C `services[].name` to its `services[].host` — reused by every step below.
+`{occupiedJson}` is the `occupied` array from Step C. `process.argv` values are strings, so both basePort arguments must be coerced with `Number(...)` — a string `basePort` defeats collision-skipping. `hostByService` (from Step C) is the name→host map reused by every step below.
 
 ### Step E — Rewrite the frontend `.env`
 
-Back up `<frontend.path>/<frontend.envFile>` to `<frontend.path>/<frontend.envBackup>` (registry `frontend.envBackup`) if that backup does not already exist. Read the current `.env` contents (empty string if the file is absent), then:
+Back up `registry.frontend.path`/`registry.frontend.envFile` to `registry.frontend.path`/`registry.frontend.envBackup` if that backup does not already exist — these fields come from the unified registry `frontend` block (Step A). Read the current `.env` contents (empty string if the file is absent), then:
 
 ```bash
 node -e "
@@ -400,10 +398,12 @@ import('{plugin-root}/bin/lib/dev-orchestrator/stack/frontend-env.mjs').then(({ 
   });
   process.stdout.write(out);
 });
-" "{currentEnvText}" '{registry.frontend.envLocalJson}' '{registry.frontend.envBlankJson}' '{hostByServiceJson}'
+" "{currentEnvText}" '{JSON.stringify(registry.frontend.envLocal)}' '{JSON.stringify(registry.frontend.envBlank)}' '{JSON.stringify(hostByService)}'
 ```
 
-Write the result back over `<frontend.path>/<frontend.envFile>`.
+The substitution values come from the unified registry `frontend` block (Step A) and the Step C `hostByService` map: `JSON.stringify(registry.frontend.envLocal)`, `JSON.stringify(registry.frontend.envBlank)`, and `JSON.stringify(hostByService)`.
+
+Write the result back over `registry.frontend.path`/`registry.frontend.envFile`.
 
 Once the `.env` has been backed up and rewritten, record the backup into stack-state (`kind: 'frontendEnv'`) so `/jlu:stop-dev` can restore the original:
 
@@ -419,7 +419,7 @@ import('{plugin-root}/bin/lib/dev-orchestrator/stack/stack-state.mjs').then((m) 
 " "{workspaceId}" "{slug}" '{"kind":"frontendEnv","value":{"path":"<frontend.path>","envFile":"<frontend.envFile>","envBackup":"<frontend.envBackup>"}}'
 ```
 
-`<frontend.path>`, `<frontend.envFile>`, and `<frontend.envBackup>` come from the registry's `frontend` block.
+`registry.frontend.path`, `registry.frontend.envFile`, and `registry.frontend.envBackup` come from the unified registry's `frontend` block (Step A).
 
 ### Step F — Boot Vite on the host
 
@@ -440,6 +440,8 @@ import('{plugin-root}/bin/lib/dev-orchestrator/stack/stack-state.mjs').then((m) 
 ```
 
 ### Step G — Login for the auth cookie
+
+The `auth` block and `hostByService` come from Step A (`readUnifiedRegistry`) and Step C respectively; `resolveAuthUrls` consumes the normalized `auth.verify` array and `auth.dashboardService`'s policy-aware host.
 
 Read `E2E_USER_EMAIL` / `E2E_USER_PASSWORD` from `<auth.credentials.envFile>` — never print these values or the resulting cookie. Resolve the auth URLs, then perform the login, passing the password via the `E2E_PASSWORD` environment variable rather than `process.argv` (argv is visible in `ps` output and in the logged Bash tool-call input; env vars are not):
 
