@@ -1,0 +1,242 @@
+# Canonical Jelou unified-registry template.
+# Ported from jelou/references/jelou-stack.json, with relative (workspace-sibling)
+# paths so this file has no machine-specific absolutes. Task boot engines resolve
+# each `path` against the workspace root at runtime.
+
+services:
+  jelou-api:
+    path: ../jelou-api
+    stack: nestjs
+    peers:
+      chatbot-server: CHATBOT_SERVER_URL
+    dev:
+      launcher: docker-exec
+      docker:
+        service: app
+        compose_file: docker-compose.yml
+      command: "yarn start:dev"
+      port_env: APP_PORT
+      extra_ports: [SUPERVISOR_PORT]
+      ready_signal:
+        type: stdout_match
+        pattern: "Nest application successfully started"
+
+  jelou-auth-service:
+    path: ../auth-service
+    stack: nestjs
+    peers:
+      jelou-api: JELOU_API_BASE_URL
+    dev:
+      launcher: docker-exec
+      docker:
+        service: app
+        compose_file: docker-compose.yml
+      command: "yarn start:dev"
+      port_env: APP_PORT
+      extra_ports: [GRPC_PORT, DEBUG_PORT]
+      ready_signal:
+        type: stdout_match
+        pattern: "Nest application successfully started"
+
+  api-gateway-service:
+    path: ../api-gateway-service
+    stack: nestjs
+    peers:
+      jelou-auth-service: GRPC_AUTH_SERVER_URL
+      marketplace-service: MARKETPLACE_SERVER_URL
+      jelou-functions-api: JELOU_FUNCTIONS_API_URL
+      dashboard-server: DASHBOARD_SERVER_URL
+      chatbot-server: CHATBOT_SERVER_URL
+    dev:
+      launcher: docker-exec
+      docker:
+        service: app
+        compose_file: docker-compose.yml
+      command: "yarn start:dev"
+      port_env: APP_PORT
+      extra_ports: [DEBUG_PORT]
+      ready_signal:
+        type: stdout_match
+        pattern: "Nest application successfully started"
+
+  dashboard-server:
+    path: ../dashboard-server
+    stack: nestjs
+    dev:
+      launcher: docker-exec
+      docker:
+        service: app
+        compose_file: docker-compose.yml
+      command: "yarn start:dev"
+      port_env: APP_PORT
+      extra_ports: [SUPERVISOR_PORT]
+      ready_signal:
+        type: stdout_match
+        pattern: "Nest application successfully started"
+
+  chatbot-server:
+    path: ../chatbot-server
+    stack: nestjs
+    peers:
+      jelou-api: JELOU_API_URL
+      workflows-service: JELOU_WORKFLOW_URL
+      orchestrator-service: POCKET_SERVICE_URL
+    dev:
+      launcher: docker-exec
+      docker:
+        service: chatbot_app
+        compose_file: docker-compose.yml
+      command: "npm run start:dev"
+      port_env: APP_PORT
+      ready_signal:
+        type: stdout_match
+        pattern: "Nest application successfully started"
+
+  workflows-service:
+    path: ../workflows-service
+    stack: nestjs
+    dev:
+      launcher: docker-exec
+      docker:
+        service: app
+        compose_file: docker-compose.yml
+      command: "yarn start:dev"
+      port_env: APP_PORT
+      extra_ports: [DEBUG_PORT]
+      ready_signal:
+        type: stdout_match
+        pattern: "Nest application successfully started"
+
+  workflow-engine-service:
+    path: ../workflow-engine-service
+    stack: nestjs
+    peers:
+      jelou-api: JELOU_API_SERVER_URL
+      chatbot-server: CHATBOT_SERVER_URL
+      workflows-service: WORKFLOWS_SERVER_URL
+      orchestrator-service: ROUTER_SERVER_URL
+    dev:
+      launcher: docker-exec
+      docker:
+        service: app
+        compose_file: docker-compose.yml
+      command: "yarn start:dev"
+      port_env: APP_PORT
+      extra_ports: [DEBUG_PORT]
+      ready_signal:
+        type: stdout_match
+        pattern: "Nest application successfully started"
+
+  orchestrator-service:
+    path: ../orchestrator-service
+    stack: nestjs
+    dev:
+      launcher: docker-exec
+      docker:
+        service: app
+        compose_file: docker-compose.yml
+      command: "npm run start:dev"
+      port_env: APP_PORT
+      extra_ports: [DEBUG_PORT]
+      ready_signal:
+        type: stdout_match
+        pattern: "Nest application successfully started"
+
+  marketplace-service:
+    path: ../marketplace-service
+    stack: nestjs
+    peers:
+      jelou-api: JELOU_API_SERVER_URL
+      orchestrator-service: ORCHESTRATOR_API_SERVER_URL
+      workflows-service: WORKFLOW_API_SERVER_URL
+    dev:
+      launcher: docker-exec
+      docker:
+        service: app
+        compose_file: docker-compose.yml
+      command: "pnpm start:dev"
+      port_env: APP_PORT
+      extra_ports: [DEBUG_PORT]
+      ready_signal:
+        type: stdout_match
+        pattern: "Nest application successfully started"
+
+  agent-harness-service:
+    path: ../agent-harness-service
+    stack: nestjs
+    dev:
+      launcher: npm
+      docker:
+        service: app
+        compose_file: docker-compose.yml
+      command: "pnpm dev"
+      port_env: PORT
+      ready_signal:
+        type: stdout_match
+        pattern: "Nest application successfully started"
+
+  mcp-server:
+    path: ../jelou-cli/packages/mcp-server
+    stack: nestjs
+    dev:
+      launcher: docker-exec
+      docker:
+        service: mcp-server
+        compose_file: docker-compose.dev.yml
+      command: "cd packages/mcp-server && pnpm dev"
+      port_env: PORT
+      ready_signal:
+        type: stdout_match
+        pattern: "Nest application successfully started"
+
+  jelou-functions-api:
+    path: ../jelou-functions-api
+    stack: nestjs
+    dev:
+      launcher: docker
+      docker:
+        service: app
+        compose_file: docker-compose.yml
+      command: "docker compose up -d app"
+      port_env: APP_PORT
+      ready_signal:
+        type: stdout_match
+        pattern: "Nest application successfully started"
+
+base_port: 3100
+compose_network_alias: app-network
+
+auth:
+  cookieName: jelou_auth
+  dashboardService: dashboard-server
+  loginPath: /api/v1/auth/login
+  verifyMfaPath: /api/v1/auth/login/verify_mfa
+  otpFallback:
+    redisContainer: redis
+    redisDb: 0
+    keyPrefix: "2fa-code-"
+  credentials:
+    envFile: ../jelou-apps/.env.e2e
+    emailVar: E2E_USER_EMAIL
+    passwordVar: E2E_USER_PASSWORD
+  verify:
+    jelou-api: /v1/company
+    dashboard-server: /api/v1/auth/me
+
+frontend:
+  path: ../jelou-apps
+  command: "yarn start --host 127.0.0.1"
+  port: 5175
+  envFile: .env
+  envBackup: .env.jelou-local-stack.bak
+  envLocal:
+    NX_REACT_APP_JELOU_API_BASE:
+      service: jelou-api
+      suffix: ""
+    NX_REACT_APP_DASHBOARD_SERVER_BASE:
+      service: dashboard-server
+      suffix: "/api"
+    NX_REACT_APP_API_GATEWAY_BASE_URL:
+      service: api-gateway-service
+      suffix: ""
+  envBlank: [NX_REACT_APP_API_GATEWAY_TEMPORAL_API_KEY]
