@@ -80,4 +80,14 @@ describe('buildBootPlan policy', () => {
     const plan = buildBootPlan({ registry: r, slug: 't1', worktreePaths: { 'jelou-api': '/wt/jelou-api' }, occupied: [], resolveImage, readEnv });
     assert.deepEqual(plan.services.find((s) => s.id === 'jelou-api').readiness, { type: 'http_200', path: '/health', port: 3100 });
   });
+
+  test('task-isolated entry carries composeFile; shared-reuse does not', () => {
+    const plan = buildBootPlan({ registry: reg(), slug: 't1', worktreePaths: { 'jelou-api': '/wt/jelou-api' }, occupied: [], resolveImage, readEnv });
+    const api = plan.services.find((s) => s.id === 'jelou-api');
+    const chatbot = plan.services.find((s) => s.id === 'chatbot-server');
+    assert.equal(api.policy, 'task-isolated');
+    assert.equal(api.composeFile, 'docker-compose.yml');
+    assert.equal(chatbot.policy, 'shared-reuse');
+    assert.equal(chatbot.composeFile, undefined);
+  });
 });

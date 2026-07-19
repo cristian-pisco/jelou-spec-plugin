@@ -61,6 +61,7 @@ export function buildBootPlan({ registry, slug, worktreePaths, occupied = [], re
     return {
       ...entry,
       projectName,
+      composeFile: dev.docker.compose_file,
       image,
       imageResolved: !!image,
       ports,
