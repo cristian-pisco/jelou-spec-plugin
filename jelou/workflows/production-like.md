@@ -114,11 +114,88 @@ No seed system: reuses `dev` blocks + `data_isolation: per-run`. Testcontainers 
    `BROWSER_OVERHEAD_MB=$([ "$scope" = fullstack ] && echo 1300 || echo 0)`. Honor
    `--force` / `--allow-shared-data`.
 
+### Phase 2.0 — Task-isolated plan for eligible worktree backends
+
+Before the boot loop, decide which boot-order services boot **task-isolated** (a fresh namespaced
+`<svc>-<slug>` container from worktree code + cross-service `wireEnv`) versus the unchanged
+reuse-or-reboot below. A service is eligible only if it is `docker-exec` AND has a worktree for this
+slug AND is present in the unified registry (`readUnifiedRegistry` — the sole source of the
+`ports`/`peers`/`network` fields the override needs). Partition the boot order:
+
+```bash
+node -e "
+Promise.all([
+  import('{plugin-root}/bin/lib/boot-engine/task-isolated-eligibility.mjs'),
+  import('{plugin-root}/bin/lib/registry/read.mjs')
+]).then(([{ partitionBootOrder }, { readUnifiedRegistry }]) => {
+  const services = JSON.parse(process.argv[1]);
+  const worktreePaths = JSON.parse(process.argv[2]);
+  let ids = new Set();
+  try { ids = new Set(readUnifiedRegistry(process.argv[3]).services.map((s) => s.id)); } catch (e) {}
+  process.stdout.write(JSON.stringify(partitionBootOrder({ services, worktreePaths, unifiedRegistryIds: ids })));
+});
+" '{bootOrderServicesJson}' '{worktreePathsJson}' "{root}"
+```
+
+`{bootOrderServicesJson}` is the boot-order services as `[{ id, dev: { launcher } }]`; `{worktreePathsJson}`
+maps each service id with a resolved worktree to its path. For each id in `warnWorktreeNotIsolated`,
+print: `⚠ <svc>: has a worktree but is not in the unified registry — booting main code (worktree not
+isolated this run).`
+
+If `eligible` is empty, skip the rest of this subsection — there is no plan; Phase 2 boots exactly as
+before. Otherwise build the plan for the eligible set (passing ONLY the eligible ids as
+`worktreePaths`, so `buildBootPlan` marks exactly them `task-isolated` and everyone else `shared-reuse`
+with a `wiredEnv` iff they peer an eligible service):
+
+```bash
+node -e "
+Promise.all([
+  import('{plugin-root}/bin/build-boot-plan.mjs'),
+  import('{plugin-root}/bin/lib/dev-orchestrator/stack/ports.mjs')
+]).then(([{ buildPlanForWorkspace }, { parseOccupiedPorts }]) => {
+  const { spawnSync } = require('node:child_process');
+  const ps = spawnSync('docker', ['ps', '--format', '{{.Ports}}'], { encoding: 'utf8' });
+  const occupied = [...parseOccupiedPorts(ps.stdout || '')];
+  const eligibleWorktrees = JSON.parse(process.argv[2]);
+  const plan = buildPlanForWorkspace({ workspaceRoot: process.argv[1], slug: process.argv[3], worktreePaths: eligibleWorktrees, occupied });
+  process.stdout.write(JSON.stringify(plan));
+});
+" "{root}" '{eligibleWorktreePathsJson}' "{slug}"
+```
+
+Capture this as `{planJson}`. `{eligibleWorktreePathsJson}` is `{ <id>: <worktreePath> }` for the
+`eligible` ids only. Each plan entry is either `policy: 'task-isolated'` (an eligible service) or
+`policy: 'shared-reuse'` (another unified-registry backend, carrying a non-null `wiredEnv` only when it
+peers an eligible service).
+
+If any eligible service booted task-isolated AND `ui_services` is non-empty, ALSO print (once):
+`⚠ UI E2E will hit the MAIN host port of task-isolated backend(s) <eligible ids> — frontend→
+namespaced-backend wiring is not yet supported (this covers backend↔backend only).`
+
 ### Phase 2 — Boot once
 
 10. **Boot the Service Boot Order with a per-service reuse-or-reboot decision.** Run
     `boot(Service Boot Order)` per `jelou/references/env-lifecycle.md`, logging to
-    `$TASK_DIR/.production-like/launch-<service>.log`. For each service in the order, the FIRST
+    `$TASK_DIR/.production-like/launch-<service>.log`.
+    **Per-service plan branch (from Phase 2.0).** Before the reuse-or-reboot decision below, check
+    the service's entry in `{planJson}` (match by `id`):
+    - **Task-isolated entry** (`policy: 'task-isolated'`): boot it via the `## Plan-driven boot`
+      **task-isolated** steps in `jelou/references/env-lifecycle.md` — write `entry.overrideYaml` to
+      `<entry.cwd>/docker-compose.jlu.yml` and `entry.wiredEnv` (if non-null) to `<entry.cwd>/.env`;
+      `docker compose -p <entry.projectName> -f <entry.composeFile> -f docker-compose.jlu.yml up -d`;
+      `docker exec -d <entry.projectName> sh -lc "cd /app && <entry.command> > /tmp/<entry.projectName>.dev.log 2>&1"`;
+      wait readiness on the allocated host port (`entry.readiness.port`); register
+      `BOOTED+=(<service>)` and `TEARDOWN_CMD[<service>]="docker compose -p <entry.projectName> down"`.
+      WARN if `entry.imageResolved` is false. Then SKIP the reuse-or-reboot decision below for this
+      service (it is fully booted).
+    - **Shared-reuse entry with a non-null `entry.wiredEnv`** (a main-branch backend peering an
+      eligible one): back up `<entry.cwd>/.env` first (`bin/lib/dev-orchestrator/stack/backend-env-backup.mjs`,
+      recorded so teardown restores it), write `entry.wiredEnv` to `<entry.cwd>/.env`, THEN fall through
+      to the reuse-or-reboot decision below (unchanged) so it picks up the rewritten peer URL.
+    - **No plan entry, or a plan entry with a null `wiredEnv`**: fall through to the reuse-or-reboot
+      decision below, unchanged.
+
+    For each service in the order, the FIRST
     action — **before launching it** — is the readiness probe from
     `jelou/references/env-lifecycle.md` (`http_200`/`port_open` on the mapped host port), and the
     probe decides whether the boot step launches it at all:
