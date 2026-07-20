@@ -142,6 +142,30 @@ describe('buildBootPlan policy', () => {
     assert.ok(a.wiredEnv.startsWith('JLUENV1:'));
     assert.ok(unmaskWiredEnv(a.wiredEnv).includes('b-t1:'));
   });
+
+  test('resolves declared runtime mounts from canonical when present', () => {
+    const r = reg(); r.services[0].runtimeMounts = ['config/secrets'];
+    const exists = (p) => p === '/repo/jelou-api/config/secrets';
+    const plan = buildBootPlan({ registry: r, slug: 't1', worktreePaths: { 'jelou-api': '/wt/jelou-api' }, occupied: [], resolveImage: () => 'img', exists });
+    const a = plan.services.find((s) => s.id === 'jelou-api');
+    assert.deepEqual(a.runtimeMounts, [{ source: '/repo/jelou-api/config/secrets', target: '/app/config/secrets' }]);
+    assert.match(a.overrideYaml, /\/repo\/jelou-api\/config\/secrets:\/app\/config\/secrets/);
+  });
+
+  test('flags depsDiverged for a worktree dep missing from canonical node_modules', () => {
+    const readJson = () => ({ dependencies: { '@x/y': '1', 'ok': '1' } });
+    const exists = (p) => p === '/repo/jelou-api/node_modules/ok' || p === '/wt/jelou-api/package-lock.json';
+    const plan = buildBootPlan({ registry: reg(), slug: 't1', worktreePaths: { 'jelou-api': '/wt/jelou-api' }, occupied: [], resolveImage: () => 'img', exists, readJson });
+    const a = plan.services.find((s) => s.id === 'jelou-api');
+    assert.deepEqual(a.depsDiverged, { missing: ['@x/y'], installCmd: 'npm install' });
+  });
+
+  test('depsDiverged null when all worktree deps present in canonical', () => {
+    const readJson = () => ({ dependencies: { 'ok': '1' } });
+    const exists = (p) => p === '/repo/jelou-api/node_modules/ok';
+    const plan = buildBootPlan({ registry: reg(), slug: 't1', worktreePaths: { 'jelou-api': '/wt/jelou-api' }, occupied: [], resolveImage: () => 'img', exists, readJson });
+    assert.equal(plan.services.find((s) => s.id === 'jelou-api').depsDiverged, null);
+  });
 });
 
 describe('buildBootPlan base image resolution', () => {
