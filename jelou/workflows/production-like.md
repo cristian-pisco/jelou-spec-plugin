@@ -180,8 +180,7 @@ namespaced-backend wiring is not yet supported (this covers backend↔backend on
     **Per-service plan branch (from Phase 2.0).** Before the reuse-or-reboot decision below, check
     the service's entry in `{planJson}` (match by `id`):
     - **Task-isolated entry** (`policy: 'task-isolated'`): boot it via the `## Plan-driven boot`
-      **task-isolated** steps in `jelou/references/env-lifecycle.md` — write `entry.overrideYaml` to
-      `<entry.cwd>/docker-compose.jlu.yml` and `entry.wiredEnv` (if non-null) to `<entry.cwd>/.env`;
+      **task-isolated** steps in `jelou/references/env-lifecycle.md` — write every `planEntryToCommands(entry).files[]` entry verbatim to `<entry.cwd>` (the `docker-compose.jlu.yml` override and, when `wiredEnv` is present, the de-obfuscated `.env`);
       `docker compose -p <entry.projectName> -f <entry.composeFile> -f docker-compose.jlu.yml up -d`;
       `docker exec -d <entry.projectName> sh -lc "cd /app && <entry.command> > /tmp/<entry.projectName>.dev.log 2>&1"`;
       wait readiness on the allocated host port (`entry.readiness.port`); register
@@ -190,7 +189,7 @@ namespaced-backend wiring is not yet supported (this covers backend↔backend on
       service (it is fully booted).
     - **Shared-reuse entry with a non-null `entry.wiredEnv`** (a main-branch backend peering an
       eligible one): back up `<entry.cwd>/.env` first (`bin/lib/dev-orchestrator/stack/backend-env-backup.mjs`,
-      recorded so teardown restores it), write `entry.wiredEnv` to `<entry.cwd>/.env`, THEN fall through
+      recorded so teardown restores it), write the `.env` from `planEntryToCommands(entry).files` (de-obfuscated), THEN fall through
       to the reuse-or-reboot decision below (unchanged) so it picks up the rewritten peer URL.
     - **No plan entry, or a plan entry with a null `wiredEnv`**: fall through to the reuse-or-reboot
       decision below, unchanged.
