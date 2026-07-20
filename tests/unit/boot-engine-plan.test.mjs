@@ -92,6 +92,33 @@ describe('buildBootPlan policy', () => {
     assert.equal(chatbot.composeFile, undefined);
   });
 
+  test('mounts canonical node_modules when worktree lacks its own', () => {
+    const exists = (p) => p === '/repo/jelou-api/node_modules';
+    const plan = buildBootPlan({ registry: reg(), slug: 't1', worktreePaths: { 'jelou-api': '/wt/jelou-api' }, occupied: [], resolveImage: () => 'img', exists });
+    const a = plan.services.find((s) => s.id === 'jelou-api');
+    assert.equal(a.nodeModulesMount, '/repo/jelou-api/node_modules');
+    assert.equal(a.nodeModulesMissing, false);
+    assert.match(a.overrideYaml, /node_modules:\/app\/node_modules/);
+  });
+
+  test('no mount when the worktree has its own node_modules', () => {
+    const wtNm = '/wt/jelou-api/node_modules';
+    const exists = (p) => p === wtNm || p === '/repo/jelou-api/node_modules';
+    const plan = buildBootPlan({ registry: reg(), slug: 't1', worktreePaths: { 'jelou-api': '/wt/jelou-api' }, occupied: [], resolveImage: () => 'img', exists });
+    const a = plan.services.find((s) => s.id === 'jelou-api');
+    assert.equal(a.nodeModulesMount, null);
+    assert.equal(a.nodeModulesMissing, false);
+    assert.doesNotMatch(a.overrideYaml, /node_modules:\/app\/node_modules/);
+  });
+
+  test('flags nodeModulesMissing when neither has node_modules', () => {
+    const exists = () => false;
+    const plan = buildBootPlan({ registry: reg(), slug: 't1', worktreePaths: { 'jelou-api': '/wt/jelou-api' }, occupied: [], resolveImage: () => 'img', exists });
+    const a = plan.services.find((s) => s.id === 'jelou-api');
+    assert.equal(a.nodeModulesMount, null);
+    assert.equal(a.nodeModulesMissing, true);
+  });
+
   test('task-isolated base env comes from canonical checkout and wiredEnv is obfuscated', () => {
     const registry = {
       network: { composeNetworkAlias: 'app-network', basePort: 3100 },
