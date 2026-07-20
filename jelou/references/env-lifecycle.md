@@ -254,7 +254,12 @@ it is ALWAYS registered for teardown:
 2. The override already carries a `volumes:` mount of the canonical checkout's `node_modules`
    at `/app/node_modules` when the worktree has none of its own; if `entry.nodeModulesMissing`
    is true (or the worktree lacks `.env`), WARN that the container may fail to start because its
-   dependencies/env are unavailable.
+   dependencies/env are unavailable. The `volumes:` block also mounts each
+   `entry.runtimeMounts[]` (declared canonical runtime dirs the worktree lacks, e.g.
+   `config/secrets`) at its `/app/<path>`. Additionally, if `entry.depsDiverged` is set, WARN:
+   the worktree adds dependencies (`entry.depsDiverged.missing`) not present in the canonical
+   `node_modules`, so the mount will not satisfy them — run `entry.depsDiverged.installCmd` in
+   the worktree.
 3. If `descriptor.imageResolved` is `false`, WARN: the base image was not found, so the
    `compose up` has no local image to reuse and the container may fail to start.
 4. `docker <descriptor.up>` — brings up the idle container (`compose -p <projectName> -f
