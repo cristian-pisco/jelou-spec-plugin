@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.303] — 2026-07-19
+
+### Fixed
+- task-isolated base .env from canonical checkout + obfuscate wiredEnv
+
 ## [0.3.302] — 2026-07-19
 
 ### Added
