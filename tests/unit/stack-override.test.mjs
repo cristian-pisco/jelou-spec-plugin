@@ -104,4 +104,26 @@ describe('renderOverride', () => {
     });
     assert.doesNotMatch(out, /volumes:/);
   });
+
+  test('renderOverride emits runtime mounts alongside node_modules in one volumes block', () => {
+    const out = renderOverride({
+      service: { name: 'a', compose_service: 'app', mode: 'exec' },
+      slug: 's', allocations: [{ host: 3102, internal: 8080 }], networkAlias: 'app-network', image: 'a-img',
+      nodeModulesMount: '/c/node_modules',
+      runtimeMounts: [{ source: '/c/config/secrets', target: '/app/config/secrets' }]
+    });
+    assert.match(out, /volumes:/);
+    assert.match(out, /- \/c\/node_modules:\/app\/node_modules/);
+    assert.match(out, /- \/c\/config\/secrets:\/app\/config\/secrets/);
+  });
+
+  test('renderOverride: runtime mount with no node_modules still emits volumes', () => {
+    const out = renderOverride({
+      service: { name: 'a', compose_service: 'app', mode: 'exec' },
+      slug: 's', allocations: [{ host: 3102, internal: 8080 }], networkAlias: 'app-network', image: 'a-img',
+      nodeModulesMount: null, runtimeMounts: [{ source: '/c/x', target: '/app/x' }]
+    });
+    assert.match(out, /volumes:/);
+    assert.match(out, /- \/c\/x:\/app\/x/);
+  });
 });
