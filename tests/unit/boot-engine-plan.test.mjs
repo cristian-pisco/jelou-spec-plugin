@@ -143,3 +143,13 @@ describe('buildBootPlan policy', () => {
     assert.ok(unmaskWiredEnv(a.wiredEnv).includes('b-t1:'));
   });
 });
+
+describe('buildBootPlan base image resolution', () => {
+  test('resolves the base image from the canonical checkout, not the worktree', () => {
+    const seen = [];
+    const spy = ({ cwd }) => { seen.push(cwd); return 'jelou-api-app'; };
+    buildBootPlan({ registry: reg(), slug: 't1', worktreePaths: { 'jelou-api': '/wt/jelou-api' }, occupied: [], resolveImage: spy, readEnv, exists: () => false });
+    assert.ok(seen.includes('/repo/jelou-api'));
+    assert.ok(!seen.includes('/wt/jelou-api'));
+  });
+});

@@ -65,7 +65,7 @@ export function buildBootPlan({ registry, slug, worktreePaths, occupied = [], re
     const allocations = allocateHostPorts({ mappings: portEnvs.map((e) => ({ internal: dev.ports[e] })), occupied: [...taken], basePort: registry.network.basePort });
     for (const a of allocations) taken.add(a.host);
     const ports = allocations.map((a, i) => ({ internal: a.internal, host: a.host, portEnv: portEnvs[i], primary: portEnvs[i] === dev.port_env }));
-    const image = resolveImage({ cwd, composeFile: dev.docker.compose_file, composeService: dev.docker.service });
+    const image = resolveImage({ cwd: svc.path, composeFile: dev.docker.compose_file, composeService: dev.docker.service });
     const projectName = `${svc.id}-${slug}`;
     const nm = nodeModulesMountFor({ launcher: dev.launcher, worktreeDir: cwd, canonicalPath: svc.path, exists });
 
