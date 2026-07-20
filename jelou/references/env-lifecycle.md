@@ -251,17 +251,21 @@ write verbatim. Branch on `descriptor.policy`:
 it is ALWAYS registered for teardown:
 1. Write every `descriptor.files[]` entry (`docker-compose.jlu.yml`, and `.env` when a
    `wiredEnv` was present).
-2. If `descriptor.imageResolved` is `false`, WARN: the base image was not found, so the
+2. The override already carries a `volumes:` mount of the canonical checkout's `node_modules`
+   at `/app/node_modules` when the worktree has none of its own; if `entry.nodeModulesMissing`
+   is true (or the worktree lacks `.env`), WARN that the container may fail to start because its
+   dependencies/env are unavailable.
+3. If `descriptor.imageResolved` is `false`, WARN: the base image was not found, so the
    `compose up` has no local image to reuse and the container may fail to start.
-3. `docker <descriptor.up>` — brings up the idle container (`compose -p <projectName> -f
+4. `docker <descriptor.up>` — brings up the idle container (`compose -p <projectName> -f
    <composeFile> -f docker-compose.jlu.yml up -d`); the base image is reused, NO rebuild.
-4. If `descriptor.exec` is non-null, `docker <descriptor.exec>` — execs the dev command into
+5. If `descriptor.exec` is non-null, `docker <descriptor.exec>` — execs the dev command into
    the idle container, redirecting to `/tmp/<projectName>.dev.log`. (`exec` is null for a
    non-`docker-exec` launcher, whose container runs its command from its own entrypoint.)
-5. Wait for readiness per `descriptor.readiness`: an `http_200`/`port_open` polls the allocated
+6. Wait for readiness per `descriptor.readiness`: an `http_200`/`port_open` polls the allocated
    host port (`descriptor.readiness.port`); a `stdout_match` tails `descriptor.readiness.logPath`
    (`/tmp/<projectName>.dev.log`) for the pattern.
-6. Register teardown = `docker <descriptor.teardown>` (`compose -p <projectName> down`) in
+7. Register teardown = `docker <descriptor.teardown>` (`compose -p <projectName> down`) in
    `BOOTED[]`/`TEARDOWN_CMD[]`, ALWAYS.
 
 **`policy: shared-reuse`** — REUSE the developer's running container/process:

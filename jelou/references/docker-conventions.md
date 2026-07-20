@@ -41,7 +41,11 @@ The general rule (build reads the dep graph → runs on host) has one scoped
 exception: the `/jlu-ship` preflight builds docker-compose-runtime services
 *inside* their container, because their node_modules and Node version live there.
 This is resolved per service via `bin/runtime-exec.mjs` and applies ONLY to the
-ship preflight — never to the TDD per-phase build check.
+ship preflight — never to the TDD per-phase build check. For task-isolated worktree
+boots the boot plan mounts the canonical checkout's `node_modules` at `/app/node_modules`
+when the worktree has none of its own, because the base compose bind-mounts the worktree
+over `/app` (which would otherwise shadow the image's node_modules — and the image omits
+devDependencies).
 
 ## Port Allocation Algorithm
 
