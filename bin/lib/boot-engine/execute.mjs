@@ -1,7 +1,9 @@
+import { unmaskWiredEnv } from './env-mask.mjs';
+
 function taskIsolated(entry) {
   const logPath = `/tmp/${entry.projectName}.dev.log`;
   const files = [{ path: `${entry.cwd}/docker-compose.jlu.yml`, content: entry.overrideYaml }];
-  if (entry.wiredEnv) files.push({ path: `${entry.cwd}/.env`, content: entry.wiredEnv });
+  if (entry.wiredEnv) files.push({ path: `${entry.cwd}/.env`, content: unmaskWiredEnv(entry.wiredEnv) });
   const exec = entry.launcher === 'docker-exec'
     ? ['exec', '-d', entry.projectName, 'sh', '-lc', `cd /app && ${entry.command} > ${logPath} 2>&1`]
     : null;
@@ -18,7 +20,7 @@ function taskIsolated(entry) {
 }
 
 function sharedReuse(entry) {
-  const files = entry.wiredEnv ? [{ path: `${entry.cwd}/.env`, content: entry.wiredEnv }] : [];
+  const files = entry.wiredEnv ? [{ path: `${entry.cwd}/.env`, content: unmaskWiredEnv(entry.wiredEnv) }] : [];
   return {
     policy: 'shared-reuse',
     cwd: entry.cwd,

@@ -5,6 +5,7 @@
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { planEntryToCommands } from '../../bin/lib/boot-engine/execute.mjs';
+import { maskWiredEnv } from '../../bin/lib/boot-engine/env-mask.mjs';
 
 function taskEntry(over = {}) {
   return {
@@ -96,6 +97,28 @@ describe('planEntryToCommands shared-reuse', () => {
     const d = planEntryToCommands(sharedEntry({ teardownCmd: null }));
     assert.deepEqual(d.files, []);
     assert.equal(d.teardown, null);
+  });
+});
+
+describe('planEntryToCommands env masking', () => {
+  test('planEntryToCommands writes a de-obfuscated .env for a masked wiredEnv (task-isolated)', () => {
+    const wired = 'B_URL=http://b-s:8080\nSECRET=x\n';
+    const entry = {
+      id: 'a', policy: 'task-isolated', cwd: '/repo/a/.worktrees/s', launcher: 'docker-exec',
+      command: 'npm run start:dev', readiness: { type: 'stdout_match', pattern: 'ok' },
+      projectName: 'a-s', composeFile: 'docker-compose.yml', overrideYaml: 'x: 1\n',
+      imageResolved: true, wiredEnv: maskWiredEnv(wired)
+    };
+    const d = planEntryToCommands(entry);
+    const envFile = d.files.find((f) => f.path.endsWith('/.env'));
+    assert.equal(envFile.content, wired);
+    assert.ok(!envFile.content.startsWith('JLUENV1:'));
+  });
+
+  test('planEntryToCommands de-obfuscates for shared-reuse too', () => {
+    const wired = 'B_URL=http://b-s:8080\n';
+    const d = planEntryToCommands({ id: 'c', policy: 'shared-reuse', cwd: '/repo/c', launcher: 'docker-exec', command: 'x', readiness: {}, teardownCmd: null, wiredEnv: maskWiredEnv(wired) });
+    assert.equal(d.files.find((f) => f.path.endsWith('/.env')).content, wired);
   });
 });
 
