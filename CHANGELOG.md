@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.304] — 2026-07-19
+
+### Fixed
+- task-isolated container mounts canonical node_modules when worktree lacks them
+
 ## [0.3.303] — 2026-07-19
 
 ### Fixed
