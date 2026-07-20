@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.306] — 2026-07-19
+
+### Fixed
+- task-isolated worktree provisioning (runtime mounts + dep-divergence warn)
+
 ## [0.3.305] — 2026-07-19
 
 ### Fixed
