@@ -85,4 +85,23 @@ describe('renderOverride', () => {
     assert.ok(!yaml.includes('pull_policy'));
     assert.ok(yaml.includes('    entrypoint: ["sleep", "infinity"]'));
   });
+
+  test('renderOverride mounts node_modules when nodeModulesMount is provided (exec)', () => {
+    const out = renderOverride({
+      service: { name: 'a', compose_service: 'app', mode: 'exec' },
+      slug: 's', allocations: [{ host: 3102, internal: 8080 }],
+      networkAlias: 'app-network', image: 'a-img', nodeModulesMount: '/repo/a/node_modules'
+    });
+    assert.match(out, /volumes:/);
+    assert.match(out, /- \/repo\/a\/node_modules:\/app\/node_modules/);
+  });
+
+  test('renderOverride emits no volumes when nodeModulesMount is null', () => {
+    const out = renderOverride({
+      service: { name: 'a', compose_service: 'app', mode: 'exec' },
+      slug: 's', allocations: [{ host: 3102, internal: 8080 }],
+      networkAlias: 'app-network', image: 'a-img', nodeModulesMount: null
+    });
+    assert.doesNotMatch(out, /volumes:/);
+  });
 });
