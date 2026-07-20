@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.305] — 2026-07-19
+
+### Fixed
+- task-isolated resolves base image from canonical checkout
+
 ## [0.3.304] — 2026-07-19
 
 ### Fixed
