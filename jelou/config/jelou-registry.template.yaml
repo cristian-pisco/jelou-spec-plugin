@@ -110,6 +110,7 @@ services:
   workflows-service:
     path: ../workflows-service
     stack: nestjs
+    runtime_mounts: [config/secrets]
     dev:
       launcher: docker-exec
       docker:
@@ -133,6 +134,7 @@ services:
       chatbot-server: CHATBOT_SERVER_URL
       workflows-service: WORKFLOWS_SERVER_URL
       orchestrator-service: ROUTER_SERVER_URL
+    runtime_mounts: [config/secrets]
     dev:
       launcher: docker-exec
       docker:

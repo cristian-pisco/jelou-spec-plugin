@@ -7,6 +7,7 @@ function normalizeService(id, svc, resolve) {
     stack: svc.stack || null,
     peers: svc.peers || {},
     depends_on: svc.depends_on || [],
+    runtimeMounts: svc.runtime_mounts || [],
     dev
   };
 }

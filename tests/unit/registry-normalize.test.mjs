@@ -31,6 +31,7 @@ describe('normalizeRegistry', () => {
       stack: 'nestjs',
       peers: { 'chatbot-server': 'CHATBOT_SERVER_URL' },
       depends_on: [],
+      runtimeMounts: [],
       dev: { launcher: 'docker-exec', command: 'yarn start:dev', port_env: 'APP_PORT', extra_ports: ['SUPERVISOR_PORT'] }
     });
   });
@@ -75,5 +76,17 @@ describe('normalizeRegistry', () => {
     const out = normalizeRegistry({ services: {}, auth: { cookieName: 'c' } }, { resolve });
     assert.equal(out.auth.verify, undefined);
     assert.equal(out.network.authInjectPort, null);
+  });
+
+  test('carries runtime_mounts as runtimeMounts (default [])', () => {
+    const raw = { services: {
+      a: { path: '../a', runtime_mounts: ['config/secrets'], dev: { launcher: 'docker-exec' } },
+      b: { path: '../b', dev: { launcher: 'docker-exec' } }
+    } };
+    const reg = normalizeRegistry(raw, { resolve: (p) => p });
+    const a = reg.services.find((s) => s.id === 'a');
+    const b = reg.services.find((s) => s.id === 'b');
+    assert.deepEqual(a.runtimeMounts, ['config/secrets']);
+    assert.deepEqual(b.runtimeMounts, []);
   });
 });
