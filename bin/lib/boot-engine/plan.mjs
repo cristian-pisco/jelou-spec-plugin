@@ -2,6 +2,7 @@ import { allocateHostPorts } from '../dev-orchestrator/stack/ports.mjs';
 import { renderOverride } from '../dev-orchestrator/stack/override.mjs';
 import { wireEnv } from '../dev-orchestrator/stack/wiring.mjs';
 import { resolveBaseImage } from '../dev-orchestrator/stack/resolve-base-image.mjs';
+import { maskWiredEnv } from './env-mask.mjs';
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 
@@ -34,7 +35,7 @@ export function buildBootPlan({ registry, slug, worktreePaths, occupied = [], re
       if (isolated.has(target)) wiredPeers[target] = envVar;
     }
     const wiredEnv = Object.keys(wiredPeers).length
-      ? wireEnv({ envText: readEnv(cwd), peers: wiredPeers, slug, peerInternalPort })
+      ? maskWiredEnv(wireEnv({ envText: readEnv(svc.path), peers: wiredPeers, slug, peerInternalPort }))
       : null;
 
     const entry = {

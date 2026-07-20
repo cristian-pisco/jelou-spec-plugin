@@ -5,6 +5,7 @@
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { buildBootPlan } from '../../bin/lib/boot-engine/plan.mjs';
+import { unmaskWiredEnv } from '../../bin/lib/boot-engine/env-mask.mjs';
 
 function reg() {
   return {
@@ -60,7 +61,7 @@ describe('buildBootPlan policy', () => {
     const withWt = buildBootPlan({ registry: reg(), slug: 't1', worktreePaths: { 'chatbot-server': '/wt/chatbot' }, occupied: [], resolveImage, readEnv });
     const api = withWt.services.find((s) => s.id === 'jelou-api');
     assert.equal(api.policy, 'shared-reuse');
-    assert.ok(api.wiredEnv.includes('CHATBOT_SERVER_URL=http://chatbot-server-t1:8080'));
+    assert.ok(unmaskWiredEnv(api.wiredEnv).includes('CHATBOT_SERVER_URL=http://chatbot-server-t1:8080'));
 
     const noWt = buildBootPlan({ registry: reg(), slug: 't1', worktreePaths: {}, occupied: [], resolveImage, readEnv });
     assert.equal(noWt.services.find((s) => s.id === 'jelou-api').wiredEnv, null);
@@ -89,5 +90,29 @@ describe('buildBootPlan policy', () => {
     assert.equal(api.composeFile, 'docker-compose.yml');
     assert.equal(chatbot.policy, 'shared-reuse');
     assert.equal(chatbot.composeFile, undefined);
+  });
+
+  test('task-isolated base env comes from canonical checkout and wiredEnv is obfuscated', () => {
+    const registry = {
+      network: { composeNetworkAlias: 'app-network', basePort: 3100 },
+      services: [
+        {
+          id: 'a', path: '/repo/a', stack: 'nestjs', peers: { b: 'B_URL' }, depends_on: [],
+          dev: { launcher: 'docker-exec', command: 'yarn dev', docker: { service: 'a_app', compose_file: 'docker-compose.yml' }, port_env: 'APP_PORT', extra_ports: [], ports: { APP_PORT: 8080 }, ready_signal: { type: 'stdout_match', pattern: 'started' }, ram_estimate_mb: 300, teardown: 'pkill -f nest' }
+        },
+        {
+          id: 'b', path: '/repo/b', stack: 'nestjs', peers: {}, depends_on: [],
+          dev: { launcher: 'docker-exec', command: 'yarn dev', docker: { service: 'b_app', compose_file: 'docker-compose.yml' }, port_env: 'APP_PORT', extra_ports: [], ports: { APP_PORT: 8080 }, ready_signal: { type: 'stdout_match', pattern: 'started' }, ram_estimate_mb: 300, teardown: 'pkill -f nest' }
+        }
+      ]
+    };
+    const worktreePaths = { a: '/wt/a', b: '/wt/b' };
+    const readEnv = (dir) => (dir === '/repo/a' ? 'B_URL=http://b:8080\n' : '');
+    const plan = buildBootPlan({ registry, slug: 't1', worktreePaths, occupied: [], resolveImage: () => 'img', readEnv });
+    const a = plan.services.find((s) => s.id === 'a');
+    assert.equal(a.policy, 'task-isolated');
+    assert.ok(a.wiredEnv);
+    assert.ok(a.wiredEnv.startsWith('JLUENV1:'));
+    assert.ok(unmaskWiredEnv(a.wiredEnv).includes('b-t1:'));
   });
 });
