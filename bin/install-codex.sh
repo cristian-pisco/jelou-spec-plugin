@@ -42,14 +42,16 @@ echo "Source: $PLUGIN_DIR"
 echo "Codex dir: $CODEX_DIR"
 echo
 
-mkdir -p "$CODEX_DIR/prompts" "$CODEX_DIR/agents" "$JELOU_DIR" "$BIN_DIR"
+mkdir -p "$CODEX_DIR/prompts" "$CODEX_DIR/agents" "$JELOU_DIR/bin" "$BIN_DIR"
 
 cp -R "$PLUGIN_DIR/.codex/prompts/." "$CODEX_DIR/prompts/"
 cp -R "$PLUGIN_DIR/.codex/agents/." "$CODEX_DIR/agents/"
 cp -R "$PLUGIN_DIR/jelou/." "$JELOU_DIR/"
+cp "$PLUGIN_DIR/bin/jlu-update.sh" "$JELOU_DIR/bin/"
+chmod +x "$JELOU_DIR/bin/jlu-update.sh"
 cp "$PLUGIN_DIR/bin/guard-test-commands.mjs" "$BIN_DIR/"
 cp "$PLUGIN_DIR/bin/guard-env-reads.mjs" "$BIN_DIR/"
-echo "Installed Codex prompts, agents, workflows, and guard scripts"
+echo "Installed Codex prompts, agents, workflows, updater, and guard scripts"
 
 ensure_context_status_line() {
   local target_config="$1"
