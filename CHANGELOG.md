@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.308] — 2026-07-20
+
+### Fixed
+- install update bootstrap for Codex and OpenCode
+
 ## [0.3.307] — 2026-07-20
 
 ### Added
