@@ -438,6 +438,8 @@ Tasks opting into dual-PR (via the `/jlu-new-task` prompt "Also create a PR to `
 - `production/<slug>` → trunk (the mandatory primary PR)
 - `staging/<slug>` → `alpha` (created up-front by `/jlu-new-task`: cut from `origin/alpha` and pushed; production commits are cherry-picked on top at `/jlu-ship` by the `jlu-conflict-resolver` sub-agent — reused when `alpha` is unchanged, rebuilt from fresh `origin/alpha` when it moved)
 
+`/jlu-new-task` always derives `<slug>` with English semantic words, regardless of the language used in the task description, while preserving technical identifiers and product names.
+
 If the conflict resolver cannot resolve a merge conflict with confidence, the staging side aborts cleanly and offers the user three options: resolve manually, disable dual-PR, or abort.
 
 ### Spec Templates

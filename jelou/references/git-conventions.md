@@ -22,6 +22,7 @@ Every task creates a **mandatory** primary branch targeting trunk, and **optiona
 ### Rules
 
 - Branch names use the same slug across all affected service repos.
+- Slugs use English semantic words, even when the task description is written in another language.
 - Slugs are lowercase, hyphen-separated, ≤50 characters (see `/jlu-new-task` Step 4).
 - Neither the git-agent nor any orchestrator may push to `main`, `master`, or `alpha` directly.
 

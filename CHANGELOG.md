@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.309] — 2026-07-21
+
+### Fixed
+- generate task slugs in English
+
 ## [0.3.308] — 2026-07-20
 
 ### Fixed

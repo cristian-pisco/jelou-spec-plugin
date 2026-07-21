@@ -212,13 +212,20 @@ After service registration (or if already registered):
 
 ## Step 4 — Generate Task Slug
 
-1. Generate from the task description:
+1. Derive a concise English action phrase from the task description, regardless of the language used by the user:
+   - Translate semantic words to English before slugification. Do not merely remove accents or transliterate the original wording.
+   - Keep technical identifiers, product names, acronyms, and version numbers unchanged.
+   - Prefer conventional software-engineering verbs such as `add`, `update`, `upgrade`, `fix`, `remove`, or `migrate`.
+   - The slug must contain English semantic words only. If a translation is ambiguous, choose the shortest conventional software term that preserves the user's intent.
+   - Do not translate or rewrite `TASK_DESCRIPTION` or the human-facing SPEC content; this rule applies only to `TASK_SLUG`.
+   - Example: `Actualizar Fastify Middie para NestJS 11` becomes `update-fastify-middie-nestjs-11`, never `actualizar-fastify-middie-nestjs-11`.
+2. Convert the English action phrase into the slug:
    - Convert to lowercase.
    - Replace spaces and special characters with hyphens.
    - Remove consecutive hyphens.
    - Truncate to a maximum of 50 characters.
    - Remove trailing hyphens.
-2. Verify the slug does not already exist at `<WORKSPACE_PATH>/specs/<CREATION_DATE>/<task-slug>/`.
+3. Verify the slug does not already exist at `<WORKSPACE_PATH>/specs/<CREATION_DATE>/<task-slug>/`.
    - If it already exists, append a numeric suffix (e.g., `-2`, `-3`).
 
 **Store**: `TASK_SLUG`
