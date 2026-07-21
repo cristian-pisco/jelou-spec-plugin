@@ -5,7 +5,7 @@
 // a write (the row landed in the DB, the cache key was populated/invalidated), not
 // just the HTTP 2xx. And backend E2E gets the same shift-left parity as UI E2E:
 // authored from SPEC.md at execute-task time, pre-deploy, committed — but still RUN
-// only by /jlu-production-like.
+// only by /jlu-goal.
 //
 // Run: `node --test tests/unit/backend-e2e-authoring.test.mjs`
 
@@ -65,8 +65,8 @@ describe('jlu-test-writer — applies the doctrine when authoring backend E2E', 
   });
 });
 
-describe('production-like — routes E2E authoring with the doctrine', () => {
-  const wf = read('jelou/workflows/production-like.md');
+describe('goal — routes E2E authoring with the doctrine', () => {
+  const wf = read('jelou/workflows/goal.md');
   test('Phase 3.5 / breadth routing names the doctrine when delegating to jlu-test-writer', () => {
     assert.match(wf, new RegExp(DOC));
     assert.match(wf, /jlu-test-writer/);
@@ -76,7 +76,7 @@ describe('production-like — routes E2E authoring with the doctrine', () => {
 describe('execute-task — shift-left backend E2E authoring (parity with UI 8e)', () => {
   const wf = read('jelou/workflows/execute-task.md');
   // Slice the Step 8f section so assertions pin the step itself — not tokens
-  // (SPEC.md, commit, production-like, "authors only") that recur throughout the
+  // (SPEC.md, commit, goal, "authors only") that recur throughout the
   // workflow and would keep the suite green even if Step 8f were gutted.
   const start = wf.indexOf('### Step 8f');
   const end = start >= 0 ? wf.indexOf('## Step 9', start) : -1;
@@ -92,9 +92,9 @@ describe('execute-task — shift-left backend E2E authoring (parity with UI 8e)'
     assert.match(s8f, new RegExp(DOC));
   });
 
-  test('Step 8f authors only — does NOT run Testcontainers (production-like stays the only runner)', () => {
+  test('Step 8f authors only — does NOT run Testcontainers (goal stays the only runner)', () => {
     assert.match(s8f, /authors? only|does NOT run|never run/i);
-    assert.match(s8f, /production-like/);
+    assert.match(s8f, /\/jlu-goal/);
   });
 
   test('Step 8f detects backend services and commits the generated suite', () => {

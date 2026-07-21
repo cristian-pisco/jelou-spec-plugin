@@ -14,7 +14,7 @@
 - **Workers = 1.** Absolute minimum. The skill guarantees it won't saturate CPU or memory; it takes as long as it takes.
 - **Rich report.** When something fails, the dev sees which component (Controller, Service, etc.) and where, not an unstructured sea of stack traces.
 - **No auto-fix.** The skill validates. Decisions about fixes belong to the dev.
-- **Production-like via orchestrator.** When `/jlu-production-like` invokes it, the dev infrastructure is already up via the orchestrator and the integration tests run against the live stack. Standalone still runs on the host and only warns (Step 6d) if the infra is unreachable. No behavior change.
+- **Production-like via orchestrator.** When `/jlu-goal` invokes it, the dev infrastructure is already up via the orchestrator and the integration tests run against the live stack. Standalone still runs on the host and only warns (Step 6d) if the infra is unreachable. No behavior change.
 
 ---
 
@@ -210,7 +210,7 @@ If `UNIT_EXIT == 0` AND `INT_EXIT == 0`:
 
 Exit 0. Skip Step 6.
 
-**`PASS` here means no suite FAILED — it is not a breadth verdict.** When invoked by `/jlu-production-like`, the orchestrator runs the Phase 4.5 coverage-breadth + realistic-payload gate over this service before the run is declared production-safe. Standalone, surface a one-line note in the report: `↪ green != broad: run /jlu-production-like for the coverage-breadth + realistic-payload gate.`
+**`PASS` here means no suite FAILED — it is not a breadth verdict.** When invoked by `/jlu-goal`, the orchestrator runs the Phase 4.5 coverage-breadth + realistic-payload gate over this service before the run is declared production-safe. Standalone, surface a one-line note in the report: `↪ green != broad: run /jlu-goal for the coverage-breadth + realistic-payload gate.`
 
 ---
 
@@ -363,7 +363,7 @@ Temporary log files in `/tmp` are best-effort — failing to delete them is not 
 
 - **Single-service by design.** To validate multiple services in one task, invoke `/jlu-test-suite` once per service from each `cd`. V2 may add a `--all-affected` flag that reads TASKS.md.
 - **Workers fixed at 1.** Literal interpretation of "minimum workers". There is no env var override in V1 — if you need more parallelism, run the underlying runner directly.
-- **Coverage is out of scope; breadth is gated elsewhere.** Step 8c (QA) reads coverage reports statically; this skill never runs `--coverage` to keep RAM predictable. Line/branch coverage is out of scope, but **breadth** (did the cases span the validator/reference space?) is gated by `/jlu-production-like` Phase 4.5, not by `--coverage`.
+- **Coverage is out of scope; breadth is gated elsewhere.** Step 8c (QA) reads coverage reports statically; this skill never runs `--coverage` to keep RAM predictable. Line/branch coverage is out of scope, but **breadth** (did the cases span the validator/reference space?) is gated by `/jlu-goal` Phase 4.5, not by `--coverage`.
 - **Sonnet+ recommended.** Step 6 (failure classification) reads test files and infers component types. Haiku can produce wrong classifications on projects with non-standard naming.
 - **CI parity.** This skill's results should match the CI for unit + integration; if they don't, suspect runner version drift or env vars set in CI that aren't in your shell.
 

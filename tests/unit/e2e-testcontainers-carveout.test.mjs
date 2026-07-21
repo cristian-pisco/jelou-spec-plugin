@@ -1,7 +1,7 @@
 // tests/unit/e2e-testcontainers-carveout.test.mjs
 //
 // Guards the single path-scoped carve-out of the global Testcontainers ban:
-// allowed ONLY in test/e2e/** or *.e2e-spec.ts, executed ONLY by production-like.
+// allowed ONLY in test/e2e/** or *.e2e-spec.ts, executed ONLY by goal.
 //
 // Run: `node --test tests/unit/e2e-testcontainers-carveout.test.mjs`
 
@@ -20,7 +20,7 @@ describe('Testcontainers carve-out — E2E path is the only exception', () => {
   test('qa-agent exempts the E2E path and still bans it elsewhere', () => {
     const qa = read('agents/jlu-qa-agent.md');
     assert.match(qa, E2E_PATH);
-    assert.match(qa, /production-like/);
+    assert.match(qa, /\/jlu-goal/);
     assert.match(qa, /outside the E2E path/i);
   });
 
@@ -34,16 +34,16 @@ describe('Testcontainers carve-out — E2E path is the only exception', () => {
   test('subagent-base scopes the ban to non-E2E paths', () => {
     const base = read('jelou/references/subagent-base.md');
     assert.match(base, E2E_PATH);
-    assert.match(base, /production-like/);
+    assert.match(base, /\/jlu-goal/);
   });
 
   test('tdd-cycle notes the E2E exception', () => {
     const tdd = read('jelou/references/tdd-cycle.md');
     assert.match(tdd, E2E_PATH);
-    assert.match(tdd, /production-like/);
+    assert.match(tdd, /\/jlu-goal/);
   });
 
-  test('execute-task Step 8f authors the E2E suite but never runs it (production-like stays the only runner)', () => {
+  test('execute-task Step 8f authors the E2E suite but never runs it (goal stays the only runner)', () => {
     const wf = read('jelou/workflows/execute-task.md');
     const start = wf.indexOf('### Step 8f');
     assert.ok(start >= 0, 'execute-task.md must define a "### Step 8f" backend-E2E authoring step');
@@ -51,6 +51,6 @@ describe('Testcontainers carve-out — E2E path is the only exception', () => {
     const s8f = wf.slice(start, end > start ? end : wf.length);
     assert.match(s8f, E2E_PATH);
     assert.match(s8f, /authors? only|does NOT run|never run/i);
-    assert.match(s8f, /production-like/);
+    assert.match(s8f, /\/jlu-goal/);
   });
 });

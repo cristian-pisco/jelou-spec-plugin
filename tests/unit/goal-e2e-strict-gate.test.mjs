@@ -6,12 +6,12 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
-const wf = read('jelou/workflows/production-like.md');
+const wf = read('jelou/workflows/goal.md');
 const runner = read('agents/jlu-backend-e2e-runner.md');
 const exec = read('jelou/workflows/execute-task.md');
 const tpl = read('jelou/templates/services-yaml.md');
 
-describe('production-like — backend E2E is mandatory and non-bypassable', () => {
+describe('goal — backend E2E is mandatory and non-bypassable', () => {
   test('forbids skipping / N/A / not-applicable on the backend E2E phase', () => {
     assert.match(wf, /mandatory[^.\n]*never bypassable|non-bypassable/i);
     assert.match(wf, /may\s+not\b|MUST NOT|may not skip|never/i);
@@ -41,19 +41,19 @@ describe('production-like — backend E2E is mandatory and non-bypassable', () =
   });
 });
 
-describe('production-like — verdict cannot launder a bypass into PASS', () => {
+describe('goal — verdict cannot launder a bypass into PASS', () => {
   test('PASS requires an actual E2E runner PASS for every backend and UI service', () => {
-    assert.match(wf, /`?PASS`? is granted ONLY when every backend service ended in an[\s\S]{0,40}actual backend-E2E runner\s+`?PASS`?/i);
+    assert.match(wf, /`?PASS`? is granted ONLY when EVERY objective in the matrix is[\s\S]{0,300}every backend service ended in an[\s\S]{0,40}actual[\s\S]{0,20}backend-E2E runner\s+`?PASS`?/i);
     assert.match(wf, /every UI service ended in an actual UI-E2E runner\s+`?PASS`?/i);
   });
 
   test('a missing / skipped / N/A E2E phase is never a PASS', () => {
-    assert.match(wf, /missing, skipped, or `?N\/A`? E2E phase is NEVER a `?PASS`?/i);
-    assert.match(wf, /no verdict path where a bypassed E2E yields `?PASS`?/i);
+    assert.match(wf, /missing, skipped, or `?N\/A`? E2E phase is NEVER a\s+`?PASS`?/i);
+    assert.match(wf, /no\s+verdict path where a bypassed E2E\b[\s\S]{0,40}yields `?PASS`?/i);
   });
 });
 
-describe('production-like — deterministic glob recognition (services.yaml e2e.globs)', () => {
+describe('goal — deterministic glob recognition (services.yaml e2e.globs)', () => {
   test('resolves the E2E discovery glob from services.yaml and passes it as E2E_GLOBS', () => {
     assert.match(wf, /e2e\.globs/);
     assert.match(wf, /E2E_GLOBS/);

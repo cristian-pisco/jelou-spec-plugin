@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.307] — 2026-07-20
+
+### Added
+- goal skill — goal-matrix convergence loop (rename production-like)
+
 ## [0.3.306] — 2026-07-19
 
 ### Fixed

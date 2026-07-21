@@ -1,6 +1,6 @@
 # `services.yaml` `dev` Block — Schema Reference
 
-> The `dev` block is an additive extension to `services.yaml` (see `jelou/templates/services-yaml.md`). It is consumed by **the UI QA workflow** for E2E test orchestration. Other jelou-spec-plugin workflows ignore it. In `/jlu-ui-qa-run`, a non-UI affected service without a `dev` block is skipped with a clear message. `/jlu-production-like` does NOT skip a boot-order service that lacks one — it derives a block (`bin/derive-dev-block.mjs`) and asks to persist it (step 8b) rather than improvise.
+> The `dev` block is an additive extension to `services.yaml` (see `jelou/templates/services-yaml.md`). It is consumed by **the UI QA workflow** for E2E test orchestration. Other jelou-spec-plugin workflows ignore it. In `/jlu-ui-qa-run`, a non-UI affected service without a `dev` block is skipped with a clear message. `/jlu-goal` does NOT skip a boot-order service that lacks one — it derives a block (`bin/derive-dev-block.mjs`) and asks to persist it (step 8b) rather than improvise.
 
 ## Purpose
 
@@ -82,7 +82,7 @@ pattern (NestJS dev containers on `devlabs_mynetwork`). `launcher: docker` alone
 `up -d` the container and leave it idling — the app would never start.
 
 - `command` is the dev-server command run **inside** the container (e.g. `npm run start:dev`).
-  It MUST use the service's real package manager — `/jlu-production-like` derives it from the
+  It MUST use the service's real package manager — `/jlu-goal` derives it from the
   lockfile (`bin/derive-dev-block.mjs`); it is never assumed. Booting a yarn command on an npm
   project (or vice-versa) is the exact failure this launcher exists to prevent.
 - Boot is: `docker compose -f <compose_file> up -d <service>` (idempotent), then — only if the
@@ -153,7 +153,7 @@ session-validation API. These are usually NOT in `affected_services` and may be 
 returns `401` while the service-under-test itself looks healthy (the datum-legacy run's gateway-401
 root cause).
 
-`/jlu-production-like` (Phase 1 step 8a) and `/jlu-ui-qa-run` expand the boot order with
+`/jlu-goal` (Phase 1 step 8a) and `/jlu-ui-qa-run` expand the boot order with
 `depends_on` **transitively** (a dependency's own `depends_on` is folded in too), ordering each
 dependency before its dependents. Every folded dependency must have a `dev` block, exactly like any
 other boot-order service (`bin/derive-dev-block.mjs` + step 8b resolve missing ones). Other
@@ -184,7 +184,7 @@ The `dev` block is **strictly additive**. Existing `services.yaml` files without
 
 A separate, per-workspace registry — distinct from `services.yaml` and from `jelou-stack.json` — is now available: `<workspace>/registry/jelou-registry.yaml`. It is authored by a human (or seeded from a canonical template) in a strict YAML subset, **compiled** by `bin/compile-registry.mjs` (or seeded-then-compiled by `bin/seed-registry.mjs`) into `<workspace>/registry/registry.json`, and read at runtime by `readUnifiedRegistry(workspaceRoot)` (`bin/lib/registry/read.mjs`), which just `JSON.parse`s the compiled file. The canonical template ships at `jelou/config/jelou-registry.template.yaml`.
 
-This is **consolidation sub-project #1** — the base of a single registry format. As of #3c, `/jlu-start-dev --jelou-stack` and `/jlu-autofix` are migrated onto it (via the plan-driven boot; the F-series `jelou-stack.json` boot was retired). Still pending: `/jlu-production-like` (#4) reads the `services.yaml` `dev` blocks documented above, and the generic tmux `/jlu-start-dev` path reads `jlu-services.json` (deprecated). The mapping table below is retained as historical provenance for how the retired `jelou-stack.json` fields map onto this format.
+This is **consolidation sub-project #1** — the base of a single registry format. As of #3c, `/jlu-start-dev --jelou-stack` and `/jlu-autofix` are migrated onto it (via the plan-driven boot; the F-series `jelou-stack.json` boot was retired). Still pending: `/jlu-goal` (#4) reads the `services.yaml` `dev` blocks documented above, and the generic tmux `/jlu-start-dev` path reads `jlu-services.json` (deprecated). The mapping table below is retained as historical provenance for how the retired `jelou-stack.json` fields map onto this format.
 
 ### Additive fields (over the `dev` block above)
 

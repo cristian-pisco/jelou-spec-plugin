@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // bin/derive-dev-block.mjs — infer a services.yaml `dev:` block for a service
-// that has none, so /jlu-production-like can boot it DETERMINISTICALLY instead
+// that has none, so /jlu-goal can boot it DETERMINISTICALLY instead
 // of improvising a launcher/command (the failure that booted backends with the
 // wrong package manager: `docker exec yarn dev` on an npm project).
 //

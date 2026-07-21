@@ -1,10 +1,8 @@
 ---
-description: DEPRECATED alias of jlu-goal — use jlu-goal instead
+description: Run a goal matrix to green against the full local stack — objectives (frontend/backend/fullstack) compile to E2E suites, the stack boots once, and a bounded convergence loop (run → auto-fix → re-run) ends only when every objective is green, with mandatory video evidence for frontend/fullstack objectives
 agent: build
 ---
-Print exactly: ⚠️ `/jlu-production-like` is deprecated and now runs `/jlu-goal`. Please use `/jlu-goal` going forward.
-
-Then resolve the goal workflow path in this order:
+Resolve workflow path in this order:
 1. `<HOME>/.config/opencode/jelou/workflows/goal.md` (global install preferred; resolve `<HOME>` to an absolute path first)
 2. `jelou/workflows/goal.md` (project-local fallback)
 

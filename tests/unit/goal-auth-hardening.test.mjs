@@ -1,4 +1,4 @@
-// tests/unit/production-like-auth-hardening.test.mjs
+// tests/unit/goal-auth-hardening.test.mjs
 //
 // Hardens the auth/boot path against the remaining failure modes from the datum-legacy saga:
 //  A. A captcha/Turnstile on a LOOPBACK target is a misconfiguration (the local frontend is
@@ -9,7 +9,7 @@
 //  C. On ready_timeout, boot surfaces the launch-log crash reason so a dependency that died on a
 //     missing local-only env var is diagnosable, not opaque.
 //
-// Run: `node --test tests/unit/production-like-auth-hardening.test.mjs`
+// Run: `node --test tests/unit/goal-auth-hardening.test.mjs`
 
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
@@ -20,7 +20,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
 const uiwf = read('jelou/workflows/ui-qa-run.md');
-const prodlike = read('jelou/workflows/production-like.md');
+const prodlike = read('jelou/workflows/goal.md');
 const env = read('jelou/references/env-lifecycle.md');
 const e2eenv = read('jelou/references/e2e-environment.md');
 const fixtures = read('jelou/references/auth-fixtures.md');

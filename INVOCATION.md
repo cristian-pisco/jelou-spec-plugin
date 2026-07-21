@@ -22,7 +22,7 @@ Skills are invoked with the plugin namespace prefix `jlu:`.
 | `daily-slack`          | `/jlu:daily-slack`               |
 | `architecture-review`  | `/jlu:architecture-review`       |
 | `ubiquitous-language`  | `/jlu:ubiquitous-language`       |
-| `production-like`      | `/jlu:production-like [slug]`    |
+| `goal`                 | `/jlu:goal [goal matrix]`        |
 
 The `jlu:` prefix derives from `.claude-plugin/plugin.json` (`name: "jlu"`). Skill names are taken from each `skills/*/SKILL.md` `name:` field. Claude Code auto-discovers all skills in `skills/` at plugin install time.
 
@@ -50,9 +50,9 @@ OpenCode normalization rules:
 | `daily-slack`          | `/jlu-daily-slack`               |
 | `architecture-review`  | `/jlu-architecture-review`       |
 | `ubiquitous-language`  | `/jlu-ubiquitous-language`       |
-| `production-like`      | `/jlu-production-like [slug]`    |
+| `goal`                 | `/jlu-goal [goal matrix]`        |
 
-`/jlu-create-pr` is a deprecated alias for `/jlu-ship`; it prints a warning and delegates immediately. Before opening PRs, `/jlu-ship` validates that each service installs deps cleanly and builds — in-container for docker-compose services.
+`/jlu-create-pr` is a deprecated alias for `/jlu-ship`, and `/jlu-production-like` is a deprecated alias for `/jlu-goal`; each prints a warning and delegates immediately. Before opening PRs, `/jlu-ship` validates that each service installs deps cleanly and builds — in-container for docker-compose services.
 
 OpenCode commands live in `.opencode/commands/jlu-<skill>.md` and resolve workflow files global-first from `~/.config/opencode/jelou/` before project-local fallbacks. Most commands dispatch `jelou/workflows/<skill>.md`; OpenCode-specific overrides may live under `jelou/workflows-opencode/`.
 

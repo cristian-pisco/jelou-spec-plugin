@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // bin/probe-coverage-breadth.mjs — static coverage-BREADTH audit for the
-// /jlu-production-like Phase 4.5 gate.
+// /jlu-goal Phase 4.5 gate.
 //
 // A green suite can still be production-thin: a one-happy-path test per
 // requirement (a filter with `columns: []`, a single-text-column create) exits
@@ -8,7 +8,7 @@
 // touched DTO/validator surface and the authored test files and reports the
 // input dimensions the suite never exercised — it does NOT run anything and it
 // does NOT author tests (the workflow re-dispatches the upstream authors for
-// that). The live probe that confirms a gap lives in production-like.md prose.
+// that). The live probe that confirms a gap lives in goal.md prose.
 //
 // Usage:
 //   node bin/probe-coverage-breadth.mjs --service <worktree> [--spec <path>] [--json]
@@ -187,7 +187,7 @@ function main() {
   // only the DTOs changed in THIS task, so legacy untouched DTOs are never
   // flagged). Test files are still discovered repo-wide so a rejecting test in
   // an unchanged spec still counts. Bare mode (--service only) audits the whole
-  // worktree, as /jlu-production-like Phase 4.5 does.
+  // worktree, as /jlu-goal Phase 4.5 does.
   let dtoFiles;
   let testRoot;
   if (opts.dto.length > 0) {

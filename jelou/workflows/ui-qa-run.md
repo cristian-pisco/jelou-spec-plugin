@@ -12,10 +12,10 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
   - `--allow-prod-target` — override the anti-prod E2E target gate (use sparingly; see Phase 3 step 15). Sets `ALLOW_PROD_TARGET=1` for the run.
   - `--workers=N` — Playwright worker count. Default 1. Refuses unsafe values unless both RAM and CPU gates pass (or `--force` is set).
   - `--no-boot` — assume the dev infrastructure is already up and owned by the caller
-    (e.g. `/jlu-production-like`). Skips the pre-flight resource/port gate, the service
+    (e.g. `/jlu-goal`). Skips the pre-flight resource/port gate, the service
     boot, and teardown (Phase 1 steps 8–10, Phase 3 step 14, and teardown). The auth gate,
     Playwright run, fix-loop, and report still execute. Sets `NO_BOOT=1`.
-    Under `--no-boot` the caller (`/jlu-production-like`) has already materialized the
+    Under `--no-boot` the caller (`/jlu-goal`) has already materialized the
     suite and completed the auth gate, so step 7 derivation is a no-op and the run body
     is dispatched to `jlu-ui-qa-runner`.
 
@@ -456,7 +456,7 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
 
     **Zero-test guard (never a false green).** Before treating the run as a pass, check how many tests the reporter actually collected (`stats.expected` plus any `unexpected`/`flaky`, or the presence of `suites`). If **zero tests were collected**, this is a configuration/spec-location problem — the playwright config `testDir` did not resolve to the generated specs — NOT a pass. Abort with `STATUS: BLOCKED`, reason `no_tests_collected`, and point the user at the `testDir` vs generated-spec-location mismatch. A green exit code on an empty run must never be reported as success.
 
-    **Minimal-input guard (never a thin green, under `/jlu-production-like`).** When invoked with `NO_BOOT` set (the production-like backstop), also reject a green-but-thin run: if the collected specs never exercise a non-default field type or never populate an auto-generatable reference for any Success Criterion that creates/edits an entity with typed/reference fields (the boolean-column→options-filter shape), do NOT report a clean pass — surface reason `minimal_input_coverage`, name the uncovered field/reference dimensions, and hand them to the orchestrator's Phase 4.5 re-dispatch. A green exit on a one-text-column / zero-filter suite must never be reported as success under production-like.
+    **Minimal-input guard (never a thin green, under `/jlu-goal`).** When invoked with `NO_BOOT` set (the goal backstop), also reject a green-but-thin run: if the collected specs never exercise a non-default field type or never populate an auto-generatable reference for any Success Criterion that creates/edits an entity with typed/reference fields (the boolean-column→options-filter shape), do NOT report a clean pass — surface reason `minimal_input_coverage`, name the uncovered field/reference dimensions, and hand them to the orchestrator's Phase 4.5 re-dispatch. A green exit on a one-text-column / zero-filter suite must never be reported as success under goal.
 
 17. **Mid-suite crash detection.** If any test failed:
     ```
@@ -604,7 +604,7 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
 | No Playwright infra, user declined bootstrap | 2 | "Playwright infra required; E2E mandatory for frontend changes" |
 | Bootstrap dependency install failed | 2 | "could not install `@playwright/test`; run `<cmd>` manually" |
 | Zero tests collected (config/spec-location mismatch) | 2 | "Playwright collected 0 tests; `testDir` did not resolve to the generated specs — not a pass" |
-| Green but minimal input coverage (under production-like) | 1 | `minimal_input_coverage`: suite never exercised a non-default field type / populated reference; dimensions named, routed to Phase 4.5 re-dispatch |
+| Green but minimal input coverage (under goal) | 1 | `minimal_input_coverage`: suite never exercised a non-default field type / populated reference; dimensions named, routed to Phase 4.5 re-dispatch |
 | Required env var unset | 2 | "required env vars missing: <list>" + reference to e2e-environment.md |
 | External dependency unreachable | 2 | "external dependency unreachable: <VAR>=<URL>" (HEAD-check failed pre-flight) |
 | Fix budget exhausted (15-min deadline or 10-dispatch cap) | 1 | "CIRCUIT_BREAKER: fix budget exhausted" — remaining failures flagged in the run report |

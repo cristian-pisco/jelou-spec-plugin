@@ -154,7 +154,7 @@ describe('probe-coverage-breadth — CLI', () => {
 });
 
 describe('production-like.md — Phase 4.5 gate prose', () => {
-  const wf = read('jelou/workflows/production-like.md');
+  const wf = read('jelou/workflows/goal.md');
   test('documents the coverage-breadth + realistic-payload gate', () => {
     assert.match(wf, /Coverage-breadth \+ realistic-payload gate/i);
   });
