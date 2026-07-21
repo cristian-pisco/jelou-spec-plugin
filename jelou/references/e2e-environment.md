@@ -190,9 +190,9 @@ For services with `dev.data_isolation: shared` (per `dev-block-schema.md`), `--a
 - `jelou/templates/spec-templates/user-flow.md` — `Env Vars` section that the writer reads and the orchestrator validates.
 - `jelou/workflows/ui-qa-run.md` — Phase 3 step 15 implements the `.env` source + var-existence check.
 
-## Backend E2E (production-like)
+## Backend E2E (goal)
 
-`/jlu-production-like` runs a dedicated backend E2E phase that does NOT use the dev-block boot
+`/jlu-goal` runs a dedicated backend E2E phase that does NOT use the dev-block boot
 for its dependencies. Instead it brings up **dependencies only** (DB/Redis/etc.) via
 Testcontainers in ephemeral, isolated containers, runs the service under test **on the host**
 pointed at those containers, and exercises it over real HTTP. Suites live in the E2E path

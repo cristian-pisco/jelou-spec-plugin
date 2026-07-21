@@ -19,7 +19,7 @@ Your context window is finite. Manage it deliberately:
 
 The TDD pipeline never runs through Docker. Absolute, applies to every agent and every tier:
 
-- **DO NOT** use Testcontainers, `dockerode`, or any library that spawns containers — except in the E2E path (`test/e2e/**`, `*.e2e-spec.ts`), which only `/jlu-production-like` runs.
+- **DO NOT** use Testcontainers, `dockerode`, or any library that spawns containers — except in the E2E path (`test/e2e/**`, `*.e2e-spec.ts`), which only `/jlu-goal` runs.
 - **DO NOT** call `docker`, `docker compose`, or `podman` from a test, helper, or build step.
 - **DO NOT** prefix test/build/lint commands with any container-exec wrapper.
 - **DO NOT** import test utilities that boot containers as a side effect.
@@ -28,7 +28,7 @@ All commands run on the host runtime directly (`node`, `pnpm`, `pytest`, `go tes
 
 **Single carve-out — dependency install.** Adding a package is the one operation that targets the *running service's* runtime, not the host test runtime. For a service whose `jlu-services.json` `runtime.type` is `docker-compose`, the install must run inside the container (the container owns the package manager, Node version, and native-build toolchain). Never run a raw `npm install` to add a package — always go through `bin/install-dep.mjs`, which routes by runtime, boots the container if it is down, and installs in the right context. See `docker-conventions.md` → "Installing Dependencies". This does **not** loosen anything above: tests, build, lint, and format stay host-only.
 
-**Second carve-out — the `/jlu-ship` preflight.** For docker-compose-runtime services, the ship preflight also runs the *build* inside the container (the container owns node_modules + the Node version), via `jlu-build-validator`'s runtime-aware mode resolved through `bin/runtime-exec.mjs`. This is scoped to `/jlu-ship` only — exactly like Testcontainers is scoped to `/jlu-production-like`. The TDD per-phase pipeline (`/jlu-execute-task`) passes no runtime context and stays host-only for build/test/lint/format.
+**Second carve-out — the `/jlu-ship` preflight.** For docker-compose-runtime services, the ship preflight also runs the *build* inside the container (the container owns node_modules + the Node version), via `jlu-build-validator`'s runtime-aware mode resolved through `bin/runtime-exec.mjs`. This is scoped to `/jlu-ship` only — exactly like Testcontainers is scoped to `/jlu-goal`. The TDD per-phase pipeline (`/jlu-execute-task`) passes no runtime context and stays host-only for build/test/lint/format.
 
 ## Test Execution Resource Limits
 
@@ -53,7 +53,7 @@ Test runners default to one worker per CPU core, and each Jest/Vitest worker is 
 5. **Never coverage.** `--coverage`, `--cov`, `test:cov` multiply RAM via instrumentation. Coverage analysis is static — QA reads existing reports, nothing re-executes tests.
 6. **Inherited commands inherit no safety.** A command copied from CONVENTIONS.md, `package.json` scripts, or another agent's report gets the worker cap appended before you run it — verify, don't trust.
 
-- **Testcontainers E2E (production-like only).** When `/jlu-production-like` runs a backend
+- **Testcontainers E2E (goal only).** When `/jlu-goal` runs a backend
   E2E suite that spins up ephemeral dependency containers, concurrency = WORKERS (default 1):
   run one service's E2E at a time, bring up one dependency set at a time, and run its
   teardown of that dependency set before the next service. No orphaned containers may survive the run.

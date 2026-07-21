@@ -26,7 +26,7 @@ services:
       ready_timeout_s: 30          # default 30
       ram_estimate_mb: 400         # advisory; consumed by pre-flight resource check
       data_isolation: per-run      # shared | per-run | none
-    e2e:                           # optional — backend E2E discovery for /jlu-production-like
+    e2e:                           # optional — backend E2E discovery for /jlu-goal
       globs:                       # suite glob(s) for the backend real-DB HTTP tier
         - test/e2e/**/*.e2e-spec.ts
 ```
@@ -55,7 +55,7 @@ services:
 | `dev.ready_timeout_s` | int | no | Seconds to wait for readiness before aborting. Default `30`. |
 | `dev.ram_estimate_mb` | int | no | Advisory per-service RAM estimate. Summed by the UI QA pre-flight check. Default `0` (counts as unknown). |
 | `dev.data_isolation` | enum | yes (when `dev` present) | `shared` \| `per-run` \| `none`. `shared` is refused by `/jlu-ui-qa-run` without `--allow-shared-data`. |
-| `e2e` | object | no | Backend E2E discovery config for `/jlu-production-like` Phase 3.5. Absence = the default glob. |
+| `e2e` | object | no | Backend E2E discovery config for `/jlu-goal` Phase 3.5. Absence = the default glob. |
 | `e2e.globs` | string[] | no | Glob(s) identifying the service's real-DB-over-HTTP E2E tier. Default `["test/e2e/**/*.e2e-spec.ts"]`. Declare a non-default convention here (e.g. `["test/**/*.integration-spec.ts"]`) to make that tier count as the mandatory backend E2E phase — the runner *runs* whatever matches. This declarative field is the ONLY sanctioned way to recognize a non-default convention; a subagent may never waive the phase by narrative. |
 
 ## Example
@@ -121,4 +121,4 @@ services:
 - Paths are relative to the `.spec-workspace/` directory.
 - Relationships between services (API calls, events, shared schemas) are not stored here. They are discovered by reading each service's `INTEGRATIONS.md` under `.spec-workspace/services/<service-id>/codebase/`.
 - If a spec or codebase doc references a service not in the registry, the plugin warns and offers to register it (Decision #39).
-- The `dev` block is consumed by the UI QA workflow for E2E test orchestration. Other jelou workflows ignore it. Services without a `dev` block remain valid; `/jlu-ui-qa-run` skips a non-UI service that lacks one, while `/jlu-production-like` derives and (with your OK) persists one for any boot-order service that is missing it (step 8b) instead of skipping.
+- The `dev` block is consumed by the UI QA workflow for E2E test orchestration. Other jelou workflows ignore it. Services without a `dev` block remain valid; `/jlu-ui-qa-run` skips a non-UI service that lacks one, while `/jlu-goal` derives and (with your OK) persists one for any boot-order service that is missing it (step 8b) instead of skipping.

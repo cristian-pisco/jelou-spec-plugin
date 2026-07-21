@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
 const uiwf = read('jelou/workflows/ui-qa-run.md');
-const prodlike = read('jelou/workflows/production-like.md');
+const prodlike = read('jelou/workflows/goal.md');
 
 describe('self-healing gate — 14b classifies the target and mints a local session deterministically', () => {
   test('the gate classifies the target and runs the A+B drivers for a loopback stack', () => {

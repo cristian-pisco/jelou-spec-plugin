@@ -249,7 +249,7 @@ OpenCode command definitions live in `.opencode/commands/`. All commands use the
 | `/jlu-rollback-phase` | Reset service worktrees to the last known-good phase state |
 | `/jlu-diagnose [name]` | Analyze a failing dev-environment service (TMUX pane + recent events) and propose a structured fix (host or container) |
 | `/jlu-architecture-review [<service-id>] [--cross-service]` | Surface deepening opportunities (single-service or cross-service); interactive grilling loop; lazy ADRs |
-| `/jlu-production-like [task-slug]` | Run the full production-like QA suite for a task — auto-detects fullstack vs full-backend, boots the dev infra once, runs the UI Playwright suite and the backend unit/integration + Testcontainers backend-E2E phases against the live stack, then tears down. The single QA entry point for a finished task. |
+| `/jlu-goal [goal matrix]` | Run a user-supplied goal matrix to green against the full local stack — each objective (frontend/backend/fullstack) compiles to E2E suites, the dev infra boots once, and a bounded convergence loop (run → auto-fix → re-run) ends only when every objective is green, with mandatory video evidence for frontend/fullstack objectives. `/jlu-production-like` is a deprecated alias. The single QA entry point for a finished task. |
 | `/jlu-trace-report` | Query the workspace trace store: by-agent / by-phase / by-task / trends |
 | `/jlu-eval-report` | Consolidated evaluation scorecard: task success, cost-per-task, per-agent quality, calibration, failure taxonomy, suggestion hit-rate |
 | `/jlu-investigate "<question>" [--engine perplexity\|fusion]` | Stateful research/decision command. Runs one engine per call (default Perplexity; OpenRouter Fusion via `--engine fusion`), persists each investigation as a resumable Obsidian note (local-file fallback), resumes by topic slug. Not a debugger — use `/jlu-diagnose` for failures. |
@@ -468,22 +468,25 @@ Each E2E-targeted service must declare a `dev` block in `services.yaml` (launche
 
 Trace summaries (`trace-summary.json` + screenshots) are committed; raw `trace.zip` is gitignored.
 
-## Production-Like — Full-Stack QA Orchestration
+## Goal — Run a Goal Matrix to Green (Full-Stack QA Orchestration)
 
-`/jlu-production-like` runs a task's complete QA against a live, production-shaped stack in one command. It classifies the task, boots the dev infrastructure **once**, fans out to the right runners, then tears everything down — so UI E2E and backend E2E don't each pay their own boot/teardown cost.
+`/jlu-goal` (formerly `/jlu-production-like`, kept as a deprecated alias) runs a user-supplied **goal matrix** to green against a live, production-shaped stack in one command. Each objective declares its level — `frontend`, `backend`, or `fullstack` — and compiles into tagged E2E suites (`SPEC.md` is context for the derivation; the matrix governs the verdict). The workflow boots the dev infrastructure **once**, fans out to the right runners, then runs a bounded **convergence loop**: execute the matrix → for each red objective, delegate a fix (`jlu-implementer` for backend, the runner's `jlu-ui-fix-loop` for UI) → re-run its tagged suite — until every objective is green or `--max-iterations` (default 3) is exhausted. Then it tears everything down.
 
-The orchestrator is **thin**: it owns only the dev-environment lifecycle (boot once / teardown), the OTP auth gate (session-bound), brokering any runner's `NEEDS_CONTEXT` via a question, dispatch/routing, and result aggregation. All execution and authoring is delegated to subagents — it never runs a test or writes a `.spec.ts` itself.
+The orchestrator is **thin**: it owns only the goal-matrix brokering (parse, disambiguation interview, `GOALS.md` persistence, loop bookkeeping), the dev-environment lifecycle (boot once / teardown), the OTP auth gate (session-bound), brokering any runner's `NEEDS_CONTEXT` via a question, dispatch/routing, and result aggregation. All execution, authoring, and fixing is delegated to subagents — it never runs a test, writes a `.spec.ts`, or applies a fix itself.
 
-| Task class | Runners dispatched | What runs |
+| Objective level | Runners dispatched | What runs |
 |---|---|---|
-| **fullstack** | `jlu-ui-qa-runner` + `jlu-test-suite-runner` + `jlu-backend-e2e-runner` | UI Playwright suite (reuse-or-reboot frontend) **and** backend unit/integration + a Testcontainers backend-E2E phase |
-| **full-backend** | `jlu-test-suite-runner` + `jlu-backend-e2e-runner` | Backend unit/integration suite + Testcontainers backend-E2E (dependencies-only, real HTTP) |
+| **frontend** | `jlu-ui-qa-runner` | UI Playwright suite scoped to the objective's `@goal:G<id>` tag (reuse-or-reboot frontend) |
+| **backend** | `jlu-test-suite-runner` + `jlu-backend-e2e-runner` | Backend unit/integration suite + Testcontainers backend-E2E (`[G<id>]`-tagged, dependencies-only, real HTTP) |
+| **fullstack** | all three | Both sides — the objective is green only when both pass |
 
-The backend-E2E phase uses Testcontainers for dependencies only (no service-under-test container); the frontend is reused if already healthy, otherwise rebooted fresh so it bakes the E2E env. The missing UI suite is pre-materialized from `SPEC.md` if absent. Runs once per task — invoke before opening the PR, after `/jlu-execute-task` is green.
+**Video evidence is mandatory for frontend and fullstack objectives**: every run records via the `JLU_E2E_VIDEO` contract (pass AND fail), and the final report maps each objective to its video path(s) — a frontend/fullstack objective without a video artifact is not reportable as green. Backend-only objectives need no video. The resolved matrix persists to `$TASK_DIR/GOALS.md` with per-objective statuses, so a later `/jlu-goal` with no argument resumes with only the reds. Invoke before opening the PR, after `/jlu-execute-task` is green.
 
 ```bash
-/jlu-production-like                 # auto-detect the task from the current branch
-/jlu-production-like add-oauth-flow  # explicit task slug
+/jlu-goal "crear un producto y verlo en la lista [fullstack] @brain-ui; el POST persiste en Mongo [backend] @products-api"
+/jlu-goal '[{"title":"checkout completes","level":"fullstack","services":["shop-ui","orders-api"]}]' --max-iterations=5
+/jlu-goal                 # resume the persisted GOALS.md (auto-detect the task from the current branch)
+/jlu-goal --task=add-oauth-flow   # explicit task slug
 ```
 
 ## Architecture Review — Deepening Opportunities

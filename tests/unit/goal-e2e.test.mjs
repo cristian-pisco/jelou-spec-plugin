@@ -1,11 +1,11 @@
-// tests/unit/production-like-e2e.test.mjs
+// tests/unit/goal-e2e.test.mjs
 //
-// Guards the production-like true-E2E behavior:
+// Guards the goal true-E2E behavior:
 //  - a backend E2E phase (Testcontainers, deps-only, serial via WORKERS),
 //  - run-existing / delegate-missing authoring via jlu-test-writer,
 //  - frontend health-check reuse-or-reboot before Playwright.
 //
-// Run: `node --test tests/unit/production-like-e2e.test.mjs`
+// Run: `node --test tests/unit/goal-e2e.test.mjs`
 
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
@@ -15,9 +15,9 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
-const wf = read('jelou/workflows/production-like.md');
+const wf = read('jelou/workflows/goal.md');
 
-describe('production-like — backend E2E phase', () => {
+describe('goal — backend E2E phase', () => {
   test('declares a backend E2E phase using Testcontainers dependencies only', () => {
     assert.match(wf, /backend E2E/i);
     assert.match(wf, /Testcontainers/);
@@ -36,7 +36,7 @@ describe('production-like — backend E2E phase', () => {
   });
 });
 
-describe('production-like — frontend reuse', () => {
+describe('goal — frontend reuse', () => {
   test('health-checks backends and reuses healthy ones without teardown', () => {
     assert.match(wf, /health-check|readiness probe/i);
     assert.match(wf, /reuse/i);
@@ -58,10 +58,10 @@ describe('e2e-environment — backend E2E deps model', () => {
   });
 });
 
-describe('production-like — subagent-first orchestration', () => {
+describe('goal — subagent-first orchestration', () => {
   test('materializes the UI suite before computing the boot order', () => {
-    assert.match(wf, /Materialize UI E2E artifacts/i);
-    const matIdx = wf.search(/Materialize UI E2E artifacts/i);
+    assert.match(wf, /Materialize objective E2E artifacts/i);
+    const matIdx = wf.search(/Materialize objective E2E artifacts/i);
     const bootOrderIdx = wf.search(/Compute the Service Boot Order/);
     assert.ok(matIdx > -1 && bootOrderIdx > -1 && matIdx < bootOrderIdx,
       'materialize step must appear before the boot-order computation');
@@ -82,8 +82,8 @@ describe('production-like — subagent-first orchestration', () => {
   });
 });
 
-describe('production-like SKILL — subagent-first contract', () => {
-  const skill = read('skills/production-like/SKILL.md');
+describe('goal SKILL — subagent-first contract', () => {
+  const skill = read('skills/goal/SKILL.md');
   test('replaces the inline mandate with subagent dispatch', () => {
     assert.doesNotMatch(skill, /do NOT spawn a sub-?agent/i);
     assert.match(skill, /dispatches?\s+subagents?|jlu-[\w-]+-runner/i);

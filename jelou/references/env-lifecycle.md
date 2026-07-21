@@ -1,7 +1,7 @@
 # Environment Lifecycle — Shared Boot / Gate / Teardown Contract
 
 > The single source of truth for the production-like dev-environment lifecycle.
-> Consumed by `jelou/workflows/ui-qa-run.md` and `jelou/workflows/production-like.md`.
+> Consumed by `jelou/workflows/ui-qa-run.md` and `jelou/workflows/goal.md`.
 > It describes three operations — a pre-flight gate, an ephemeral boot, and a
 > deterministic teardown — over services that declare a `dev` block
 > (`jelou/references/dev-block-schema.md`). It does NOT spin up Testcontainers:
@@ -72,7 +72,7 @@ Data-isolation guard — if any service declares `dev.data_isolation: shared` an
 ## `boot(service_boot_order)`
 
 Every service in the boot order MUST have a `dev` block (declared, or just-derived-and-persisted
-by the orchestrator — see `production-like.md` Phase 1). **Booting an unregistered service by
+by the orchestrator — see `goal.md` Phase 1). **Booting an unregistered service by
 improvising a launcher/command is forbidden** — guessing `yarn` on an npm project is the exact
 failure this contract prevents.
 
@@ -211,7 +211,7 @@ docker compose -f <compose_file> stop <service>
 
 - `ui-qa-run.md` runs `preflight_gate` (browser_overhead_mb=1300), `boot`, `teardown`
   when invoked standalone. With `--no-boot` it skips all three — the caller owns the lifecycle.
-- `production-like.md` runs `preflight_gate` (1300 for fullstack, 0 for full-backend),
+- `goal.md` runs `preflight_gate` (1300 for fullstack, 0 for full-backend),
   `boot` once, and `teardown` once, around its delegated execution phases.
 - `test-suite.md` calls none — it runs on the host and only needs the infra reachable.
 

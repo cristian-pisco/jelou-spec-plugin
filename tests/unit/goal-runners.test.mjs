@@ -1,11 +1,11 @@
-// tests/unit/production-like-runners.test.mjs
+// tests/unit/goal-runners.test.mjs
 //
 // Guards the subagent-first production-like runner agents:
 //  - the three runners exist with correct frontmatter,
 //  - runner subagents carry NO AskUserQuestion (they return NEEDS_CONTEXT instead),
 //  - jlu-ui-qa-runner carries Agent (to dispatch the fix-loop).
 //
-// Run: `node --test tests/unit/production-like-runners.test.mjs`
+// Run: `node --test tests/unit/goal-runners.test.mjs`
 
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';

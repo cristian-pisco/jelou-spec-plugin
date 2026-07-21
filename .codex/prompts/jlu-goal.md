@@ -1,15 +1,15 @@
 ---
-description: "DEPRECATED alias of /jlu-goal — runs a goal matrix to green against the full local stack with a bounded convergence loop and video evidence. Use /jlu-goal."
+description: "Use to run a goal matrix to green against the full local stack — the user supplies objectives (frontend/backend/fullstack), each compiles to E2E suites, the stack boots once, and a bounded convergence loop (run → auto-fix → re-run) ends only when every objective is green, with mandatory video evidence for frontend/fullstack objectives. Triggers \"goal\", \"goal matrix\", \"run objectives to green\", \"production-like\", \"fullstack E2E\", \"full backend test\"."
 argument-hint: "[goal matrix] [--task=<slug>] [--max-iterations=N]"
 ---
 Resolve the workflow file in this order, and use the first one that exists:
-1. `$CODEX_HOME/jelou/workflows/production-like.md` (global install; `$CODEX_HOME` defaults to `~/.codex` — resolve it to an absolute path first).
-2. `jelou/workflows/production-like.md` (project-local fallback).
+1. `$CODEX_HOME/jelou/workflows/goal.md` (global install; `$CODEX_HOME` defaults to `~/.codex` — resolve it to an absolute path first).
+2. `jelou/workflows/goal.md` (project-local fallback).
 
 Resolution rules:
 - Select the first existing path only; never read a lower-priority path when a higher one exists.
 - If neither exists, stop and report both checked paths.
-- Do not read or execute `skills/production-like/SKILL.md`; `skills/*/SKILL.md` files are Claude Code entry points, not Codex prompts.
+- Do not read or execute `skills/goal/SKILL.md`; `skills/*/SKILL.md` files are Claude Code entry points, not Codex prompts.
 
 Read exactly one resolved workflow file and execute it exactly.
 

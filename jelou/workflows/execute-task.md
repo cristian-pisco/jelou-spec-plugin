@@ -998,7 +998,7 @@ For each affected UI service:
 4. Commit the generated `user-flow.md` + specs to the task branch.
 
 This step authors only — it is **pre-deploy**: it does NOT boot a UI server and does
-NOT run Playwright (that happens post-deploy under `/jlu-production-like` /
+NOT run Playwright (that happens post-deploy under `/jlu-goal` /
 `/jlu-ui-qa-run`). It is a no-op when no UI service is affected.
 
 ### Step 8f — Materialize the backend E2E suite from SPEC.md (shift-left)
@@ -1006,7 +1006,7 @@ NOT run Playwright (that happens post-deploy under `/jlu-production-like` /
 The backend twin of Step 8e, for parity: a frontend change ships with its Playwright
 suite, so a backend change must ship with its controller-level E2E suite — instead of
 that suite only ever existing reactively the first time someone runs
-`/jlu-production-like`. A service is a **backend service** when its `services.yaml`
+`/jlu-goal`. A service is a **backend service** when its `services.yaml`
 `stack` is NOT a UI stack (i.e. ∉ {`react`, `nextjs`, `vue`, `angular`, `svelte`}); the
 HTTP-surface gate below — not this definition — decides whether it actually gets a suite.
 
@@ -1042,7 +1042,7 @@ For each affected backend service that clears the gate:
 
 This step **authors only** — it does NOT boot the service and does NOT run the E2E
 suite (it never starts a Testcontainers dependency). Execution, and the Testcontainers
-boot, remain owned exclusively by `/jlu-production-like` (Phase 3.5) — the Testcontainers
+boot, remain owned exclusively by `/jlu-goal` (Phase 3.5) — the Testcontainers
 carve-out is path-scoped to `test/e2e/**` and the TDD pipeline never *runs* it. It is a
 no-op when no affected backend service exposes a touched endpoint.
 
