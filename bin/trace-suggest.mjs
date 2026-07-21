@@ -1,10 +1,13 @@
 #!/usr/bin/env node
-// bin/trace-suggest.mjs — scan recent traces, emit blocking suggestions.
+// bin/trace-suggest.mjs — scan recent traces, emit suggestion blocks on stdout.
+// Surfacing is the caller's choice: workflows may print them (non-blocking) or
+// prompt on them. immediate_flag findings are scoped to TRACE_CURRENT_TASK.
 //
 // Inputs (env):
 //   TRACE_FILE                workspace spans.jsonl (default <cwd>/.traces/spans.jsonl)
 //   FEEDBACK_FILE             feedback store (default feedback.jsonl beside TRACE_FILE)
 //   TRACE_SUGGEST_HISTORY     cooldown store (default <cwd>/.spec-workspace/.cache/suggestion-history.jsonl)
+//   TRACE_CURRENT_TASK        current task slug; limits immediate_flag to this task
 //   TRACE_DISABLED=1          short-circuit (exit 0 silently)
 //
 // Output: one SUGGEST block per finding, an optional dormant-judge line, and a
@@ -87,7 +90,8 @@ for (const f of listRotatedFiles(traceFile)) {
 
 const pairs = pairSpans(events);
 const feedback = readFeedback(feedbackFile);
-const findings = evaluate(pairs, { events, feedback });
+const currentTask = process.env.TRACE_CURRENT_TASK || undefined;
+const findings = evaluate(pairs, { events, feedback, currentTask });
 const history = loadHistory(historyFile);
 const filtered = applyCooldown(findings, history);
 

@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "jlu",
-      "version": "0.3.309",
+      "version": "0.3.310",
       "source": "./",
       "description": "Spec-driven development with TDD, multi-service coordination, and specialized agents. Requires the context7 MCP server for library documentation lookups."
     }

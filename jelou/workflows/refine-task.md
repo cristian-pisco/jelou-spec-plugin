@@ -27,10 +27,10 @@
 
 ### Step 0b — Surface suggestions from prior runs
 
-Run the suggester. It scans recent trace history and emits one SUGGEST block per active rule that fires (4 possible rules: bump model tier, extend failure patterns, suggest parallelization, immediate flag on blocked spans). The 7-day cooldown is honored automatically.
+Run the suggester scoped to the current task. It scans recent trace history and emits one SUGGEST block per active rule that fires (bump model tier, extend failure patterns, suggest parallelization, immediate flag on blocked/failed spans of THIS task — orphaned spans are self-healing and never flagged). The 7-day cooldown is honored automatically. This interview flow is the home for acting on these suggestions, so prompting here is intentional (not friction mid-execution).
 
 ```bash
-SUGGESTIONS=$(node "${PLUGIN_ROOT:-.}/bin/trace-suggest.mjs" 2>/dev/null || true)
+SUGGESTIONS=$(TRACE_CURRENT_TASK="$TASK_SLUG" node "${PLUGIN_ROOT:-.}/bin/trace-suggest.mjs" 2>/dev/null || true)
 ```
 
 If `SUGGESTIONS` is non-empty:

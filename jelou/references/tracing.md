@@ -154,11 +154,21 @@ also carries `expected_improvement`.
   coordination (or a phase span with multiple failed children) → `coordination`;
   `implementer`/`build-validator`/`refactor-agent` → `execution`; otherwise
   `unknown`. It returns a `FAILURE_MODE` value.
-- `immediate_flag` groups recent failed/blocked/orphaned spans by `trace_id` and
+- `immediate_flag` groups recent failed/blocked spans by `trace_id` and
   emits **one** finding per trace, attributed to `earliestDecisiveFailure` (the
   decisive span with the earliest `start.ts`) with a `failure_mode` in its
   evidence. A single trace with three cascading failures yields one flag, not
-  three; independent failures in different traces still each flag.
+  three; independent failures in different traces still each flag. `orphaned`
+  spans are **excluded** — they are a self-healing artifact of interrupted runs
+  (the reconciler writes their synthetic `span_end` and they age out), so
+  flagging them is pure friction with no user action. When `context.currentTask`
+  (env `TRACE_CURRENT_TASK`) is set, findings are limited to that task, so an
+  unrelated prior run never surfaces during the current workflow.
+
+Surfacing is caller-controlled and MUST NOT interrupt in-flight work:
+`execute-task` and `ship` print suggestions non-blocking and continue;
+interactive approval lives only in `refine-task` and the on-demand
+`/jlu-trace-report`. Tracing never blocks a running task.
 
 ## How to add a new span name
 

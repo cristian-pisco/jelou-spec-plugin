@@ -127,18 +127,51 @@ describe('rule: immediate_flag', () => {
     assert.ok(findings.length >= 1);
   });
 
-  test('triggers for an orphaned span in last 24h', () => {
+  test('never triggers for an orphaned span (self-healing, no user action)', () => {
     const ts = new Date().toISOString();
     const pairs = [{
       start: { event_kind: 'span_start', span_id: 'ORPH', trace_id: 'T_ORPH',
-               name: 'agent_dispatch', agent_role: 'implementer', scope: 'task', ts },
+               name: 'execute_task', agent_role: 'implementer', scope: 'task',
+               task_slug: 'some-task', ts },
       end: { event_kind: 'span_end', span_id: 'ORPH', status: 'orphaned',
              ts, attrs: { error_signature: 'ORPHAN_SIG' } },
       duration_ms: 1000,
     }];
     const findings = evaluate(pairs).filter(f => f.rule_id === 'immediate_flag');
-    assert.equal(findings.length, 1);
-    assert.equal(findings[0].evidence.status, 'orphaned');
+    assert.equal(findings.length, 0);
+  });
+
+  test('currentTask scopes out flags from an unrelated task', () => {
+    const ts = new Date().toISOString();
+    const pairs = [{
+      start: { event_kind: 'span_start', span_id: 'OTHER', trace_id: 'T_OTHER',
+               name: 'execute_task', agent_role: 'implementer', scope: 'task',
+               task_slug: 'unrelated-old-task', ts },
+      end: { event_kind: 'span_end', span_id: 'OTHER', status: 'blocked',
+             ts, attrs: { error_signature: 'OTHER_SIG' } },
+      duration_ms: 1000,
+    }];
+    const unscoped = evaluate(pairs).filter(f => f.rule_id === 'immediate_flag');
+    assert.equal(unscoped.length, 1);
+    const scoped = evaluate(pairs, { currentTask: 'my-current-task' })
+      .filter(f => f.rule_id === 'immediate_flag');
+    assert.equal(scoped.length, 0);
+  });
+
+  test('currentTask keeps flags for the current task', () => {
+    const ts = new Date().toISOString();
+    const pairs = [{
+      start: { event_kind: 'span_start', span_id: 'MINE', trace_id: 'T_MINE',
+               name: 'execute_task', agent_role: 'implementer', scope: 'task',
+               task_slug: 'my-current-task', ts },
+      end: { event_kind: 'span_end', span_id: 'MINE', status: 'failed',
+             ts, attrs: { error_signature: 'MINE_SIG' } },
+      duration_ms: 1000,
+    }];
+    const scoped = evaluate(pairs, { currentTask: 'my-current-task' })
+      .filter(f => f.rule_id === 'immediate_flag');
+    assert.equal(scoped.length, 1);
+    assert.equal(scoped[0].evidence.task_slug, 'my-current-task');
   });
 
   test('does not trigger for blocked spans older than 24h', () => {

@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.310] — 2026-07-21
+
+### Fixed
+- tracing never interrupts task flow
+
 ## [0.3.309] — 2026-07-21
 
 ### Fixed

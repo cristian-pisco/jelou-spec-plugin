@@ -7,7 +7,7 @@
 //   bump_model_tier              — per agent_role, retry_rate > 0.20 over last N=10 dispatches
 //   extend_patterns              — error_signature appears >= 3 times in last 30 days
 //   suggest_parallelize          — per (service:phase), p95/median > 3.0 over last N=10 phase runs
-//   immediate_flag               — recent blocked/failed/orphaned span, one flag per trace
+//   immediate_flag               — recent blocked/failed span (orphaned excluded, self-healing), one flag per trace, scoped to current task
 //   faithfulness_below_baseline  — per agent_role, mean faithfulness_to_spec below floor (calibrated judge only)
 //   quality_regression           — phase quality_score below its historical median (calibrated judge only)
 //
@@ -32,6 +32,7 @@ const PARALLEL_RATIO_THRESHOLD = 3.0;
 const PATTERN_OCCURRENCE_THRESHOLD = 3;
 const QUALITY_REGRESSION_MARGIN = 0.1;
 const DECISIVE_STATUS = new Set(['blocked', 'failed', 'orphaned']);
+const FLAGGABLE_STATUS = new Set(['blocked', 'failed']);
 
 export const COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
 export const KAPPA_FLOOR = 0.4;
@@ -181,13 +182,15 @@ export const RULES = [
   },
   {
     id: 'immediate_flag',
-    description: 'Recently blocked span, one flag per trace at the earliest-decisive failure',
-    evaluate: (pairs) => {
+    description: 'Recently blocked/failed span (orphaned excluded), one flag per trace, scoped to current task',
+    evaluate: (pairs, context = {}) => {
       const cutoff = Date.now() - BLOCKED_LOOKBACK_MS;
+      const { currentTask } = context;
       const byTrace = new Map();
       for (const p of pairs) {
-        if (!p.end || !DECISIVE_STATUS.has(p.end.status)) continue;
+        if (!p.end || !FLAGGABLE_STATUS.has(p.end.status)) continue;
         if (new Date(p.end.ts).getTime() < cutoff) continue;
+        if (currentTask && p.start.task_slug !== currentTask) continue;
         const traceId = p.start.trace_id;
         if (!byTrace.has(traceId)) byTrace.set(traceId, []);
         byTrace.get(traceId).push(p);
