@@ -31,10 +31,12 @@ echo "Target: $TARGET_DIR"
 echo
 
 mkdir -p "$TARGET_DIR/.opencode"
-mkdir -p "$TARGET_DIR/jelou"
+mkdir -p "$TARGET_DIR/jelou/bin"
 
 cp -R "$PLUGIN_DIR/.opencode/." "$TARGET_DIR/.opencode/"
 cp -R "$PLUGIN_DIR/jelou/." "$TARGET_DIR/jelou/"
+cp "$PLUGIN_DIR/bin/jlu-update.sh" "$TARGET_DIR/jelou/bin/"
+chmod +x "$TARGET_DIR/jelou/bin/jlu-update.sh"
 
 # The OpenCode guard plugin (.opencode/plugins/guard.ts) imports the pure
 # classifiers from ../../bin/guard-*.mjs. Ship them so the import resolves
@@ -54,7 +56,7 @@ if [ -f "$TARGET_DIR/opencode.json" ]; then
 fi
 
 echo "Installed OpenCode command/agent files"
-echo "Installed jelou workflows/templates/references"
+echo "Installed jelou workflows/templates/references and updater"
 
 PLUGIN_AGENTS="$PLUGIN_DIR/AGENTS.md"
 TARGET_AGENTS="$TARGET_DIR/AGENTS.md"

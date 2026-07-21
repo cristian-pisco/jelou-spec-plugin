@@ -28,7 +28,11 @@ The updater lives in the plugin's `bin/` directory. Find the first path that exi
 
 1. `${JLU_HOME:-$HOME/.jelou-spec-plugin}/bin/jlu-update.sh` (the shared git cache created
    by the installer — preferred, since it is a git checkout that can be pulled)
-2. `<plugin-root>/bin/jlu-update.sh` (the resolved plugin root, for dev or manual installs)
+2. Starting from the resolved `jelou/workflows/update.md`, go up one directory from
+   `workflows/` and use `bin/jlu-update.sh` beside it (the runtime bootstrap installed for
+   Codex and OpenCode)
+3. Starting from the resolved `jelou/workflows/update.md`, go up two directories from
+   `workflows/` and use `bin/jlu-update.sh` (the source or marketplace plugin checkout)
 
 If neither exists, the plugin was not installed via the standard installer. Report this and
 tell the user to (re)install with the one-liner:
