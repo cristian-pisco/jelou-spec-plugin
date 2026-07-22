@@ -14,6 +14,7 @@ Skills are invoked with the plugin namespace prefix `jlu:`.
 | `refine-task`          | `/jlu:refine-task [slug]`        |
 | `extend-phase`         | `/jlu:extend-phase`              |
 | `ship`                 | `/jlu:ship`                      |
+| `resolve-pr`           | `/jlu:resolve-pr [pr] [--autonomous]` |
 | `report-task`          | `/jlu:report-task`               |
 | `load-context`         | `/jlu:load-context`              |
 | `close-task`           | `/jlu:close-task`                |
@@ -42,6 +43,7 @@ OpenCode normalization rules:
 | `refine-task`          | `/jlu-refine-task [slug]`        |
 | `extend-phase`         | `/jlu-extend-phase`              |
 | `ship`                 | `/jlu-ship`                      |
+| `resolve-pr`           | `/jlu-resolve-pr [pr] [--autonomous]` |
 | `report-task`          | `/jlu-report-task`               |
 | `load-context`         | `/jlu-load-context`              |
 | `close-task`           | `/jlu-close-task`                |
