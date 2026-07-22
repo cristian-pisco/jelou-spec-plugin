@@ -72,6 +72,7 @@ describe('test-running agents — reference the policy and carry caps', () => {
     'agents/jlu-test-writer.md',
     'agents/jlu-tdd-cycle.md',
     'agents/jlu-refactor-agent.md',
+    'agents/jlu-resolve-pr-runner.md',
   ];
 
   for (const agentPath of cappedAgents) {

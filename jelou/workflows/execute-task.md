@@ -64,6 +64,12 @@ Interactive approval of these suggestions lives only in `/jlu-refine-task` (the 
 
 Read `.spec-workspace.json` once at the start of this step (if present) and cache it as `WORKSPACE_CONFIG`. Reuse this cached object in Step 2b instead of reading the file again.
 
+**Argument parsing.** The invocation may carry up to three tokens: the first
+non-flag, non-ClickUp token is the `task-slug`; a ClickUp URL
+(`app.clickup.com/t/<id>`) or bare ClickUp id token is captured for Step
+9.5a (never treated as a slug); `--no-autochain` is captured for the Step
+9.5 gate. Strip the captured tokens before slug resolution.
+
 1. If a `task-slug` is provided as a command argument:
    a. Use `WORKSPACE_CONFIG.workspace` to get the workspace path.
    b. Search `<WORKSPACE_PATH>/specs/` across all date folders for the matching slug.
@@ -1074,6 +1080,145 @@ If all validation passes:
    - After merge, run `/jlu-close-task`.
    ```
 
+   When the auto-chain fires (Step 9.5), replace the `Next Steps` block above
+   with `Auto-chain engaged — shipping and driving PRs to green (Step 9.5).`
+
+---
+
+## Step 9.5 — Auto-chain (ship → PRs green)
+
+Runs ONLY from the Step 9 success path — that IS the green-gate: every phase
+done, final validation green, QA findings resolved. A red gate lands in
+Step 10 and never opens an unattended PR.
+
+**Resolve the flag** per §2 of
+`{plugin-root}/jelou/references/autochain-handoff.md` (precedence:
+`--no-autochain` argument > `JLU_AUTOCHAIN` env >
+`node {plugin-root}/bin/jlu-settings.mjs get autochain`). If the resolved
+value is not `true`, stop here — the manual `Next Steps` from Step 9 stand.
+
+**9.5a — ClickUp bind (only when an inline reference was given).** If the
+invocation carried a ClickUp task URL or id and `<TASK_DIR>/CLICKUP_TASK.json`
+does not exist, seed it with `{ "task_id": "<id>" }` (extract the id from URL
+forms like `https://app.clickup.com/t/<id>`). Non-blocking: any failure is a
+WARN, never a stop. (Task creation itself happens at SPEC approval in
+new-task/refine-task; this step only binds a pre-existing task handed in
+late.)
+
+**9.5b — Ship inline.** Ship opens its own trace span into the same
+`WORKFLOW_SPAN_ID` variable this workflow uses — snapshot first
+(`EXEC_SPAN_ID=$WORKFLOW_SPAN_ID; EXEC_TRACE_ID=$WORKFLOW_TRACE_ID`), then
+read `{plugin-root}/jelou/workflows/ship.md` and follow it in this session
+with argument `<TASK_SLUG>` — the same inline read-and-follow mechanism this
+workflow itself uses — and restore the snapshot after ship's own span close
+(`WORKFLOW_SPAN_ID=$EXEC_SPAN_ID; WORKFLOW_TRACE_ID=$EXEC_TRACE_ID`).
+Without the snapshot, ship's span close consumes this workflow's span and the
+final Step N double-closes ship's. All of ship's own gates (spec-compliance
+review, deps/build preflight) apply unchanged; if ship stops on a gate, the
+chain stops with it and reports — no bypass.
+
+**The PR set** is defined from ship's Step 11 result rows: every PR with
+`Action ∈ {created, existing}` AND `State = OPEN`. Rows with
+`Action ∈ {skipped, n/a}` (user-skipped trunk PRs, services without an
+`alpha` branch) are out of scope and listed as such in the 9.5e table; a
+`State = MERGED` PR is trivially green — count it GREEN without dispatching
+a runner (resolve-pr has no merged-PR guard for explicit URLs and would push
+fix commits onto a merged branch). Persist the set NOW to
+`<TASK_DIR>/AUTOCHAIN.json` (`{ "prs": [{ "url", "service", "kind":
+"production|staging", "verdict": "pending" }] }`) — this file is the chain's
+re-entry point.
+
+**9.5c — Drive every PR to green.** For each PR in the set, dispatch the
+`jlu-resolve-pr-runner` agent via `task` — **sequentially, concurrency 1**
+(resource-caps worker policy: each runner may run builds/lints/tests in its
+checkout; parallel runners risk the documented machine freeze). Per-service
+order: the **production PR first, then that service's staging PR**. Inputs
+per dispatch:
+
+- `<PR_URL>` — the PR.
+- `<SERVICE_CWD>` — ship's mode-aware resolution for that service
+  (Mode: worktree → `<service-repo>/.worktrees/<TASK_SLUG>`; Mode: branch →
+  the service repo root on `production/<TASK_SLUG>`).
+- `<PLUGIN_ROOT>`.
+- `<EPHEMERAL_BRANCH>` — set to `staging/<TASK_SLUG>` for staging PRs (their
+  temp worktree was torn down after push; the runner recreates and removes
+  one).
+- `<CHERRY_PICK_SHAS>` — staging PRs only: the fix-commit SHAs the
+  production runner pushed (empty when it pushed none). Ship's staging model
+  is `origin/alpha` + cherry-picks of production; the staging runner applies
+  code fixes ONLY by cherry-picking these SHAs — independent staging-side
+  fix commits would collide with the next ship's incremental cherry-pick
+  sync.
+
+After EVERY dispatch returns (any verdict, including a killed/aborted
+runner): update that PR's `verdict` in `<TASK_DIR>/AUTOCHAIN.json` — and for
+production PRs also record the runner's pushed fix-commit SHAs as
+`"fixShas"` on that entry, so a resumed session can hand `<CHERRY_PICK_SHAS>`
+to a still-pending staging runner — and run the **worktree backstop**: if
+the runner's ephemeral worktree
+(`<service-repo>/.worktrees/<TASK_SLUG>-resolve-tmp`) still exists,
+`git -C <service-repo> worktree remove --force` it; a leftover keeps
+`staging/<TASK_SLUG>` checked out and poisons the next ship's
+`worktree add`.
+
+**Task-green = AND of every runner verdict being `GREEN`.** A `NOT_GREEN` or
+`BLOCKED` verdict does not abort the remaining runners — every PR gets its
+run; the aggregate is computed at the end.
+
+**Re-entry.** If `<TASK_DIR>/AUTOCHAIN.json` already exists when Step 9.5
+begins (a prior chain died mid-run — context exhaustion, abort), skip 9.5b:
+re-enter here and dispatch runners only for PRs whose `verdict` is not
+`GREEN`, then continue to 9.5d.
+
+**9.5d — ClickUp status flip (non-blocking).** Once the aggregate is known,
+follow the task-clickup workflow's UPDATE path inline (the ClickUp MCP tools
+are session-level; `jlu-pm-agent` is DEPRECATED — it has no MCP access and
+must not be dispatched): green → set the internal state `ready_to_publish`,
+which maps to `PENDING TO PRODUCTION` per task-clickup.md's Status Mapping;
+not green → leave the status unchanged, add a comment listing the
+escalations. Inside the chain, task-clickup's Step-0 hard-stop is DEMOTED to
+WARN-and-skip (recipe §1) — any ClickUp failure is a WARN and the chain
+result never depends on it. Skip silently when `CLICKUP_TASK.json` does not
+exist.
+
+**9.5e — Final report.** Print:
+
+```
+## Auto-chain Complete — <TASK_SLUG>
+
+Task-green: YES | NO
+| PR | Service | Verdict | Cycles | Escalations |
+|----|---------|---------|--------|-------------|
+| <url> | <service-id> | GREEN | 1/2 | 0 |
+| <url> | <service-id> (staging) | NOT_GREEN | 2/2 | 2 |
+
+ClickUp: <updated | WARN <reason> | not linked>
+
+### Escalations (verbatim from runners)
+- <signal> — <one line> — resume: /jlu-resolve-pr <pr-url>
+(or "none")
+
+### Next Steps
+- Task-green: after review/approval merge the PR(s), then run /jlu-close-task.
+- Not green: resolve each escalation (resume commands above), or re-run
+  /jlu-resolve-pr interactively in the affected checkout.
+```
+
+Fire one OS notification (best-effort, never blocking) summarizing the
+aggregate:
+
+```bash
+node -e "
+import('{plugin-root}/bin/lib/dev-orchestrator/notify.mjs').then((m) =>
+  m.notifyOs({ title: 'jlu-execute-task', body: process.argv[1] })
+);
+" "<TASK_SLUG>: task-green=<YES|NO>, <N> escalation(s)"
+```
+
+`$WORKFLOW_OUTCOME` for the span close: `ok` when task-green, `blocked`
+otherwise (any `NOT_GREEN` or `BLOCKED` verdict — a `BLOCKED` runner may
+legitimately report zero escalations, and it is still not green).
+
 ---
 
 ## Step 10 — Failure Path
@@ -1178,7 +1323,8 @@ Awaiting your input to proceed.
 ## Step N — Close workflow span
 
 Determine `$WORKFLOW_OUTCOME`:
-- `ok` — all phases done, QA green, ready for `/jlu-ship`
+- `ok` — all phases done, QA green, ready for `/jlu-ship` (or, when the
+  Step 9.5 auto-chain ran: shipped AND task-green)
 - `blocked` — workflow halted on a phase escalation; user intervention required
 - `failed` — workflow aborted (irrecoverable error)
 

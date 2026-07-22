@@ -72,7 +72,7 @@ Tracing is best-effort: if `bin/trace-suggest.mjs` errors out, the empty `SUGGES
 1. Read `<TASK_DIR>/SPEC.md`.
    - If missing or empty, stop: "SPEC.md is missing or empty at `<TASK_DIR>/SPEC.md`. Run `/jlu-new-task` to create it."
 2. Determine `CHANGE_REQUEST`:
-   - If the command argument looks like a change description (not a task slug), use it as `CHANGE_REQUEST`.
+   - If the command argument looks like a change description (not a task slug), use it as `CHANGE_REQUEST` — after stripping the chain tokens per autochain-handoff.md §1: a ClickUp URL/id and `--no-autochain` are captured for the handoff step, never treated as part of the change description.
    - Otherwise ask via `question`: "What change do you want to apply to this spec?"
 
 **Store**: `SPEC_BEFORE` = current SPEC.md content, `CHANGE_REQUEST`
@@ -330,6 +330,23 @@ Spec change: <CHANGE_REQUEST first 100 chars>
 - Refinement applied. Proposal and phase files are aligned with the new spec; no execution needed.
 </if>
 ```
+
+**ClickUp sync & auto-chain handoff (after the spec is back in `planned`):**
+follow the shared recipe in
+`{plugin-root}/jelou/references/autochain-handoff.md`.
+
+1. **ClickUp create-or-bind (non-blocking, recipe §1).** Bind an inline
+   reference if given, then — whether seeded now or pre-existing — follow the
+   task-clickup workflow's UPDATE path so the macro task reflects the refined
+   scope; when `CLICKUP_TASK.json` does not exist and no reference was given,
+   follow its CREATE path.
+2. **Auto-chain handoff (recipe §2-§3).** Applies ONLY when the Next Steps
+   above call for running execute-task (RESET_PHASES or ADDED_PHASES
+   non-empty, or PROPOSAL.md absent) — an already-aligned refinement has
+   nothing to execute and the chain does not fire. Resolve the flag per the
+   recipe; `true` → hand off inline into execute-task with `<TASK_SLUG>`
+   (only affected phases re-run); `false` or opted out → the manual Next
+   Steps stand.
 
 ---
 

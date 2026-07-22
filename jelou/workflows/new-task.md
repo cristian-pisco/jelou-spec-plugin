@@ -192,7 +192,10 @@ After service registration (or if already registered):
      prefill/hints so the interview is short and grounded; keep its `COUNCIL_REPORT.md` pointer for
      reference; then mark the seed consumed by renaming it to `new-task-seed.consumed.md` so it is
      never re-offered.
-   - Else if provided as the command argument, use it as the seed.
+   - Else if provided as the command argument, use it as the seed — after
+     stripping the chain tokens per autochain-handoff.md §1: a ClickUp URL/id
+     and `--no-autochain` are captured for the handoff step, never treated as
+     part of the task description.
    - Else, ask the user:
      > "Describe the task you want to create:"
 2. **Sprint number**:
@@ -880,6 +883,23 @@ Present the final summary:
 ### Next Step
 Run `/jlu-execute-task` to begin implementation.
 ```
+
+When the auto-chain engages (see "ClickUp sync & auto-chain handoff" below),
+replace the `Next Step` line with
+`Auto-chain engaged — continuing into /jlu-execute-task in this session.`
+
+**ClickUp sync & auto-chain handoff (after the spec reaches `planned`):**
+follow the shared recipe in
+`{plugin-root}/jelou/references/autochain-handoff.md`.
+
+1. **ClickUp create-or-bind (non-blocking, recipe §1).** Inline reference
+   given → bind and follow the task-clickup workflow's UPDATE path. None →
+   read `{plugin-root}/jelou/workflows/task-clickup.md` and follow its CREATE
+   path — the task exists on the sprint board for the whole implementation,
+   not only at ship time. Update TASKS.md External Links accordingly.
+2. **Auto-chain handoff (recipe §2-§3).** Resolve the flag per the recipe;
+   `true` → hand off inline into execute-task with the new `<TASK_SLUG>`;
+   `false` or opted out → print the manual `Next Step` as today.
 
 **Mode-specific appendices:**
 

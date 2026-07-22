@@ -1,6 +1,6 @@
 ---
 description: "Use when a spec needs changes after approval — applies targeted refinements via structured interview."
-argument-hint: "[change description]"
+argument-hint: "[change description] [clickup-url|id] [--no-autochain]"
 ---
 Resolve the workflow file in this order, and use the first one that exists:
 1. `$CODEX_HOME/jelou/workflows/refine-task.md` (global install; `$CODEX_HOME` defaults to `~/.codex` — resolve it to an absolute path first).

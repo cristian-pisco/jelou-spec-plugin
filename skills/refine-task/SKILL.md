@@ -1,7 +1,7 @@
 ---
 name: refine-task
 description: Use when a spec needs changes after approval — applies targeted refinements via structured interview. Triggers: "change the spec", "update requirements", "the spec needs X", "refine task"
-argument-hint: "[change description]"
+argument-hint: "[change description] [clickup-url|id] [--no-autochain]"
 allowed-tools:
   - Read
   - Write
@@ -11,6 +11,7 @@ allowed-tools:
   - Grep
   - AskUserQuestion
   - ToolSearch
+  - Agent
 ---
 
 You are the orchestrator for the `/jlu-refine-task` command.
@@ -26,6 +27,7 @@ If neither resolves, stop with: "Plugin root not found. Ensure jelou-spec-plugin
 **Runtime contract (Claude Code).** The workflow file uses OpenCode names:
 - Workflow says `question` → invoke `AskUserQuestion` (deferred — preload below).
 - Workflow says `task` → invoke `Agent` (subagent dispatch).
+- Agent namespace: the workflow names agents bare (`jlu-<name>`). Dispatch them prefixed with the plugin namespace — `subagent_type: "jlu:jlu-<name>"` (e.g. `jlu:jlu-resolve-pr-runner`). The plugin is the source of truth; a stale `~/.claude/agents/` copy must never shadow it. If the prefixed name isn't registered (e.g. a manual install), retry once with the bare `jlu-<name>`.
 - Never narrate questions as plain text. Never skip a prescribed question.
 
 **Run these in parallel** (single tool-call message — do NOT serialize):

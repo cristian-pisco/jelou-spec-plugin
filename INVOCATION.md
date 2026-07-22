@@ -8,10 +8,10 @@ Skills are invoked with the plugin namespace prefix `jlu:`.
 
 | Skill                  | Invocation                       |
 |------------------------|----------------------------------|
-| `new-task`             | `/jlu:new-task [desc]`           |
-| `execute-task`         | `/jlu:execute-task [slug]`       |
+| `new-task`             | `/jlu:new-task [desc] [clickup-url\|id] [--no-autochain]` |
+| `execute-task`         | `/jlu:execute-task [slug] [clickup-url\|id] [--no-autochain]` |
 | `map-codebase`         | `/jlu:map-codebase [service-id]` |
-| `refine-task`          | `/jlu:refine-task [slug]`        |
+| `refine-task`          | `/jlu:refine-task [change-desc] [clickup-url\|id] [--no-autochain]` |
 | `extend-phase`         | `/jlu:extend-phase`              |
 | `ship`                 | `/jlu:ship`                      |
 | `resolve-pr`           | `/jlu:resolve-pr [pr-url\|pr-number] [--autonomous]` |
@@ -37,10 +37,10 @@ OpenCode normalization rules:
 
 | Skill                  | Invocation                       |
 |------------------------|----------------------------------|
-| `new-task`             | `/jlu-new-task [desc]`           |
-| `execute-task`         | `/jlu-execute-task [slug]`       |
+| `new-task`             | `/jlu-new-task [desc] [clickup-url\|id] [--no-autochain]` |
+| `execute-task`         | `/jlu-execute-task [slug] [clickup-url\|id] [--no-autochain]` |
 | `map-codebase`         | `/jlu-map-codebase [service-id]` |
-| `refine-task`          | `/jlu-refine-task [slug]`        |
+| `refine-task`          | `/jlu-refine-task [change-desc] [clickup-url\|id] [--no-autochain]` |
 | `extend-phase`         | `/jlu-extend-phase`              |
 | `ship`                 | `/jlu-ship`                      |
 | `resolve-pr`           | `/jlu-resolve-pr [pr-url\|pr-number] [--autonomous]` |
@@ -64,8 +64,8 @@ Commands use the same hyphen-prefixed name (`jlu-`) as OpenCode, exposed as Code
 
 | Skill                  | Invocation                       |
 |------------------------|----------------------------------|
-| `new-task`             | `/jlu-new-task [desc]`           |
-| `execute-task`         | `/jlu-execute-task [slug]`       |
+| `new-task`             | `/jlu-new-task [desc] [clickup-url\|id] [--no-autochain]` |
+| `execute-task`         | `/jlu-execute-task [slug] [clickup-url\|id] [--no-autochain]` |
 | `map-codebase`         | `/jlu-map-codebase [service-id]` |
 | `ship`                 | `/jlu-ship`                      |
 | `resolve-pr`           | `/jlu-resolve-pr [pr-url\|pr-number] [--autonomous]` |

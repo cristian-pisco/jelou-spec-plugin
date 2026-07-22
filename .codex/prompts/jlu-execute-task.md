@@ -1,6 +1,6 @@
 ---
 description: "Use when a spec is approved and ready to implement — runs the full TDD pipeline with proposal generation, phase execution, and QA."
-argument-hint: "[task-slug]"
+argument-hint: "[task-slug] [clickup-url|id] [--no-autochain]"
 ---
 Resolve the workflow file in this order, and use the first one that exists:
 1. `$CODEX_HOME/jelou/workflows/execute-task.md` (global install; `$CODEX_HOME` defaults to `~/.codex` — resolve it to an absolute path first).
