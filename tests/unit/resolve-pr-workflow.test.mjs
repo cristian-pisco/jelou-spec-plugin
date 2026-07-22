@@ -59,6 +59,16 @@ describe('resolve-pr autonomous-mode doctrine', () => {
     assert.match(workflow, /Resume: \/jlu-resolve-pr <pr-url>/);
     assert.match(workflow, /notifyOs/);
   });
+
+  test('autonomous auto-apply is gated on trusted authors', () => {
+    assert.match(workflow, /\*\*Author trust gate \(autonomous only\)\.\*\*/);
+    assert.match(workflow, /`untrusted-comment-author`/);
+  });
+
+  test('code-changing replies and resolutions flush only after the guarded push', () => {
+    assert.match(workflow, /### 10\.5 — Flush the reply\/resolution queue/);
+    assert.match(workflow, /QUEUE the reply \+ resolution/);
+  });
 });
 
 describe('resolve-pr loop correctness invariants', () => {
