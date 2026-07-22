@@ -44,6 +44,9 @@ chmod +x "$TARGET_DIR/jelou/bin/jlu-update.sh"
 mkdir -p "$TARGET_DIR/bin"
 cp "$PLUGIN_DIR/bin/guard-test-commands.mjs" "$TARGET_DIR/bin/"
 cp "$PLUGIN_DIR/bin/guard-env-reads.mjs" "$TARGET_DIR/bin/"
+cp "$PLUGIN_DIR/bin/head-sha-guard.mjs" "$TARGET_DIR/bin/"
+mkdir -p "$TARGET_DIR/bin/lib/dev-orchestrator"
+cp "$PLUGIN_DIR/bin/lib/dev-orchestrator/notify.mjs" "$TARGET_DIR/bin/lib/dev-orchestrator/"
 
 # Global OpenCode config uses root-level commands/ and agents/.
 # Keep those mirrors in sync when TARGET_DIR looks like OPENCODE_HOME.
