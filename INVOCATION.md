@@ -11,7 +11,7 @@ Skills are invoked with the plugin namespace prefix `jlu:`.
 | `new-task`             | `/jlu:new-task [desc] [clickup-url\|id] [--no-autochain]` |
 | `execute-task`         | `/jlu:execute-task [slug] [clickup-url\|id] [--no-autochain]` |
 | `map-codebase`         | `/jlu:map-codebase [service-id]` |
-| `refine-task`          | `/jlu:refine-task [slug] [clickup-url\|id] [--no-autochain]` |
+| `refine-task`          | `/jlu:refine-task [change-desc] [clickup-url\|id] [--no-autochain]` |
 | `extend-phase`         | `/jlu:extend-phase`              |
 | `ship`                 | `/jlu:ship`                      |
 | `resolve-pr`           | `/jlu:resolve-pr [pr-url\|pr-number] [--autonomous]` |
@@ -40,7 +40,7 @@ OpenCode normalization rules:
 | `new-task`             | `/jlu-new-task [desc] [clickup-url\|id] [--no-autochain]` |
 | `execute-task`         | `/jlu-execute-task [slug] [clickup-url\|id] [--no-autochain]` |
 | `map-codebase`         | `/jlu-map-codebase [service-id]` |
-| `refine-task`          | `/jlu-refine-task [slug] [clickup-url\|id] [--no-autochain]` |
+| `refine-task`          | `/jlu-refine-task [change-desc] [clickup-url\|id] [--no-autochain]` |
 | `extend-phase`         | `/jlu-extend-phase`              |
 | `ship`                 | `/jlu-ship`                      |
 | `resolve-pr`           | `/jlu-resolve-pr [pr-url\|pr-number] [--autonomous]` |
