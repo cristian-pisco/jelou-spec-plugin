@@ -25,9 +25,12 @@ describe('autochain surfaces', () => {
     }
   });
 
-  test('autochain ships default-off', () => {
+  test('autochain ships default-on with the opt-out documented', () => {
     const template = JSON.parse(read('jelou/config/settings.json'));
-    assert.equal(template.autochain, false);
+    assert.equal(template.autochain, true);
+    const recipe = read('jelou/references/autochain-handoff.md');
+    assert.match(recipe, /default `true`/);
+    assert.match(recipe, /standing kill-switch/);
   });
 
   test('skills expose the clickup reference and opt-out arguments', () => {

@@ -8,7 +8,7 @@ import { createSettingsStore } from './lib/settings-store.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const TEMPLATE_PATH = join(HERE, '..', 'jelou', 'config', 'settings.json');
-const DEFAULTS = { autochain: false };
+const DEFAULTS = { autochain: true };
 
 const store = createSettingsStore({ templatePath: TEMPLATE_PATH, basename: 'settings.json' });
 

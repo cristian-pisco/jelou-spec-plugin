@@ -36,9 +36,13 @@ Precedence, highest first:
 3. Plugin-global `~/.jlu/settings.json`:
    `node {plugin-root}/bin/jlu-settings.mjs get autochain`
    (the helper seeds the file from `jelou/config/settings.json` on first
-   read and never clobbers an existing one; default `false`).
+   read and never clobbers an existing one; default `true` — the chain is ON
+   out of the box, no configuration required).
 
-The chain engages only when the resolved value is `true`.
+The chain engages only when the resolved value is `true`. Opting out is the
+configured act, not opting in: `--no-autochain` for one invocation,
+`JLU_AUTOCHAIN=false` for a session, or `{"autochain": false}` in
+`~/.jlu/settings.json` as the standing kill-switch.
 
 ## 3. Handoff mechanism
 
