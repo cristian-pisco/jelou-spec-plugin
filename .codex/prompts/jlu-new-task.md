@@ -1,6 +1,6 @@
 ---
 description: "Use when starting new work — creates a task, interviews you about the spec, and sets up worktrees."
-argument-hint: "[task description]"
+argument-hint: "[task description] [clickup-url|id] [--no-autochain]"
 ---
 Resolve the workflow file in this order, and use the first one that exists:
 1. `$CODEX_HOME/jelou/workflows/new-task.md` (global install; `$CODEX_HOME` defaults to `~/.codex` — resolve it to an absolute path first).

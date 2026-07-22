@@ -881,6 +881,35 @@ Present the final summary:
 Run `/jlu-execute-task` to begin implementation.
 ```
 
+When the auto-chain engages (see "ClickUp sync & auto-chain handoff" below),
+replace the `Next Step` line with
+`Auto-chain engaged — continuing into /jlu-execute-task in this session.`
+
+**ClickUp sync & auto-chain handoff (after the spec reaches `planned`):**
+
+1. **ClickUp create-or-bind (non-blocking).** If the invocation argument
+   contained a ClickUp task URL or id (URL forms like
+   `https://app.clickup.com/t/<id>`), seed `<TASK_DIR>/CLICKUP_TASK.json`
+   with `{ "task_id": "<id>" }` and follow the task-clickup workflow's UPDATE
+   path. Otherwise read `{plugin-root}/jelou/workflows/task-clickup.md` and
+   follow its CREATE path — the task exists on the sprint board for the whole
+   implementation, not only at ship time. This session is interactive, so
+   task-clickup's first-run questions (Equipo/Solicitante, Cliente) may ask
+   normally — their answers persist in `CLICKUP_TASK.json` and make future
+   unattended runs promptless. Any ClickUp failure is a WARN in the report;
+   it never blocks the chain. Update TASKS.md External Links accordingly.
+2. **Auto-chain handoff.** A per-invocation `--no-autochain` argument always
+   wins. Otherwise resolve the flag:
+   `node {plugin-root}/bin/jlu-settings.mjs get autochain`
+   (`JLU_AUTOCHAIN` env overrides). If `true`: read
+   `{plugin-root}/jelou/workflows/execute-task.md` and follow it inline in
+   this same session with the new `<TASK_SLUG>` as argument — the same
+   read-and-follow mechanism this workflow uses, NEVER a subagent dispatch
+   (subagent dispatch would break the L2 requirement for `question` in
+   execute-task's phase confirmations). execute-task's own Step 9.5 then
+   carries the chain through ship and the PR-green loop. If `false` or
+   opted out: print the manual `Next Step` as today.
+
 **Mode-specific appendices:**
 
 If `SETUP_MODE = branch`: append to the report:

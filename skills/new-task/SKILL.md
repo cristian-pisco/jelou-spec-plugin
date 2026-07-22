@@ -1,7 +1,7 @@
 ---
 name: new-task
 description: Use when starting new work — creates a task, interviews you about the spec, and sets up worktrees. Triggers: "new task", "start a task", "I want to build X", "create a spec"
-argument-hint: "[task description]"
+argument-hint: "[task description] [clickup-url|id] [--no-autochain]"
 allowed-tools:
   - Read
   - Write

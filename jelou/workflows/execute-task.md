@@ -1074,6 +1074,108 @@ If all validation passes:
    - After merge, run `/jlu-close-task`.
    ```
 
+   When the auto-chain fires (Step 9.5), replace the `Next Steps` block above
+   with `Auto-chain engaged — shipping and driving PRs to green (Step 9.5).`
+
+---
+
+## Step 9.5 — Auto-chain (ship → PRs green)
+
+Runs ONLY from the Step 9 success path — that IS the green-gate: every phase
+done, final validation green, QA findings resolved. A red gate lands in
+Step 10 and never opens an unattended PR.
+
+**Resolve the flag.** A per-invocation `--no-autochain` argument always wins.
+Otherwise:
+
+```bash
+node {plugin-root}/bin/jlu-settings.mjs get autochain
+```
+
+(`JLU_AUTOCHAIN=true|false` env overrides the file; the helper seeds
+plugin-global `~/.jlu/settings.json` from `jelou/config/settings.json` on
+first read, default `false`.) If the result is not `true`, stop here — the
+manual `Next Steps` from Step 9 stand.
+
+**9.5a — ClickUp bind (only when an inline reference was given).** If the
+invocation carried a ClickUp task URL or id and `<TASK_DIR>/CLICKUP_TASK.json`
+does not exist, seed it with `{ "task_id": "<id>" }` (extract the id from URL
+forms like `https://app.clickup.com/t/<id>`). Non-blocking: any failure is a
+WARN, never a stop. (Task creation itself happens at SPEC approval in
+new-task/refine-task; this step only binds a pre-existing task handed in
+late.)
+
+**9.5b — Ship inline.** Read `{plugin-root}/jelou/workflows/ship.md` and
+follow it in this session with argument `<TASK_SLUG>` — the same inline
+read-and-follow mechanism this workflow itself uses. All of ship's own gates
+(spec-compliance review, deps/build preflight) apply unchanged; if ship stops
+on a gate, the chain stops with it and reports — no bypass. Collect from
+ship's results the full **PR set**: one production PR per affected service,
+plus the staging PR per service when `DUAL_PR = yes`.
+
+**9.5c — Drive every PR to green.** For each PR in the set, dispatch the
+`jlu-resolve-pr-runner` agent via `task` — **sequentially, concurrency 1**
+(resource-caps worker policy: each runner may run builds/lints/tests in its
+checkout; parallel runners risk the documented machine freeze). Inputs per
+dispatch:
+
+- `<PR_URL>` — the PR.
+- `<SERVICE_CWD>` — ship's mode-aware resolution for that service
+  (Mode: worktree → `<service-repo>/.worktrees/<TASK_SLUG>`; Mode: branch →
+  the service repo root on `production/<TASK_SLUG>`).
+- `<PLUGIN_ROOT>`.
+- `<EPHEMERAL_BRANCH>` — set to `staging/<TASK_SLUG>` for staging PRs (their
+  temp worktree was torn down after push; the runner recreates and removes
+  one).
+
+**Task-green = AND of every runner verdict being `GREEN`.** A `NOT_GREEN` or
+`BLOCKED` verdict does not abort the remaining runners — every PR gets its
+run; the aggregate is computed at the end.
+
+**9.5d — ClickUp status flip (non-blocking).** Once the aggregate is known,
+dispatch `jlu-pm-agent` to update the macro task in
+`<TASK_DIR>/CLICKUP_TASK.json`: green → the workspace's PR-ready/QA status;
+not green → leave status, add a comment listing the escalations. Any ClickUp
+failure is a WARN — the chain result never depends on it. Skip silently when
+`CLICKUP_TASK.json` does not exist.
+
+**9.5e — Final report.** Print:
+
+```
+## Auto-chain Complete — <TASK_SLUG>
+
+Task-green: YES | NO
+| PR | Service | Verdict | Cycles | Escalations |
+|----|---------|---------|--------|-------------|
+| <url> | <service-id> | GREEN | 1/2 | 0 |
+| <url> | <service-id> (staging) | NOT_GREEN | 2/2 | 2 |
+
+ClickUp: <updated | WARN <reason> | not linked>
+
+### Escalations (verbatim from runners)
+- <signal> — <one line> — resume: /jlu-resolve-pr <pr-url>
+(or "none")
+
+### Next Steps
+- Task-green: after review/approval merge the PR(s), then run /jlu-close-task.
+- Not green: resolve each escalation (resume commands above), or re-run
+  /jlu-resolve-pr interactively in the affected checkout.
+```
+
+Fire one OS notification (best-effort, never blocking) summarizing the
+aggregate:
+
+```bash
+node -e "
+import('{plugin-root}/bin/lib/dev-orchestrator/notify.mjs').then((m) =>
+  m.notifyOs({ title: 'jlu-execute-task', body: process.argv[1] })
+);
+" "<TASK_SLUG>: task-green=<YES|NO>, <N> escalation(s)"
+```
+
+`$WORKFLOW_OUTCOME` for the span close: `ok` when task-green, `blocked` when
+any escalation remains.
+
 ---
 
 ## Step 10 — Failure Path
@@ -1178,7 +1280,8 @@ Awaiting your input to proceed.
 ## Step N — Close workflow span
 
 Determine `$WORKFLOW_OUTCOME`:
-- `ok` — all phases done, QA green, ready for `/jlu-ship`
+- `ok` — all phases done, QA green, ready for `/jlu-ship` (or, when the
+  Step 9.5 auto-chain ran: shipped AND task-green)
 - `blocked` — workflow halted on a phase escalation; user intervention required
 - `failed` — workflow aborted (irrecoverable error)
 

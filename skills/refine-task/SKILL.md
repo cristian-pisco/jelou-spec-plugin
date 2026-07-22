@@ -1,7 +1,7 @@
 ---
 name: refine-task
 description: Use when a spec needs changes after approval — applies targeted refinements via structured interview. Triggers: "change the spec", "update requirements", "the spec needs X", "refine task"
-argument-hint: "[change description]"
+argument-hint: "[change description] [clickup-url|id] [--no-autochain]"
 allowed-tools:
   - Read
   - Write
@@ -11,6 +11,7 @@ allowed-tools:
   - Grep
   - AskUserQuestion
   - ToolSearch
+  - Agent
 ---
 
 You are the orchestrator for the `/jlu-refine-task` command.

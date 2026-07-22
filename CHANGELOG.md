@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.312] — 2026-07-22
+
+### Added
+- autonomous chain from interview to green PRs (autochain)
+
 ## [0.3.311] — 2026-07-21
 
 ### Added
