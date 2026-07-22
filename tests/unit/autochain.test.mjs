@@ -56,12 +56,12 @@ describe('execute-task auto-chain (Step 9.5)', () => {
 
   test('flag resolution goes through jlu-settings with per-invocation opt-out', () => {
     assert.match(executeTask, /bin\/jlu-settings\.mjs get autochain/);
-    assert.match(executeTask, /`--no-autochain` argument always wins/);
+    assert.match(executeTask, /--no-autochain/);
   });
 
   test('ship runs inline with its gates intact', () => {
     assert.match(executeTask, /jelou\/workflows\/ship\.md/);
-    assert.match(executeTask, /if ship stops\s*on a gate, the chain stops with it/);
+    assert.match(executeTask, /if ship stops on a gate, the\s*chain stops with it/);
   });
 
   test('runners dispatch sequentially with mode-aware cwd and staging worktree', () => {
@@ -78,29 +78,77 @@ describe('execute-task auto-chain (Step 9.5)', () => {
 
   test('clickup steps are non-blocking and the chain notifies at the end', () => {
     assert.match(executeTask, /failure is a\s*WARN, never a stop/);
-    assert.match(executeTask, /jlu-pm-agent/);
+    assert.match(executeTask, /task-clickup workflow's UPDATE path inline/);
+    assert.match(executeTask, /`jlu-pm-agent` is DEPRECATED/);
     assert.match(executeTask, /notifyOs/);
+  });
+
+  test('PR set filters ship rows to open created/existing PRs', () => {
+    assert.match(executeTask, /`Action ∈ \{created, existing\}` AND `State = OPEN`/);
+    assert.match(executeTask, /`State = MERGED` PR is trivially green/);
+  });
+
+  test('ship inline snapshots and restores the workflow span variables', () => {
+    assert.match(executeTask, /EXEC_SPAN_ID=\$WORKFLOW_SPAN_ID/);
+    assert.match(executeTask, /WORKFLOW_SPAN_ID=\$EXEC_SPAN_ID/);
+  });
+
+  test('chain progress persists to AUTOCHAIN.json with a re-entry path', () => {
+    assert.match(executeTask, /<TASK_DIR>\/AUTOCHAIN\.json/);
+    assert.match(executeTask, /\*\*Re-entry\.\*\*/);
+    assert.match(executeTask, /dispatch runners only for PRs whose `verdict` is not\s*`GREEN`/);
+  });
+
+  test('orchestrator backstops leftover ephemeral worktrees after every dispatch', () => {
+    assert.match(executeTask, /\*\*worktree backstop\*\*/);
+    assert.match(executeTask, /<TASK_SLUG>-resolve-tmp/);
+  });
+
+  test('staging runners cherry-pick production fixes, never author direct commits', () => {
+    assert.match(executeTask, /<CHERRY_PICK_SHAS>/);
+    assert.match(executeTask, /production PR first, then that service's staging PR/);
+  });
+
+  test('span outcome is blocked for any non-green verdict', () => {
+    assert.match(executeTask, /`blocked`\s*otherwise \(any `NOT_GREEN` or `BLOCKED` verdict/);
+  });
+
+  test('step 1 strips clickup and flag tokens before slug resolution', () => {
+    assert.match(executeTask, /first\s*non-flag, non-ClickUp token is the `task-slug`/);
   });
 });
 
 describe('interview chain entries', () => {
+  const recipe = read('jelou/references/autochain-handoff.md');
+
+  test('shared recipe carries the canonical mechanics exactly once', () => {
+    assert.match(recipe, /app\.clickup\.com\/t\/<id>/);
+    assert.match(recipe, /bin\/jlu-settings\.mjs get autochain/);
+    assert.match(recipe, /`--no-autochain` argument always wins/);
+    assert.match(recipe, /\*\*NEVER a subagent dispatch\*\*/);
+    assert.match(recipe, /jelou\/workflows\/execute-task\.md/);
+    assert.match(recipe, /never a stop/);
+    assert.match(recipe, /\*\*Hard-stop demotion:\*\*/);
+    assert.match(recipe, /close the caller's own workflow span/);
+    assert.match(recipe, /## 4\. Resume after a dead session/);
+    assert.match(recipe, /AUTOCHAIN\.json/);
+  });
+
+  test('all three workflows defer to the shared recipe', () => {
+    for (const [name, workflow] of [['new-task', newTask], ['refine-task', refineTask], ['execute-task', executeTask]]) {
+      assert.match(workflow, /jelou\/references\/autochain-handoff\.md/, name);
+    }
+  });
+
   test('new-task creates or binds ClickUp at SPEC approval', () => {
     assert.match(newTask, /\*\*ClickUp sync & auto-chain handoff \(after the spec reaches `planned`\):\*\*/);
-    assert.match(newTask, /app\.clickup\.com\/t\/<id>/);
-    assert.match(newTask, /CREATE path/);
-    assert.match(newTask, /never blocks the chain/);
+    assert.match(newTask, /CREATE\s*path/);
+    assert.match(newTask, /sprint board for the whole implementation/);
   });
 
-  test('new-task hands off inline, never via subagent', () => {
-    assert.match(newTask, /bin\/jlu-settings\.mjs get autochain/);
-    assert.match(newTask, /NEVER a subagent dispatch/);
-    assert.match(newTask, /jelou\/workflows\/execute-task\.md/);
-  });
-
-  test('refine-task hands off inline only when execution is needed', () => {
-    assert.match(refineTask, /bin\/jlu-settings\.mjs get autochain/);
-    assert.match(refineTask, /NEVER a subagent dispatch/);
-    assert.match(refineTask, /an already-aligned refinement has nothing to\s*execute and the chain does not fire/);
+  test('refine-task hands off only when execution is needed', () => {
+    assert.match(refineTask, /an already-aligned refinement has\s*nothing to execute and the chain does not fire/);
+    assert.match(refineTask, /UPDATE path/);
   });
 });
 
@@ -115,6 +163,13 @@ describe('resolve-pr runner contract', () => {
     assert.match(runnerAgent, /<EPHEMERAL_BRANCH>/);
     assert.match(runnerAgent, /worktree add/);
     assert.match(runnerAgent, /ALWAYS remove it/);
+    assert.match(runnerAgent, /<TASK_SLUG>-resolve-tmp/);
+    assert.match(runnerAgent, /origin\/<EPHEMERAL_BRANCH>/);
+  });
+
+  test('runner enforces staging cherry-pick discipline', () => {
+    assert.match(runnerAgent, /<CHERRY_PICK_SHAS>/);
+    assert.match(runnerAgent, /never author direct commits on\s*a staging branch/);
   });
 
   test('runner never merges and never force-pushes', () => {

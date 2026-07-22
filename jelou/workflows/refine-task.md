@@ -332,29 +332,21 @@ Spec change: <CHANGE_REQUEST first 100 chars>
 ```
 
 **ClickUp sync & auto-chain handoff (after the spec is back in `planned`):**
+follow the shared recipe in
+`{plugin-root}/jelou/references/autochain-handoff.md`.
 
-1. **ClickUp create-or-bind (non-blocking).** If the invocation argument
-   contained a ClickUp task URL or id, seed `<TASK_DIR>/CLICKUP_TASK.json`
-   with `{ "task_id": "<id>" }`. Then, whether seeded now or pre-existing,
-   follow the task-clickup workflow's UPDATE path so the macro task reflects
-   the refined scope; when `CLICKUP_TASK.json` does not exist and no
-   reference was given, follow its CREATE path. This session is interactive —
-   task-clickup's first-run questions may ask normally and persist their
-   answers. Any ClickUp failure is a WARN; it never blocks the chain.
-2. **Auto-chain handoff.** Applies ONLY when the Next Steps above call for
-   running execute-task (RESET_PHASES or ADDED_PHASES non-empty, or
-   PROPOSAL.md absent) — an already-aligned refinement has nothing to
-   execute and the chain does not fire. A per-invocation `--no-autochain`
-   argument always wins. Otherwise resolve the flag:
-   `node {plugin-root}/bin/jlu-settings.mjs get autochain`
-   (`JLU_AUTOCHAIN` env overrides). If `true`: read
-   `{plugin-root}/jelou/workflows/execute-task.md` and follow it inline in
-   this same session with `<TASK_SLUG>` as argument — the same
-   read-and-follow mechanism this workflow uses, NEVER a subagent dispatch
-   (it would break the L2 requirement for `question`). execute-task re-runs
-   only the affected phases and its Step 9.5 carries the chain through ship
-   and the PR-green loop. If `false` or opted out: the manual Next Steps
-   stand.
+1. **ClickUp create-or-bind (non-blocking, recipe §1).** Bind an inline
+   reference if given, then — whether seeded now or pre-existing — follow the
+   task-clickup workflow's UPDATE path so the macro task reflects the refined
+   scope; when `CLICKUP_TASK.json` does not exist and no reference was given,
+   follow its CREATE path.
+2. **Auto-chain handoff (recipe §2-§3).** Applies ONLY when the Next Steps
+   above call for running execute-task (RESET_PHASES or ADDED_PHASES
+   non-empty, or PROPOSAL.md absent) — an already-aligned refinement has
+   nothing to execute and the chain does not fire. Resolve the flag per the
+   recipe; `true` → hand off inline into execute-task with `<TASK_SLUG>`
+   (only affected phases re-run); `false` or opted out → the manual Next
+   Steps stand.
 
 ---
 

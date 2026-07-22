@@ -3,44 +3,33 @@ import { argv, stdout, exit, env } from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { existsSync, mkdirSync, readFileSync, copyFileSync, realpathSync } from 'node:fs';
+import { realpathSync } from 'node:fs';
+import { createSettingsStore } from './lib/settings-store.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const TEMPLATE_PATH = join(HERE, '..', 'jelou', 'config', 'settings.json');
 const DEFAULTS = { autochain: false };
 
+const store = createSettingsStore({ templatePath: TEMPLATE_PATH, basename: 'settings.json' });
+
 export function userSettingsPath(home = homedir()) {
-  return join(home, '.jlu', 'settings.json');
+  return store.userSettingsPath(home);
 }
 
 export function seedSettings(home = homedir()) {
-  const dest = userSettingsPath(home);
-  if (existsSync(dest)) return { created: false, path: dest };
-  mkdirSync(dirname(dest), { recursive: true });
-  copyFileSync(TEMPLATE_PATH, dest);
-  return { created: true, path: dest };
-}
-
-function readJson(path) {
-  try {
-    return JSON.parse(readFileSync(path, 'utf8'));
-  } catch {
-    return null;
-  }
+  return store.seedSettings(home);
 }
 
 export function resolveSetting(key, { home = homedir(), environ = env } = {}) {
   const envKey = `JLU_${key.toUpperCase()}`;
   if (environ[envKey] !== undefined && environ[envKey] !== '') {
     const raw = environ[envKey];
-    if (raw === 'true' || raw === '1') return true;
-    if (raw === 'false' || raw === '0') return false;
+    const normalized = raw.toLowerCase();
+    if (normalized === 'true' || normalized === '1') return true;
+    if (normalized === 'false' || normalized === '0') return false;
     return raw;
   }
-  try {
-    seedSettings(home);
-  } catch {}
-  const settings = readJson(userSettingsPath(home)) ?? readJson(TEMPLATE_PATH) ?? DEFAULTS;
+  const settings = store.readSettings(home) ?? DEFAULTS;
   return settings[key] !== undefined ? settings[key] : DEFAULTS[key];
 }
 
@@ -50,7 +39,12 @@ function main() {
     stdout.write('usage: jlu-settings.mjs get <key>\n');
     exit(2);
   }
-  stdout.write(`${JSON.stringify(resolveSetting(key))}\n`);
+  const value = resolveSetting(key);
+  if (value === undefined) {
+    stdout.write('null\n');
+    exit(1);
+  }
+  stdout.write(`${JSON.stringify(value)}\n`);
 }
 
 function isDirectInvocation() {

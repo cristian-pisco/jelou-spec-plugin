@@ -3,7 +3,7 @@ import { argv, stdout, exit, env } from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { existsSync, mkdirSync, readFileSync, copyFileSync } from 'node:fs';
+import { createSettingsStore } from './lib/settings-store.mjs';
 
 const VERSION = '0.1.0';
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -11,45 +11,25 @@ const TEMPLATE_PATH = join(HERE, '..', 'jelou', 'config', 'e2e-settings.json');
 const DEFAULT_VIDEO_MODE = 'on';
 const DEFAULT_RETENTION_DAYS = 14;
 
+const store = createSettingsStore({ templatePath: TEMPLATE_PATH, basename: 'e2e-settings.json' });
+
 export function userSettingsPath(home = homedir()) {
-  return join(home, '.jlu', 'e2e-settings.json');
+  return store.userSettingsPath(home);
 }
 
 export function seedSettings(home = homedir()) {
-  const dest = userSettingsPath(home);
-  if (existsSync(dest)) return { created: false, path: dest };
-  mkdirSync(dirname(dest), { recursive: true });
-  copyFileSync(TEMPLATE_PATH, dest);
-  return { created: true, path: dest };
-}
-
-function trySeed(home) {
-  try {
-    return seedSettings(home);
-  } catch {
-    return null;
-  }
-}
-
-function readSettings(path) {
-  try {
-    return JSON.parse(readFileSync(path, 'utf8'));
-  } catch {
-    return null;
-  }
+  return store.seedSettings(home);
 }
 
 export function resolveVideoMode(home = homedir(), environ = env) {
   if (environ.JLU_E2E_VIDEO) return environ.JLU_E2E_VIDEO;
-  trySeed(home);
-  const settings = readSettings(userSettingsPath(home)) ?? readSettings(TEMPLATE_PATH);
+  const settings = store.readSettings(home);
   const mode = settings && settings.video && settings.video.mode;
   return typeof mode === 'string' && mode ? mode : DEFAULT_VIDEO_MODE;
 }
 
 export function resolveRetentionDays(home = homedir()) {
-  trySeed(home);
-  const settings = readSettings(userSettingsPath(home)) ?? readSettings(TEMPLATE_PATH);
+  const settings = store.readSettings(home);
   const days = settings && settings.retentionDays;
   return Number.isInteger(days) && days >= 0 ? days : DEFAULT_RETENTION_DAYS;
 }
@@ -68,7 +48,7 @@ function main() {
     stdout.write(`${resolveRetentionDays()}\n`);
     exit(0);
   }
-  trySeed();
+  store.trySeed();
   exit(0);
 }
 

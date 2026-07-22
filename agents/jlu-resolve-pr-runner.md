@@ -19,12 +19,22 @@ verdict.
   Refuse to write outside it.
 - `<PLUGIN_ROOT>` — resolve the workflow and helpers from here.
 - `<EPHEMERAL_BRANCH>` (optional) — set for staging PRs whose branch has no
-  standing checkout. Before running, create a temporary worktree:
-  `git -C <SERVICE_CWD> worktree add <tmp-dir> <EPHEMERAL_BRANCH>` and operate
-  there; ALWAYS remove it (`git worktree remove <tmp-dir> --force` on failure
-  paths too) before returning.
-- `<REVIEW_WAIT>` (optional, seconds) — overrides the workflow's default
-  review-arrival wait.
+  standing checkout. Before running, create a temporary worktree at the FIXED
+  absolute path `<service-repo>/.worktrees/<TASK_SLUG>-resolve-tmp` (never a
+  relative path — a nested worktree breaks close-task teardown):
+  `git -C <SERVICE_CWD> worktree add <tmp-path> <EPHEMERAL_BRANCH>`; when the
+  local branch is missing (ship's rebuild path deletes it), fall back to
+  `git -C <SERVICE_CWD> worktree add <tmp-path> -b <EPHEMERAL_BRANCH> origin/<EPHEMERAL_BRANCH>`.
+  Operate there; ALWAYS remove it (`git worktree remove <tmp-path> --force`
+  on failure paths too) before returning — the orchestrator also runs a
+  backstop removal after every dispatch, but never rely on it.
+- `<CHERRY_PICK_SHAS>` (staging PRs only) — the fix-commit SHAs the
+  production runner pushed. **Staging discipline:** ship models the staging
+  branch as `origin/alpha` + cherry-picks of production, so you apply code
+  fixes ONLY by cherry-picking these SHAs (conflicts → `git cherry-pick
+  --abort`, then escalate). A staging-specific red that would need an
+  independent fix commit escalates instead — never author direct commits on
+  a staging branch.
 
 ## What you do
 
@@ -35,8 +45,11 @@ verdict.
    for input. Honor the workflow's hard rules verbatim (head-sha-guard before
    every push, fail-closed contract, never rebase, never force-push, trusted
    author gate, bounded 2-cycle loop, both-halves done-gate).
-3. Obey `<PLUGIN_ROOT>/jelou/references/subagent-base.md` worker caps for any
-   local test or lint verification you run.
+3. Obey the "Test Execution Resource Limits" section of
+   `<PLUGIN_ROOT>/jelou/references/subagent-base.md` for any local test or
+   lint verification: run only the single affected test file with
+   `--runInBand` (or `--maxWorkers=2` at most) — never a bare full-suite
+   invocation.
 4. Never merge the PR, never touch branches other than the PR's head branch,
    never modify files outside `<SERVICE_CWD>` (or the ephemeral worktree).
 
