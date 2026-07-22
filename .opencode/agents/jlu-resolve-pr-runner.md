@@ -62,6 +62,7 @@ THREADS: <applied>/<total> applied, <escalated> escalated
 CI_FIXES: <n> applied, <n> rerun, <n> escalated
 SONAR: <not-detected | clusters A/B/C/D | skipped-no-tooling>
 PUSHES: <n> (all guarded)
+FIX_SHAS: <space-separated commit SHAs you pushed, or "none">
 ESCALATIONS:
 - <signal> — <one line> — resume: /jlu-resolve-pr <pr-url>
 (or "none")

@@ -9,7 +9,10 @@
 ## 1. Inline ClickUp reference
 
 The invocation argument may carry a ClickUp task reference: a full URL
-(`https://app.clickup.com/t/<id>`) or a bare task id. When present and
+(`https://app.clickup.com/t/<id>`) or a bare task id. The reference and the
+`--no-autochain` flag are **chain tokens, not content** — strip both from the
+argument BEFORE the workflow consumes the remainder (as task description,
+change request, or task-slug). When present and
 `<TASK_DIR>/CLICKUP_TASK.json` does not exist, seed it with
 `{ "task_id": "<id>" }` — the reference BINDS an existing ClickUp task instead
 of creating one. All ClickUp work in the chain is **non-blocking**: any

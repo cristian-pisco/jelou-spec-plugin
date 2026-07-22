@@ -97,6 +97,15 @@ describe('execute-task auto-chain (Step 9.5)', () => {
     assert.match(executeTask, /<TASK_DIR>\/AUTOCHAIN\.json/);
     assert.match(executeTask, /\*\*Re-entry\.\*\*/);
     assert.match(executeTask, /dispatch runners only for PRs whose `verdict` is not\s*`GREEN`/);
+    assert.match(executeTask, /"fixShas"/);
+    assert.match(read('agents/jlu-resolve-pr-runner.md'), /FIX_SHAS/);
+  });
+
+  test('chain tokens are stripped before content parsing in every entry', () => {
+    const recipe2 = read('jelou/references/autochain-handoff.md');
+    assert.match(recipe2, /chain tokens, not content/);
+    assert.match(newTask, /stripping the chain tokens per autochain-handoff\.md/);
+    assert.match(refineTask, /stripping the chain tokens per autochain-handoff\.md/);
   });
 
   test('orchestrator backstops leftover ephemeral worktrees after every dispatch', () => {

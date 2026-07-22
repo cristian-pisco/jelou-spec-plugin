@@ -192,7 +192,10 @@ After service registration (or if already registered):
      prefill/hints so the interview is short and grounded; keep its `COUNCIL_REPORT.md` pointer for
      reference; then mark the seed consumed by renaming it to `new-task-seed.consumed.md` so it is
      never re-offered.
-   - Else if provided as the command argument, use it as the seed.
+   - Else if provided as the command argument, use it as the seed — after
+     stripping the chain tokens per autochain-handoff.md §1: a ClickUp URL/id
+     and `--no-autochain` are captured for the handoff step, never treated as
+     part of the task description.
    - Else, ask the user:
      > "Describe the task you want to create:"
 2. **Sprint number**:

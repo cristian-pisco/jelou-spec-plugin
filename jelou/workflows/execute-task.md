@@ -1151,8 +1151,11 @@ per dispatch:
   sync.
 
 After EVERY dispatch returns (any verdict, including a killed/aborted
-runner): update that PR's `verdict` in `<TASK_DIR>/AUTOCHAIN.json`, and run
-the **worktree backstop** — if the runner's ephemeral worktree
+runner): update that PR's `verdict` in `<TASK_DIR>/AUTOCHAIN.json` — and for
+production PRs also record the runner's pushed fix-commit SHAs as
+`"fixShas"` on that entry, so a resumed session can hand `<CHERRY_PICK_SHAS>`
+to a still-pending staging runner — and run the **worktree backstop**: if
+the runner's ephemeral worktree
 (`<service-repo>/.worktrees/<TASK_SLUG>-resolve-tmp`) still exists,
 `git -C <service-repo> worktree remove --force` it; a leftover keeps
 `staging/<TASK_SLUG>` checked out and poisons the next ship's
