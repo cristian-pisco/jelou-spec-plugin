@@ -51,6 +51,9 @@ cp "$PLUGIN_DIR/bin/jlu-update.sh" "$JELOU_DIR/bin/"
 chmod +x "$JELOU_DIR/bin/jlu-update.sh"
 cp "$PLUGIN_DIR/bin/guard-test-commands.mjs" "$BIN_DIR/"
 cp "$PLUGIN_DIR/bin/guard-env-reads.mjs" "$BIN_DIR/"
+cp "$PLUGIN_DIR/bin/head-sha-guard.mjs" "$BIN_DIR/"
+mkdir -p "$BIN_DIR/lib/dev-orchestrator"
+cp "$PLUGIN_DIR/bin/lib/dev-orchestrator/notify.mjs" "$BIN_DIR/lib/dev-orchestrator/"
 echo "Installed Codex prompts, agents, workflows, updater, and guard scripts"
 
 ensure_context_status_line() {

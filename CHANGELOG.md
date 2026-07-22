@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.311] — 2026-07-21
+
+### Added
+- add /jlu-resolve-pr with SonarQube support
+
 ## [0.3.310] — 2026-07-21
 
 ### Fixed
