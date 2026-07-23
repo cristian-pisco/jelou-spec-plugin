@@ -22,6 +22,7 @@
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, basename } from 'node:path';
+import { toYaml } from './lib/registry/yaml-lite.mjs';
 
 function isFile(p) { try { return statSync(p).isFile(); } catch { return false; } }
 
@@ -291,34 +292,6 @@ export function deriveDevBlock(dir, { stack } = {}) {
     data_isolation: 'none',
   };
   return { block, source: 'derived:host', warnings };
-}
-
-// Quote only when a plain scalar would be ambiguous: a `: ` mapping indicator,
-// an inline ` #` comment, leading/trailing space, or YAML/shell metacharacters.
-// A bare `:` mid-token (e.g. `npm run start:dev`, `start:dev`) stays unquoted —
-// it is a valid plain scalar.
-function needsQuote(v) {
-  return /:\s/.test(v) || /\s#/.test(v) || /^\s|\s$/.test(v) || /['"|>&*!?{}\[\],`$();<>]/.test(v);
-}
-
-function toYaml(block, indent = '  ') {
-  const lines = [];
-  const emit = (obj, pad) => {
-    for (const [k, v] of Object.entries(obj)) {
-      if (v && typeof v === 'object' && !Array.isArray(v)) {
-        lines.push(`${pad}${k}:`);
-        emit(v, pad + '  ');
-      } else if (Array.isArray(v)) {
-        lines.push(`${pad}${k}: [${v.join(', ')}]`);
-      } else if (typeof v === 'string' && needsQuote(v)) {
-        lines.push(`${pad}${k}: "${v.replace(/"/g, '\\"')}"`);
-      } else {
-        lines.push(`${pad}${k}: ${v}`);
-      }
-    }
-  };
-  emit(block, indent);
-  return lines.join('\n');
 }
 
 export function devBlockToYaml(block) {
