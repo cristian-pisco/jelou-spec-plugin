@@ -23,6 +23,8 @@ No seed system: reuses `dev` blocks + `data_isolation: per-run`. Testcontainers 
   optional `--task=<slug>` (task slug auto-detected from branch when omitted). Invoked
   with no matrix, the workflow resumes from a previously persisted `$TASK_DIR/GOALS.md`.
 - Flags: `--force`, `--allow-shared-data`, `--allow-prod-target`, `--workers=N`,
+  `--skip-unbootable` (auto-skip a non-bootable *backend* from the boot order instead of
+  refusing — it NEVER drops a UI service; see step 8b.6),
   `--max-iterations=N` (convergence-loop cap, default `3`).
 
 ## Process
@@ -131,8 +133,8 @@ No seed system: reuses `dev` blocks + `data_isolation: per-run`. Testcontainers 
    with a `dev` block — step 8b applies to them exactly as to any other boot-order service. A
    UI service MUST declare its login backend and session-validation API in `depends_on`.
 
-8b. **Resolve missing `dev` blocks — auto-derive + persist, NEVER improvise.** For each
-   service in the boot order whose `services.yaml` entry has **no `dev` block**, do NOT skip
+8b. **Resolve missing `dev` blocks — auto-derive + persist, NEVER improvise, NEVER ask.** For
+   each service in the boot order whose `services.yaml` entry has **no `dev` block**, do NOT skip
    it and do NOT guess a launcher/command (improvising `docker exec yarn dev` on an npm
    project is the failure this step exists to prevent):
 
@@ -144,32 +146,63 @@ No seed system: reuses `dev` blocks + `data_isolation: per-run`. Testcontainers 
       infer one): the idle-dev-container pattern (`Dockerfile.dev` → `CMD sleep infinity`) →
       `launcher: docker-exec`; a compose file with no idle marker (the container runs the app
       itself) → `launcher: docker`; a host dev server → `launcher: npm|shell`.
-   3. **Exit 3 (not derivable):** refuse the whole run — do NOT improvise. Print the `reason`
+   3. **Exit 3 (not derivable):** apply the decision table in step 8b.6. Absent
+      `--skip-unbootable` — or for any UI service — refuse the whole run: do NOT improvise.
+      Print the `reason`
       and: "Add a `dev` block under `<service>` in `.spec-workspace/registry/services.yaml`
       (see `jelou/references/dev-block-schema.md` for the schema, incl. the `docker-exec`
       launcher), then re-run." (Do NOT point at `/jlu-register-service` — that writes
       `jlu-services.json` for `start-dev`, a different registry; goal reads the
-      `dev` block from `services.yaml`.)
-   4. **Derivable:** show the rendered `dev:` YAML (the script's `yaml` field) plus any
-      `warnings`, then `AskUserQuestion`. **The option set depends on the service type** so a
-      UI service can never be silently dropped:
-      > "`<service>` has no `dev` block. I inferred this block (launcher `<launcher>`, command
-      > `<command>`). Shall I write it to `.spec-workspace/registry/services.yaml`?"
-      - **Backend service** (`<service> ∉ ui_services`): options **Write and continue** ·
-        **I'll edit it myself (abort)** · **Skip this service**.
-      - **UI service** (`<service> ∈ ui_services`, known from the classify step): options
-        **Write and continue** · **I'll edit it myself (abort)** only — no "Skip"; the prompt
-        states skipping a UI service is not permitted (E2E is mandatory for frontend changes,
-        per `ui-qa-run.md` step 6).
+      `dev` block from `services.yaml`.) There is nothing to boot-verify here, so this refuse
+      message is unchanged.
+   4. **Derivable — persist without asking, without marking.** Log the rendered `dev:` YAML
+      (the script's `yaml` field) plus any `warnings`, then pipe the block JSON to
+      `node <plugin-root>/bin/verify-dev-block.mjs --persist-block --workspace <workspace> --service <service> --block-file -`
+      (block JSON on stdin; exit `5` = mtime conflict — a concurrent writer touched
+      `services.yaml` — re-read the registry and retry once), re-read the registry, and
+      continue. No question is asked and no `verified` mark is written here: the persisted
+      block is a hypothesis, and the run's own boot verifies it (step 8b.5). A derivable
+      block never interrupts the run — uncertainty about HOW a service boots belongs to the
+      preparation phase (`/jlu-map-codebase` certifies at mapping time), never to a
+      mid-run pause.
+   5. **Trust rule + own-boot verification (no double boot).** For every boot-order service
+      that HAS a `dev` block:
+      - **Marked and current** — the block carries `verified: { date, commit, block_hash }`
+        and its `block_hash` matches
+        `node <plugin-root>/bin/verify-dev-block.mjs --hash --workspace <workspace> --service <service>`
+        (→ `{ "block_hash": "..." }`) → trust it: boot normally in Phase 2, never re-verify,
+        never re-mark.
+      - **Unmarked, or hash-mismatched** (a manual edit invalidates the mark mechanically:
+        hash mismatch ⇒ treat as unmarked) → the block is a hypothesis, but nothing special
+        happens before the boot: **the run's normal Phase 2 boot IS the verification** — no
+        standalone verify cycle, no extra boot (the standalone cycle,
+        `jlu-dev-block-verifier` + `bin/verify-dev-block.mjs --checkout`, exists only in
+        `/jlu-map-codebase`, where no run boots). After the Phase 2 boot, write/update the
+        mark ONLY when ALL of these hold:
+        - this boot actually **STARTED** the service — its `dev.command` executed because the
+          service was booted fresh or rebooted. A reuse of an already-healthy service never
+          marks (the same `green-preexisting` semantics as map-time, everywhere); explicit
+          command-executed evidence is required — `BOOTED[]` membership or any other
+          inference does not qualify when `up -d` merely found the container already serving;
+        - readiness passed; and
+        - the booted checkout is the **canonical `svc.path`** — a worktree boot trusts or
+          re-verifies but NEVER writes the mark.
+        Write via
+        `node <plugin-root>/bin/verify-dev-block.mjs --write-mark --workspace <workspace> --service <service> --commit <short HEAD sha of the booted checkout>`
+        (exit `5` = mtime conflict → re-read and retry once). If the boot FAILS, apply the
+        step 8b.6 table: with `--skip-unbootable` and a backend service, drop it with a WARN;
+        otherwise refuse with the cause — exactly what a failed boot does today, now with a
+        sharper diagnosis. A boot failure never writes a mark.
+   6. **Non-bootable services — the `--skip-unbootable` decision table, never a question:**
 
-      Outcomes:
-      - **Write and continue** → write the block under that service's entry in
-        `.spec-workspace/registry/services.yaml`, re-read the registry, continue.
-      - **I'll edit it myself** → refuse with the step 8b.3 message (edit `services.yaml`); do NOT
-        improvise.
-      - **Skip this service** (backend only) → drop it from the boot order with a one-line
-        note; its `test-suite` still runs and surfaces its own "infra unreachable" hint.
-   5. After this step every service remaining in the boot order has a `dev` block. The boot
+      | Case | Without the flag | With `--skip-unbootable` |
+      |---|---|---|
+      | exit-3 or verification-failed, backend service | informative refuse (the step 8b.3 message) | auto-skip + WARN: drop it from the boot order with a one-line note; its `test-suite` still runs and surfaces its own "infra unreachable" hint |
+      | exit-3 or verification-failed, UI service | refuse (E2E is mandatory for frontend changes, per `ui-qa-run.md` step 6) | refuse all the same — the flag NEVER drops a UI service |
+
+      `--skip-unbootable` is a dedicated flag: do NOT overload `--force`, which already means
+      "skip the preflight RAM gate" and nothing else.
+   7. After this step every service remaining in the boot order has a `dev` block. The boot
       contract (`env-lifecycle.md`) refuses to boot anything without one.
 
 9. **Pre-flight gate.** Run `preflight_gate` per `jelou/references/env-lifecycle.md` over
@@ -281,6 +314,14 @@ namespaced-backend wiring is not yet supported (this covers backend↔backend on
       when no live stack exists, and frugal when one does.
 
     On `ready_timeout` → `STATUS: BLOCKED` (teardown still runs via the trap).
+
+    **Certification mark (applies the step 8b.5 trust rule).** After each service's boot
+    resolves: an unmarked or hash-mismatched `dev` block whose service this boot actually
+    STARTED (its `dev.command` executed — a reuse of an already-healthy service never
+    marks), on the canonical `svc.path` checkout (a worktree boot never marks), with
+    readiness green → write the mark via
+    `bin/verify-dev-block.mjs --write-mark` (exit `5` = mtime conflict → re-read and retry
+    once). A block already marked with a current hash is not re-marked.
 
 ### Phase 3 — Backend execution (delegated)
 
@@ -515,11 +556,13 @@ the top of this file), so the runners' live probes are safe to mutate.
   Phase 0b interviews the user; never guess, never silently drop it.
 - Pre-flight gate failure → exit per the env-lifecycle contract; `--force` /
   `--allow-shared-data` override exactly as in `ui-qa-run`.
-- Service in the boot order with no `dev` block → step 8b derives one and asks to persist it to
-  `services.yaml`; **never improvise a boot command.** Not derivable / user declines → refuse and
-  tell the user to add the `dev` block to `.spec-workspace/registry/services.yaml` (NOT
-  `/jlu-register-service`, which writes the separate `jlu-services.json`). A UI service without a
-  `dev` block is always a hard refuse — it is never offered "Omitir".
+- Service in the boot order with no `dev` block → step 8b derives one and persists it to
+  `services.yaml` without asking; **never improvise a boot command.** Not derivable (exit 3) →
+  refuse and tell the user to add the `dev` block to `.spec-workspace/registry/services.yaml`
+  (NOT `/jlu-register-service`, which writes the separate `jlu-services.json`) — unless
+  `--skip-unbootable` auto-skips it with a WARN (backend services only, step 8b.6). A UI
+  service without a bootable `dev` block is always a hard refuse — the flag never drops a UI
+  service.
 - `ready_timeout` on boot → `BLOCKED`; teardown runs.
 - A delegated `test-suite` / `ui-qa-run` failure → recorded; the convergence loop owns the
   retry; a red that survives the cap → overall `FAIL / NOT-CONVERGED`, teardown runs.
@@ -563,6 +606,12 @@ the top of this file), so the runners' live probes are safe to mutate.
 - `bin/probe-coverage-breadth.mjs` — the Phase 4.5 static breadth audit (validator-rejection + realistic-payload coverage).
 - `bin/derive-dev-block.mjs` — infers a `dev` block (package-manager-detected) for a service
   that has none, so step 8b can boot it deterministically instead of improvising.
+- `bin/verify-dev-block.mjs` — the step 8b registry surface: `--persist-block` (write a derived
+  block), `--hash` (current block hash for the trust rule), `--write-mark` (the `verified`
+  mark after this run's own boot started the service). The standalone verify cycle behind the
+  same binary (`--checkout`, run by the `jlu-dev-block-verifier` subagent) belongs to
+  `/jlu-map-codebase` only — goal never dispatches it, because the run's own boot is the
+  verification.
 - `jelou/references/dev-block-schema.md`, `jelou/templates/services-yaml.md` — `dev` block
   (incl. the `docker-exec` launcher for idle dev containers).
 - `jelou/references/playwright-conventions.md` — the `JLU_E2E_VIDEO` video-evidence contract.

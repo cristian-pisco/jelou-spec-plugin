@@ -469,7 +469,7 @@ For tasks that touch a UI service, jelou-spec-plugin generates failing Playwrigh
 | **VERIFY** (post-deploy, user-triggered) | `/jlu-ui-qa-run [task-slug]` | Boots only the services in `affected_services`, runs Playwright headless (default 1 worker; guarded scale-up), dispatches `jlu-ui-fix-loop` on failure with hard bounds (3 attempts/assertion, 15-min suite circuit-breaker). |
 | **RECOVER** (after a crashed run) | `/jlu-ui-qa-cleanup` | Frees stale dev servers, containers, ports, and lock files. |
 
-Each E2E-targeted service must declare a `dev` block in `services.yaml` (launcher, command, readiness signal, RAM estimate, data isolation). See [`jelou/references/dev-block-schema.md`](./jelou/references/dev-block-schema.md). Services without a `dev` block are skipped.
+Each E2E-targeted service must declare a `dev` block in `services.yaml` (launcher, command, readiness signal, RAM estimate, data isolation). See [`jelou/references/dev-block-schema.md`](./jelou/references/dev-block-schema.md). Services without a `dev` block are skipped here — though `/jlu-map-codebase` now derives and boot-certifies missing blocks at mapping time, so mapped services normally arrive with one.
 
 Trace summaries (`trace-summary.json` + screenshots) are committed; raw `trace.zip` is gitignored.
 
@@ -895,7 +895,7 @@ The existing `## Services` markdown body is auto-derived from frontmatter for hu
 
 ### `services.yaml` `dev` block (optional)
 
-A per-service `dev` block declares how to boot the service for E2E orchestration: launcher, command, readiness signal, RAM estimate, data isolation. Consumed by `/jlu-ui-qa-run`; ignored by all other workflows. Full schema in [`jelou/references/dev-block-schema.md`](./jelou/references/dev-block-schema.md). Services without a `dev` block remain valid; they're skipped by E2E orchestration with a clear message.
+A per-service `dev` block declares how to boot the service for E2E orchestration: launcher, command, readiness signal, RAM estimate, data isolation. Three workflows consume it: `/jlu-ui-qa-run` boots from it, `/jlu-goal` derives/persists/re-verifies it for boot-order services (step 8b, no questions asked), and `/jlu-map-codebase` derives, persists, and **boot-certifies** it at mapping time — a real boot that reaches readiness earns a `verified: { date, commit, block_hash }` mark, written only when the boot actually executed the command on the canonical checkout. Full schema and the verifier CLI contract in [`jelou/references/dev-block-schema.md`](./jelou/references/dev-block-schema.md). Services without a `dev` block remain valid; `/jlu-ui-qa-run` skips a non-UI service that lacks one with a clear message.
 
 ## Configuration
 
@@ -927,7 +927,7 @@ To bypass the hook for a one-off manual run (humans only): `JLU_TEST_GUARD=off` 
 
 - **[Full Specification](./docs/archive/JELOU_SPEC_PROPOSAL.md)** — Archived historical design memo: 46 design decisions, artifact schemas, and interview transcript from initial design
 - **[Architecture Diagrams](./docs/architecture.excalidraw)** — Editable diagrams (open with [excalidraw.com](https://excalidraw.com))
-- **[`dev` Block Schema](./jelou/references/dev-block-schema.md)** — `services.yaml` extension for E2E orchestration (consumed by `/jlu-ui-qa-run`)
+- **[`dev` Block Schema](./jelou/references/dev-block-schema.md)** — `services.yaml` extension for E2E orchestration, plus the `verified` boot-certification mark and the `verify-dev-block.mjs` CLI contract (consumed by `/jlu-ui-qa-run`, `/jlu-goal`, `/jlu-map-codebase`)
 - **[`services.yaml` Reference](./jelou/templates/services-yaml.md)** — Field-by-field schema documentation for the service registry
 - **[Architecture Review Design](./docs/superpowers/specs/2026-04-26-architecture-review-design.md)** — Spec for `/jlu-architecture-review`: candidate discovery, grilling loop, ADR lifecycle, vocabulary contract
 - **[Architecture Language](./jelou/references/architecture-language.md)** — Vocabulary contract (Module, Interface, Seam, Adapter, Depth, Leverage, Locality) used by the architecture-review agents

@@ -1,6 +1,6 @@
 # `services.yaml` `dev` Block — Schema Reference
 
-> The `dev` block is an additive extension to `services.yaml` (see `jelou/templates/services-yaml.md`). It is consumed by **the UI QA workflow** for E2E test orchestration. Other jelou-spec-plugin workflows ignore it. In `/jlu-ui-qa-run`, a non-UI affected service without a `dev` block is skipped with a clear message. `/jlu-goal` does NOT skip a boot-order service that lacks one — it derives a block (`bin/derive-dev-block.mjs`) and asks to persist it (step 8b) rather than improvise.
+> The `dev` block is an additive extension to `services.yaml` (see `jelou/templates/services-yaml.md`). It has three consumers: `/jlu-ui-qa-run` boots from it for E2E orchestration, `/jlu-goal` derives/persists/re-verifies it for boot-order services, and `/jlu-map-codebase` derives, persists, and boot-certifies it at mapping time. Workflows outside those three (execute-task, ship, etc.) ignore it. In `/jlu-ui-qa-run`, a non-UI affected service without a `dev` block is skipped with a clear message. `/jlu-goal` does NOT skip a boot-order service that lacks one — it derives a block (`bin/derive-dev-block.mjs`) and persists it automatically (step 8b) rather than improvise or ask. `/jlu-map-codebase` goes further: at mapping time it derives, persists, AND boot-verifies missing blocks (via `jlu-dev-block-verifier` running `bin/verify-dev-block.mjs`), writing the `verified` mark documented below when the real boot goes green.
 
 ## Purpose
 
@@ -39,6 +39,10 @@ The block is intentionally narrow. It does not describe how the service builds, 
     ready_timeout_s: 30                      # default 30
     ram_estimate_mb: 400                     # advisory; consumed by pre-flight resource check
     data_isolation: shared | per-run | none  # required
+    verified:                                # optional; orchestrator-written certification mark — see below
+      date: 2026-07-22
+      commit: abc1234
+      block_hash: <canonical hash of the dev block excluding this key>
 ```
 
 `docker-exec` reuses the sibling `docker` block (or an inline `dev.docker`) to name the
@@ -142,6 +146,85 @@ Declares how the service's persistent state behaves across concurrent E2E runs:
 - **`none`** — service is stateless; no isolation needed (e.g., a static-content service, a stateless API gateway).
 
 When `--allow-shared-data` is set, the user accepts the risk and is responsible for ensuring the runs don't collide on data.
+
+## `verify-dev-block.mjs` — CLI contract (canonical)
+
+This section is the single source of truth for the verifier CLI contract. Workflows cite it and
+keep only their mode-specific invocation; do not restate exit codes, verdict shapes, or the
+envelope elsewhere.
+
+Modes:
+- Verify: `node <plugin-root>/bin/verify-dev-block.mjs --workspace <ws> --service <id> --checkout <dir>`
+- Hash: `... --hash --workspace <ws> --service <id>` → `{ "block_hash": "<sha256>" }`
+- Persist: `... --persist-block --workspace <ws> --service <id> --block-file <path|->` (block JSON, `-` = stdin)
+- Mark: `... --write-mark --workspace <ws> --service <id> --commit <short sha>`
+
+Exit codes: `0` green · `3` green-preexisting (already serving, or the boot never executed the
+command — never mark) · `4` failed · `2` usage/validation/error · `5` write conflict (lock or
+mtime).
+
+Verify prints one JSON line: `{ status, cause, readiness_ms, commit, command_executed,
+teardown_clean, block_hash }`. `command_executed` is evidence — the mark requires it `true`.
+
+The `jlu-dev-block-verifier` subagent wraps the verify mode and returns this envelope verbatim:
+
+```
+VERDICT: GREEN | GREEN_PREEXISTING | FAILED | ERROR
+COMMAND_EXECUTED: true|false
+COMMIT: <short sha or ->
+BLOCK_HASH: <sha256 or ->
+CAUSE: <one line or ->
+TEARDOWN_CLEAN: true|false
+```
+
+Exit-`5` rule (every `--persist-block` / `--write-mark` call site): a concurrent writer touched
+`services.yaml` — re-read the registry and retry ONCE; a second conflict is a WARN handled by the
+caller's fail-soft policy, never a stop. The verifier subagent never edits the registry — it
+reports, the orchestrator persists.
+
+## `verified` — the boot-certification mark
+
+Optional sub-block of `dev`, shape `verified: { date, commit, block_hash }`. It records that
+this exact `dev` block once booted the service for real — the block is a verified fact, not a
+hypothesis. Consumers (`/jlu-goal`, `/jlu-ui-qa-run`) trust ONLY marked blocks whose hash is
+current; anything else is a hypothesis the run's own boot re-verifies.
+
+**Field semantics:**
+
+- `date` — ISO date of the certifying boot.
+- `commit` — short HEAD sha of the checkout that was ACTUALLY booted. At map-time that is
+  always the canonical `svc.path`; the field is informative provenance, not a staleness gate.
+- `block_hash` — the canonical hash of the `dev` block content EXCLUDING the `verified` key
+  itself (computed by `bin/verify-dev-block.mjs`; query it with
+  `node <plugin-root>/bin/verify-dev-block.mjs --hash --workspace <ws> --service <id>` →
+  `{ "block_hash": "..." }`). A manual edit of the block invalidates the mark
+  MECHANICALLY, not by convention: hash mismatch ⇒ the block is treated as unmarked and is
+  re-verified by the next run's own boot. Nothing needs to remember to delete the mark.
+
+**Who writes the mark (per invocation mode):**
+
+- `/jlu-map-codebase` — Step 7c (single-service) and the B6b batch phase, after the
+  standalone verify cycle (`jlu-dev-block-verifier` runs
+  `bin/verify-dev-block.mjs --checkout <svc.path>`: real boot → readiness → launcher
+  teardown) returns `VERDICT: GREEN` with `COMMAND_EXECUTED: true`. `GREEN_PREEXISTING`
+  (the service was already serving, so the command never ran) never marks.
+- `/jlu-goal` and `/jlu-ui-qa-run` (standalone) — when their OWN boot actually STARTED the
+  service (the `dev.command` executed; a reuse of an already-healthy service never marks)
+  on the canonical `svc.path` checkout with readiness green. Worktree boots trust or
+  re-verify but NEVER write the mark.
+- Under `--no-boot`, `/jlu-ui-qa-run` NEVER writes — the caller owns the lifecycle and
+  the marks.
+- The `jlu-dev-block-verifier` subagent NEVER writes the mark (or any registry content):
+  it reports a verdict, and the orchestrator persists via
+  `bin/verify-dev-block.mjs --write-mark` (exit `5` = mtime conflict → re-read and retry
+  once).
+
+**What the mark certifies — and what it does not.** The mark certifies the standalone
+startup MECHANICS of the shared-reuse boot path only: this block's launcher/command brings
+the service (plus the deps of its own compose file) to readiness. It does NOT certify
+runtime integration with peer services (that is `/jlu-goal`/E2E territory), and it says
+nothing about the task-isolated boot path (namespaced `<svc>-<slug>` containers), which has
+its own machinery and sits outside this contract.
 
 ## `depends_on`
 

@@ -45,8 +45,14 @@ mkdir -p "$TARGET_DIR/bin"
 cp "$PLUGIN_DIR/bin/guard-test-commands.mjs" "$TARGET_DIR/bin/"
 cp "$PLUGIN_DIR/bin/guard-env-reads.mjs" "$TARGET_DIR/bin/"
 cp "$PLUGIN_DIR/bin/head-sha-guard.mjs" "$TARGET_DIR/bin/"
-mkdir -p "$TARGET_DIR/bin/lib/dev-orchestrator"
+cp "$PLUGIN_DIR/bin/derive-dev-block.mjs" "$TARGET_DIR/bin/"
+cp "$PLUGIN_DIR/bin/verify-dev-block.mjs" "$TARGET_DIR/bin/"
+mkdir -p "$TARGET_DIR/bin/lib/dev-orchestrator" "$TARGET_DIR/bin/lib/registry" "$TARGET_DIR/bin/lib/boot-engine"
 cp "$PLUGIN_DIR/bin/lib/dev-orchestrator/notify.mjs" "$TARGET_DIR/bin/lib/dev-orchestrator/"
+cp "$PLUGIN_DIR/bin/lib/dev-orchestrator/readiness.mjs" "$TARGET_DIR/bin/lib/dev-orchestrator/"
+cp "$PLUGIN_DIR/bin/lib/registry/yaml-lite.mjs" "$TARGET_DIR/bin/lib/registry/"
+cp "$PLUGIN_DIR/bin/lib/registry/splice.mjs" "$TARGET_DIR/bin/lib/registry/"
+cp "$PLUGIN_DIR/bin/lib/boot-engine/execute-shared-reuse.mjs" "$TARGET_DIR/bin/lib/boot-engine/"
 
 # Global OpenCode config uses root-level commands/ and agents/.
 # Keep those mirrors in sync when TARGET_DIR looks like OPENCODE_HOME.

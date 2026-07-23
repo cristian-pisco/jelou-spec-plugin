@@ -166,6 +166,55 @@ workers finish.
 3. Write `services.yaml` once after applying all service changes.
 4. Record `REGISTRY_ACTION[service-id]` as `registered`, `path-updated`,
    `already-registered`, or `skipped (<reason>)`.
+5. **Derive + persist missing `dev` blocks (orchestrator-side, fail-soft).** For each
+   successful service whose entry — pre-existing or just appended — has no `dev` block, run
+   `node <plugin-root>/bin/derive-dev-block.mjs <SOURCE_ROOT> --stack <stack>`:
+   - Exit `3` → record `CERTIFICATION[service-id]` = `exit-3(<reason>)` and continue.
+   - Derivable → persist via
+     `node <plugin-root>/bin/verify-dev-block.mjs --persist-block --workspace <WORKSPACE_PATH> --service <service-id> --block-file -`
+     (block JSON on stdin; exit `5` = mtime conflict → re-read the registry and retry once;
+     a second `5` → WARN and continue).
+
+   Mapper workers remain forbidden from registry writes and subagent dispatch — derivation,
+   persistence, and every verifier dispatch happen only orchestrator-side, here and in B6b.
+
+### B6b. Sequential Dev-Block Verification
+
+> Fail-soft: every failure in this phase is a WARN row in the B8 report. It never blocks
+> the docs deliverable.
+
+This phase runs after B6 by construction: the batch constraints already forbid mappers from
+writing the registry or dispatching subagents, so certification can only happen once the
+orchestrator owns the registry again.
+
+1. Build `VERIFY_TARGETS`: every successful service whose entry now has a `dev` block that
+   is **unmarked** — no `verified` mark at all, OR a `verified.block_hash` that no longer
+   matches the current block per
+   `node <plugin-root>/bin/verify-dev-block.mjs --hash --workspace <WORKSPACE_PATH> --service <service-id>`
+   (→ `{ "block_hash": "..." }`; a mismatch means the block was hand-edited after marking
+   and counts as unmarked). This covers both the blocks freshly derived in B6 AND
+   pre-existing hand-authored blocks that were never certified. A block whose mark is
+   current is `already-verified` — skip it; already-marked blocks are never re-verified.
+2. For each target, **sequentially — one verifier dispatch at a time, concurrency 1, never
+   in parallel** (one boot at a time is the same RAM-gate discipline as the
+   `env-lifecycle.md` preflight; parallel boots have frozen machines), dispatch
+   `jlu-dev-block-verifier` (subagent_type `jlu:jlu-dev-block-verifier`, bare fallback)
+   with `SERVICE_ID`, `WORKSPACE_PATH`, `CHECKOUT_PATH=<SOURCE_ROOT>` (the canonical
+   `svc.path`), `PLUGIN_ROOT`.
+3. Handle each verdict exactly as in Step 7c.6d–f: `GREEN` + `COMMAND_EXECUTED: true` →
+   `--write-mark` (exit `5` → re-read and retry once); `GREEN_PREEXISTING` → no mark +
+   note; `FAILED`/`ERROR` → no mark + WARN with `CAUSE`.
+4. Record `CERTIFICATION[service-id]`: `derived+verified` | `derived-unverified(<cause>)` |
+   `pre-existing-verified` (hand-authored block, unmarked, passed this run) |
+   `pre-existing-unverified(<cause>)` (includes a stale mark's hash-mismatch) |
+   `green-preexisting` | `exit-3(<reason>)` | `already-verified`.
+
+**Operational precondition (migration runs):** for a meaningful certification run the dev
+stack should be DOWN (run `/jlu-stop-dev` or stop your dev servers before the batch) —
+with the containers already serving, the idempotence probe yields mass `green-preexisting`
+and no service earns a mark. The report will say so, but the run loses its purpose. The
+inverse is never done: map-codebase NEVER stops a running dev process to force a
+verification.
 
 ### B7. Glossary Extraction and Merge Once
 
@@ -190,9 +239,13 @@ Present a final summary:
 ## Map Codebase Batch Complete — <ROOT_PATH>
 
 ### Services
-| Service | Source | Result | Registry | Notes |
-|---|---|---|---|---|
-| <service-id> | <SOURCE_ROOT> | mapped / skipped / failed | <REGISTRY_ACTION> | <notes> |
+| Service | Source | Result | Registry | Certification | Notes |
+|---|---|---|---|---|---|
+| <service-id> | <SOURCE_ROOT> | mapped / skipped / failed | <REGISTRY_ACTION> | <CERTIFICATION> | <notes> |
+
+Certification states: `derived+verified` | `derived-unverified(<cause>)` |
+`pre-existing-verified` | `pre-existing-unverified(<cause>)` | `green-preexisting` |
+`exit-3(<reason>)` | `already-verified`.
 
 ### Batch
 - Services discovered: <N>
@@ -295,7 +348,7 @@ If this gate fails, ask the user for an explicit path and re-validate before pro
    b. Verify all 6 docs exist in `<OUTPUT_DIR>/` (ARCHITECTURE.md, STACK.md, STRUCTURE.md, CONVENTIONS.md, INTEGRATIONS.md, CONCERNS.md).
    c. If any doc is missing: set `ANALYSIS_MODE` = `full` and continue to Step 5.
    d. Run: `git -C <SOURCE_ROOT> diff <commit>..HEAD --stat`
-   e. If no changes: log "Codebase unchanged since last analysis (commit <commit>). Skipping." Run Step 7c (Ensure Registry Entry) so re-runs heal a missing registry entry, then skip to Step 9 (report).
+   e. If no changes: log "Codebase unchanged since last analysis (commit <commit>). Skipping." Run Step 7c (Ensure Registry Entry) so re-runs heal a missing registry entry or a missing `dev` block, then skip to Step 9 (report).
    f. If changes exist: categorize changed files and set `ANALYSIS_MODE` = `incremental`.
 3. If `.last-analysis.json` does not exist: set `ANALYSIS_MODE` = `full` and continue to Step 5.
 
@@ -465,8 +518,19 @@ Mapping a service is an explicit statement that it belongs to the workspace, so 
        port_env: APP_PORT
    ```
 5. Set `REGISTRY_ACTION` = `registered`.
+6. **Certify the `dev` block (fail-soft — nothing in this sub-step may block the docs deliverable).** After the entry is ensured — freshly registered, path-updated, or already registered — check whether it carries a `dev` block. Re-runs heal here too: an entry registered by an earlier run without a `dev` block gets one now, exactly as re-runs heal a missing registry entry. When the block is missing:
+   a. **Derive** a candidate: `node <plugin-root>/bin/derive-dev-block.mjs <SOURCE_ROOT> --stack <stack>`.
+      On exit `3` (not derivable — a library with no dev script and no compose file is the legitimate case), record `CERTIFICATION` = `exit-3(<reason>)` for the Step 9 report and continue. This is an informative note, not an error.
+   b. **Persist first** (persist-then-verify): pipe the derived block JSON to
+      `node <plugin-root>/bin/verify-dev-block.mjs --persist-block --workspace <WORKSPACE_PATH> --service <service-id> --block-file -` (the block JSON on stdin). Exit `5` means an mtime conflict — a concurrent writer touched `services.yaml`; re-read the registry and retry once. A second exit `5` → WARN, set `CERTIFICATION` = `skipped (persist conflict)`, continue.
+   c. **Verify** with ONE dispatch of `jlu-dev-block-verifier` (subagent_type `jlu:jlu-dev-block-verifier`, bare `jlu-dev-block-verifier` fallback), passing `SERVICE_ID=<service-id>`, `WORKSPACE_PATH=<WORKSPACE_PATH>`, `CHECKOUT_PATH=<SOURCE_ROOT>` (the canonical `svc.path`), `PLUGIN_ROOT=<plugin-root>`. The verifier's only execution surface is
+      `node <plugin-root>/bin/verify-dev-block.mjs --workspace <WORKSPACE_PATH> --service <service-id> --checkout <SOURCE_ROOT>` (real boot → readiness poll → launcher-specific teardown) and returns the verdict envelope. Exit codes, verdict JSON, and the envelope are defined ONCE in `jelou/references/dev-block-schema.md` → "verify-dev-block.mjs — CLI contract". The verifier never edits the registry — it reports, the orchestrator persists.
+   d. `VERDICT: GREEN` with `COMMAND_EXECUTED: true` → **write the mark**:
+      `node <plugin-root>/bin/verify-dev-block.mjs --write-mark --workspace <WORKSPACE_PATH> --service <service-id> --commit <short sha from COMMIT>` (same exit-`5` re-read-and-retry-once rule). The mark lands as `verified: { date, commit, block_hash }` under the `dev` block. Set `CERTIFICATION` = `derived+verified`.
+   e. `VERDICT: GREEN_PREEXISTING` → NO mark: the service was already serving, so the derived command never executed — certifying a command that never ran would be theater. Set `CERTIFICATION` = `green-preexisting` and note it in the report. map-codebase NEVER stops a running dev process to force a verification — an already-serving service is left intact.
+   f. `VERDICT: FAILED` or `ERROR` → NO mark; WARN with the returned `CAUSE`. The block stays persisted as an unverified hypothesis — the next `/jlu-goal` run's own boot re-verifies it. Set `CERTIFICATION` = `derived-unverified(<CAUSE>)`.
 
-**Store**: `REGISTRY_ACTION`
+**Store**: `REGISTRY_ACTION`, `CERTIFICATION`
 
 ---
 
@@ -534,6 +598,7 @@ Present a final summary to the user:
 
 ### Registry
 - <service-id>: <REGISTRY_ACTION — e.g., "registered in registry/services.yaml (stack: nestjs)", "already registered", "path updated", "skipped (<reason>)">
+- Dev block: <CERTIFICATION — derived+verified | derived-unverified(<cause>) | green-preexisting | exit-3(<reason>) | already present>
 - <if docker block was omitted as ambiguous: note which Compose services were found and suggest editing services.yaml>
 
 ### Glossary
@@ -557,6 +622,7 @@ Present a final summary to the user:
 | Source code root does not exist | Stop with path and suggestion |
 | Research agent fails | Report failure, offer retry for that agent only |
 | Registry entry write fails (Step 7c) | Log warning, report as `skipped` in summary, continue — never blocks the docs |
+| Dev-block derive / persist / verify fails (Step 7c.6, B6.5, B6b) | WARN with the cause, record the certification state, continue — never blocks the docs |
 
 ---
 

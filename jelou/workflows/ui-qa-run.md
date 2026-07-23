@@ -125,6 +125,21 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
     `boot(Service Boot Order)` per `jelou/references/env-lifecycle.md`. When `--no-boot`
     IS set, skip — infra is already up; proceed directly to the auth gate (step 14b).
 
+14a. **Certification mark — only when this run OWNS the boot.** Applies exclusively to the
+    standalone case (no `--no-boot`), right after step 14's boot: for each service whose
+    `dev` block is unmarked — no `verified` mark, or a `verified.block_hash` that no longer
+    matches `node "$PLUGIN_ROOT/bin/verify-dev-block.mjs" --hash --workspace <workspace> --service <id>`
+    (→ `{ "block_hash": "..." }`) — AND whose boot actually STARTED it (its `dev.command`
+    executed; a reuse of an already-healthy service never marks) AND whose booted checkout
+    is the canonical `svc.path` (a worktree boot never writes the mark) AND whose readiness
+    passed, write the mark:
+    `node "$PLUGIN_ROOT/bin/verify-dev-block.mjs" --write-mark --workspace <workspace> --service <id> --commit <short HEAD sha of the booted checkout>`
+    (exit `5` = mtime conflict → re-read the registry and retry once; still conflicted →
+    WARN and continue, never block the run). Under `--no-boot` this step NEVER writes — the
+    caller (`/jlu-goal`) owns the lifecycle and the marks. This step never derives a missing
+    `dev` block either: a non-UI service without one is still skipped per step 6 —
+    derivation belongs to `/jlu-map-codebase` and `/jlu-goal` step 8b.
+
 14b. **Auth gate — probe the session, log in via OTP when invalid.** Runs after boot (the target app must be up) and before Playwright. See `jelou/references/auth-fixtures.md` § "Orchestrated OTP login".
 
     `UI_WORKTREE` is the worktree path resolved in step 12 — bind and export it before this block. The auth drivers (`e2e-session-probe` / `e2e-login` / `e2e-session-sync`) **self-load** `.env`+`.env.e2e` from `UI_WORKTREE` via the dotenv-style parser (`bin/lib/env-files.mjs`), so `E2E_BASE_URL`, `E2E_STORAGE_STATE`, and `TEST_EMAIL`/`TEST_PASSWORD` reach the child without ever entering the conversation — and a `.env` with an unquoted value (which would break `bash source` and trip the guard-env-reads hook) is parsed cleanly. Do **not** `source` the env files here.
@@ -625,3 +640,4 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
 - `jelou/workflows/ui-qa-cleanup.md` — recover from leaked state
 - `bin/e2e-session-probe.mjs` / `bin/e2e-login.mjs` / `bin/detect-auth-collapse.mjs` — auth gate drivers
 - `bin/e2e-session-sync.mjs` — step 14c local cookie-guard session provisioning (decrypt + `logsM.userSessions` upsert + localhost cookie)
+- `bin/verify-dev-block.mjs` — step 14a `--hash` / `--write-mark` surface for the `verified` certification mark (written only when this run's own boot started the service on the canonical checkout; never under `--no-boot`)
