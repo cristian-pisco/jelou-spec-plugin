@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.314] — 2026-07-23
+
+### Fixed
+- aclara la rama destino (main/master) en la pregunta dual-PR de new-task
+
 ## [0.3.313] — 2026-07-23
 
 ### Added

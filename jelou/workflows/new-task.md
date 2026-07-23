@@ -380,8 +380,8 @@ After confirming affected services, scan for overlapping active tasks:
 Using `question`:
 
 > **"Will this task also need a PR to `alpha` (staging)?"**
-> - No — only a PR to trunk (default)
-> - Yes — two PRs: one to trunk (mandatory), one to alpha (staging branch created from origin/alpha now; commits cherry-picked at PR-creation time with conflict resolver)
+> - No — only a PR to the main branch (`main`/`master`) (default)
+> - Yes — two PRs: one to the main branch (mandatory), one to alpha (staging branch created from origin/alpha now; commits cherry-picked at PR-creation time with conflict resolver)
 
 Store as `DUAL_PR` (boolean).
 
