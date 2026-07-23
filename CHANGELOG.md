@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.313] — 2026-07-23
+
+### Added
+- boot certification at mapping time — map-codebase derives, boot-verifies and marks dev blocks; goal 8b question removed
+
 ## [0.3.312] — 2026-07-22
 
 ### Added
