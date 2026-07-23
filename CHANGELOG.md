@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.315] — 2026-07-23
+
+### Fixed
+- reingreso autónomo de tasks ready_to_publish al autochain (sin pregunta de ship)
+
 ## [0.3.314] — 2026-07-23
 
 ### Fixed

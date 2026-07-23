@@ -115,6 +115,27 @@ non-flag, non-ClickUp token is the `task-slug`; a ClickUp URL
 
 ## Step 3 — Session Recovery (Decision #35)
 
+**Already-complete resume (status is `ready_to_publish`).** Implementation is
+finished and committed on `production/<TASK_SLUG>`, but the ship+green chain did
+not complete in the originating session (context death, aborted window, or the
+chain simply never ran). Do NOT re-run phases or final QA — the work is done.
+Resolve the autochain flag per §2 of
+`{plugin-root}/jelou/references/autochain-handoff.md` (precedence:
+`--no-autochain` argument > `JLU_AUTOCHAIN` env >
+`node {plugin-root}/bin/jlu-settings.mjs get autochain`), then:
+
+- Resolved `true` → skip Steps 3b–9 entirely and go straight to **Step 9.5**,
+  which ships inline and drives every PR to green. Step 9.5 handles its own
+  re-entry: if `<TASK_DIR>/AUTOCHAIN.json` already exists (a chain that died
+  *after* ship opened PRs) it resumes from that artifact; otherwise it runs the
+  first ship. **Never ask the user to confirm shipping** — an on-flag chain
+  ships autonomously. This is the missing counterpart to autochain-handoff §4:
+  it carries a `ready_to_publish` task into the chain on the *first* ship, not
+  only on post-ship re-entry.
+- Resolved not `true` → the chain is opt-out for this task; print the Step 9
+  `Next Steps` block (run `/jlu-ship`, then `/jlu-close-task` after merge) and
+  stop.
+
 If TASKS.md shows a mid-execution state (status is `implementing` and some phases are marked `done` while others are `pending` or `in_progress`):
 
 1. Log the current state to terminal:

@@ -66,8 +66,20 @@ own Step 9.5 then carries the chain through ship and the PR-green loop.
 The chain's post-ship progress persists in `<TASK_DIR>/AUTOCHAIN.json` (PR
 set + per-PR verdicts, written by execute-task Step 9.5b/9.5c). If the
 session dies mid-chain (context exhaustion, abort), re-invoking
-`/jlu-execute-task <task-slug>` with autochain on re-enters Step 9.5c from
-that artifact — already-GREEN PRs are skipped, pending ones get their
-runner. Phases are not re-run: execute-task's session recovery already
-resumes from the first incomplete phase, and a `ready_to_publish` task has
-none.
+`/jlu-execute-task <task-slug>` with autochain on re-enters the chain —
+already-GREEN PRs are skipped, pending ones get their runner. Phases are not
+re-run: execute-task's session recovery already resumes from the first
+incomplete phase, and a `ready_to_publish` task has none.
+
+Two death points, one re-entry command:
+
+- **Died after ship** (PRs opened, `AUTOCHAIN.json` present) → execute-task
+  Step 9.5's own re-entry skips 9.5b and drives the still-pending PRs.
+- **Died before ship** (`ready_to_publish`, no PRs, no `AUTOCHAIN.json`) →
+  execute-task Step 3's `ready_to_publish` branch routes straight to Step 9.5,
+  which runs the first ship. Without this branch a resumed `ready_to_publish`
+  task has no autonomous path to ship and the orchestrator falls back to
+  asking the user to confirm — the exact gate the chain exists to remove.
+
+Either way the user runs nothing but `/jlu-execute-task <task-slug>`; the
+chain never asks whether to ship.

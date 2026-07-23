@@ -128,6 +128,13 @@ describe('execute-task auto-chain (Step 9.5)', () => {
   test('step 1 strips clickup and flag tokens before slug resolution', () => {
     assert.match(executeTask, /first\s*non-flag, non-ClickUp token is the `task-slug`/);
   });
+
+  test('ready_to_publish resume routes to Step 9.5 without a ship gate', () => {
+    assert.match(executeTask, /\*\*Already-complete resume \(status is `ready_to_publish`\)\.\*\*/);
+    assert.match(executeTask, /skip Steps 3b–9 entirely and go straight to \*\*Step 9\.5\*\*/);
+    assert.match(executeTask, /\*\*Never ask the user to confirm shipping\*\*/);
+    assert.match(executeTask, /Resolved not `true` → the chain is opt-out/);
+  });
 });
 
 describe('interview chain entries', () => {
@@ -144,6 +151,9 @@ describe('interview chain entries', () => {
     assert.match(recipe, /close the caller's own workflow span/);
     assert.match(recipe, /## 4\. Resume after a dead session/);
     assert.match(recipe, /AUTOCHAIN\.json/);
+    assert.match(recipe, /\*\*Died after ship\*\*/);
+    assert.match(recipe, /\*\*Died before ship\*\*/);
+    assert.match(recipe, /the\s+chain never asks whether to ship/);
   });
 
   test('all three workflows defer to the shared recipe', () => {
