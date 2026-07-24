@@ -1,0 +1,56 @@
+name: release
+
+on:
+  workflow_run:
+    workflows: [test]
+    types: [completed]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      !startsWith(github.event.workflow_run.head_commit.message, 'chore: release v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: Prepare release
+        id: prepare
+        env:
+          RELEASE_SUBJECT: ${{ github.event.workflow_run.head_commit.message }}
+        run: |
+          git pull --ff-only origin main
+          current_version=$(node -p "require('./package.json').version")
+          if git ls-remote --exit-code --tags origin "refs/tags/v$current_version" >/dev/null 2>&1; then
+            subject=$(printf '%s\n' "$RELEASE_SUBJECT" | head -n 1)
+            npm run release -- -m "$subject"
+            version=$(node -p "require('./package.json').version")
+            git commit -m "chore: release v$version"
+            git push origin HEAD:main
+          else
+            version=$current_version
+          fi
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.prepare.outputs.version }}
+        run: gh release create "v$VERSION" --target main --title "v$VERSION" --generate-notes
