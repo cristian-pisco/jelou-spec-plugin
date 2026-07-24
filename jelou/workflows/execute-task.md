@@ -676,7 +676,7 @@ Log to terminal:
 
 **Skip if the tdd-cycle agent's report's `Refactor Candidates` section is empty or contains only `None`.** No candidates means there is nothing for the refactor agent to act on — dispatching it would burn a sub-agent dispatch to return `NO_CHANGES`. Log `Phase <NN> refactor skipped — tdd-cycle agent reported no candidates.` and continue to 7h.
 
-Otherwise, spawn `jlu-refactor-agent` with model: **MODEL_CONFIG.code** (default: sonnet). The agent applies surgical refactors guided by `jelou/references/tdd-principles.md` §7, keeping tests green at every step.
+Otherwise, spawn `jlu-refactor-agent` with model: **MODEL_CONFIG.code** (default: sonnet). The agent applies at most three refactors, one at a time, within `Files Modified`; it preserves public APIs and runs the phase tests after every change.
 
 - **Input**:
   - Phase context (phase number, service-id)

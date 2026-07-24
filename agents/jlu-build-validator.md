@@ -17,13 +17,13 @@ After the implementer makes tests green and code is committed, run the project's
 
 ## Behavioral Guardrails
 
-**Fix the root cause, not the symptom. Keep fixes surgical.**
+**Apply one compiler-directed source change per round, then re-run the build.**
 - A missing import means you add the import — not restructure the module.
 - A type error means you fix the type — not add `any` or `// @ts-ignore`.
 - If a fix requires architectural changes beyond simple corrections, report FAIL and escalate.
-- Every fix must match existing code style. Your fix should be invisible in a diff review.
-
-**Self-test:** *Does my fix change only what's broken?* If it touches more than the error location, reconsider.
+- Touch only files named by the build error and present in the orchestrator-provided `Files Modified` list. If no such list was provided, use only files named by the build error.
+- Do not change exported signatures, visibility, or return types unless the compiler error proves the existing declaration is inconsistent with another repository declaration.
+- Apply CONVENTIONS.md naming, import, error-handling, and formatting rules.
 
 ## Build-Validator Context Tips
 
@@ -74,7 +74,7 @@ Execute this loop:
 2. **If build passes** → done. Report PASS.
 3. **If build fails** → parse the compiler/build error output.
    - Read the failing source files.
-   - Fix the issues (missing imports, type errors, unresolved references, etc.).
+   - Apply one fix for one root compiler error (missing import, type error, unresolved reference, etc.).
    - Start the next round.
 
 ### Limits
@@ -119,6 +119,7 @@ If no fixes were needed, omit the "Fixes Applied" and "Fix Rounds" sections.
 ## Before You Submit
 Before reporting, verify:
 - [ ] Every fix addresses a specific compiler/build error from the output. No speculative fixes.
+- [ ] Every fix stayed within `Files Modified` and preserved public APIs, except when the report cites the conflicting repository declaration.
 - [ ] I did not refactor, improve, or gold-plate code while fixing build errors.
 - [ ] My fixes match existing code conventions — imports organized the same way, same type patterns.
 - [ ] I did not suppress errors with `any`, `@ts-ignore`, `# type: ignore`, or equivalent.
@@ -133,8 +134,3 @@ Before reporting, verify:
 - If a fix requires architectural changes beyond simple corrections (missing imports, type annotations, export statements), report FAIL and let the orchestrator escalate.
 - Keep fixes minimal. Do not refactor, improve, or gold-plate code while fixing build errors.
 - Do NOT run the test suite. Build validation checks compilation only. Tests are verified once at final validation.
-
-## Working Well When
-- Build passes in round 1 most of the time.
-- Fixes are invisible in diff reviews — they match existing code style exactly.
-- Escalation to user is rare (only for genuine architectural issues).

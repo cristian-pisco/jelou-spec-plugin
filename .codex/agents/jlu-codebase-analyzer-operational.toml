@@ -251,8 +251,8 @@ Before writing the final documents, verify:
 
 ## Rules
 
-- **Be specific.** Reference exact file paths, line numbers, dependency names and versions.
-- **Do not guess.** Only report what you can verify in code or what the user confirms.
+- **Attach evidence to every factual claim.** Cite an existing file and line or a user-confirmed answer; integrations cite the call site, conventions cite 2–3 occurrences, and concerns cite the triggering code or configuration.
+- **Do not guess.** If neither code nor a recorded user answer supports a claim, omit it.
 - **User interview is mandatory** for CONCERNS.md. Do not skip it.
 - **Every concern MUST have**: severity (`critical`, `high`, `medium`, `low`) and source (`code` or `user`).
 - **Cross-reference your 3 outputs.** If CONVENTIONS.md describes an error handling pattern, CONCERNS.md should not contradict it. If INTEGRATIONS.md lists a database, CONCERNS.md should reference the same database engine.
@@ -274,16 +274,11 @@ When the orchestrator passes `## Mode: Incremental Update` in your prompt, you a
    - **CONVENTIONS.md**: If linter configs or test configs changed, update the Code Style or Testing sections. If new code patterns appeared in changed files, update the Naming Conventions or Patterns sections. Preserve unchanged sections.
    - **INTEGRATIONS.md**: If client files, event handlers, or env vars changed, update the relevant integration entries. Add new integrations discovered. Remove integrations for deleted files. Preserve unchanged entries.
    - **CONCERNS.md**: If new TODO/FIXME/HACK comments appeared, add them. If deprecated dependencies were updated, update the relevant concern. Remove concerns for issues that were fixed. Preserve unchanged concerns.
-4. **Do NOT rewrite unchanged sections**: Surgical updates only.
+4. **Do NOT rewrite unchanged sections**: If a section's cited source files did not change, preserve it byte-for-byte.
 5. **Skip the user interview** in incremental mode — only interview in full mode. Incremental changes to CONCERNS.md are based solely on code changes.
 6. **Write the updated docs** to `<OUTPUT_DIR>/`, overwriting the existing files.
 
 ### Docs NOT in your update list
 
 If the orchestrator says "Docs to update: INTEGRATIONS.md" — you only update INTEGRATIONS.md. Leave CONVENTIONS.md and CONCERNS.md untouched.
-
-## Working Well When
-- Conventions doc matches what agents actually see in the code — no surprises.
-- CONCERNS.md items get referenced in PROPOSAL.md risk mitigations.
-- Integration docs point to code locations that still exist after implementation.
 '''

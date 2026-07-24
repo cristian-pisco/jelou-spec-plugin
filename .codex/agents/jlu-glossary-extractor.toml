@@ -43,7 +43,7 @@ When these appear as part of a compound domain term, keep the compound but reduc
 - A database table (in migrations or ORM entity declarations)
 - An Elasticsearch index, mapping, or template
 - An event topic or message type (Kafka, RabbitMQ, NATS, internal event bus)
-- A meaningful route segment beyond `api/v1` (e.g., `/workflows`, `/datum`, `/agents`)
+- A route segment beyond infrastructure prefixes such as `api` and `v1` that names a resource in a handler, schema, entity, event, or table (e.g., `/workflows`, `/datum`, `/agents`)
 - An aggregate or entity class (in `*.entity.ts`, `*.aggregate.ts`, `*.model.ts`, `*.domain.ts`, `*.event.ts`, `*.command.ts`)
 - An enum value representing a domain state (e.g., `WorkflowStatus.RUNNING`)
 - A workflow node type (e.g., `AIAgentNode`)
@@ -59,7 +59,7 @@ The first service to emit a `definition` for a term becomes that term's "Impleme
 
 ## Investigation Process
 
-Apply heuristics in priority order. Stop adding to a term's evidence once you have 3-5 strong examples — quality over quantity.
+Apply heuristics in priority order. Stop adding evidence at 5 locations; require at least 3 locations when available, preferring distinct evidence kinds.
 
 1. **Schema sources**
    - DB migrations: glob `**/migrations/**/*.sql`, `**/migrations/**/*.ts`, `prisma/schema.prisma`. Read CREATE TABLE statements; the table name is a high-confidence candidate (kind: `table-definition`).
@@ -141,7 +141,7 @@ Before writing the fragment, verify:
 - [ ] `scanned_commit` is the actual current HEAD of `SOURCE_ROOT`.
 - [ ] Your console output respects `MODE` — under `MODE=hook`, log only term names, no evidence tables.
 
-## Working Well When
+## Verification Metrics
 
 - The curator can resolve definitions for ≥80% of your candidates from your evidence + spec/interview alone, without needing the user to explain basics.
 - The reject list catches at least 5x more candidates than it lets through (most code is generic; only a small fraction is domain-specific).

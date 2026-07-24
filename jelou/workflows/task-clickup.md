@@ -19,6 +19,10 @@ Call `clickup_get_workspace_hierarchy` with no arguments as a connectivity probe
 ```
 ⚠️ ClickUp MCP unavailable or returned an error.
 
+Tool: `clickup_get_workspace_hierarchy`
+Error: `<tool error message>`
+Response body: `<returned body, or "none">`
+
 /jlu-task-clickup requires the official ClickUp MCP server to be running and authenticated.
 
 If MCP is not yet configured:
@@ -476,7 +480,7 @@ Present the sync results to the user:
   `jelou/references/story-points-estimation.md`. N (files / PRs / repos)
   does not inflate SP. SP ≥ 13 means **DIVIDIR before syncing**.
 - All user interaction MUST use `question`. Never output questions as plain text.
-- If a ClickUp MCP tool returns an error, report it clearly. Do not retry silently.
+- If any ClickUp MCP tool returns an error, print `Tool: <tool-name>`, `Error: <error message>`, and `Response body: <returned body, or "none">`. Do not retry automatically.
 - If there's a duplicate custom field name, ask for resolution once via question and persist the choice.
 - Sprint is **mandatory** — if not set in TASKS.md, ask the user via question.
 - **NEVER use WebFetch, Bash, or any HTTP tool to call the ClickUp API. `WebFetch` is not in `allowed-tools` and must never be invoked via any other path. MCP tools only.**

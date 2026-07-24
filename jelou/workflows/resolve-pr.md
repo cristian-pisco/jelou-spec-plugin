@@ -169,8 +169,11 @@ Read `git show ":1:$FILE"` (base), `":2:$FILE"` (ours = PR), `":3:$FILE"`
 (theirs = base branch) plus the working-tree file with markers. Resolve so
 BOTH intents survive:
 
-- Independent/adjacent changes (imports, list entries, routes, config keys) →
-  keep both in a sensible order.
+- Independent/adjacent changes (imports, list entries, routes, config keys) → keep both in
+  this order: preserve ours at its current anchor; place theirs relative to its nearest
+  surviving base neighbor; if both additions share an anchor, ours precedes theirs. For
+  imports, run the repository formatter or apply the import groups documented in its lint
+  configuration after combining them.
 - Base renamed a symbol the PR uses → adopt the rename, then
   `git grep -n "oldName"` for stale references beyond the conflicted hunk.
 - One side reformatted, the other changed logic → keep the logic, apply the

@@ -43,7 +43,7 @@ Interactive approval of these suggestions lives only in `/jlu-refine-task` (the 
 
 ## Principles
 
-> **Idempotent. Verifiable. No surprises in the diff.**
+> **Idempotent. Every mutation is followed by its named verification command.**
 
 - Running this workflow twice produces the same result. Existing PRs are skipped.
 - The spec compliance review catches drift between what was planned and what was built.

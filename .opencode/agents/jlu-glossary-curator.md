@@ -230,9 +230,7 @@ Verify, in order:
 
 If any check fails, fix it in the draft first, re-render, return to Phase 6.
 
-## Working Well When
+## Verification Invariants
 
-- Most curation runs produce zero interview questions (Phase 2 finds nothing — clean code).
-- Ambiguity log entries get cited months later when a new dev asks "why is it called Workflow not Process?" — the audit trail did its job.
 - A cancelled run is bit-identical to "never ran" for canonical files.
 - After approval, re-running `/jlu-ubiquitous-language` immediately is a no-op (Step 4 in the orchestrator skips re-extraction; Phase 1 finds no diffs; Phase 5 produces an empty-diff draft).

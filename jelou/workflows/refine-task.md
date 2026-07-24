@@ -136,6 +136,7 @@ Using `question`, interview the user to clarify the change's scope and constrain
 
 Rules:
 - **3-6 questions per round**, grouped by theme — never random
+- **Maximum 3 rounds**. Stop earlier when every changed FR has updated success criteria and every decision introduced by the change is answered or recorded under `Constraints` as `Unresolved decision: ...`.
 - **Each question takes max 4 options** (hard API limit on `question`/`AskUserQuestion`). If a decision has more candidates than 4, split across rounds, group into bucket options, or fall back to a free-text question. Stuffing 5+ options into one question fails with `InputValidationError: too_big`.
 - **Scoped to the change** — do NOT re-interview the full spec
 - **Themes** (priority order):
@@ -149,12 +150,12 @@ Rules:
   8. Integration points
   9. UX/UI implications
   10. Constraints & out-of-scope
-- **Ask non-obvious questions** informed by codebase context — reference specific files, patterns, or conventions you observed
+- **Cite the source of each question** — reference the change request, prior answer, file, pattern, convention, integration, or concern that exposed the gap
   - Good: "INTEGRATIONS.md shows this service uses async events for payments. Does this change affect the event schema?"
   - Bad: "Are there any other systems affected?"
-- **Go deep** — push back on vague answers ("fast" → "p95 under 200ms?")
+- **Convert qualitative answers to a verification target** ("fast" → percentile, latency, load, and measurement boundary)
 - **Ask about tradeoffs** — surface implicit decisions
-- **Continue until complete** — keep interviewing until you can confidently update all affected sections
+- **At the round cap**, stop asking and record every unanswered decision before updating the affected sections
 - **Respect the user** — if they say "that's enough" or "move on", stop and update with what you have
 
 ### 5c — Update SPEC.md and re-sync stories

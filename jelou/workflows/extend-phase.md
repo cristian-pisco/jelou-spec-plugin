@@ -48,7 +48,7 @@
 
 ## Step 3 — Mini Interview (Decision #24)
 
-Conduct a focused interview about the extension. This is shorter and more targeted than the full spec interview in `/jlu-new-task`.
+Conduct at most the three rounds below. Ask only the six listed questions and applicable follow-ups needed to identify an FR/NFR, service, constraint, or completed phase.
 
 Using question, ask the following questions. Wait for the user's response after each round before proceeding:
 
@@ -67,6 +67,8 @@ Using question, ask the following questions. Wait for the user's response after 
 6. "Does this extension affect any completed phases? If so, how?"
 
 **Store**: `EXTENSION_DESCRIPTION`, `EXTENSION_REASON`, `AFFECTED_REQUIREMENTS`, `EXTENSION_SERVICES`, `CONSTRAINTS`
+
+Stop after Round 2 when `EXTENSION_DESCRIPTION`, `EXTENSION_REASON`, `AFFECTED_REQUIREMENTS`, and `EXTENSION_SERVICES` are populated and the user states there are no constraints or completed-phase effects. Otherwise run Round 3. Do not proceed to impact analysis while any of those stored values is empty; ask one follow-up for the missing value, then stop with `Extension interview incomplete: <missing fields>` if it remains unanswered.
 
 ---
 

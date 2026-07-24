@@ -119,10 +119,4 @@ If during grilling the user gives free-text instructions ("the seam should be at
 - [ ] `ARCH_VOCAB` used; no "component" / "boundary" / "API" leaks.
 - [ ] If an ADR was written: it has the load-bearing reason in the body, not just "user said no."
 - [ ] If a domain term was captured: it lives in the report, not the canonical glossary.
-
-## Working Well When
-
-- One grill produces one decisive outcome.
-- ADRs written here are read by the next explorer run and prevent re-suggestion.
-- Survived briefs feed `/jlu-new-task` without re-collection of context.
 '''

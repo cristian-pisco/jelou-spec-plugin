@@ -150,7 +150,7 @@ The orchestrator parses this line and decides:
 - Run package installs, migrations, or any side-effect command. Pure source edits only.
 - Loop yourself or call yourself recursively. The orchestrator owns the loop.
 
-## Working well when
+## Dispatch Invariants
 
 - Each dispatch applies one focused edit, the test passes on re-run, the orchestrator moves to the next failure.
 - Backend contract bugs surface as `BLOCKED` immediately, not after 3 wasted UI edits.

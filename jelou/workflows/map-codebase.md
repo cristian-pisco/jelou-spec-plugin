@@ -209,8 +209,8 @@ orchestrator owns the registry again.
    `pre-existing-unverified(<cause>)` (includes a stale mark's hash-mismatch) |
    `green-preexisting` | `exit-3(<reason>)` | `already-verified`.
 
-**Operational precondition (migration runs):** for a meaningful certification run the dev
-stack should be DOWN (run `/jlu-stop-dev` or stop your dev servers before the batch) —
+**Operational precondition (migration runs):** to allow the verifier to execute a boot command, the dev
+stack must be DOWN (run `/jlu-stop-dev` or stop your dev servers before the batch) —
 with the containers already serving, the idempotence probe yields mass `green-preexisting`
 and no service earns a mark. The report will say so, but the run loses its purpose. The
 inverse is never done: map-codebase NEVER stops a running dev process to force a
@@ -462,11 +462,12 @@ Both agents must complete before proceeding. If either fails:
 
 ## Step 7 — Consistency Check
 
-Read all 6 produced files. Do a quick inline scan for obvious inconsistencies:
-- Different framework versions mentioned across files
-- Contradictory architecture claims (e.g., ARCHITECTURE.md says "hexagonal" but CONVENTIONS.md describes MVC patterns)
-- Inconsistent terminology or naming between files
-- Factual discrepancies (e.g., different database engines referenced)
+Read all 6 produced files and check these contradiction classes:
+- A framework or dependency has different versions in two files.
+- ARCHITECTURE.md names a pattern whose required directories are absent from STRUCTURE.md.
+- CONVENTIONS.md names a pattern incompatible with the architecture label (for example MVC controllers under a claimed ports-and-adapters boundary without an adapter mapping).
+- INTEGRATIONS.md names a database, broker, or external system that differs from STACK.md or lacks a cited call site.
+- The same domain concept uses different names across files without an alias mapping.
 
 If inconsistencies are found, fix them directly in the affected files. No separate agent is needed.
 

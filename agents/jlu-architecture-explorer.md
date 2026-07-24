@@ -49,12 +49,12 @@ You walk the source yourself with `Glob`, `Grep`, and `Read`. Do not dispatch su
    - **Untested-but-load-bearing code paths**. Cross-reference `CONCERNS.md` test gaps against imports of the named modules.
    - **Modules that, if deleted, would concentrate complexity** rather than scatter it. Read the module, apply the deletion test in your head, document the answer.
 3. Read 5–10 representative files maximum across the whole walk. Do not load whole directories. Prefer `Grep -n -C 3` over `Read` when scanning patterns.
-4. For `MODE=cross`: prioritize friction at integration points. Read each `INTEGRATIONS.md` and trace contracts; look for ports that are de-facto shared but defined N times across services (a clear "two adapters = real seam" signal).
+4. For `MODE=cross`: prioritize friction at integration points. Read each `INTEGRATIONS.md` and trace contracts; record a shared-port candidate only when at least two services define adapters for the same contract.
 
 ## Confidence Scoring
 
 - `high` — friction signal corroborated across ≥2 independent sources (e.g., a shallow module also flagged in `CONCERNS.md`).
-- `medium` — clearly observable in code, no corroborating doc.
+- `medium` — supported by one cited code location, with no corroborating document.
 - `low` — heuristic-only; defensible but speculative.
 
 ## Output: `<OUTPUT_FRAGMENT>` JSON
@@ -94,12 +94,7 @@ You walk the source yourself with `Glob`, `Grep`, and `Read`. Do not dispatch su
 - [ ] Every candidate uses `ARCH_VOCAB` terms exactly.
 - [ ] Every candidate names its concept from `DOMAIN_TERMS`, or carries `missing_domain_term`.
 - [ ] Every candidate has a deletion-test sentence.
+- [ ] Every problem, benefit, and deletion-test claim cites a file path plus symbol or line.
 - [ ] ≤ 7 candidates total.
 - [ ] No candidate that fully matches a rejected ADR (without `contradicts_adr` tag).
 - [ ] No interface signatures in any candidate body.
-
-## Working Well When
-
-- The grill agent finds clear constraints to test against — not vague proposals.
-- Surviving candidates compile into actionable refactor briefs without needing to re-explore the codebase.
-- Rejected candidates trigger ADRs (which the explorer reads on the next run, demonstrating the loop closes).

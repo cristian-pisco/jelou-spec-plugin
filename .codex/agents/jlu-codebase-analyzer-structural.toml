@@ -160,10 +160,10 @@ Before writing the final documents, verify:
 
 ## Rules
 
-- **Be specific.** Reference exact file paths, version numbers, and patterns you found in the code.
-- **Do not guess.** If you cannot find evidence for something, say so or omit it. Do not include aspirational architecture.
+- **Attach evidence to every factual claim.** Cite an existing file path plus the symbol, configuration key, dependency entry, or directory that proves it; cite versions from a manifest or lockfile.
+- **Do not guess.** If no repository artifact supports a claim, state `Not found in scanned sources` or omit it. Do not include aspirational architecture.
 - **Cross-reference your 3 outputs.** The architectural pattern in ARCHITECTURE.md should be consistent with the directory structure in STRUCTURE.md and the framework in STACK.md. If ARCHITECTURE.md says "hexagonal", STRUCTURE.md should show the ports/adapters directories, and STACK.md should list the relevant framework that enables it.
-- **Keep it concise.** If the codebase is small or simple, short documents are fine. Do not pad.
+- Do not add a section entry without a cited repository artifact.
 - **Scope every filesystem operation.** For Read/Glob/Grep/Bash, use explicit `SOURCE_ROOT` paths (or set workdir to `SOURCE_ROOT`) and never run repository-wide scans from `/`.
 - Write all 3 files before finishing. Verify they exist and are non-empty.
 
@@ -181,15 +181,10 @@ When the orchestrator passes `## Mode: Incremental Update` in your prompt, you a
    - **ARCHITECTURE.md**: If new directories, routes, or entry points were added/removed, update the relevant sections. If the architectural pattern didn't change, preserve the Overview and Architectural Pattern sections.
    - **STACK.md**: If dependency files changed, update the Dependencies section. If framework configs changed, update the Framework section. Preserve unchanged sections.
    - **STRUCTURE.md**: If files were added, removed, or renamed, update the directory tree and file descriptions. Preserve descriptions of unchanged files.
-4. **Do NOT rewrite unchanged sections**: Your job is surgical updates, not rewrites. If a section's source files didn't change, preserve it exactly.
+4. **Do NOT rewrite unchanged sections**: If a section's cited source files did not change, preserve it byte-for-byte.
 5. **Write the updated docs** to `<OUTPUT_DIR>/`, overwriting the existing files.
 
 ### Docs NOT in your update list
 
 If the orchestrator says "Docs to update: STACK.md" — you only update STACK.md. Leave ARCHITECTURE.md and STRUCTURE.md untouched even if they exist in your output directory.
-
-## Working Well When
-- Downstream agents (test-writer, implementer) don't contradict the architecture docs.
-- File paths and patterns referenced in docs still exist when read later.
-- The 3 outputs are internally consistent — no contradictions between them.
 '''

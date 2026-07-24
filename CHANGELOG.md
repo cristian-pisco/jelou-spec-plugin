@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.316] — 2026-07-24
+
+### Changed
+- replace subjective prompt guidance with verifiable limits, evidence requirements, and invariants across agents and workflows
+- add a focused regression test for prohibited no-op language and regenerate Codex/OpenCode agent mirrors
+
+### Fixed
+- make task discovery, context loading, service logs, ClickUp failures, and stop-dev fallback messages identify their cause and recovery action
+
 ## [0.3.315] — 2026-07-23
 
 ### Fixed

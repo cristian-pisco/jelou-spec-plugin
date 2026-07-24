@@ -273,7 +273,7 @@ Report status using one of:
 - **NEEDS_CONTEXT** — A required spec section is missing or a `data-testid` is undeclared. State exactly what is needed.
 - **BLOCKED** — Cannot make tests compile after 3 attempts; OR (`MODE=bootstrap`) the `@playwright/test` install failed. State what was tried and quote the exact manual install command.
 
-## Working Well When
+## Verification Invariants
 
 - Generated `*.spec.ts` files compile under `tsc --noEmit` on first dispatch.
 - Tests fail RED for the expected reason (missing UI element, not a syntax error or fixture misconfiguration).

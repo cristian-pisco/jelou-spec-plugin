@@ -63,28 +63,27 @@ Test runners default to one worker per CPU core, and each Jest/Vitest worker is 
 
 When fixing a failing test or build:
 
-- **Rounds 1–2**: direct fixes from the error output are OK (missing imports, type annotations, obvious typos).
+- **Rounds 1–2**: direct fixes from the error output are allowed when the error names the failing symbol or location (missing imports, type annotations, misspelled identifiers).
 - **Round 3+**: stop direct-patching. Apply Phase 1 (root cause investigation) from `jelou/references/systematic-debugging.md` before each fix — read the failing source, trace bad values backward to their source, instrument boundaries if the error spans modules.
 - **Round 5 FAIL**: stop. Report `status: blocked` with the three hypotheses tried, the evidence that disproved each, and the suspected architectural issue. Do not attempt fix #6 — that's the orchestrator's call.
 
 ## Code Style Discipline
 
-- Match the existing codebase exactly — naming, imports, error handling, formatting. Your diff should be invisible in a style review.
+- Apply the repository's documented naming, import, error-handling, and formatting rules. If no rule is documented, copy the pattern used by the nearest equivalent module.
 - **No function exceeds 100 lines.**
 - No speculative features, no untested code paths, no abstractions for single-use code.
 - Never suppress errors with `any`, `@ts-ignore`, `# type: ignore`, or equivalent.
 - Do not "improve" adjacent code, comments, or formatting outside your task's scope.
-- **No line-by-line comments — add zero comments.** Never add any comment to code you write or edit: no narration of what the code already says (`// increment i`, `// fetch the user`, `// arrange / act / assert`), no doc-comments or JSDoc on any declaration (class, interface, type, constant, variable, function), and no *why* notes. (Leave pre-existing comments in untouched code alone — per the adjacent-scope rule above; the ban is on what you introduce.) Write self-documenting code — a clear name, or an extracted well-named helper, instead of a comment. Automated PR reviewers (CodeRabbit and the like) flag every comment in a generated diff, so a diff that adds any comment is a defect, not documentation.
+- **No line-by-line comments — add zero comments.** Never add any comment to code you write or edit: no narration of what the code already says (`// increment i`, `// fetch the user`, `// arrange / act / assert`), no doc-comments or JSDoc on any declaration (class, interface, type, constant, variable, function), and no *why* notes. (Leave pre-existing comments in untouched code alone — per the adjacent-scope rule above; the ban is on what you introduce.) Write self-documenting code by applying repository naming conventions or extracting a helper whose name states the operation. Automated PR reviewers (CodeRabbit and the like) flag every comment in a generated diff, so a diff that adds any comment is a defect, not documentation.
 
-## Engineering Principles Precedence
+## Decision Precedence
 
-When two principles conflict, the higher item wins:
+Apply this order when alternatives conflict:
 
-1. **Security** — never weaken auth, never leak secrets, never disable hooks (`--no-verify`).
-2. **Simplicity** — fewer moving parts beat clever abstractions.
-3. **Readability** — code is read more than written.
-4. **TDD** — tests before code, behavior before implementation.
-5. **Repo conventions** — match what's already there.
+1. Do not weaken authentication, authorization, secret handling, validation, or repository hooks.
+2. Among safe alternatives, choose the one that adds no untested path or single-use abstraction and modifies fewer files; if file counts tie, choose fewer changed lines.
+3. Apply naming, imports, error handling, and formatting documented by the repository.
+4. Maintain the RED → GREEN sequence.
 
 ## Reporting and Escalation
 
