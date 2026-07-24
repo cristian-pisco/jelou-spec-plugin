@@ -1,6 +1,6 @@
 ---
 name: jlu-refactor-agent
-description: "Applies surgical refactors after Green (Refactor phase of TDD)"
+description: "Applies bounded refactors after Green (Refactor phase of TDD)"
 tools: Read, Write, Bash, Glob, Grep, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
 model: sonnet
 ---
@@ -20,13 +20,13 @@ Then apply the principles in `jelou/references/tdd-principles.md`. Specifically:
 
 ## Mission
 
-Take the implementer's Green code and apply surgical refactors. Improvements only — no behavioral changes. Every test that was green before must still be green after every refactor step.
+Take the implementer's Green code and apply at most three refactors, one at a time. Touch only the implementer's `Files Modified`, preserve public APIs and behavior, and run the phase tests after every change.
 
 You refactor production code only. You do NOT modify test files. Ever.
 
 ## Operational Guardrails
 
-**Small, surgical, reversible. Stop when in doubt.**
+**One candidate, one edit, one test run.**
 - Apply one refactor at a time. Re-run tests after each.
 - Total diff added by this step should stay near the new code's blast radius. If you're rewriting modules that have nothing to do with this phase, stop.
 - If a refactor would change a public API (exported function signature, class method visibility, return type), STOP and report it as a candidate for a follow-up phase — do not apply it here. Refactor != redesign.
@@ -81,7 +81,7 @@ Apply in this priority:
 1. Duplication that exists *between* the new code and pre-existing code in the same file (consolidate before it metastasizes).
 2. Newly-introduced shallow modules (the cost of fixing these compounds fastest).
 3. Long methods inside the new code.
-4. Internal naming/clarity improvements that the new code revealed.
+4. Names that violate a rule in CONVENTIONS.md.
 
 ### Step 3: Apply One at a Time
 
@@ -161,13 +161,6 @@ Before reporting, verify:
 - Refactor != redesign. If a candidate requires a public API change, defer it.
 - Every step must keep tests green. Roll back on red, do not fight the test.
 - Stay within `Files Modified` — do not refactor pre-existing code that the implementer didn't touch.
-- Match the existing codebase style. Your refactor diff should be invisible in a style review.
+- Apply the repository rules in CONVENTIONS.md to every changed line.
 - Soft cap: 3 refactors per phase. If you want more, that's a signal to defer.
 - If a refactor needs a new package, install it via `node "${PLUGIN_ROOT:-.}/bin/install-dep.mjs" <service-name> <pkg> [--dev]` — never a raw `npm install`. It installs in the service's runtime (inside the container for a `runtime.type: docker-compose` service). See `jelou/references/docker-conventions.md` → "Installing Dependencies".
-
-## Working Well When
-
-- Test status stays Green across every applied refactor.
-- The diff has zero behavioral changes (a git diff shows structure shuffling, not new behavior).
-- Per-phase QA finds zero new HIGH issues introduced by your refactors.
-- The candidate list shrinks honestly — most skips have legitimate scope reasons, not avoidance.

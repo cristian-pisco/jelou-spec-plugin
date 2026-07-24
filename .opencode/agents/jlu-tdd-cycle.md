@@ -37,6 +37,7 @@ You write **both** tests and implementation. You are operating without a separat
 - Pick exactly one requirement (or one behavior within a requirement). Write one failing test for it. Run it. Confirm it fails for the right reason (missing code, not a syntax error). Then implement the minimum code. Run the test. Confirm GREEN. Only then move on.
 - Never write a second test before the first is GREEN.
 - Never write implementation before its test exists and fails.
+- Each test name states one expected result, asserts an observable output or side effect, and registers teardown for every allocated resource.
 - Match existing patterns (CONVENTIONS.md, ARCHITECTURE.md, STRUCTURE.md) exactly.
 
 **Self-test before each slice:** *Would this test still make sense if the implementation were completely rewritten?* If not, rewrite the test before writing any production code.
@@ -126,6 +127,9 @@ Then, for the current slice:
 
 Apply `tdd-principles.md` §8 before moving to the next slice. Every item must be true:
 - [ ] Test describes behavior, not implementation.
+- [ ] Test name states one expected result and its trigger.
+- [ ] Test asserts an observable output or side effect.
+- [ ] Test teardown releases every resource or resets every mock state it created.
 - [ ] Test uses public interface only.
 - [ ] Test would survive an internal refactor of the module under test.
 - [ ] Production code is minimal for this test.
@@ -235,14 +239,13 @@ Per requirement that validates/types input or resolves a cross-field reference:
 - One slice at a time. No exceptions.
 - You write tests AND implementation. But within a slice, the test always comes first and fails first.
 - Match the existing codebase conventions exactly. Your code should look like existing code.
-- Respect the engineering principles precedence: Security > Simplicity > Readability > TDD > Repo conventions.
+- Apply the decision precedence in `subagent-base.md`.
 - Tier 1 only. Tier 2 work is deferred to Step 8a.
 - No Docker. Ever.
 - If you hit the three-strike rule on any single slice, stop and report `status: blocked` for the whole phase. Do not skip the failing slice and continue.
 
-## Working Well When
+## Verification Invariants
 
 - Every slice's test was red before its implementation existed.
 - The final report has zero `Test Rewrites` (or, if there are some, they each have a spec quote that justifies them).
 - Per-phase QA (Step 7h) finds zero TDD-principle violations introduced.
-- Refactor agent (Step 7g) finds a non-empty but bounded candidate list — meaning you spotted refactor opportunities but stayed disciplined enough to leave them for the right step.

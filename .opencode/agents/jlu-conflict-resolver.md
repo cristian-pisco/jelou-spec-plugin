@@ -123,7 +123,7 @@ git cherry-pick --abort 2>/dev/null || true
 - Prefer one clear abort over five speculative resolutions.
 - Report any unusual state (detached HEAD mid-cherry-pick, merge-in-progress, etc.) as an abort with `reason: "unexpected-state"`.
 
-## Working Well When
+## Completion Invariants
 
 - Cherry-picks that match clean SPEC requirements complete without human intervention.
 - Ambiguous conflicts produce clean aborts with actionable `conflicting_files` lists.

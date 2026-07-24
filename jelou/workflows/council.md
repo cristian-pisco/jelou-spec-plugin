@@ -256,11 +256,10 @@ Ask via `question`: "The council reached consensus (`<verdict>`). How do we crea
   this council's pending `new-task-seed.md` and offers to load it, so the full task context
   reloads from disk into a ~0% window with nothing to paste. (The explicit form also works:
   `/jlu-new-task <idea>. Context in <abs>/new-task-seed.md and <abs>/COUNCIL_REPORT.md — read them first.`)
-  **Recommend this whenever the deliberation ran more than a round or two** — a long session
-  leaves little window for `/jlu-new-task`'s own interview.
+  **Recommend and preselect this when `ROUND >= 3`.**
 - **"Now, in this session"** — invoke `/jlu-new-task` inline, seeded with the contents of
-  `new-task-seed.md` as its task description. Seamless, but it shares THIS session's context
-  window — only sensible when the deliberation was short and the window is still light.
+  `new-task-seed.md` as its task description. When `ROUND >= 3`, keep the option but append
+  `This session already contains <ROUND> council rounds; choose this only to reuse the same context.`
   (Each runtime invokes a sibling command its own way — see its runtime contract; e.g.
   Claude Code invokes the `new-task` skill via the `Skill` tool with the seed text,
   OpenCode/Codex run the `jlu-new-task` command with the seed as the argument.)

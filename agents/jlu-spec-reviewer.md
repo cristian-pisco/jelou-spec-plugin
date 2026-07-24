@@ -110,8 +110,3 @@ Before finalizing the compliance report, verify:
 - Test files count as evidence for COVERED status only when paired with implementation.
 - A requirement with only tests and no implementation is PARTIALLY_COVERED, not COVERED.
 - A requirement that validates or types input and is backed only by a single happy-path test is PARTIALLY_COVERED, not COVERED — COVERED requires evidence that the rejection (violating payload → 4xx) and realistic cross-field cases exist. Tag this case `PARTIALLY_COVERED (breadth)` so the ship gate can prompt on it.
-
-## Working Well When
-- Coverage percentages match reality — no false COVERED or MISSING classifications.
-- Scope creep detection catches real drift without false alarms on test/config files.
-- PR reviewers don't find missing requirements that the report missed.

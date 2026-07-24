@@ -27,10 +27,14 @@ Pass through any filters the user supplied as the command argument:
 - A `--status <state>` argument → append `--status <state>` (e.g. `implementing`, `planned`, `done`).
 - A bare lifecycle-state word (e.g. the user typed `/jlu-list-tasks done`) → treat it as `--status done`.
 
-If the command exits non-zero with a "no workspace found" error, the current directory is
-not inside a JLU workspace. Report that clearly and stop — suggest running the command
-from a service repo that has a `.spec-workspace.json`, or running `/jlu-new-task` first to
-create one. Do not fabricate a task list.
+If the command exits non-zero with a "no workspace found" error, print and stop:
+
+```
+No JLU workspace found from cwd `<cwd>`: the scanner found neither `.spec-workspace.json` nor a parent `.spec-workspace/specs/` directory.
+Run `/jlu-list-tasks` from a registered service repository, or run `/jlu-new-task <description>` from `<cwd>` to create a workspace and task.
+```
+
+Do not fabricate a task list.
 
 ## Step 2 — Present the table
 

@@ -30,7 +30,13 @@ If neither resolves, stop with: "Plugin root not found. Ensure jelou-spec-plugin
 2. `Read`: `<plugin-root>/jelou/workflows/stop-dev.md`
 3. `ToolSearch`: `select:AskUserQuestion`.
 
-**Update banner / ToolSearch fallback** as in other skills.
+**Update banner.** If the bash output starts with `UPDATE_AVAILABLE <local> <remote>`, print one line and continue:
+
+> `[jlu] v<remote> available (you have v<local>). Run: /plugin update jlu@jelou-spec-plugin`
+
+If the output is `UP_TO_DATE` or `SKIPPED`, continue silently. An update-check failure does not block the workflow.
+
+**ToolSearch fallback.** If `ToolSearch` returns zero matches for `AskUserQuestion`, print each workflow question as plain text, warn that this Claude Code version lacks `AskUserQuestion`, and wait for the user's answer before continuing. Never answer a workflow question from assumptions.
 
 ## Phase 2 — Execute Workflow
 

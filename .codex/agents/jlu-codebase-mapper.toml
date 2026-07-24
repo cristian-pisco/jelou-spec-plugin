@@ -75,7 +75,7 @@ Apply those analyzer instructions inline. Their output schemas are the source of
    - Do not touch docs outside the affected set.
 6. Consistency check:
    - Read the six produced docs.
-   - Fix obvious contradictions across stack, structure, architecture, conventions, integrations, and concerns.
+   - Fix these contradiction classes across the six docs: framework or dependency version mismatch, architecture label without its stated directories, integration name without its call site, database-engine mismatch, or one domain concept using multiple names.
 7. Write `<OUTPUT_DIR>/.last-analysis.json` with the current `git -C <SOURCE_ROOT> rev-parse HEAD` commit, current ISO timestamp, and the six generated doc names.
 8. Verify all six documents exist and are non-empty before reporting success.
 

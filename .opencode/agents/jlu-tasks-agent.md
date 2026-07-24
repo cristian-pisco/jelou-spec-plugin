@@ -164,7 +164,7 @@ When creating TASKS.md for the first time (during `/jlu:execute-task` start):
 - The recovery section is critical for Decision #35 (session recovery). Keep it accurate.
 - This file is read by the pm-agent for ClickUp sync, the slack-agent for daily reports, and the orchestrator for progress milestones (Decision #36). Accuracy is non-negotiable.
 
-## Working Well When
+## Verification Invariants
 - Test counts in TASKS.md match actual test runner output exactly.
 - Recovery info enables clean session resume without manual intervention.
 - Status transitions are always forward — no regressions or stale states.

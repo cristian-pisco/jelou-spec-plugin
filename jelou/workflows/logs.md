@@ -47,7 +47,13 @@ import('{plugin-root}/bin/lib/dev-orchestrator/logs.mjs').then(({ logsFor }) => 
 If `status: 'ok'`, print the capture verbatim, prefixed:
 > `=== logs for {service} (last {lines} lines) ===`
 
-Otherwise surface the appropriate not-found message.
+Map non-`ok` statuses exactly:
+
+| Status | Message |
+|--------|---------|
+| `not-registered` | `Service {service} is not registered in {ws.configPath}. Run /jlu-register-service or choose a registered service.` |
+| `no-window` | `TMUX window jlu-dev-{slug} does not exist. Run /jlu-start-dev, then retry /jlu-logs {service}.` |
+| `no-pane` | `Service {service} has no pane in TMUX window jlu-dev-{slug}. Run /jlu-add-service {service}, then retry /jlu-logs {service}.` |
 
 ## Notes
 

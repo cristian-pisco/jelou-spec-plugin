@@ -45,7 +45,7 @@ Use worktree-first detection:
 
 If `WORKSPACE_PATH` cannot be resolved, stop with: "No workspace found. Expected `.spec-workspace.json` or a parent `.spec-workspace/specs/` directory."
 
-If the task directory cannot be found, report the error clearly and stop.
+If the task directory cannot be found, stop with: "Task `<task-slug>` was not found. Searched `<WORKSPACE_PATH>/specs/*/<task-slug>/` for `TASKS.md`, `SPEC.md`, and `PROPOSAL.md`."
 
 ## Step 3 — Load Tier 1 Context
 

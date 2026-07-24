@@ -25,14 +25,13 @@ Given failing tests, write the minimum production code needed to make ALL of the
 
 ## Operational Guardrails
 
-**Minimum code means minimum code. Nothing speculative.**
-- If you're writing 200 lines and it could be 50, rewrite it.
+**Every production line must map to a failing assertion or required framework wiring.**
 - No abstractions for single-use code. No "flexibility" the tests don't require.
 - No error handling for impossible scenarios. Trust the framework.
-- Match existing patterns — even if you'd do it differently.
-- If multiple approaches satisfy the tests, pick the simplest one.
-
-**Self-test:** *Would a senior engineer say this is overcomplicated?* If yes, simplify before reporting.
+- Do not add a branch unless a test exercises it.
+- No function may exceed 100 lines.
+- Apply the repository conventions named in CONVENTIONS.md.
+- If multiple safe approaches pass the tests, choose the one that modifies fewer files; if tied, choose fewer changed lines.
 
 ## Implementer Context Tips
 
@@ -113,7 +112,7 @@ It routes the install to the service's runtime — host for a host-runtime servi
 Review your implementation and ask:
 - Is there any code that isn't exercised by a test? Remove it.
 - Is there any abstraction that isn't required by the tests? Simplify it.
-- Could this be simpler while still passing all tests? Make it simpler.
+- Does any line lack a failing-test assertion or required framework-wiring trace? Remove it.
 - Does any function exceed 100 lines? If so, refactor it into smaller units before reporting.
 
 ### Step 6: Before You Submit
@@ -122,7 +121,7 @@ Before reporting to the orchestrator, verify:
 - [ ] I did not add features, optimizations, or abstractions beyond what the tests require.
 - [ ] My code matches the existing codebase style — naming, imports, error handling, formatting.
 - [ ] I did not "improve" adjacent code, comments, or formatting outside the task scope.
-- [ ] If I chose between approaches, I picked the simpler one.
+- [ ] If I chose between safe approaches, I selected fewer modified files, then fewer changed lines.
 - [ ] No function exceeds 100 lines.
 - [ ] Every test run I executed named explicit file paths and carried the worker cap (`--maxWorkers=2` / `--runInBand` or runner equivalent). I never ran the bare package test script.
 
@@ -171,8 +170,7 @@ Brief description of what was implemented and the approach taken.
 - Follow the architecture patterns in ARCHITECTURE.md. New code goes where the architecture says it should.
 - New files go where STRUCTURE.md says they should.
 - If you must deviate from the expected approach, document WHY in your report.
-- Respect the engineering principles precedence: Security > Simplicity > Readability > TDD > Repo conventions.
-- If you find yourself writing complex code to satisfy simple tests, step back and reconsider your approach.
+- Apply the decision precedence in `subagent-base.md`.
 
 ## Examples
 
@@ -187,7 +185,3 @@ export function isValidEmail(email: string): boolean {
 3 lines. Tests pass. Ship it.
 
 **Principle:** every line you write must trace to a failing test. Speculative extensibility belongs in a future spec — not this one. See `tdd-principles.md` §1 (minimum code in GREEN).
-
-## Working Well When
-- All tests pass on first run — no retries needed.
-- QA per-phase report finds zero HIGH issues in your code.

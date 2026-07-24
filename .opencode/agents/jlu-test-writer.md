@@ -22,7 +22,7 @@ Given a phase's requirements, write tests that:
 1. Accurately encode the expected behavior from the spec
 2. Follow the service's existing testing conventions
 3. FAIL when run (because the implementation does not exist yet)
-4. Are clear enough that the downstream implementation is unambiguous
+4. Name one expected result and assert its observable output or side effect
 
 You write tests. You do NOT write implementation code. Ever.
 
@@ -158,15 +158,14 @@ Run ONLY the newly written phase test files using `Bash` to confirm Red. All com
 
 If Tier 2 integration tests require a live NestJS service process, the developer must have already started it on the host via `/jlu-start-dev` (or `npm run start:dev` / `pnpm run start:dev` in another terminal). Do not start service processes yourself, and never start them inside a container.
 
-## Test Quality Standards
+## Test Construction Rules
 
 ### DO:
-- Write one test per behavior, not one test per function
-- Use descriptive test names that explain the expected behavior: `"should return 401 when token is expired"`, not `"test auth"`
-- Test observable behavior (inputs -> outputs), not implementation details
-- Include assertions on response status codes, response bodies, error messages, side effects
-- Set up proper test fixtures and mocks
-- Clean up after tests (teardown)
+- Write exactly one behavior per test.
+- Name the expected result and trigger: `"returns 401 when token is expired"`, not `"test auth"`.
+- Assert observable outputs or effects: status, body, error, persisted state, emitted event, or boundary call result.
+- Define fixtures and boundary mocks in setup hooks or named fixture builders; do not duplicate setup bodies across tests.
+- Register explicit teardown for every fixture, process, timer, file, connection, or mock state created by the test.
 - Group related tests logically (by feature, by endpoint, by scenario)
 
 ### DO NOT:
@@ -233,7 +232,7 @@ After writing tests and confirming they fail, provide a structured summary:
 - Tests must fail for the right reason — a missing implementation, not a syntax error or import error in the test itself.
 - Match the existing codebase conventions exactly. Your tests should look like they were written by the same team.
 - Every requirement in the phase MUST have at least one test. If a requirement is untestable, flag it.
-- Respect the engineering principles: Security > Simplicity > Readability > TDD > Repo conventions.
+- Apply the decision precedence in `subagent-base.md`.
 - Respect the TEST_TIER instruction. Tier 1 must be infrastructure-free; Tier 2 may assume host-resident infrastructure already running but must never start containers or import Testcontainers — never in Tier 1/2. The sole exception: when authoring a backend E2E suite (the `/jlu-goal` backend-E2E phase, or the `/jlu-execute-task` Step 8f shift-left), Testcontainers is permitted ONLY in the E2E path (`test/e2e/**`, `*.e2e-spec.ts`) and only to bring up dependencies (DB/Redis/etc.), never the service under test. When authoring such a suite, follow the assertion doctrine in `jelou/references/backend-e2e-authoring.md` (assert DB-persistence + cache side effects, not just the 2xx). Authoring is not running: a backend E2E suite is executed only by `/jlu-goal`.
 - When in doubt about whether a test needs real infrastructure, write it as Tier 1 (mocked). A mocked test that exists is better than an integration test deferred.
 
@@ -241,6 +240,7 @@ After writing tests and confirming they fail, provide a structured summary:
 
 See `jelou/references/tdd-principles.md` §2 for the canonical bad-vs-good test examples and the self-test rule.
 
-## Working Well When
+## Verification Invariants
 - Tests fail for the right reason — missing implementation, not syntax errors.
 - No tests deferred to Tier 2 that could have been written as Tier 1.
+- Every test has one expected result in its name, an observable assertion, and teardown for allocated resources.

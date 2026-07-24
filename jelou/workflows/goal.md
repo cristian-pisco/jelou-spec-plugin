@@ -566,7 +566,7 @@ the top of this file), so the runners' live probes are safe to mutate.
 - `ready_timeout` on boot → `BLOCKED`; teardown runs.
 - A delegated `test-suite` / `ui-qa-run` failure → recorded; the convergence loop owns the
   retry; a red that survives the cap → overall `FAIL / NOT-CONVERGED`, teardown runs.
-- **The convergence loop is bounded and honest.** It NEVER exceeds `MAX_ITERATIONS`, never
+- **Convergence invariant.** The loop NEVER exceeds `MAX_ITERATIONS`, never
   marks an objective green without a passing re-run of its tagged tests, and never lets a
   fix agent weaken an assertion to force green (a test edit is legitimate only when the
   evidence shows the test itself is wrong).

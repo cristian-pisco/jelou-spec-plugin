@@ -99,7 +99,7 @@ describe('map-codebase batch — B6 derivation + B6b sequential verification', (
   });
 
   test('states the stack-down precondition and never stops a running dev process', () => {
-    assert.match(mapCodebase, /the dev\s+stack should be DOWN/);
+    assert.match(mapCodebase, /the dev\s+stack must be DOWN/);
     assert.match(mapCodebase, /mass `green-preexisting`/);
     assert.match(mapCodebase, /NEVER stops a running dev process/);
   });

@@ -7,17 +7,13 @@
 
 ---
 
-## Principles
+## Interview Limits and Completion
 
-> **Precision over speed. Ask before assuming. The spec is the contract.**
-
-- A vague spec produces vague code. Invest in clarity now to avoid rewrites later.
-- Every question should be informed by what you found in the codebase, not generic.
-- The user's time is valuable — ask 3-6 focused questions per round, not 10 scattered ones.
-- When the user says "that's enough", stop. Write the spec with what you have.
-- The spec is complete when a developer could implement it without guessing.
-
-**When to simplify:** For obvious, well-bounded tasks (single endpoint, single fix, clear requirements), the interview can be as short as 1-2 rounds. Don't force 8 rounds of questions on a task that's already clear.
+- Ask 3–6 questions per round for at most 4 rounds.
+- Every question must cite a gap from the task description, a prior answer, or a loaded codebase artifact.
+- Stop before the cap when all five SPEC sections are populated, every FR links to verifiable success criteria, and every identified decision is answered or recorded under `Constraints` as `Unresolved decision: ...`.
+- If the user says "that's enough" or "move on", stop asking and record every remaining identified decision before writing.
+- A task with no unresolved gap after round 1 may finish after that round.
 
 ## Performance Guardrails (mandatory)
 
@@ -522,12 +518,12 @@ Rules:
   8. Integration points (what other services/systems are affected?)
   9. UX/UI implications (if applicable — user-facing behavior)
   10. Constraints & out-of-scope (what should we explicitly NOT do?)
-- **Ask non-obvious questions** — informed by what you found in the codebase context, not generic. Reference specific files, patterns, or conventions you observed.
+- **Cite the source of each question** — reference the task description, prior answer, file, pattern, convention, integration, or concern that exposed the gap.
   - Good: "INTEGRATIONS.md shows this service communicates with service-payments via async events. Should the new feature use the same event bus, or does it need a synchronous call?"
   - Bad: "What technology should we use?"
-- **Go deep** — don't accept vague answers. If the user says "it should be fast", ask "what's the latency budget? p95 under 200ms?"
+- **Convert qualitative answers to a verification target** — for "it should be fast", ask for a percentile, latency, load, and measurement boundary.
 - **Ask about tradeoffs** — if the user chose approach A, ask why not B. Surface implicit decisions.
-- **Continue until complete** — keep interviewing until you can confidently fill all 5 output sections.
+- **Maximum four rounds** — stop earlier when the completion condition above passes. At the cap, record every unanswered decision under `Constraints` before writing.
 - **Respect the user** — if the user says "that's enough" or "move on", stop the interview and write the spec with what you have.
 - **Term-suggestion (when `CANONICAL_TERMS` is loaded)**: If the user mentions a word that appears as an alias-to-avoid in `CANONICAL_TERMS`, reflect back the canonical term and cite the glossary. Example: if canonical has `Workflow` with alias `Process`, and the user says "track when a Process completes", reply with "Got it — tracking Workflow completion. (Using 'Workflow' per the workspace glossary; 'Process' is listed as an alias to avoid.)"
 - **Definition-anchoring (when `CANONICAL_TERMS` is loaded)**: When asking clarifying questions about a term that is in `CANONICAL_TERMS`, phrase the question in terms of the canonical definition rather than re-asking what the term means.
