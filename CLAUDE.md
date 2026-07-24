@@ -1,13 +1,3 @@
-## Releasing (one bump per feature)
-
-Commits no longer auto-bump the version. When opening a PR for a plugin change, run the release tool once before pushing:
-
-```
-npm run release -- -m "feat: <subject>" [--minor|--major]
-```
-
-This bumps all 4 manifests, prepends one CHANGELOG entry, and stages the changes. Commit the result as part of the feature branch. One bump + one CHANGELOG entry per feature.
-
 ## Pre-push checklist (main branch)
 
 Before pushing to `main` — directly or via merge — the unit test suite MUST pass.
@@ -18,7 +8,7 @@ Also run: `npm run check-sync` to confirm the runtime mirrors are in sync with t
 
 Optional (opt-in, advisory only): when `OPENROUTER_API_KEY` is set you may also run `node bin/trace-regress.mjs` — the Stage-4 golden-set regression gate. It re-scores the golden examples with the LLM judge and compares against `tests/golden/baseline.json`, exiting `4` if agent-prompt quality has regressed. Without the key it SKIPS cleanly (exit 0) and prints a warning, so it never blocks the mandatory `npm test` + `check-sync` flow. This is not a hard gate yet — `tests/golden/` is still synthetic seed data (see `tests/golden/README.md`), so treat any exit-4 as advisory friction, not a stop.
 
-If any of these fails, do not push. Fix the failure first. Never push with a red suite — `release after every push to main` means a broken push becomes a broken release.
+If any of these fails, do not push. Fix the failure first. Never push with a red suite.
 
 ## Code style — no line-by-line comments
 
