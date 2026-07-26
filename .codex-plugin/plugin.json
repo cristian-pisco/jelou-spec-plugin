@@ -5,6 +5,7 @@
   "author": { "name": "Jelou" },
   "repository": "https://github.com/cristian-pisco/jelou-spec-plugin",
   "license": "MIT",
+  "skills": "./.codex/skills/",
   "hooks": "./hooks/hooks.json",
   "requires": {
     "mcpServers": ["context7"]
