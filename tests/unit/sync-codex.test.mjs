@@ -31,7 +31,7 @@ function runSync(root, ...args) {
 }
 
 describe('sync-codex — write mode', () => {
-  test('generates .codex/agents/*.toml and .codex/prompts/jlu-*.md', () => {
+  test('generates .codex/agents/*.toml and .codex/skills/jlu-*/SKILL.md', () => {
     const root = setupWorkspace();
     const result = runSync(root);
     assert.equal(result.status, 0, `stderr: ${result.stderr}`);
@@ -41,9 +41,10 @@ describe('sync-codex — write mode', () => {
     assert.match(toml, /developer_instructions = '''/);
     assert.match(toml, /Foo body\./);
 
-    const prompt = readFileSync(join(root, '.codex/prompts/jlu-foo.md'), 'utf8');
-    assert.match(prompt, /description: "Foo skill\."/);
-    assert.match(prompt, /jelou\/workflows\/foo\.md/);
+    const skill = readFileSync(join(root, '.codex/skills/jlu-foo/SKILL.md'), 'utf8');
+    assert.match(skill, /name: jlu-foo/);
+    assert.match(skill, /Triggers/);
+    assert.match(skill, /jelou\/workflows\/foo\.md/);
   });
 });
 
@@ -65,7 +66,7 @@ describe('sync-codex --check', () => {
     assert.match(check.stdout + check.stderr, /stale/);
   });
 
-  test('exits 1 when a prompt is missing', () => {
+  test('exits 1 when a skill is missing', () => {
     const root = setupWorkspace();
     runSync(root);
     mkdirSync(join(root, 'skills/bar'), { recursive: true });
@@ -75,13 +76,14 @@ describe('sync-codex --check', () => {
     );
     const check = runSync(root, '--check');
     assert.equal(check.status, 1);
-    assert.match(check.stdout + check.stderr, /jlu-bar\.md/);
+    assert.match(check.stdout + check.stderr, /jlu-bar\/SKILL\.md/);
   });
 
   test('exits 1 on orphan files', () => {
     const root = setupWorkspace();
     runSync(root);
-    writeFileSync(join(root, '.codex/prompts/jlu-orphan.md'), '---\n---\nx\n');
+    mkdirSync(join(root, '.codex/skills/jlu-orphan'), { recursive: true });
+    writeFileSync(join(root, '.codex/skills/jlu-orphan/SKILL.md'), '---\nname: jlu-orphan\n---\nx\n');
     const check = runSync(root, '--check');
     assert.equal(check.status, 1);
     assert.match(check.stdout + check.stderr, /orphan/);
