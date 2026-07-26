@@ -1,0 +1,64 @@
+// bin/lib/codex-skill.mjs
+//
+// Renders a native Codex CLI skill (`.codex/skills/jlu-<skill>/SKILL.md`) from a
+// canonical skill's frontmatter. This is the Codex CAPA-1 shell (replacing the
+// deprecated `.codex/prompts/jlu-<skill>.md` custom prompt): it resolves the shared
+// workflow and applies the Codex runtime contract. The real logic lives in
+// `jelou/workflows/<skill>.md`.
+
+function stripWrappingQuotes(value) {
+  const v = String(value ?? '').trim();
+  if (v.length >= 2 && ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'")))) {
+    return v.slice(1, -1);
+  }
+  return v;
+}
+
+// Codex skills are implicitly invoked when a task matches the `description`, so —
+// unlike the old prompt renderer's cleanDescription — we KEEP the trigger-laden
+// tail. Only unescape YAML quotes and collapse whitespace.
+export function fullDescription(raw) {
+  const d = stripWrappingQuotes(raw).replace(/\\"/g, '"').replace(/\\'/g, "'");
+  return d.replace(/\s+/g, ' ').trim();
+}
+
+function yamlScalar(value) {
+  return JSON.stringify(String(value));
+}
+
+export function renderCodexSkill(skillName, frontmatter = {}) {
+  if (!skillName) throw new Error('renderCodexSkill requires a skill name');
+  const description = fullDescription(frontmatter.description) || `Run the jlu-${skillName} workflow`;
+  const argumentHint = frontmatter['argument-hint'] !== undefined
+    ? stripWrappingQuotes(frontmatter['argument-hint'])
+    : undefined;
+
+  const fm = [`name: jlu-${skillName}`, `description: ${yamlScalar(description)}`];
+  if (argumentHint) fm.push(`argument-hint: ${yamlScalar(argumentHint)}`);
+
+  return `---
+${fm.join('\n')}
+---
+Resolve the workflow file in this order, and use the first one that exists:
+1. \`$CODEX_HOME/jelou/workflows/${skillName}.md\` (global install; \`$CODEX_HOME\` defaults to \`~/.codex\` — resolve it to an absolute path first).
+2. \`jelou/workflows/${skillName}.md\` (project-local fallback).
+
+Resolution rules:
+- Select the first existing path only; never read a lower-priority path when a higher one exists.
+- If neither exists, stop and report both checked paths.
+- Do not read the canonical \`skills/${skillName}/SKILL.md\` (a Claude Code entry point); this Codex skill delegates to the shared workflow above.
+
+Read exactly one resolved workflow file and execute it exactly.
+
+Any text the user provides with the invocation is the command arguments.
+The current directory is the project working directory.
+
+## Runtime contract (Codex)
+
+The workflow is runtime-neutral and uses the generic verbs \`question\` and \`task\`:
+- \`question\` / \`AskUserQuestion\` → Codex has no structured question tool. Ask the user in plain text, present any prescribed options as a numbered list, and WAIT for their reply before continuing. Never assume an answer, answer for the user, continue inline, or skip a prescribed question because a structured question tool is unavailable.
+- \`task\` → dispatch a Codex subagent (a \`worker\`/\`explorer\` agent, or the named \`jlu-*\` agent from \`.codex/agents/\`). If subagent dispatch is unavailable, perform the step inline in this session. Do not let a dispatched agent itself dispatch further agents (Codex defaults to \`agents.max_depth = 1\`).
+- Always reference commands with the \`jlu-\` prefix (never \`jlu:\`).
+- Phase 1 portability: if a step touches ClickUp or Slack integration, skip it and report it as deferred.
+`;
+}
