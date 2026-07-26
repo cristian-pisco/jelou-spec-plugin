@@ -22,6 +22,7 @@ if [ "$#" -ge 1 ]; then
   CONFIG_FILE="$CODEX_DIR/config.toml"
   HOOKS_FILE="$CODEX_DIR/hooks.json"
   AGENTS_FILE="$PROJECT_DIR/AGENTS.md"
+  SKILLS_DIR="$PROJECT_DIR/.agents/skills"
 else
   MODE="global"
   CODEX_DIR="$CODEX_HOME"
@@ -30,10 +31,11 @@ else
   CONFIG_FILE="$CODEX_HOME/config.toml"
   HOOKS_FILE="$CODEX_HOME/hooks.json"
   AGENTS_FILE="$CODEX_HOME/AGENTS.md"
+  SKILLS_DIR="$HOME/.agents/skills"
 fi
 
-if [ ! -d "$PLUGIN_DIR/.codex" ]; then
-  echo "Error: .codex directory not found. Run \`node bin/sync-codex.mjs\` first." >&2
+if [ ! -d "$PLUGIN_DIR/.codex/skills" ]; then
+  echo "Error: .codex/skills not found. Run \`node bin/sync-codex.mjs\` first." >&2
   exit 1
 fi
 
@@ -42,10 +44,13 @@ echo "Source: $PLUGIN_DIR"
 echo "Codex dir: $CODEX_DIR"
 echo
 
-mkdir -p "$CODEX_DIR/prompts" "$CODEX_DIR/agents" "$JELOU_DIR/bin" "$BIN_DIR"
+mkdir -p "$CODEX_DIR/agents" "$SKILLS_DIR" "$JELOU_DIR/bin" "$BIN_DIR"
 
-cp -R "$PLUGIN_DIR/.codex/prompts/." "$CODEX_DIR/prompts/"
+cp -R "$PLUGIN_DIR/.codex/skills/." "$SKILLS_DIR/"
 cp -R "$PLUGIN_DIR/.codex/agents/." "$CODEX_DIR/agents/"
+
+rm -f "$CODEX_DIR/prompts/"jlu-*.md 2>/dev/null || true
+rmdir "$CODEX_DIR/prompts" 2>/dev/null || true
 cp -R "$PLUGIN_DIR/jelou/." "$JELOU_DIR/"
 cp "$PLUGIN_DIR/bin/jlu-update.sh" "$JELOU_DIR/bin/"
 chmod +x "$JELOU_DIR/bin/jlu-update.sh"
@@ -60,7 +65,7 @@ cp "$PLUGIN_DIR/bin/lib/dev-orchestrator/readiness.mjs" "$BIN_DIR/lib/dev-orches
 cp "$PLUGIN_DIR/bin/lib/registry/yaml-lite.mjs" "$BIN_DIR/lib/registry/"
 cp "$PLUGIN_DIR/bin/lib/registry/splice.mjs" "$BIN_DIR/lib/registry/"
 cp "$PLUGIN_DIR/bin/lib/boot-engine/execute-shared-reuse.mjs" "$BIN_DIR/lib/boot-engine/"
-echo "Installed Codex prompts, agents, workflows, updater, and guard scripts"
+echo "Installed Codex skills (→ $SKILLS_DIR), agents, workflows, updater, and guard scripts"
 
 ensure_context_status_line() {
   local target_config="$1"
@@ -205,8 +210,8 @@ PY
 fi
 
 echo
-echo "Done. Core commands now available in Codex:"
-echo "  /jlu-new-task   /jlu-map-codebase   /jlu-load-context   /jlu-execute-task   /jlu-ship"
-echo "Use the slash form. If Codex treats jlu-* as a PATH lookup, restart Codex and confirm this install is loaded."
+echo "Done. Core skills now available in Codex (invoke with \$ or implicitly):"
+echo "  \$jlu-new-task   \$jlu-map-codebase   \$jlu-load-context   \$jlu-execute-task   \$jlu-ship"
+echo "Restart Codex so it loads the new skills from $SKILLS_DIR."
 echo
 echo "Note: /jlu-task-clickup and /jlu-daily-slack are Phase 2 (skipped in Phase 1 runs)."

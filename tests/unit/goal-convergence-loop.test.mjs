@@ -129,7 +129,7 @@ describe('goal — skill and runtime shells', () => {
 
   test('the OpenCode command and Codex prompt for jlu-goal exist', () => {
     assert.ok(existsSync(join(ROOT, '.opencode/commands/jlu-goal.md')));
-    assert.ok(existsSync(join(ROOT, '.codex/prompts/jlu-goal.md')));
+    assert.ok(existsSync(join(ROOT, '.codex/skills/jlu-goal/SKILL.md')));
     assert.match(read('.opencode/commands/jlu-goal.md'), /jelou\/workflows\/goal\.md/);
   });
 });

@@ -45,9 +45,9 @@ describe('Codex jlu command normalization', () => {
     assert.match(src, /\.\/setup --host codex/);
   });
 
-  test('the Codex installer names load-context and the PATH lookup symptom', () => {
+  test('the Codex installer names load-context and the skill restart guidance', () => {
     const src = readRepo('bin/install-codex.sh');
-    assert.match(src, /\/jlu-load-context/);
-    assert.match(src, /PATH lookup/);
+    assert.match(src, /jlu-load-context/);
+    assert.match(src, /Restart Codex so it loads the new skills/);
   });
 });
