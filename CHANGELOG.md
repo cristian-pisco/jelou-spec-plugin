@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.317] — 2026-08-01
+
+### Changed
+- render .codex/skills/jlu-<skill>/SKILL.md from canonical skill frontmatter, keeping the Triggers clause so Codex can trigger implicitly
+- install skills to ~/.agents/skills (global) or <project>/.agents/skills, and remove stale ~/.codex/prompts/jlu-*.md on upgrade
+- declare the bundled skills in .codex-plugin/plugin.json and add a single-plugin Codex marketplace manifest
+- repoint docs and the command-normalization tests from the /jlu-* prompt form to the $jlu-* skill form
+
 ## [0.3.316] — 2026-07-24
 
 ### Changed

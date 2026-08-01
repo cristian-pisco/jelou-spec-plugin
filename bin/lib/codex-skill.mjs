@@ -1,9 +1,8 @@
 // bin/lib/codex-skill.mjs
 //
 // Renders a native Codex CLI skill (`.codex/skills/jlu-<skill>/SKILL.md`) from a
-// canonical skill's frontmatter. This is the Codex CAPA-1 shell (replacing the
-// deprecated `.codex/prompts/jlu-<skill>.md` custom prompt): it resolves the shared
-// workflow and applies the Codex runtime contract. The real logic lives in
+// canonical skill's frontmatter. This is the Codex CAPA-1 shell: it resolves the
+// shared workflow and applies the Codex runtime contract. The real logic lives in
 // `jelou/workflows/<skill>.md`.
 
 function stripWrappingQuotes(value) {
@@ -14,9 +13,6 @@ function stripWrappingQuotes(value) {
   return v;
 }
 
-// Codex skills are implicitly invoked when a task matches the `description`, so —
-// unlike the old prompt renderer's cleanDescription — we KEEP the trigger-laden
-// tail. Only unescape YAML quotes and collapse whitespace.
 export function fullDescription(raw) {
   const d = stripWrappingQuotes(raw).replace(/\\"/g, '"').replace(/\\'/g, "'");
   return d.replace(/\s+/g, ' ').trim();

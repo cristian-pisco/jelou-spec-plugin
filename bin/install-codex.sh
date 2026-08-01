@@ -2,12 +2,12 @@
 set -euo pipefail
 
 # Jelou Spec Plugin - Codex CLI installer
-# Installs Codex prompts, subagents (TOML), shared workflows, PreToolUse guards,
+# Installs Codex skills, subagents (TOML), shared workflows, PreToolUse guards,
 # MCP config, TUI status line, and the AGENTS.md rules block.
 #
 # Usage:
-#   bin/install-codex.sh                 # global install into $CODEX_HOME (~/.codex)
-#   bin/install-codex.sh <project-dir>   # project install into <project-dir>/.codex
+#   bin/install-codex.sh                 # global install: skills into ~/.agents/skills, rest into $CODEX_HOME (~/.codex)
+#   bin/install-codex.sh <project-dir>   # project install: skills into <project-dir>/.agents/skills, rest into <project-dir>/.codex
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_DIR="$(dirname "$SCRIPT_DIR")"
