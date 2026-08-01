@@ -96,8 +96,8 @@ describe('map-codebase runtime wrappers', () => {
     assert.doesNotMatch(skill, /Do NOT spawn a sub-agent/);
   });
 
-  test('Codex prompt mirror has the generated root argument hint', () => {
-    const prompt = read('.codex/prompts/jlu-map-codebase.md');
-    assert.match(prompt, /argument-hint: "\[service-id \| --root \[root-path\] \| --all\]"/);
+  test('Codex skill mirror has the generated root argument hint', () => {
+    const skill = read('.codex/skills/jlu-map-codebase/SKILL.md');
+    assert.match(skill, /argument-hint: "\[service-id \| --root \[root-path\] \| --all\]"/);
   });
 });

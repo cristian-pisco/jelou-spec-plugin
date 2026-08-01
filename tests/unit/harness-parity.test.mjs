@@ -38,12 +38,16 @@ function listOpencodeCommands() {
     .map((f) => f.replace(/\.md$/, '').replace(/^jlu-/, ''));
 }
 
-function listCodexPrompts() {
-  const dir = join(ROOT, '.codex/prompts');
+function listCodexSkills() {
+  const dir = join(ROOT, '.codex/skills');
   if (!existsSync(dir)) return [];
   return readdirSync(dir)
-    .filter((f) => f.endsWith('.md'))
-    .map((f) => f.replace(/\.md$/, '').replace(/^jlu-/, ''));
+    .filter(
+      (name) =>
+        statSync(join(dir, name)).isDirectory() &&
+        existsSync(join(dir, name, 'SKILL.md')),
+    )
+    .map((name) => name.replace(/^jlu-/, ''));
 }
 
 describe('harness parity — skills ↔ workflows ↔ commands', () => {
@@ -121,25 +125,25 @@ describe('harness parity — skills ↔ workflows ↔ commands', () => {
 });
 
 describe('harness parity — Codex mirror (.codex/)', () => {
-  test('every skill has a matching Codex prompt', () => {
+  test('every skill has a matching Codex skill', () => {
     const skills = listSkills();
-    const prompts = new Set(listCodexPrompts());
-    const missing = skills.filter((s) => !prompts.has(s));
+    const codexSkills = new Set(listCodexSkills());
+    const missing = skills.filter((s) => !codexSkills.has(s));
     assert.deepEqual(
       missing,
       [],
-      `Skills without Codex prompts (run: node bin/sync-codex.mjs): ${missing.join(', ')}`,
+      `Skills without Codex skills (run: node bin/sync-codex.mjs): ${missing.join(', ')}`,
     );
   });
 
-  test('every Codex prompt has a matching skill', () => {
+  test('every Codex skill has a matching skill', () => {
     const skills = new Set(listSkills());
-    const prompts = listCodexPrompts();
-    const orphans = prompts.filter((p) => !skills.has(p));
+    const codexSkills = listCodexSkills();
+    const orphans = codexSkills.filter((p) => !skills.has(p));
     assert.deepEqual(
       orphans,
       [],
-      `Codex prompts without skills (orphans): ${orphans.join(', ')}`,
+      `Codex skills without skills (orphans): ${orphans.join(', ')}`,
     );
   });
 

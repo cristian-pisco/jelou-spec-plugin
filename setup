@@ -25,6 +25,8 @@ Options:
   --host <claude|opencode|codex> Select install target (repeatable). Default: all.
   --opencode-target <path>      Global OpenCode config path (default: ~/.config/opencode)
   --codex-target <path>         Global Codex config path (default: ~/.codex)
+                                Skills install to ~/.agents/skills, where Codex looks
+                                for them; set CODEX_SKILLS_DIR to redirect those too.
   --project <path>              Also install OpenCode files into a project (repeatable)
   --no-opencode-global          Skip install into --opencode-target
   --no-codex-global             Skip install into --codex-target

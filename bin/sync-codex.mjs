@@ -3,7 +3,7 @@
 //
 // Regenerate the Codex CLI runtime mirror from canonical sources:
 //   .codex/agents/<agent>.toml   ← agents/<agent>.md      (renderCodexAgent)
-//   .codex/prompts/jlu-<skill>.md ← skills/<skill>/SKILL.md (renderCodexPrompt)
+//   .codex/skills/jlu-<skill>/SKILL.md ← skills/<skill>/SKILL.md (renderCodexSkill)
 //
 // Canonical sources are edited by hand; this mirror is generated. Same contract
 // as bin/sync-agents.mjs (the OpenCode mirror): CI fails on drift.
@@ -20,15 +20,15 @@ import {
   mkdirSync,
   statSync,
 } from 'node:fs';
-import { join } from 'node:path';
+import { join, dirname, relative } from 'node:path';
 import { parseAgentFile, renderCodexAgent } from './lib/agent-frontmatter.mjs';
-import { renderCodexPrompt } from './lib/codex-prompt.mjs';
+import { renderCodexSkill } from './lib/codex-skill.mjs';
 
 const cwd = process.cwd();
 const AGENTS_SRC = join(cwd, 'agents');
 const SKILLS_SRC = join(cwd, 'skills');
 const AGENTS_DEST = join(cwd, '.codex/agents');
-const PROMPTS_DEST = join(cwd, '.codex/prompts');
+const SKILLS_DEST = join(cwd, '.codex/skills');
 const CHECK_MODE = process.argv.includes('--check');
 
 function listMd(dir) {
@@ -43,6 +43,16 @@ function listSkills(dir) {
       statSync(join(dir, name)).isDirectory() &&
       existsSync(join(dir, name, 'SKILL.md')),
   );
+}
+
+function walkRel(dir, base) {
+  const out = [];
+  for (const entry of readdirSync(dir)) {
+    const full = join(dir, entry);
+    if (statSync(full).isDirectory()) out.push(...walkRel(full, base));
+    else out.push(relative(base, full));
+  }
+  return out;
 }
 
 // Returns { drift: [{name, reason}], written: number }
@@ -66,15 +76,16 @@ function syncPair(expectedByDest, destDir) {
     if (CHECK_MODE) {
       drift.push({ name: destName, reason: current === null ? 'missing' : 'stale' });
     } else {
+      mkdirSync(dirname(destPath), { recursive: true });
       writeFileSync(destPath, expected);
       written += 1;
     }
   }
 
   if (existsSync(destDir)) {
-    for (const f of readdirSync(destDir)) {
-      if (!expectedNames.has(f) && (f.endsWith('.toml') || f.endsWith('.md'))) {
-        if (CHECK_MODE) drift.push({ name: f, reason: 'orphan' });
+    for (const rel of walkRel(destDir, destDir)) {
+      if (!expectedNames.has(rel) && (rel.endsWith('.toml') || rel.endsWith('.md'))) {
+        if (CHECK_MODE) drift.push({ name: rel, reason: 'orphan' });
       }
     }
   }
@@ -93,16 +104,16 @@ function main() {
     agentExpected[name.replace(/\.md$/, '.toml')] = renderCodexAgent(raw);
   }
 
-  const promptExpected = {};
+  const skillExpected = {};
   for (const skill of listSkills(SKILLS_SRC)) {
     const raw = readFileSync(join(SKILLS_SRC, skill, 'SKILL.md'), 'utf8');
     const { frontmatter } = parseAgentFile(raw);
-    promptExpected[`jlu-${skill}.md`] = renderCodexPrompt(skill, frontmatter);
+    skillExpected[`jlu-${skill}/SKILL.md`] = renderCodexSkill(skill, frontmatter);
   }
 
   const agents = syncPair(agentExpected, AGENTS_DEST);
-  const prompts = syncPair(promptExpected, PROMPTS_DEST);
-  const drift = [...agents.drift, ...prompts.drift];
+  const skills = syncPair(skillExpected, SKILLS_DEST);
+  const drift = [...agents.drift, ...skills.drift];
 
   if (CHECK_MODE) {
     if (drift.length > 0) {
@@ -116,7 +127,7 @@ function main() {
 
   console.log(
     `sync-codex: ${Object.keys(agentExpected).length} agents (${agents.written} written) → .codex/agents/, ` +
-      `${Object.keys(promptExpected).length} prompts (${prompts.written} written) → .codex/prompts/`,
+      `${Object.keys(skillExpected).length} skills (${skills.written} written) → .codex/skills/`,
   );
 }
 

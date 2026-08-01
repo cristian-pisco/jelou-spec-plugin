@@ -60,18 +60,18 @@ OpenCode commands live in `.opencode/commands/jlu-<skill>.md` and resolve workfl
 
 ## Codex CLI
 
-Commands use the same hyphen-prefixed name (`jlu-`) as OpenCode, exposed as Codex custom prompts.
+Exposed as native Codex **skills** (`.codex/skills/jlu-<skill>/SKILL.md`). Invoke a skill explicitly with `$jlu-<skill>`, or let Codex trigger it implicitly when your request matches the skill's `description`.
 
 | Skill                  | Invocation                       |
 |------------------------|----------------------------------|
-| `new-task`             | `/jlu-new-task [desc] [clickup-url\|id] [--no-autochain]` |
-| `execute-task`         | `/jlu-execute-task [slug] [clickup-url\|id] [--no-autochain]` |
-| `map-codebase`         | `/jlu-map-codebase [service-id]` |
-| `ship`                 | `/jlu-ship`                      |
-| `resolve-pr`           | `/jlu-resolve-pr [pr-url\|pr-number] [--autonomous]` |
-| … (all skills)         | `/jlu-<skill>`                   |
+| `new-task`             | `$jlu-new-task [desc] [clickup-url\|id] [--no-autochain]` |
+| `execute-task`         | `$jlu-execute-task [slug] [clickup-url\|id] [--no-autochain]` |
+| `map-codebase`         | `$jlu-map-codebase [service-id]` |
+| `ship`                 | `$jlu-ship`                      |
+| `resolve-pr`           | `$jlu-resolve-pr [pr-url\|pr-number] [--autonomous]` |
+| … (all skills)         | `$jlu-<skill>`                   |
 
-Codex prompts live in `.codex/prompts/jlu-<skill>.md` and resolve workflow files global-first from `$CODEX_HOME/jelou/` (default `~/.codex/jelou/`) before project-local fallbacks. Codex subagents are TOML files in `.codex/agents/<agent>.toml`. Both are **generated** from canonical sources by `bin/sync-codex.mjs` — do not hand-edit. Install with `bin/install-codex.sh`. The Codex runtime contract (no structured `question`, `agents.max_depth = 1`) lives in `jelou/references/codex-runtime.md`.
+Codex skills live in `.codex/skills/jlu-<skill>/SKILL.md` and resolve workflow files global-first from `$CODEX_HOME/jelou/workflows/` (default `~/.codex/jelou/`) before project-local fallbacks. Codex subagents are TOML files in `.codex/agents/<agent>.toml`. Both are **generated** from canonical sources by `bin/sync-codex.mjs` — do not hand-edit. Install globally with `bin/install-codex.sh` (skills → `~/.agents/skills/`), or install the whole plugin via `codex plugin marketplace add cristian-pisco/jelou-spec-plugin` then `codex plugin add jlu@jelou-spec-plugin`. **Pick one route** — the script install and the plugin install register the same 35 skills, so running both surfaces every `jlu-*` skill twice. Use the script when developing this plugin, the marketplace when consuming it. The Codex runtime contract (no structured `question`, `agents.max_depth = 1`) lives in `jelou/references/codex-runtime.md`.
 
 ## Agent dispatch
 
@@ -84,7 +84,7 @@ To update an agent, edit `agents/<agent>.md` and run `node bin/sync-agents.mjs`.
 
 ## Why different prefixes?
 
-Claude Code namespaces plugin commands as `<plugin-name>:<skill-name>` (`jlu:`). OpenCode and Codex both use flat, hyphen-prefixed command names (`jlu-`). Rather than diverge skill names per runtime, the plugin keeps skill names canonical and ships thin per-runtime command shells (Claude Code skills, OpenCode commands, Codex prompts) that all delegate into the shared `jelou/workflows/*.md` files.
+Claude Code namespaces plugin commands as `<plugin-name>:<skill-name>` (`jlu:`). OpenCode and Codex both use flat, hyphen-prefixed command names (`jlu-`). Rather than diverge skill names per runtime, the plugin keeps skill names canonical and ships thin per-runtime command shells (Claude Code skills, OpenCode commands, Codex skills) that all delegate into the shared `jelou/workflows/*.md` files.
 
 ## Where things live
 
@@ -92,7 +92,7 @@ Claude Code namespaces plugin commands as `<plugin-name>:<skill-name>` (`jlu:`).
 |-----------------------|---------------------------------------|
 | Claude Code skills    | `skills/<skill>/SKILL.md`             |
 | OpenCode commands     | `.opencode/commands/jlu-<skill>.md`   |
-| Codex prompts (mirror)| `.codex/prompts/jlu-<skill>.md`       |
+| Codex skills (mirror) | `.codex/skills/jlu-<skill>/SKILL.md`  |
 | Workflow content      | `jelou/workflows/<skill>.md`          |
 | Agent prompts (src)   | `agents/<agent>.md`                   |
 | Agent prompts (OpenCode mirror)| `.opencode/agents/<agent>.md`|

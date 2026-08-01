@@ -275,6 +275,6 @@ describe('investigate runtime trio', () => {
     assert.ok(existsSync(pjoin(root, 'skills/investigate/SKILL.md')));
     assert.ok(existsSync(pjoin(root, 'jelou/workflows/investigate.md')));
     assert.ok(existsSync(pjoin(root, '.opencode/commands/jlu-investigate.md')));
-    assert.ok(existsSync(pjoin(root, '.codex/prompts/jlu-investigate.md')));
+    assert.ok(existsSync(pjoin(root, '.codex/skills/jlu-investigate/SKILL.md')));
   });
 });

@@ -22,3 +22,6 @@ council-runs/
 # Docs — design/spec/plan docs are kept local, not version-controlled
 docs/
 .gstack/
+
+# Codex project-local skill install target (.agents/plugins/ stays tracked)
+.agents/skills/

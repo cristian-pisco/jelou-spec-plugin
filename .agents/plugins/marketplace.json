@@ -1,0 +1,21 @@
+{
+  "name": "jelou-spec-plugin",
+  "interface": {
+    "displayName": "Jelou Spec Plugin"
+  },
+  "plugins": [
+    {
+      "name": "jlu",
+      "source": {
+        "source": "local",
+        "path": "."
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL",
+        "products": ["CODEX"]
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

@@ -2,6 +2,7 @@
 
 ## Full installer whitelist audit (Codex/OpenCode)
 
+- **Priority:** P1
 - **What:** Reconcile the ~50 `bin/*.mjs|sh` files referenced by `jelou/workflows/` + `agents/` against the ~10 the installers copy, deciding per binary: ship it, or declare the step non-portable in the runtime contract.
 - **Why:** On Codex/OpenCode, `<plugin-root>` resolves to `$CODEX_HOME`, whose `bin/` contains only the whitelist — any workflow invoking an unlisted bin fails with file-not-found on those runtimes (found during boot-certification; `derive-dev-block.mjs` had been referenced by goal 8b for weeks without ever being shipped).
 - **Pros:** Closes an entire class of silent tri-runtime breakage; the boot-certification import-graph test already provides the enforcement mechanics.
@@ -11,6 +12,7 @@
 
 ## Migrate the prose shared-reuse boots (goal/ui-qa) onto the codified executor
 
+- **Priority:** P2
 - **What:** Replace the prose shared-reuse boot steps in `env-lifecycle.md` (consumed by goal/ui-qa/start-dev) with calls into `bin/lib/boot-engine/execute-shared-reuse.mjs`, leaving ONE deterministic executor for all three consumers.
 - **Why:** Boot-certification leaves two implementations of the same contract (prose + module); they will drift over time (outside-voice finding, eng review 2026-07-22). A single executor eliminates the "agent improvised the boot" bug class.
 - **Pros:** Deterministic, testable boots in goal/ui-qa; closes the boot-consolidation roadmap; boot fixes land once.
@@ -20,9 +22,14 @@
 
 ## Post-batch environment provisioning assistant
 
+- **Priority:** P3
 - **What:** An optional step after the certification batch that reads the `derived-unverified` causes from the report table (missing `.env`, deps, image) and proposes/executes the obvious fixes (copy `.env.example`, install deps with the detected package manager, build the image) before re-verifying.
 - **Why:** The first batch run in jelou-projects will leave several services unmarked due to missing environment; today the remedy is manual per service.
 - **Pros:** Turns WARNs into certified services with no manual work; reuses the verifier's structural preflight (which already classifies the exact cause).
 - **Cons:** Executes more repo code automatically (installs); may hide environment problems worth seeing; speculative until the first batch produces data.
 - **Context:** The migration batch run produces a per-cause count in the B8 certification table — that count decides whether this is worth building. The preflight already emits structured causes; the assistant would be a consumer of that table. Start with the most frequent causes.
 - **Depends on / blocked by:** real data from the first migration batch (cause counts by type).
+
+## Completed
+
+_Nothing filed yet. Completed items move here with a `**Completed:** vX.Y.Z (YYYY-MM-DD)` line._
