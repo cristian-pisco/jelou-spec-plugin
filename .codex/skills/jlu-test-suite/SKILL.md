@@ -3,12 +3,13 @@ name: jlu-test-suite
 description: "Run the current service's unit + integration tests with the minimum worker count (1) and report failures grouped by component (Controller, Service, Repository, etc). Use when you want a fuller signal than execute-task's affected-tests step — typically before opening a PR. Triggers: \"run tests\", \"test suite\", \"regression check\", \"validar tests\""
 ---
 Resolve the workflow file in this order, and use the first one that exists:
-1. `$CODEX_HOME/jelou/workflows/test-suite.md` (global install; `$CODEX_HOME` defaults to `~/.codex` — resolve it to an absolute path first).
+1. `$CODEX_HOME/jelou/workflows/test-suite.md` (script install; `$CODEX_HOME` defaults to `~/.codex` — resolve it to an absolute path first).
 2. `jelou/workflows/test-suite.md` (project-local fallback).
+3. `<plugin-root>/jelou/workflows/test-suite.md`, where `<plugin-root>` is three directories above this SKILL.md (this file lives at `<plugin-root>/.codex/skills/jlu-test-suite/SKILL.md`). This is the marketplace-install fallback: `codex plugin add` caches the whole plugin and never runs the script installer, so it is the only path that reaches the bundled workflows.
 
 Resolution rules:
 - Select the first existing path only; never read a lower-priority path when a higher one exists.
-- If neither exists, stop and report both checked paths.
+- If none exists, stop and report all three checked paths.
 - Do not read the canonical `skills/test-suite/SKILL.md` (a Claude Code entry point); this Codex skill delegates to the shared workflow above.
 
 Read exactly one resolved workflow file and execute it exactly.

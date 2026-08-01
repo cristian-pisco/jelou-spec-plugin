@@ -48,6 +48,16 @@ describe('renderCodexSkill', () => {
     assert.match(skill, /jelou\/workflows\/new-task\.md` \(project-local fallback\)/);
   });
 
+  test('body falls back to the plugin root for marketplace installs', () => {
+    assert.match(skill, /<plugin-root>\/jelou\/workflows\/new-task\.md/);
+    assert.match(skill, /<plugin-root>\/\.codex\/skills\/jlu-new-task\/SKILL\.md/);
+    assert.match(skill, /three directories above this SKILL\.md/);
+  });
+
+  test('body reports all three paths when none resolves', () => {
+    assert.match(skill, /report all three checked paths/);
+  });
+
   test('body carries the Codex runtime contract', () => {
     assert.match(skill, /Runtime contract \(Codex\)/);
     assert.match(skill, /no structured question tool/);
