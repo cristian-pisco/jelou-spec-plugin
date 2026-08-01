@@ -3,10 +3,22 @@
 ## [0.3.317] — 2026-08-01
 
 ### Changed
+- invoke jlu commands in Codex as native skills: `$jlu-<skill>` explicitly, or implicitly when a request matches the skill description, replacing the deprecated `/prompts:jlu-*` custom prompts
 - render .codex/skills/jlu-<skill>/SKILL.md from canonical skill frontmatter, keeping the Triggers clause so Codex can trigger implicitly
 - install skills to ~/.agents/skills (global) or <project>/.agents/skills, and remove stale ~/.codex/prompts/jlu-*.md on upgrade
-- declare the bundled skills in .codex-plugin/plugin.json and add a single-plugin Codex marketplace manifest
+- retire skills removed upstream on every reinstall instead of leaving them to keep triggering
+- redirect the global skill destination with CODEX_SKILLS_DIR so `setup --codex-target` can install without touching the real home
 - repoint docs and the command-normalization tests from the /jlu-* prompt form to the $jlu-* skill form
+
+### Added
+- install the whole plugin through Codex's marketplace: `codex plugin marketplace add cristian-pisco/jelou-spec-plugin` then `codex plugin add jlu@jelou-spec-plugin`, backed by a bundled-skills declaration in .codex-plugin/plugin.json and a single-plugin marketplace manifest
+- document that the script install and the plugin install register the same skills, so only one route should be used
+
+### Fixed
+- find bundled workflows after a marketplace install, which caches the plugin without running the script installer and previously left every skill unable to resolve its workflow
+- abort instead of wiping installed skills when the generated mirror is missing or empty, and prune retired skills only after the new ones are in place
+- stop the test suite from copying jlu skills into the real ~/.agents/skills on every run
+- cover the skill renderer edge cases, both install destinations, stale-prompt cleanup, the plugin manifests, and the install-route documentation
 
 ## [0.3.316] — 2026-07-24
 
