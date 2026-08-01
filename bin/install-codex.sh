@@ -36,8 +36,8 @@ else
   SKILLS_DIR="${CODEX_SKILLS_DIR:-$HOME/.agents/skills}"
 fi
 
-if [ ! -d "$PLUGIN_DIR/.codex/skills" ]; then
-  echo "Error: .codex/skills not found. Run \`node bin/sync-codex.mjs\` first." >&2
+if [ ! -d "$PLUGIN_DIR/.codex/skills" ] || [ -z "$(ls -A "$PLUGIN_DIR/.codex/skills" 2>/dev/null)" ]; then
+  echo "Error: .codex/skills is missing or empty. Run \`node bin/sync-codex.mjs\` first." >&2
   exit 1
 fi
 
@@ -48,8 +48,11 @@ echo
 
 mkdir -p "$CODEX_DIR/agents" "$SKILLS_DIR" "$JELOU_DIR/bin" "$BIN_DIR"
 
-rm -rf "${SKILLS_DIR:?}"/jlu-*
 cp -R "$PLUGIN_DIR/.codex/skills/." "$SKILLS_DIR/"
+for installed_skill in "${SKILLS_DIR:?}"/jlu-*; do
+  [ -d "$installed_skill" ] || continue
+  [ -d "$PLUGIN_DIR/.codex/skills/$(basename "$installed_skill")" ] || rm -rf "$installed_skill"
+done
 cp -R "$PLUGIN_DIR/.codex/agents/." "$CODEX_DIR/agents/"
 
 rm -f "$CODEX_DIR/prompts/"jlu-*.md 2>/dev/null || true

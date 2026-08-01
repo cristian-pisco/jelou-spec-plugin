@@ -7,6 +7,7 @@ import {
   writeFileSync,
   readFileSync,
   existsSync,
+  readdirSync,
   cpSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -193,6 +194,38 @@ describe('install-codex — native skill install', () => {
     });
 
     assert.equal(result.status, 1);
-    assert.match(result.stderr, /\.codex\/skills not found/);
+    assert.match(result.stderr, /\.codex\/skills is missing or empty/);
+  });
+
+  test('an empty skill mirror aborts before touching installed skills', () => {
+    const fakePlugin = mkdtempSync(join(tmpdir(), 'codex-emptymirror-'));
+    mkdirSync(join(fakePlugin, 'bin'), { recursive: true });
+    mkdirSync(join(fakePlugin, '.codex/skills'), { recursive: true });
+    cpSync(SCRIPT, join(fakePlugin, 'bin/install-codex.sh'));
+
+    const home = sandboxHome();
+    mkdirSync(join(home, '.agents/skills/jlu-existing'), { recursive: true });
+    writeFileSync(join(home, '.agents/skills/jlu-existing/SKILL.md'), 'installed\n');
+
+    const result = spawnSync('bash', [join(fakePlugin, 'bin/install-codex.sh')], {
+      encoding: 'utf8',
+      env: { ...process.env, HOME: home, CODEX_HOME: join(home, '.codex') },
+    });
+
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /\.codex\/skills is missing or empty/);
+    assert.equal(readFileSync(join(home, '.agents/skills/jlu-existing/SKILL.md'), 'utf8'), 'installed\n');
+  });
+
+  test('a failed install never leaves the skill directory empty', () => {
+    const home = sandboxHome();
+    const codexHome = mkdtempSync(join(tmpdir(), 'codex-home-'));
+    runInstall([], { HOME: home, CODEX_HOME: codexHome });
+    const afterFirst = readdirSync(join(home, '.agents/skills')).length;
+
+    runInstall([], { HOME: home, CODEX_HOME: codexHome });
+
+    assert.equal(readdirSync(join(home, '.agents/skills')).length, afterFirst);
+    assert.ok(existsSync(join(home, '.agents/skills/jlu-new-task/SKILL.md')));
   });
 });
