@@ -57,3 +57,31 @@ describe('.agents/plugins/marketplace.json — Codex marketplace manifest', () =
     assert.equal(marketplace.plugins[0].name, readJson('.codex-plugin/plugin.json').name);
   });
 });
+
+describe('install route documentation', () => {
+  function read(relPath) {
+    return readFileSync(join(ROOT, relPath), 'utf8');
+  }
+
+  test('INVOCATION.md warns that the two Codex install routes double-register', () => {
+    const src = read('INVOCATION.md');
+    assert.match(src, /\*\*Pick one route\*\*/);
+    assert.match(src, /bin\/install-codex\.sh/);
+    assert.match(src, /codex plugin marketplace add/);
+  });
+
+  test('setup documents CODEX_SKILLS_DIR alongside --codex-target', () => {
+    const src = read('setup');
+    assert.match(src, /--codex-target <path>/);
+    assert.match(src, /CODEX_SKILLS_DIR/);
+  });
+
+  test('the installer honours CODEX_SKILLS_DIR for the global destination', () => {
+    const src = read('bin/install-codex.sh');
+    assert.match(src, /SKILLS_DIR="\$\{CODEX_SKILLS_DIR:-\$HOME\/\.agents\/skills\}"/);
+  });
+
+  test('.gitignore excludes the project-local skill install target', () => {
+    assert.match(read('.gitignore'), /^\.agents\/skills\/$/m);
+  });
+});
