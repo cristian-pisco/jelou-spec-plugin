@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.318] — 2026-08-01
+
+### Changed
+- remove jlu-* agents retired upstream on every reinstall, so a deleted agent stops shadowing dispatch (jlu-summary-agent had been lingering in a real install)
+- abort when the generated agent mirror is missing or empty, matching the skills guard, so a bad mirror can never prune an installation to nothing
+- drop the hooks field from .codex-plugin/plugin.json: it pointed at the Claude hook file, whose commands resolve via CLAUDE_PLUGIN_ROOT, a variable Codex never sets
+- state in INVOCATION.md that the marketplace route installs skills only, with no subagents, guards, or Context7
+
 ## [0.3.317] — 2026-08-01
 
 ### Changed

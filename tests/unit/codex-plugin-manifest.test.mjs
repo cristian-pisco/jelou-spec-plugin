@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -15,6 +15,23 @@ describe('.codex-plugin/plugin.json — bundled skills', () => {
 
   test('declares the generated skill mirror', () => {
     assert.equal(plugin.skills, './.codex/skills/');
+  });
+
+  test('declares no hooks: no hook file resolves from a Codex plugin root', () => {
+    assert.equal(plugin.hooks, undefined);
+  });
+
+  test('every path the manifest declares avoids Claude-only variables', () => {
+    for (const value of Object.values(plugin)) {
+      if (typeof value !== 'string') continue;
+      if (!value.startsWith('./')) continue;
+      const target = resolve(ROOT, value);
+      if (!existsSync(target) || !statSync(target).isFile()) continue;
+      assert.ok(
+        !readFileSync(target, 'utf8').includes('CLAUDE_PLUGIN_ROOT'),
+        `${value} uses CLAUDE_PLUGIN_ROOT, which Codex never sets`,
+      );
+    }
   });
 
   test('the declared skills path exists and holds native skills', () => {
@@ -68,6 +85,13 @@ describe('install route documentation', () => {
     assert.match(src, /\*\*Pick one route\*\*/);
     assert.match(src, /bin\/install-codex\.sh/);
     assert.match(src, /codex plugin marketplace add/);
+  });
+
+  test('INVOCATION.md states what the marketplace route does not install', () => {
+    const src = read('INVOCATION.md');
+    assert.match(src, /marketplace route installs the skills only/);
+    assert.match(src, /subagents/);
+    assert.match(src, /guards/);
   });
 
   test('setup documents CODEX_SKILLS_DIR alongside --codex-target', () => {

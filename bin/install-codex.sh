@@ -36,10 +36,12 @@ else
   SKILLS_DIR="${CODEX_SKILLS_DIR:-$HOME/.agents/skills}"
 fi
 
-if [ ! -d "$PLUGIN_DIR/.codex/skills" ] || [ -z "$(ls -A "$PLUGIN_DIR/.codex/skills" 2>/dev/null)" ]; then
-  echo "Error: .codex/skills is missing or empty. Run \`node bin/sync-codex.mjs\` first." >&2
-  exit 1
-fi
+for mirror in skills agents; do
+  if [ ! -d "$PLUGIN_DIR/.codex/$mirror" ] || [ -z "$(ls -A "$PLUGIN_DIR/.codex/$mirror" 2>/dev/null)" ]; then
+    echo "Error: .codex/$mirror is missing or empty. Run \`node bin/sync-codex.mjs\` first." >&2
+    exit 1
+  fi
+done
 
 echo "=== Jelou Spec Plugin (Codex) Installer — $MODE ==="
 echo "Source: $PLUGIN_DIR"
@@ -54,6 +56,10 @@ for installed_skill in "${SKILLS_DIR:?}"/jlu-*; do
   [ -d "$PLUGIN_DIR/.codex/skills/$(basename "$installed_skill")" ] || rm -rf "$installed_skill"
 done
 cp -R "$PLUGIN_DIR/.codex/agents/." "$CODEX_DIR/agents/"
+for installed_agent in "$CODEX_DIR/agents"/jlu-*.toml; do
+  [ -f "$installed_agent" ] || continue
+  [ -f "$PLUGIN_DIR/.codex/agents/$(basename "$installed_agent")" ] || rm -f "$installed_agent"
+done
 
 rm -f "$CODEX_DIR/prompts/"jlu-*.md 2>/dev/null || true
 rmdir "$CODEX_DIR/prompts" 2>/dev/null || true
