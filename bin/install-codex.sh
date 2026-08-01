@@ -8,6 +8,8 @@ set -euo pipefail
 # Usage:
 #   bin/install-codex.sh                 # global install: skills into ~/.agents/skills, rest into $CODEX_HOME (~/.codex)
 #   bin/install-codex.sh <project-dir>   # project install: skills into <project-dir>/.agents/skills, rest into <project-dir>/.codex
+#
+# CODEX_SKILLS_DIR overrides the global skill destination (~/.agents/skills).
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_DIR="$(dirname "$SCRIPT_DIR")"
@@ -31,7 +33,7 @@ else
   CONFIG_FILE="$CODEX_HOME/config.toml"
   HOOKS_FILE="$CODEX_HOME/hooks.json"
   AGENTS_FILE="$CODEX_HOME/AGENTS.md"
-  SKILLS_DIR="$HOME/.agents/skills"
+  SKILLS_DIR="${CODEX_SKILLS_DIR:-$HOME/.agents/skills}"
 fi
 
 if [ ! -d "$PLUGIN_DIR/.codex/skills" ]; then
@@ -46,6 +48,7 @@ echo
 
 mkdir -p "$CODEX_DIR/agents" "$SKILLS_DIR" "$JELOU_DIR/bin" "$BIN_DIR"
 
+rm -rf "${SKILLS_DIR:?}"/jlu-*
 cp -R "$PLUGIN_DIR/.codex/skills/." "$SKILLS_DIR/"
 cp -R "$PLUGIN_DIR/.codex/agents/." "$CODEX_DIR/agents/"
 

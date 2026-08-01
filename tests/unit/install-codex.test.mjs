@@ -145,6 +145,42 @@ describe('install-codex — native skill install', () => {
     assert.match(skill, /description: ".*Triggers: .*"/);
   });
 
+  test('reinstall purges jlu skills retired upstream', () => {
+    const home = sandboxHome();
+    const codexHome = mkdtempSync(join(tmpdir(), 'codex-home-'));
+    mkdirSync(join(home, '.agents/skills/jlu-retired'), { recursive: true });
+    writeFileSync(join(home, '.agents/skills/jlu-retired/SKILL.md'), '---\nname: jlu-retired\n---\nx\n');
+
+    const result = runInstall([], { HOME: home, CODEX_HOME: codexHome });
+    assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+
+    assert.ok(!existsSync(join(home, '.agents/skills/jlu-retired')));
+    assert.ok(existsSync(join(home, '.agents/skills/jlu-new-task/SKILL.md')));
+  });
+
+  test('reinstall leaves skills the plugin does not own alone', () => {
+    const home = sandboxHome();
+    const codexHome = mkdtempSync(join(tmpdir(), 'codex-home-'));
+    mkdirSync(join(home, '.agents/skills/my-own-skill'), { recursive: true });
+    writeFileSync(join(home, '.agents/skills/my-own-skill/SKILL.md'), 'mine\n');
+
+    runInstall([], { HOME: home, CODEX_HOME: codexHome });
+
+    assert.equal(readFileSync(join(home, '.agents/skills/my-own-skill/SKILL.md'), 'utf8'), 'mine\n');
+  });
+
+  test('CODEX_SKILLS_DIR redirects the global skill destination', () => {
+    const home = sandboxHome();
+    const codexHome = mkdtempSync(join(tmpdir(), 'codex-home-'));
+    const skillsDir = join(mkdtempSync(join(tmpdir(), 'codex-skills-')), 'nested');
+
+    const result = runInstall([], { HOME: home, CODEX_HOME: codexHome, CODEX_SKILLS_DIR: skillsDir });
+    assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+
+    assert.ok(existsSync(join(skillsDir, 'jlu-new-task/SKILL.md')));
+    assert.ok(!existsSync(join(home, '.agents/skills')));
+  });
+
   test('aborts when the generated skill mirror is missing', () => {
     const fakePlugin = mkdtempSync(join(tmpdir(), 'codex-noskills-'));
     mkdirSync(join(fakePlugin, 'bin'), { recursive: true });
