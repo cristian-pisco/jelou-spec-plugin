@@ -197,6 +197,51 @@ describe('install-codex — native skill install', () => {
     assert.match(result.stderr, /\.codex\/skills is missing or empty/);
   });
 
+  test('reinstall purges agents retired upstream', () => {
+    const home = sandboxHome();
+    const codexHome = mkdtempSync(join(tmpdir(), 'codex-home-'));
+    mkdirSync(join(codexHome, 'agents'), { recursive: true });
+    writeFileSync(join(codexHome, 'agents/jlu-retired-agent.toml'), 'name = "jlu-retired-agent"\n');
+
+    const result = runInstall([], { HOME: home, CODEX_HOME: codexHome });
+    assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+
+    assert.ok(!existsSync(join(codexHome, 'agents/jlu-retired-agent.toml')));
+    assert.ok(existsSync(join(codexHome, 'agents/jlu-implementer.toml')));
+  });
+
+  test('reinstall leaves agents the plugin does not own alone', () => {
+    const home = sandboxHome();
+    const codexHome = mkdtempSync(join(tmpdir(), 'codex-home-'));
+    mkdirSync(join(codexHome, 'agents'), { recursive: true });
+    writeFileSync(join(codexHome, 'agents/my-own-agent.toml'), 'mine\n');
+
+    runInstall([], { HOME: home, CODEX_HOME: codexHome });
+
+    assert.equal(readFileSync(join(codexHome, 'agents/my-own-agent.toml'), 'utf8'), 'mine\n');
+  });
+
+  test('an empty agent mirror aborts before touching installed agents', () => {
+    const fakePlugin = mkdtempSync(join(tmpdir(), 'codex-emptyagents-'));
+    mkdirSync(join(fakePlugin, 'bin'), { recursive: true });
+    mkdirSync(join(fakePlugin, '.codex/agents'), { recursive: true });
+    cpSync(join(ROOT, '.codex/skills'), join(fakePlugin, '.codex/skills'), { recursive: true });
+    cpSync(SCRIPT, join(fakePlugin, 'bin/install-codex.sh'));
+
+    const home = sandboxHome();
+    mkdirSync(join(home, '.codex/agents'), { recursive: true });
+    writeFileSync(join(home, '.codex/agents/jlu-implementer.toml'), 'installed\n');
+
+    const result = spawnSync('bash', [join(fakePlugin, 'bin/install-codex.sh')], {
+      encoding: 'utf8',
+      env: { ...process.env, HOME: home, CODEX_HOME: join(home, '.codex') },
+    });
+
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /\.codex\/agents is missing or empty/);
+    assert.equal(readFileSync(join(home, '.codex/agents/jlu-implementer.toml'), 'utf8'), 'installed\n');
+  });
+
   test('an empty skill mirror aborts before touching installed skills', () => {
     const fakePlugin = mkdtempSync(join(tmpdir(), 'codex-emptymirror-'));
     mkdirSync(join(fakePlugin, 'bin'), { recursive: true });
