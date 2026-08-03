@@ -231,7 +231,7 @@ async function main(argv) {
   const command = argv[2];
   if (command === '--help' || command === '-h' || command === 'help') {
     await emit(USAGE);
-    process.exit(EXIT.ok);
+    return EXIT.ok;
   }
   if (!COMMANDS.includes(command)) fail(`error: unknown command '${command ?? ''}'\n${USAGE}`, EXIT.usage);
 
@@ -251,9 +251,11 @@ async function main(argv) {
     fail(`error: cannot read ${workspace}: ${error.message}`, EXIT.ioError);
   }
 
-  process.exit(code);
+  return code;
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  main(process.argv);
+  main(process.argv).then((code) => {
+    process.exitCode = code;
+  });
 }
