@@ -9,6 +9,12 @@
 
 ---
 
+**Resolve `<root>` before the first step.** Every `node "<root>/bin/…"` invocation below needs the
+absolute plugin root. Derive it per `jelou/references/plugin-root.md`: this file lives at
+`<root>/jelou/workflows/execute-task.md`, so `<root>` is the directory **two levels above it**. Substitute
+that absolute path at every site — never emit `<root>` literally, and never fall back to
+`$PLUGIN_ROOT`, which no runtime exports.
+
 ## Principles
 
 > **Minimum viable work. Verify before proceeding. Escalate before guessing.**
@@ -29,13 +35,13 @@
 
 1. **Sweep orphans from any prior interrupted run** (idempotent — safe when the store is empty):
    ```bash
-   node "${PLUGIN_ROOT:-.}/bin/trace-reconcile.mjs"
+   node "<root>/bin/trace-reconcile.mjs"
    ```
    The output line `reconciled: <N>` is informational. Do not fail the workflow if this script exits non-zero — tracing is best-effort.
 
 2. **Open the workflow-level span** (deferred to the end of Step 1 when `$TASK_SLUG` is known):
    ```bash
-   WF_OUT=$(node "${PLUGIN_ROOT:-.}/bin/trace-start-span.mjs" \
+   WF_OUT=$(node "<root>/bin/trace-start-span.mjs" \
      --name execute_task --scope task --task "$TASK_SLUG")
    WORKFLOW_SPAN_ID=$(echo "$WF_OUT" | jq -r '.span_id // ""')
    WORKFLOW_TRACE_ID=$(echo "$WF_OUT" | jq -r '.trace_id // ""')
@@ -48,7 +54,7 @@
 Once `$TASK_SLUG` is resolved (Step 1), run the suggester scoped to the current task. It scans recent trace history and emits one SUGGEST block per active rule that fires (bump model tier, extend failure patterns, suggest parallelization, immediate flag on blocked/failed spans of THIS task). The 7-day cooldown is honored automatically.
 
 ```bash
-SUGGESTIONS=$(TRACE_CURRENT_TASK="$TASK_SLUG" node "${PLUGIN_ROOT:-.}/bin/trace-suggest.mjs" 2>/dev/null || true)
+SUGGESTIONS=$(TRACE_CURRENT_TASK="$TASK_SLUG" node "<root>/bin/trace-suggest.mjs" 2>/dev/null || true)
 ```
 
 Telemetry MUST NOT interrupt execution. Never prompt on these findings here.
@@ -449,7 +455,7 @@ Each subagent dispatch in this Step (test-writer, implementer, tdd-cycle, refact
 
 **Before the dispatch:**
 ```bash
-DS_OUT=$(node "${PLUGIN_ROOT:-.}/bin/trace-start-span.mjs" \
+DS_OUT=$(node "<root>/bin/trace-start-span.mjs" \
   --name agent_dispatch --scope task \
   --agent "<agent-role>" --model "$MODEL_FOR_AGENT" \
   --task "$TASK_SLUG" --service "$SERVICE_ID" --phase "$PHASE_NUM" \
@@ -472,7 +478,7 @@ Extract from the report:
 Then close the span:
 
 ```bash
-node "${PLUGIN_ROOT:-.}/bin/trace-end-span.mjs" \
+node "<root>/bin/trace-end-span.mjs" \
   --span "$DISPATCH_SPAN_ID" --status "$AGENT_STATUS" \
   ${AGENT_RETRIES:+--retries "$AGENT_RETRIES"} \
   ${AGENT_OUTCOME:+--outcome "$AGENT_OUTCOME"} \
@@ -523,7 +529,7 @@ For every sub-agent dispatched within this Step 7 loop (`jlu-test-writer`, `jlu-
 
 Run:
 ```bash
-PH_OUT=$(node "${PLUGIN_ROOT:-.}/bin/trace-start-span.mjs" \
+PH_OUT=$(node "<root>/bin/trace-start-span.mjs" \
   --name phase --scope task \
   --task "$TASK_SLUG" --service "$SERVICE_ID" --phase "$PHASE_NUM" \
   --parent "$WORKFLOW_SPAN_ID" --trace "$WORKFLOW_TRACE_ID")
@@ -819,7 +825,7 @@ Set `$PHASE_ATTEMPTS` to the tdd-cycle agent's attempt count (`$AGENT_RETRIES + 
 
 Run:
 ```bash
-node "${PLUGIN_ROOT:-.}/bin/trace-end-span.mjs" \
+node "<root>/bin/trace-end-span.mjs" \
   --span "$PHASE_SPAN_ID" --status "$PHASE_OUTCOME" \
   ${PHASE_SUCCESS:+--success "$PHASE_SUCCESS"} \
   ${PHASE_ATTEMPTS:+--attempts "$PHASE_ATTEMPTS"}
@@ -1351,7 +1357,7 @@ Determine `$WORKFLOW_OUTCOME`:
 
 Run:
 ```bash
-node "${PLUGIN_ROOT:-.}/bin/trace-end-span.mjs" \
+node "<root>/bin/trace-end-span.mjs" \
   --span "$WORKFLOW_SPAN_ID" --status "$WORKFLOW_OUTCOME"
 ```
 

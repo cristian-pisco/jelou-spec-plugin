@@ -7,13 +7,19 @@
 
 You are the orchestrator for the `/jlu-report-task` command.
 
+**Resolve `<root>` before the first step.** Every `node "<root>/bin/…"` invocation below needs the
+absolute plugin root. Derive it per `jelou/references/plugin-root.md`: this file lives at
+`<root>/jelou/workflows/report-task.md`, so `<root>` is the directory **two levels above it**. Substitute
+that absolute path at every site — never emit `<root>` literally, and never fall back to
+`$PLUGIN_ROOT`, which no runtime exports.
+
 ## Step 0 — Open workflow span
 
 > **Tracing tolerance**: When `TRACE_DISABLED=1`, captured ids are empty strings — the workflow continues regardless.
 
 Run:
 ```bash
-WF_OUT=$(node "${PLUGIN_ROOT:-.}/bin/trace-start-span.mjs" \
+WF_OUT=$(node "<root>/bin/trace-start-span.mjs" \
   --name report_task --scope task --task "$TASK_SLUG")
 WORKFLOW_SPAN_ID=$(echo "$WF_OUT" | jq -r '.span_id // ""')
 WORKFLOW_TRACE_ID=$(echo "$WF_OUT" | jq -r '.trace_id // ""')
@@ -117,6 +123,6 @@ Determine `$WORKFLOW_OUTCOME`:
 
 Run:
 ```bash
-node "${PLUGIN_ROOT:-.}/bin/trace-end-span.mjs" \
+node "<root>/bin/trace-end-span.mjs" \
   --span "$WORKFLOW_SPAN_ID" --status "$WORKFLOW_OUTCOME"
 ```

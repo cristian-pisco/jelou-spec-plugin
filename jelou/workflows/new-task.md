@@ -7,6 +7,12 @@
 
 ---
 
+**Resolve `<root>` before the first step.** Every `node "<root>/bin/…"` invocation below needs the
+absolute plugin root. Derive it per `jelou/references/plugin-root.md`: this file lives at
+`<root>/jelou/workflows/new-task.md`, so `<root>` is the directory **two levels above it**. Substitute
+that absolute path at every site — never emit `<root>` literally, and never fall back to
+`$PLUGIN_ROOT`, which no runtime exports.
+
 ## Interview Limits and Completion
 
 - Ask 3–6 questions per round for at most 4 rounds.
@@ -33,7 +39,7 @@
 
 Run:
 ```bash
-WF_OUT=$(node "${PLUGIN_ROOT:-.}/bin/trace-start-span.mjs" \
+WF_OUT=$(node "<root>/bin/trace-start-span.mjs" \
   --name new_task --scope task)
 WORKFLOW_SPAN_ID=$(echo "$WF_OUT" | jq -r '.span_id // ""')
 WORKFLOW_TRACE_ID=$(echo "$WF_OUT" | jq -r '.trace_id // ""')
@@ -900,7 +906,7 @@ Determine `$WORKFLOW_OUTCOME`:
 
 Run:
 ```bash
-node "${PLUGIN_ROOT:-.}/bin/trace-end-span.mjs" \
+node "<root>/bin/trace-end-span.mjs" \
   --span "$WORKFLOW_SPAN_ID" --status "$WORKFLOW_OUTCOME" \
   ${TASK_SLUG:+--outcome "task=$TASK_SLUG"}
 ```
