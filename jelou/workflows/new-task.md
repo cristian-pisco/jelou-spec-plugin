@@ -273,7 +273,7 @@ Write the initial tracker to `<TASK_DIR>/TASKS.md`:
 
 If a tasks.md template exists at `<plugin-root>/jelou/templates/tasks.md`, use it as the base. Otherwise, use the format above.
 
-Note: The `## Branching` section is NOT written here. It is appended to TASKS.md in Step 8c after `DUAL_PR` is known.
+Note: The `## Branching` section is NOT written here. It is appended to TASKS.md in Step 8b after `DUAL_PR` is known.
 
 ---
 
@@ -322,56 +322,7 @@ Update `TASKS.md` with the confirmed affected services list.
 
 ---
 
-### 8b. Conflict Detection
-
-After confirming affected services, scan for overlapping active tasks:
-
-1. **Build candidate set quickly (2-pass):**
-   a. Glob `specs/*/*/TASKS.md` once.
-   b. Exclude files whose status is clearly terminal (`closed`, `cancelled`, `rolled_back`) using grep/metadata extraction.
-   c. From non-terminal files, shortlist only those mentioning any service in `CONFIRMED_SERVICES` on `- Primary:` or `- Affected:` lines.
-   d. Exclude the current task being created.
-
-2. **Read candidate metadata only:**
-   - For each shortlisted file, read top section first (max 40 lines) to extract status + services.
-   - Only if services cannot be determined from `TASKS.md`, then read `SPEC.md` first heading/intro as fallback.
-
-3. **Detect overlaps**:
-   For each active task, compare its affected services with `CONFIRMED_SERVICES`.
-   If any service-id appears in both lists, record the overlap:
-   - Active task slug
-   - Active task status (e.g., "implementing, Phase 3/5")
-   - Overlapping service IDs
-   - Active task's spec title (from SPEC.md first line, if readable)
-
-4. **Report conflicts**:
-   If overlaps were found, present via question:
-   ```
-   Conflict detected with active task(s):
-
-   Task: <active-task-slug> (<status>)
-     Title: <spec title>
-     Overlapping services: <service-id-1>, <service-id-2>
-
-   Task: <another-task-slug> (<status>)
-     Title: <spec title>
-     Overlapping services: <service-id-3>
-
-   These tasks modify some of the same services. Concurrent changes
-   may cause merge conflicts or unexpected interactions.
-
-   Options:
-   A) Proceed anyway (I know about these tasks)
-   B) Abort task creation
-   ```
-
-   If the user selects "Abort": stop the workflow. Report: "Task creation aborted due to conflicts. Review active tasks and retry."
-
-5. **No conflicts**: continue silently to Step 8c.
-
----
-
-### 8c. Dual-PR Intent
+### 8b. Dual-PR Intent
 
 Using `question`:
 
