@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.332] — 2026-08-03
+
+### Changed
+- carry autonomy through to ship, resolving every gate autonomously in the chain
+
 ## [0.3.331] — 2026-08-03
 
 ### Fixed
