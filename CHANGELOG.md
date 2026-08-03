@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.325] — 2026-08-03
+
+### Fixed
+- make /jlu-daily-slack reachable on Codex and OpenCode
+
 ## [0.3.324] — 2026-08-03
 
 ### Fixed
