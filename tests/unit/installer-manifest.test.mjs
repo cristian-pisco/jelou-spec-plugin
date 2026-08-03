@@ -81,9 +81,9 @@ describe('list-tasks — the scanner is reachable on every runtime', () => {
     );
   });
 
-  test('the workflow resolves the scanner relative to its own location', () => {
+  test('the workflow resolves the scanner from a root it derives, not a variable', () => {
     assert.match(workflow, /<root>\/bin\/list-tasks\.mjs/);
-    assert.match(workflow, /two levels above this file/);
+    assert.match(workflow, /jelou\/references\/plugin-root\.md/);
   });
 
   for (const installer of INSTALLERS) {

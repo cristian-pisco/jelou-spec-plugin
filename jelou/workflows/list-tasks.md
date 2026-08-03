@@ -17,15 +17,10 @@ itself (from `.spec-workspace.json` or a parent `.spec-workspace/specs/`), scans
 `specs/<date>/<slug>/`, and reads each task's `TASKS.md` (lifecycle state, sprint,
 affected services) and `SPEC.md` (title).
 
-Resolve it **relative to this workflow file**, not from a variable. This file lives at
-`<root>/jelou/workflows/list-tasks.md` and the scanner at `<root>/bin/list-tasks.mjs`, so
-`<root>` is the directory two levels above this file. That relationship holds on every
-install path — Claude Code marketplace, `bin/install-codex.sh` global and project-local,
-`bin/install-opencode.sh` global and project-local, and `codex plugin add`.
-
-Do NOT invoke it through `${PLUGIN_ROOT:-.}`: no runtime exports `PLUGIN_ROOT`, so on
-Codex and OpenCode it collapses to `.` and the scanner is looked up inside the user's
-service repo, where it does not exist.
+Resolve it per `jelou/references/plugin-root.md`: `<root>` is the directory **two levels above
+this workflow file**, and the scanner is at `<root>/bin/list-tasks.mjs`. Never invoke it through
+`${PLUGIN_ROOT:-.}` — no runtime exports `PLUGIN_ROOT`, so on Codex and OpenCode it collapses to
+`.` and the scanner is looked up inside the user's service repo, where it does not exist.
 
 ## Step 2 — Run the scanner
 
