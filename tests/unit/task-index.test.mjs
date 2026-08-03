@@ -2370,6 +2370,18 @@ describe('task-index — stdout survives a real pipe', () => {
     assertPipeIsLossless(['get', 'freeform-phases', '--workspace', FIXTURE_WS, '--json'], false);
     assertPipeIsLossless(['get', 'freeform-phases', '--workspace', FIXTURE_WS], false);
   });
+
+  test('the success path never calls process.exit, which would discard a queued write', () => {
+    const source = readFileSync(SCRIPT, 'utf8');
+    const entry = source.slice(source.indexOf('async function main('));
+
+    assert.match(entry, /process\.exitCode = code/);
+    assert.doesNotMatch(
+      entry,
+      /process\.exit\(/,
+      'a payload under the stdout highWaterMark leaves write() returning true with bytes still queued in libuv; process.exit() on that path truncates stdout',
+    );
+  });
 });
 
 describe('task-index — decorated phase statuses strip leading decoration only', () => {
