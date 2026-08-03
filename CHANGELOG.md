@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.323] — 2026-08-03
+
+### Fixed
+- stop asking about unclosed tasks that share services in new-task
+
 ## [0.3.322] — 2026-08-03
 
 ### Internal
