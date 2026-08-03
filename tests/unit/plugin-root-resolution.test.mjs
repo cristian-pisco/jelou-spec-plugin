@@ -1,21 +1,24 @@
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { join, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const read = (rel) => readFileSync(join(ROOT, rel), 'utf8');
 
 const SURFACE_DIRS = ['jelou', 'agents', 'skills'];
-const FORBIDDEN = /\$\{?PLUGIN_ROOT(?::-\.)?\}?\/bin\/([a-z0-9-]+\.mjs)/g;
+const SHELL_FORM = /\$\{?PLUGIN_ROOT(?::-[^}\s]*)?\}?\/bin\/([a-z0-9-]+\.mjs)/g;
+const NODE_BIN = /\bnode\s+(\S*?)bin\/([a-z0-9-]+\.mjs)/g;
+const DISPATCH_WINDOW_LINES = 14;
 
-const KNOWN_UNRESOLVED = [
-  ['agents/jlu-build-validator.md', 'runtime-exec.mjs'],
-  ['agents/jlu-deps-validator.md', 'install-dep.mjs'],
-  ['agents/jlu-implementer.md', 'install-dep.mjs'],
-  ['agents/jlu-refactor-agent.md', 'install-dep.mjs'],
-];
+const DISPATCH_PROSE = new Map([
+  [
+    'jelou/workflows/goal.md → jlu-backend-e2e-runner → MUST NOT short-circuit',
+    'the Guardrails section restates the mandatory-dispatch policy; the payload is specified ' +
+      'at step 11b.2, which is the site that must carry the input.',
+  ],
+]);
 
 function markdownSurfaces() {
   const out = [];
@@ -30,38 +33,165 @@ function markdownSurfaces() {
   return out.sort();
 }
 
-function forbiddenInvocations() {
+function shellFormInvocations() {
   const found = new Set();
   for (const surface of markdownSurfaces()) {
-    for (const match of read(surface).matchAll(FORBIDDEN)) {
+    for (const match of read(surface).matchAll(SHELL_FORM)) {
       found.add(`${surface} → ${match[1]}`);
     }
   }
   return found;
 }
 
-describe('plugin-root resolution — the PLUGIN_ROOT shell form is a ratchet', () => {
-  const known = new Set(KNOWN_UNRESOLVED.map(([surface, bin]) => `${surface} → ${bin}`));
+function agentFiles() {
+  return readdirSync(join(ROOT, 'agents'))
+    .filter((entry) => entry.endsWith('.md'))
+    .sort();
+}
 
-  test('no surface adds a new ${PLUGIN_ROOT}/bin invocation', () => {
-    const added = [...forbiddenInvocations()].filter((entry) => !known.has(entry));
+function inputsSection(text) {
+  const out = [];
+  let inside = false;
+  for (const line of text.split('\n')) {
+    const heading = /^#{2,6}\s+(.*)$/.exec(line);
+    if (heading) inside = /^inputs\b/i.test(heading[1].trim());
+    else if (inside) out.push(line);
+  }
+  return out.join('\n');
+}
+
+function binInvokingAgents() {
+  const out = new Map();
+  for (const file of agentFiles()) {
+    const invocations = [...read(`agents/${file}`).matchAll(NODE_BIN)].map(([, prefix, bin]) => ({ prefix, bin }));
+    if (invocations.length) out.set(basename(file, '.md'), invocations);
+  }
+  return out;
+}
+
+function pluginRootDeclaringAgents() {
+  return agentFiles()
+    .filter((file) => /<PLUGIN_ROOT>/.test(inputsSection(read(`agents/${file}`))))
+    .map((file) => basename(file, '.md'));
+}
+
+function workflowFiles() {
+  return readdirSync(join(ROOT, 'jelou/workflows'))
+    .filter((entry) => entry.endsWith('.md'))
+    .map((entry) => `jelou/workflows/${entry}`)
+    .sort();
+}
+
+function dispatchSites(agent) {
+  const pattern = new RegExp(
+    String.raw`(?<!re-)\b(dispatch|dispatches|spawn|spawns)\b[\s\S]{0,90}?\x60?${agent}\x60?`,
+    'gi',
+  );
+  const sites = [];
+  for (const workflow of workflowFiles()) {
+    const text = read(workflow);
+    const lines = text.split('\n');
+    for (const match of text.matchAll(pattern)) {
+      const index = text.slice(0, match.index + match[0].length).split('\n').length - 1;
+      const window = [];
+      for (let cursor = index; cursor < Math.min(lines.length, index + DISPATCH_WINDOW_LINES); cursor++) {
+        if (cursor > index && /^#{1,6}\s/.test(lines[cursor])) break;
+        window.push(lines[cursor]);
+      }
+      sites.push({
+        workflow,
+        line: index + 1,
+        text: lines[index].trim(),
+        passesPluginRoot: /PLUGIN_ROOT/.test(window.join('\n')),
+      });
+    }
+  }
+  return sites;
+}
+
+function proseKey(agent, site) {
+  for (const key of DISPATCH_PROSE.keys()) {
+    const [workflow, named, snippet] = key.split(' → ');
+    if (workflow === site.workflow && named === agent && site.text.includes(snippet)) return key;
+  }
+  return null;
+}
+
+describe('plugin-root resolution — the PLUGIN_ROOT shell form is banned outright', () => {
+  test('no surface invokes a bin through ${PLUGIN_ROOT}', () => {
     assert.deepEqual(
-      added,
+      [...shellFormInvocations()].sort(),
       [],
       'no runtime exports PLUGIN_ROOT, so these collapse to ./bin/<script> inside the user repo. ' +
-        'Resolve the root from the surface path instead — see jelou/references/plugin-root.md',
+        'A workflow, reference, template or skill resolves the root from its own path; an agent ' +
+        'cannot, so it declares <PLUGIN_ROOT> as an input and the dispatcher passes it. ' +
+        'See jelou/references/plugin-root.md',
     );
   });
+});
 
-  test('a fixed invocation is removed from the ratchet list', () => {
-    const stale = [...known].filter((entry) => !forbiddenInvocations().has(entry));
-    assert.deepEqual(stale, [], 'these no longer use the shell form — delete them from KNOWN_UNRESOLVED');
+describe('plugin-root dispatch contract — a bin-invoking agent is handed the root', () => {
+  const invoking = binInvokingAgents();
+  const declaring = pluginRootDeclaringAgents();
+
+  test('some agent invokes a bin, so this suite is actually guarding something', () => {
+    assert.ok(invoking.size > 0, 'no agent matched the node-bin invocation pattern — the scanner is broken');
   });
 
-  test('every ratcheted surface and bin actually exists', () => {
-    for (const [surface, bin] of KNOWN_UNRESOLVED) {
-      assert.doesNotThrow(() => read(surface), `${surface} is listed but missing`);
-      assert.doesNotThrow(() => read(`bin/${bin}`), `bin/${bin} is listed but missing`);
+  for (const [agent, invocations] of invoking) {
+    test(`${agent} builds every bin path from <PLUGIN_ROOT>`, () => {
+      const wrong = invocations
+        .filter(({ prefix }) => !/<PLUGIN_ROOT>\/$/.test(prefix.replace(/^["'\x60]/, '')))
+        .map(({ prefix, bin }) => `${prefix}bin/${bin}`);
+      assert.deepEqual(
+        wrong,
+        [],
+        `agents/${agent}.md must invoke bundled bins as "<PLUGIN_ROOT>/bin/<script>.mjs". A bare or ` +
+          'relative path resolves against the user service repo, where the script does not exist.',
+      );
+    });
+
+    test(`${agent} declares <PLUGIN_ROOT> as a received input`, () => {
+      assert.ok(
+        declaring.includes(agent),
+        `agents/${agent}.md invokes ${invocations.map(({ bin }) => bin).join(', ')} but no Inputs ` +
+          'section declares <PLUGIN_ROOT>. An agent cannot derive the plugin root from its own path, ' +
+          'so the value has to arrive from the dispatcher — declare it or the invocation is unresolvable.',
+      );
+    });
+  }
+
+  for (const agent of declaring) {
+    test(`every dispatch of ${agent} passes PLUGIN_ROOT`, () => {
+      const sites = dispatchSites(agent);
+      const gaps = sites
+        .filter((site) => !site.passesPluginRoot && !proseKey(agent, site))
+        .map((site) => `${site.workflow}:${site.line}`);
+      assert.deepEqual(
+        gaps,
+        [],
+        `${agent} declares <PLUGIN_ROOT> as an input, so every workflow that dispatches it must pass ` +
+          'the value. A dispatch that omits it fails at runtime with MODULE_NOT_FOUND from a path the ' +
+          'user never wrote, and nothing else in the suite notices. Add it within ' +
+          `${DISPATCH_WINDOW_LINES} lines of the dispatch, or declare the match as prose in DISPATCH_PROSE.`,
+      );
+    });
+  }
+
+  test('every DISPATCH_PROSE exclusion still matches a real dispatch match', () => {
+    for (const [key, why] of DISPATCH_PROSE) {
+      const [workflow, agent, snippet] = key.split(' → ');
+      assert.ok(why.length > 40, `${key} needs a real justification, not a placeholder`);
+      assert.ok(declaring.includes(agent), `${key} names ${agent}, which no longer declares <PLUGIN_ROOT>`);
+      const matched = dispatchSites(agent).filter(
+        (site) => site.workflow === workflow && site.text.includes(snippet),
+      );
+      assert.equal(
+        matched.length,
+        1,
+        `${key} matched ${matched.length} dispatch matches — the prose moved or changed, so the ` +
+          'exclusion is stale. Re-point it or drop it.',
+      );
     }
   });
 });
@@ -122,5 +252,10 @@ describe('plugin-root reference — states the rule once, and only once', () => 
   test('states the shipping requirement with both installers and the test', () => {
     assert.match(body, /FEATURE_BINS/);
     assert.match(body, /installer-manifest\.test\.mjs/);
+  });
+
+  test('states the agent dispatch contract and names its guard', () => {
+    assert.match(body, /declared input/i);
+    assert.match(body, /plugin-root-resolution\.test\.mjs/);
   });
 });

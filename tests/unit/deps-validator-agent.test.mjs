@@ -17,7 +17,7 @@ describe('jlu-deps-validator agent', () => {
   test('report-only: no Write tool, uses install-dep --validate', () => {
     const body = readFileSync(SRC, 'utf8');
     assert.match(body, /tools:\s*Read, Bash, Glob, Grep\s*$/m);
-    assert.match(body, /install-dep\.mjs --validate/);
+    assert.match(body, /install-dep\.mjs"? --validate/);
   });
   test('reads subagent-base.md', () => {
     assert.match(readFileSync(SRC, 'utf8'), /subagent-base\.md/);

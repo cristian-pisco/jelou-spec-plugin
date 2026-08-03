@@ -679,6 +679,7 @@ Log to terminal:
 Otherwise, spawn `jlu-refactor-agent` with model: **MODEL_CONFIG.code** (default: sonnet). The agent applies at most three refactors, one at a time, within `Files Modified`; it preserves public APIs and runs the phase tests after every change.
 
 - **Input**:
+  - `<PLUGIN_ROOT>` (the agent cannot derive it — see `jelou/references/plugin-root.md`)
   - Phase context (phase number, service-id)
   - Service source path (worktree or repo)
   - The tdd-cycle agent's full report (especially `Files Modified` and `Refactor Candidates`)
@@ -726,7 +727,7 @@ The QA agent performs static analysis ONLY — it reads code and checks conventi
 
 If QA finds code quality issues (convention violations, function length, test tier violations):
 - Log issues to terminal.
-- Attempt to fix automatically: spawn `jlu-implementer` with model: **MODEL_CONFIG.code** (default: sonnet) and QA findings.
+- Attempt to fix automatically: spawn `jlu-implementer` with model: **MODEL_CONFIG.code** (default: sonnet), `<PLUGIN_ROOT>`, and QA findings.
 - After fix, re-run ONLY the phase test files to confirm Green is maintained.
 - Retry up to 5 times total.
 - If still failing after 5 attempts: pause and notify user (see Escalation Format below).
@@ -775,7 +776,7 @@ The script writes `key=value` lines to stdout. Parse them:
 | `source_path_missing` / `not_a_git_repo` | Abort. Source path resolution is broken; surface to user. |
 | `no_changes` | Treat as a phase no-op. Log `Phase <NN> produced no diff — skipping commit and continuing.` Do not retry. |
 | `unexpected_files_in_diff` | Parse `unexpected_files=<csv>`. Treat as a phase failure. Surface to user with the file list (same message as the old inline scope check). Do not auto-stage. |
-| `commit_failed` | A pre-commit hook (lint, commitlint, etc.) rejected the commit. Parse the script's stderr (last 50 lines), dispatch a `jlu-implementer` with the hook output as failure context, then retry Step 7j (up to 5 attempts). Never bypass with `--no-verify`. |
+| `commit_failed` | A pre-commit hook (lint, commitlint, etc.) rejected the commit. Parse the script's stderr (last 50 lines), dispatch a `jlu-implementer` with `<PLUGIN_ROOT>` and the hook output as failure context, then retry Step 7j (up to 5 attempts). Never bypass with `--no-verify`. |
 | `invalid_commit_type` | Orchestrator bug — the `<type>` derivation logic produced something outside `feat|fix|docs|refactor|test`. Abort and surface to user. |
 
 **Forbidden operations** (orchestrator must NEVER invoke, even via Bash, regardless of finalize-phase.sh):
@@ -841,7 +842,7 @@ Otherwise, for each service that has Tier 2 deferred requirements:
    - **Input**: Deferred requirements list, CONVENTIONS.md, service source path
    - **TEST_TIER: 2** (integration tests against host-resident infrastructure only — no containers, no Testcontainers)
    - **Task**: Write integration tests for all deferred requirements. Assume any required real dependency (database, queue, peer service) is already running on the host; if it isn't, mark the test skipped with a clear reason rather than starting anything yourself.
-3. Spawn `jlu-implementer` with model: **MODEL_CONFIG.code** (default: sonnet) if the integration tests reveal missing wiring (e.g., a repository method needs a real database query that was mocked in Tier 1).
+3. Spawn `jlu-implementer` with model: **MODEL_CONFIG.code** (default: sonnet) and `<PLUGIN_ROOT>` if the integration tests reveal missing wiring (e.g., a repository method needs a real database query that was mocked in Tier 1).
 
 ### 8a.5 — Build Validation (once per service)
 
@@ -857,7 +858,7 @@ For each affected service (honor `PHASE_PARALLELISM` for cross-service fan-out; 
    CLASSIFY_FILES="$CHANGED_FILES" <plugin-root>/bin/classify-phase.sh compilable
    ```
    If `compilable=false`, log `Build skipped for <service-id> — no compilable source changed (<extensions>).` and continue to the next service.
-2. Otherwise dispatch `jlu-build-validator` (model: **MODEL_CONFIG.code**, default sonnet) with the service source path and `<WORKSPACE_PATH>/services/<service-id>/codebase/CONVENTIONS.md`. Wrap the dispatch in the span wrapper (per the dispatch-wrapper block above; `--agent build-validator`).
+2. Otherwise dispatch `jlu-build-validator` (model: **MODEL_CONFIG.code**, default sonnet) with `<PLUGIN_ROOT>`, the service source path and `<WORKSPACE_PATH>/services/<service-id>/codebase/CONVENTIONS.md`. Wrap the dispatch in the span wrapper (per the dispatch-wrapper block above; `--agent build-validator`).
 3. Handle the agent's verdict:
    - **PASS, no fixes** → continue.
    - **SKIP** (no build command detected) → continue.
@@ -935,7 +936,7 @@ Never inject `--coverage` or `--cov` here. Coverage belongs in CI.
 
 If any service's affected tests failed:
 - Aggregate failing test names + file paths.
-- Spawn `jlu-implementer` with model: **MODEL_CONFIG.code** (default: sonnet) and the failure context to fix. Retry up to 5 times.
+- Spawn `jlu-implementer` with model: **MODEL_CONFIG.code** (default: sonnet), `<PLUGIN_ROOT>`, and the failure context to fix. Retry up to 5 times.
 - If still failing after 5 attempts: pause and notify user.
 
 If a service was skipped (mocha, plugin-less pytest, unknown runner), pass `AFFECTED_TESTS_RESULT[service-id] = SKIPPED` to Step 8c.

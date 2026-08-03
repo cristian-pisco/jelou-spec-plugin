@@ -205,6 +205,7 @@ import('{plugin-root}/bin/lib/dev-orchestrator/stack/clean-tree.mjs').then(({ is
 If `DIRTY` → **ESCALATE**: `{argument}'s main checkout at {target.path} has uncommitted changes — won't edit a dirty main checkout. Commit or stash first.` and stop.
 
 Otherwise dispatch `Agent` with `subagent_type: "jlu:jlu-implementer"` (retry once with the bare `jlu-implementer` if unregistered). Constrain the prompt to `{target.path}` and include:
+- `PLUGIN_ROOT={plugin-root}` — the agent cannot derive it (`jelou/references/plugin-root.md`).
 - The diagnosis (`cause`, `evidence`, `proposed_fix`).
 - Any prior attempts on this same service this run (file + hunk_hash from `priorHunks`), so the implementer avoids repeating a dead-end edit.
 - The instruction: make exactly ONE atomic edit to fix `<cause>`, confined to `{target.path}`, no line-by-line comments, and return a final line following the fix-loop STATUS contract (`agents/jlu-ui-fix-loop.md`) — `STATUS: DONE — file=<path> hunk_hash=<hash> ...` (or `DONE_WITH_CONCERNS` / `BLOCKED reason=...` / `flagged reason=...`), including a `hunk_hash` computed as the SHA-1 of `<file>|<start line>|<replaced text>`.

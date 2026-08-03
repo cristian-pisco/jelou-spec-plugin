@@ -352,7 +352,8 @@ orchestrator narrative.
    1. **Resolve the E2E discovery glob(s).** Read the service's `e2e.globs` from
       `services.yaml` (`jelou/templates/services-yaml.md`); default
       `["test/e2e/**/*.e2e-spec.ts"]` when absent. Pass them to the runner as `E2E_GLOBS`.
-   2. **Dispatch `jlu-backend-e2e-runner`** (it runs the matched suites with Testcontainers
+   2. **Dispatch `jlu-backend-e2e-runner`** with `<PLUGIN_ROOT>` and `<WORKERS>` (it runs the
+      matched suites with Testcontainers
       dependencies only, real HTTP). Parse its `STATUS:` line, and attribute per-objective
       results by the `[G<id>]` describe tags (step 7.5): an objective's backend side is
       green iff every `[G<id>]`-tagged test passed.
@@ -403,7 +404,7 @@ orchestrator narrative.
 ### Phase 4 — UI execution (delegated; frontend/fullstack objectives)
 
 12. For each service in `ui_services`: dispatch `jlu-ui-qa-runner` (session already
-    provisioned in 11c) with `--no-boot` semantics. Parse its `STATUS:`; on
+    provisioned in 11c) with `<PLUGIN_ROOT>`, `<WORKERS>` and `--no-boot` semantics. Parse its `STATUS:`; on
     `NEEDS_CONTEXT`, broker via `AskUserQuestion` and re-dispatch with `USER_FEEDBACK`;
     on `ui_breadth_gaps`, route to `jlu-ui-e2e-writer` and re-dispatch once. Record
     PASS/FAIL, and attribute per-objective results by the `@goal:G<id>` title tags
@@ -428,8 +429,8 @@ iteration number). Then loop:
 iteration = 1
 while (any objective is red) and (iteration < MAX_ITERATIONS):   # default 3, --max-iterations=N
   for each red objective G<id>:
-    - backend side red → dispatch jlu-implementer with the failing runner output, the
-      objective (title + success criteria), SPEC.md as context, and the service worktree:
+    - backend side red → dispatch jlu-implementer with <PLUGIN_ROOT>, the failing runner
+      output, the objective (title + success criteria), SPEC.md, and the service worktree:
       fix PRODUCT code (or the test, only when the evidence shows the test itself is
       wrong) — never weaken an assertion to force green. Then re-dispatch
       jlu-backend-e2e-runner scoped to the objective's globs/tag.

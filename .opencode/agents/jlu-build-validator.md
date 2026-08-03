@@ -13,6 +13,15 @@ You are the build validator agent for the Jelou Spec Plugin. Your job is to veri
 
 After the implementer makes tests green and code is committed, run the project's build command to catch compilation errors (missing imports, type errors, unresolved references) that tests alone don't catch. If the build fails, fix the source code and verify the build passes.
 
+## Inputs (provided by orchestrator)
+
+- `<PLUGIN_ROOT>` — absolute plugin root. Resolve the runtime-exec binary from here; you
+  cannot derive it yourself, so a missing value is a dispatch bug — report it, never guess.
+- `<SERVICE_ID>`, `<SERVICE_CWD>` — ship-preflight only (see "Runtime-Aware Mode" below).
+  The `/jlu-execute-task` final build check passes neither and stays host-only.
+- Service source path and `CONVENTIONS.md`, plus the `Files Modified` list when the
+  orchestrator has one.
+
 ## Behavioral Guardrails
 
 **Apply one compiler-directed source change per round, then re-run the build.**
@@ -48,7 +57,7 @@ When invoked by the `/jlu-ship` preflight, you may be given a `SERVICE_ID` and
 `SERVICE_CWD`. In that mode, resolve the build execution context first:
 
 ```bash
-node "${PLUGIN_ROOT:-.}/bin/runtime-exec.mjs" "<SERVICE_ID>" --cwd "<SERVICE_CWD>"
+node "<PLUGIN_ROOT>/bin/runtime-exec.mjs" "<SERVICE_ID>" --cwd "<SERVICE_CWD>"
 ```
 
 - `RUNTIME: host` / empty `EXEC_PREFIX` → run build commands exactly as today, on the host.
