@@ -246,7 +246,7 @@ For the current service, apply the **mode-driven** worktree resolution algorithm
 
 Spawn `jlu-deps-validator` with model **haiku** and this task:
 
-> Validate that service `<SERVICE_ID>` installs dependencies cleanly. SERVICE_CWD is `<SERVICE_CWD>`. Run the runtime-aware validator and report PASS / FAIL / SKIP.
+> Validate that service `<SERVICE_ID>` installs dependencies cleanly. SERVICE_CWD is `<SERVICE_CWD>`. PLUGIN_ROOT is `<PLUGIN_ROOT>`. Run the runtime-aware validator and report PASS / FAIL / SKIP.
 
 On **PASS** or **SKIP** → continue to 4b.2.
 On **FAIL** (install failure or lockfile drift) → present via `question`:
@@ -265,7 +265,7 @@ On A → stop the workflow for this service (offer skip/abort like Step 5 escala
 
 Spawn `jlu-build-validator` with model **MODEL_CONFIG.code** (default sonnet) and this task:
 
-> Validate the build for service `<SERVICE_ID>`. SERVICE_CWD is `<SERVICE_CWD>`. Resolve the runtime exec context first (host or docker-compose) and run the build in the right place. Auto-fix build errors within the 5-round limit. Report PASS / FAIL / SKIP.
+> Validate the build for service `<SERVICE_ID>`. SERVICE_CWD is `<SERVICE_CWD>`. PLUGIN_ROOT is `<PLUGIN_ROOT>`. Resolve the runtime exec context first (host or docker-compose) and run the build in the right place. Auto-fix build errors within the 5-round limit. Report PASS / FAIL / SKIP.
 
 On **PASS** or **SKIP** → continue to Step 5. On **FAIL** after 5 rounds → present via `question` the same A/B override. On B → set `PREFLIGHT_OVERRIDE[<service-id>] += "build"`.
 

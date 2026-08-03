@@ -105,9 +105,23 @@ There is exactly one declared exclusion, in `DELIBERATELY_UNSHIPPED`:
 An entry there must stay referenced by some surface and stay absent from both installers — the test
 fails if an exclusion goes stale in either direction, so the list cannot quietly accumulate.
 
-The resolution half still has a ratchet in `tests/unit/plugin-root-resolution.test.mjs`. It is down to
-**four** entries, all agents: `jlu-build-validator`, `jlu-deps-validator`, `jlu-implementer` and
-`jlu-refactor-agent`. They are the one case the self-relative rule above cannot solve, because an
-agent does not reliably know its own path — the dispatcher has to pass `<PLUGIN_ROOT>` as a declared
-input, the way `jlu-test-suite-runner` and `jlu-dev-block-verifier` already receive it. No dispatch
-site does today, so closing those four is a dispatch-contract change.
+The resolution half is now a hard gate too. `tests/unit/plugin-root-resolution.test.mjs` asserts that
+**no** surface invokes a bin through the shell form. The ratchet it used to carry is gone: it reached
+zero, so the list became an assertion.
+
+## Agents: the root is a declared input
+
+An agent is the one surface the self-relative rule above cannot serve, because an agent does not
+reliably know its own path. So the contract is inverted for agents:
+
+1. The agent declares `<PLUGIN_ROOT>` as a received input, in its `## Inputs` section.
+2. The agent invokes bins as `node "<PLUGIN_ROOT>/bin/<script>.mjs"`.
+3. **Every workflow that dispatches it passes the value**, which the skill bootstrap already
+   resolved and handed to the workflow.
+
+Step 3 is the half that rots silently: the agent still says it needs the input, nothing passes it,
+and the run dies inside a subagent. `plugin-root-resolution.test.mjs` therefore also scans
+`jelou/workflows/` for dispatches of any agent that declares `<PLUGIN_ROOT>` and fails when a
+dispatch does not pass it. Prose that merely restates a dispatch (a guardrail or summary sentence,
+not a payload) is declared in `DISPATCH_PROSE` with a reason, and the test fails if such an entry
+stops matching.

@@ -23,6 +23,15 @@ Then apply the principles in `jelou/references/tdd-principles.md`. Specifically:
 
 Given failing tests, write the minimum production code needed to make ALL of them pass. You are dispatched for QA-fix (Step 7h), affected-test fix (Step 8b), or Tier 2 wiring (Step 8a) — never for per-phase RED→GREEN authoring, which `jlu-tdd-cycle` owns end to end. Follow the service's conventions and architecture patterns. Do not over-engineer — write exactly what the tests require, nothing more.
 
+## Inputs (provided by orchestrator)
+
+- `<PLUGIN_ROOT>` — absolute plugin root. Resolve the dependency-install binary from here;
+  you cannot derive it yourself, so a missing value is a dispatch bug — report it, never
+  guess.
+- The failure context of the dispatch (failing tests, QA findings, hook output, or the
+  deferred Tier 2 requirements) plus the service source path. The files you must read
+  before writing any code are listed under "Context You Must Read" below.
+
 ## Operational Guardrails
 
 **Every production line must map to a failing assertion or required framework wiring.**
@@ -103,7 +112,7 @@ Do NOT run the full test suite. Regression checking happens once at final valida
 If making tests green requires a new package, **never** run a raw `npm install` / `yarn add` / `pnpm add` in the service directory. Always install through the helper:
 
 ```bash
-node "${PLUGIN_ROOT:-.}/bin/install-dep.mjs" <service-name> <pkg>[@version] [--dev]
+node "<PLUGIN_ROOT>/bin/install-dep.mjs" <service-name> <pkg>[@version] [--dev]
 ```
 
 It routes the install to the service's runtime — host for a host-runtime service, **inside the container** (booting it first if down) for a `runtime.type: docker-compose` service — and detects the package manager from the lockfile. A host-side install on a containerized service installs into the wrong runtime. See `jelou/references/docker-conventions.md` → "Installing Dependencies".

@@ -22,6 +22,15 @@ Take the implementer's Green code and apply at most three refactors, one at a ti
 
 You refactor production code only. You do NOT modify test files. Ever.
 
+## Inputs (provided by orchestrator)
+
+- `<PLUGIN_ROOT>` — absolute plugin root. Resolve the dependency-install binary from here;
+  you cannot derive it yourself, so a missing value is a dispatch bug — report it, never
+  guess.
+- Phase context (phase number, service id), the service source path, the tdd-cycle
+  report's `Files Modified` + `Refactor Candidates`, the exact test command it reported,
+  and that service's `CONVENTIONS.md` + `ARCHITECTURE.md`.
+
 ## Operational Guardrails
 
 **One candidate, one edit, one test run.**
@@ -161,4 +170,4 @@ Before reporting, verify:
 - Stay within `Files Modified` — do not refactor pre-existing code that the implementer didn't touch.
 - Apply the repository rules in CONVENTIONS.md to every changed line.
 - Soft cap: 3 refactors per phase. If you want more, that's a signal to defer.
-- If a refactor needs a new package, install it via `node "${PLUGIN_ROOT:-.}/bin/install-dep.mjs" <service-name> <pkg> [--dev]` — never a raw `npm install`. It installs in the service's runtime (inside the container for a `runtime.type: docker-compose` service). See `jelou/references/docker-conventions.md` → "Installing Dependencies".
+- If a refactor needs a new package, install it via `node "<PLUGIN_ROOT>/bin/install-dep.mjs" <service-name> <pkg> [--dev]` — never a raw `npm install`. It installs in the service's runtime (inside the container for a `runtime.type: docker-compose` service). See `jelou/references/docker-conventions.md` → "Installing Dependencies".
