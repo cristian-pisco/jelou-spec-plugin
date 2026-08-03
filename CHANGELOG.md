@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.320] — 2026-08-03
+
+### Changed
+- Merge pull request #53 from cristian-pisco/feat/task-index-fase-1
+
 ## [0.3.319] — 2026-08-02
 
 ### Added
