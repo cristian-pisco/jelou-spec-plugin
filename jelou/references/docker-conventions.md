@@ -22,10 +22,14 @@ The TDD pipeline runs entirely on the host. Containers are reserved for the long
 
 ## Installing Dependencies
 
-Never run a raw `npm install` / `yarn add` / `pnpm add` to add a package to a service. Always go through the helper:
+Never run a raw `npm install` / `yarn add` / `pnpm add` to add a package to a service. Always go through the helper.
+
+`<root>` is the absolute plugin root, derived per `jelou/references/plugin-root.md`: this file lives
+at `<root>/jelou/references/docker-conventions.md`, so `<root>` is the directory **two levels above
+it**. Substitute it — never fall back to `$PLUGIN_ROOT`, which no runtime exports.
 
 ```bash
-node "${PLUGIN_ROOT:-.}/bin/install-dep.mjs" <service-name> <pkg>[@version] [<pkg> …] [--dev]
+node "<root>/bin/install-dep.mjs" <service-name> <pkg>[@version] [<pkg> …] [--dev]
 ```
 
 It reads the service's `runtime` block from `jlu-services.json` and:

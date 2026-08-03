@@ -7,18 +7,24 @@
 
 ---
 
+**Resolve `<root>` before the first step.** Every `node "<root>/bin/…"` invocation below needs the
+absolute plugin root. Derive it per `jelou/references/plugin-root.md`: this file lives at
+`<root>/jelou/workflows/ship.md`, so `<root>` is the directory **two levels above it**. Substitute
+that absolute path at every site — never emit `<root>` literally, and never fall back to
+`$PLUGIN_ROOT`, which no runtime exports.
+
 ## Step 0 — Trace bootstrap
 
 > **Tracing tolerance**: When `TRACE_DISABLED=1`, every span_id is an empty string and downstream calls become no-ops.
 
 1. **Sweep orphans from any prior interrupted run** (idempotent):
    ```bash
-   node "${PLUGIN_ROOT:-.}/bin/trace-reconcile.mjs"
+   node "<root>/bin/trace-reconcile.mjs"
    ```
 
 2. **Open the workflow-level span**:
    ```bash
-   WF_OUT=$(node "${PLUGIN_ROOT:-.}/bin/trace-start-span.mjs" \
+   WF_OUT=$(node "<root>/bin/trace-start-span.mjs" \
      --name ship --scope task --task "$TASK_SLUG")
    WORKFLOW_SPAN_ID=$(echo "$WF_OUT" | jq -r '.span_id // ""')
    WORKFLOW_TRACE_ID=$(echo "$WF_OUT" | jq -r '.trace_id // ""')
@@ -29,7 +35,7 @@
 Run the suggester scoped to the current task. It scans recent trace history and emits one SUGGEST block per active rule that fires (bump model tier, extend failure patterns, suggest parallelization, immediate flag on blocked/failed spans of THIS task). The 7-day cooldown is honored automatically.
 
 ```bash
-SUGGESTIONS=$(TRACE_CURRENT_TASK="$TASK_SLUG" node "${PLUGIN_ROOT:-.}/bin/trace-suggest.mjs" 2>/dev/null || true)
+SUGGESTIONS=$(TRACE_CURRENT_TASK="$TASK_SLUG" node "<root>/bin/trace-suggest.mjs" 2>/dev/null || true)
 ```
 
 Telemetry MUST NOT interrupt the ship flow. Never prompt on these findings here.
@@ -815,6 +821,6 @@ Determine `$WORKFLOW_OUTCOME`:
 
 Run:
 ```bash
-node "${PLUGIN_ROOT:-.}/bin/trace-end-span.mjs" \
+node "<root>/bin/trace-end-span.mjs" \
   --span "$WORKFLOW_SPAN_ID" --status "$WORKFLOW_OUTCOME"
 ```

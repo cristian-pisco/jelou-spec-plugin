@@ -7,13 +7,19 @@
 
 ---
 
+**Resolve `<root>` before the first step.** Every `node "<root>/bin/…"` invocation below needs the
+absolute plugin root. Derive it per `jelou/references/plugin-root.md`: this file lives at
+`<root>/jelou/workflows/close-task.md`, so `<root>` is the directory **two levels above it**. Substitute
+that absolute path at every site — never emit `<root>` literally, and never fall back to
+`$PLUGIN_ROOT`, which no runtime exports.
+
 ## Step 0 — Open workflow span
 
 > **Tracing tolerance**: When `TRACE_DISABLED=1`, captured ids are empty strings — the workflow continues regardless.
 
 Run:
 ```bash
-WF_OUT=$(node "${PLUGIN_ROOT:-.}/bin/trace-start-span.mjs" \
+WF_OUT=$(node "<root>/bin/trace-start-span.mjs" \
   --name close_task --scope task --task "$TASK_SLUG")
 WORKFLOW_SPAN_ID=$(echo "$WF_OUT" | jq -r '.span_id // ""')
 WORKFLOW_TRACE_ID=$(echo "$WF_OUT" | jq -r '.trace_id // ""')
@@ -69,11 +75,11 @@ For each affected service:
 3. **Trunk PR** (required): `gh pr view <trunk-pr-url> --json state,mergedAt`. Must be in `MERGED` state.
    - When `MERGED`: proceed, and record the free accept ground-truth signal keyed by the ship span_id. This is the zero-cost accept/reject harvest that feeds the eval layer (Stage 2). Best-effort — tolerate empty output / `TRACE_DISABLED` (the CLI never fails closure):
      ```bash
-     node "${PLUGIN_ROOT:-.}/bin/trace-feedback.mjs" --task "$TASK_SLUG" --signal accept --source pr_merge --note merged_clean
+     node "<root>/bin/trace-feedback.mjs" --task "$TASK_SLUG" --signal accept --source pr_merge --note merged_clean
      ```
    - When `CLOSED` but not merged: record the reject signal (same best-effort tolerance — this is the other half of the free ground-truth harvest), then present the same options as today (check different URL / skip PR check / abort):
      ```bash
-     node "${PLUGIN_ROOT:-.}/bin/trace-feedback.mjs" --task "$TASK_SLUG" --signal reject --source pr_close --note reverted
+     node "<root>/bin/trace-feedback.mjs" --task "$TASK_SLUG" --signal reject --source pr_close --note reverted
      ```
    - For any other non-merged state: present the same options as today (check different URL / skip PR check / abort).
 4. **Alpha PR** (if DUAL_PR = yes): `gh pr view <alpha-pr-url> --json state,mergedAt`. **Not required to be merged.** Record its state for later teardown (Step 4).
@@ -224,7 +230,7 @@ Persist every span tagged with this task's `task_slug` to `<TASK_DIR>/_traces/sn
 Best-effort — closure proceeds whether or not this succeeds:
 
 ```bash
-node "${PLUGIN_ROOT:-.}/bin/trace-snapshot-task.mjs" \
+node "<root>/bin/trace-snapshot-task.mjs" \
   --task "$TASK_SLUG" \
   --out "$TASK_DIR/_traces/snapshot.jsonl" || true
 ```
@@ -303,6 +309,6 @@ Determine `$WORKFLOW_OUTCOME`:
 
 Run:
 ```bash
-node "${PLUGIN_ROOT:-.}/bin/trace-end-span.mjs" \
+node "<root>/bin/trace-end-span.mjs" \
   --span "$WORKFLOW_SPAN_ID" --status "$WORKFLOW_OUTCOME"
 ```

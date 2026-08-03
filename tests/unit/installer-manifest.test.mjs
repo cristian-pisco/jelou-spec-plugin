@@ -38,6 +38,19 @@ const FEATURE_BINS = [
   'bin/daily-slack-extract-reason.mjs',
   'bin/daily-slack-render.mjs',
   'bin/daily-slack-scan-urls.mjs',
+  'bin/install-dep.mjs',
+  'bin/jlu-settings.mjs',
+  'bin/plan-phase-waves.mjs',
+  'bin/runtime-exec.mjs',
+  'bin/trace-end-span.mjs',
+  'bin/trace-eval.mjs',
+  'bin/trace-export-otlp.mjs',
+  'bin/trace-feedback.mjs',
+  'bin/trace-reconcile.mjs',
+  'bin/trace-snapshot-task.mjs',
+  'bin/trace-start-span.mjs',
+  'bin/trace-suggest.mjs',
+  'bin/validate-stories.mjs',
 ];
 
 function shippedBins(installerText) {
