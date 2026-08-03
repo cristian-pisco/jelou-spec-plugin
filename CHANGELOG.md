@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.330] — 2026-08-03
+
+### Fixed
+- guarantee e2e-settings seeding on all three runtimes, not just Claude Code
+
 ## [0.3.329] — 2026-08-03
 
 ### Fixed
