@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.333] — 2026-08-03
+
+### Changed
+- Merge pull request #67 from cristian-pisco/fix/resolve-pr-latency
+
 ## [0.3.332] — 2026-08-03
 
 ### Changed
