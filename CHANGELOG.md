@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.321] — 2026-08-03
+
+### Fixed
+- ship task-index bins to Codex and OpenCode, and stop truncating stdout on a pipe
+
 ## [0.3.320] — 2026-08-03
 
 ### Changed
