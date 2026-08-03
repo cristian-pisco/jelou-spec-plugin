@@ -111,15 +111,80 @@ describe('seed-e2e-settings.mjs — CLI', () => {
   });
 });
 
-describe('SessionStart hook auto-creates the settings file', () => {
-  test('hooks/hooks.json wires SessionStart to seed-e2e-settings.mjs', () => {
-    const hooks = JSON.parse(read('hooks/hooks.json'));
-    const starts = hooks.hooks.SessionStart ?? [];
-    const commands = starts.flatMap((g) => (g.hooks ?? []).map((h) => h.command));
+const SEEDS_SETTINGS = /seed-e2e-settings\.mjs/;
+
+const sessionStartCommands = (hooksRelPath) => {
+  const hooks = JSON.parse(read(hooksRelPath));
+  const starts = hooks.hooks.SessionStart ?? [];
+  return starts.flatMap((g) => (g.hooks ?? []).map((h) => h.command));
+};
+
+describe('startup seeding parity across all three runtimes', () => {
+  test('Claude Code: hooks/hooks.json wires SessionStart to the seed script', () => {
     assert.ok(
-      commands.some((c) => /seed-e2e-settings\.mjs/.test(c)),
-      'SessionStart must run seed-e2e-settings.mjs',
+      sessionStartCommands('hooks/hooks.json').some((c) => SEEDS_SETTINGS.test(c)),
+      'hooks/hooks.json SessionStart must run seed-e2e-settings.mjs',
     );
+  });
+
+  test('Codex: .codex/hooks.json wires SessionStart to the seed script', () => {
+    assert.ok(
+      sessionStartCommands('.codex/hooks.json').some((c) => SEEDS_SETTINGS.test(c)),
+      '.codex/hooks.json SessionStart must run seed-e2e-settings.mjs',
+    );
+  });
+
+  test('Codex: a global install writes SessionStart into its generated hooks.json', () => {
+    const installer = read('bin/install-codex.sh');
+    const generated = installer.slice(installer.indexOf('cat > "$HOOKS_FILE"'));
+    assert.ok(generated.length > 0, 'install-codex.sh must generate a hooks.json');
+    assert.match(generated, /"SessionStart"[\s\S]*seed-e2e-settings\.mjs/);
+  });
+
+  test('OpenCode: the guard plugin seeds in its factory body, before returning hooks', () => {
+    const plugin = read('.opencode/plugins/guard.ts');
+    assert.match(plugin, /import \{ trySeedSettings \} from "\.\.\/\.\.\/bin\/seed-e2e-settings\.mjs"/);
+    const call = plugin.indexOf('trySeedSettings()');
+    const hooksReturn = plugin.indexOf('return {');
+    assert.ok(call > 0, 'guard.ts must call trySeedSettings()');
+    assert.ok(
+      call < hooksReturn,
+      'trySeedSettings() must run at plugin startup, not inside a tool hook',
+    );
+  });
+});
+
+describe('the read path seeds on any runtime, with no hook at all', () => {
+  test('trySeedSettings creates the file and reports failure as null, never throws', () => {
+    const home = freshHome();
+    assert.equal(mod.trySeedSettings(home).created, true);
+    assert.ok(existsSync(mod.userSettingsPath(home)));
+    assert.equal(mod.trySeedSettings(home).created, false);
+  });
+
+  test('resolveVideoMode creates the settings file when it is absent', () => {
+    const home = freshHome();
+    assert.equal(existsSync(mod.userSettingsPath(home)), false);
+    mod.resolveVideoMode(home, {});
+    assert.ok(existsSync(mod.userSettingsPath(home)), 'reading the mode must seed the file');
+  });
+
+  test('resolveRetentionDays creates the settings file when it is absent', () => {
+    const home = freshHome();
+    assert.equal(existsSync(mod.userSettingsPath(home)), false);
+    mod.resolveRetentionDays(home);
+    assert.ok(existsSync(mod.userSettingsPath(home)), 'reading retention must seed the file');
+  });
+
+  test('the seeding read never clobbers a user-edited file', () => {
+    const home = freshHome();
+    const p = mod.userSettingsPath(home);
+    mkdirSync(dirname(p), { recursive: true });
+    const edited = JSON.stringify({ video: { mode: 'off' }, retentionDays: 3 });
+    writeFileSync(p, edited);
+    assert.equal(mod.resolveVideoMode(home, {}), 'off');
+    assert.equal(mod.resolveRetentionDays(home), 3);
+    assert.equal(readFileSync(p, 'utf8'), edited);
   });
 });
 

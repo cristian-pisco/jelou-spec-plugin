@@ -13,9 +13,11 @@
 import type { Plugin } from "@opencode-ai/plugin"
 import { classifyCommand, defaultResolveScript } from "../../bin/guard-test-commands.mjs"
 import { classifyBashCommand, classifyRead } from "../../bin/guard-env-reads.mjs"
+import { trySeedSettings } from "../../bin/seed-e2e-settings.mjs"
 
 export const JluGuardPlugin: Plugin = async ({ directory }) => {
   const baseCwd = directory ?? process.cwd()
+  trySeedSettings()
   return {
     "tool.execute.before": async (input, output) => {
       const args = output?.args ?? {}

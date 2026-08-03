@@ -238,6 +238,13 @@ cat > "$HOOKS_FILE" <<JSON
           { "type": "command", "command": "node \"$BIN_DIR/guard-env-reads.mjs\"", "statusMessage": "jlu: checking for .env secret exposure" }
         ]
       }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          { "type": "command", "command": "node \"$BIN_DIR/seed-e2e-settings.mjs\"", "statusMessage": "jlu: ensuring ~/.jlu/e2e-settings.json exists" }
+        ]
+      }
     ]
   }
 }
