@@ -4,8 +4,13 @@ agent: build
 ---
 Print exactly: ⚠️ `/jlu-create-pr` is deprecated and now runs `/jlu-ship`. Please use `/jlu-ship` going forward.
 
+Resolve `<install-root>` first: walk up from THIS command file to the nearest ancestor directory
+that contains a `jelou/` directory. The command lives at `<install-root>/.opencode/commands/` on a
+project install and at `<install-root>/commands/` on a global one, so the depth is not fixed. Never
+assume a literal path: `$OPENCODE_HOME` moves `<install-root>` anywhere.
+
 Then resolve the ship workflow path in this order:
-1. `<HOME>/.config/opencode/jelou/workflows/ship.md` (global install preferred; resolve `<HOME>` to an absolute path first)
+1. `<install-root>/jelou/workflows/ship.md` (install preferred)
 2. `jelou/workflows/ship.md` (project-local fallback)
 
 Resolution rules:

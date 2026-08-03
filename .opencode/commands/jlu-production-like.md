@@ -4,8 +4,13 @@ agent: build
 ---
 Print exactly: ⚠️ `/jlu-production-like` is deprecated and now runs `/jlu-goal`. Please use `/jlu-goal` going forward.
 
+Resolve `<install-root>` first: walk up from THIS command file to the nearest ancestor directory
+that contains a `jelou/` directory. The command lives at `<install-root>/.opencode/commands/` on a
+project install and at `<install-root>/commands/` on a global one, so the depth is not fixed. Never
+assume a literal path: `$OPENCODE_HOME` moves `<install-root>` anywhere.
+
 Then resolve the goal workflow path in this order:
-1. `<HOME>/.config/opencode/jelou/workflows/goal.md` (global install preferred; resolve `<HOME>` to an absolute path first)
+1. `<install-root>/jelou/workflows/goal.md` (install preferred)
 2. `jelou/workflows/goal.md` (project-local fallback)
 
 Resolution rules:
