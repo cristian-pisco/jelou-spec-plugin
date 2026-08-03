@@ -11,6 +11,8 @@ Inputs:
 - `argument`: optional PR URL or number (overrides branch detection), plus the
   optional flag `--autonomous`.
 - `cwd`: the user's current working directory (must be inside the target repo).
+- `spec_path` (optional): the governing SPEC.md when a task chain dispatched
+  this run; enables the Step 6 scope guard.
 
 ---
 
@@ -317,6 +319,16 @@ smuggle code into an unattended push. Untrusted authors escalate
 (`untrusted-comment-author`) regardless of category. Interactive mode skips
 this gate: the human sees every change.
 
+**Scope guard (only when `spec_path` was provided).** Read the spec's scope
+and out-of-scope sections once, before the first thread. A comment whose fix
+would extend shared infrastructure, add or widen a public API, or touch a
+subsystem the spec puts out of scope is out-of-spec-scope REGARDLESS of its
+category above: interactive asks, quoting the spec section; autonomous
+escalates (`out-of-spec-scope`) and replies with the declined template.
+Applying such a suggestion only to revert it later costs a full extra
+CI + re-review cycle — escalating first is always cheaper. Standalone runs
+without a spec skip this guard.
+
 **6.3 Apply or ask.** Mandatory categories: minimal diff, only what the
 comment asks, never refactor surroundings. Extensive refactor: interactive
 asks (apply on "s", skip-and-reply on "n"); autonomous escalates and replies
@@ -525,6 +537,17 @@ autonomous escalates (`lint-unfixable`).
 
 ## Step 10 — Commit & push (guarded)
 
+**One push per cycle — enforced at this step, not just declared in the hard
+rules.** Everything the cycle produced — thread fixes (Step 6), CI fixes
+(Step 7), Sonar fixes (Step 8), lint/format (Step 9) — lands in ONE commit
+and ONE push. Never push between steps: every extra push re-triggers the
+review bots and the full CI matrix, CodeRabbit rate-limits after a few, and
+each re-trigger burns wall-clock plus the cycle budget. If mid-cycle fix
+commits exist, collapse them into the single cycle commit
+(`git reset --soft` back to the pre-fix HEAD, then commit once) — they are
+unpushed, so nothing shared is rewritten; the Step 3 merge commit is the one
+exception and rides along in the same push.
+
 After all threads, CI fixes, and the Sonar phase — stage ONLY the files this
 run modified (track them as you edit), never `git add -A`: the Sonar phase
 may leave `.scannerwork/` at the repo root and test/lint runs emit coverage
@@ -604,10 +627,15 @@ reconciliation shares this budget — it never adds cycles).
    polling within the watch budget) and every check is terminal in
    {success, neutral, skipped}.
 2. No unresolved actionable review threads remain. After the LAST green watch,
-   wait `review_wait` once more and re-fetch threads (Step 5 query): review
-   bots re-review the final push. New actionable threads + cycle budget
-   remaining → run one more Step 6 round. Budget spent → report those threads
-   as escalated/unresolved — the PR is NOT declared green.
+   re-arm the Step 4 review-arrival gate against the final head SHA — poll
+   every 30s bounded by `review_wait`, same early-open conditions — instead
+   of sleeping the full window: review bots re-review the final push and the
+   gate opens the moment their review or check lands. If the run pushed
+   nothing since the last thread fetch, skip this wait entirely — no
+   re-review is coming. Then re-fetch threads (Step 5 query). New actionable
+   threads + cycle budget remaining → run one more Step 6 round. Budget spent
+   → report those threads as escalated/unresolved — the PR is NOT declared
+   green.
 
 Interactive mode reports the same two halves but lets the user decide when to
 stop.
@@ -641,6 +669,8 @@ PR #<num> — <title>
   ask-paths `git merge --abort` before escalating; security comments and
   SECURITY Sonar clusters escalate; auto-apply requires a trusted author
   (allowlisted bot or write-access collaborator).
+- With a governing spec (`spec_path`), out-of-spec-scope suggestions
+  escalate — never apply-then-revert.
 - Never mark a Sonar hotspot SAFE/ACKNOWLEDGED without an explicit user
   justification; never disable a Sonar rule to silence an issue.
 - Empty check set ≠ green; done requires both halves (checks AND threads).

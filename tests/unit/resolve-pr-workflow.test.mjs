@@ -80,7 +80,25 @@ describe('resolve-pr loop correctness invariants', () => {
   test('done-gate requires both halves: terminal checks and resolved threads', () => {
     assert.match(workflow, /checks\.length > 0/);
     assert.match(workflow, /No unresolved actionable review threads remain/);
-    assert.match(workflow, /wait `review_wait` once more and re-fetch/);
+  });
+
+  test('final review wait is event-driven and skipped when nothing was pushed', () => {
+    assert.match(workflow, /re-arm the Step 4 review-arrival gate/);
+    assert.match(workflow, /same early-open conditions/);
+    assert.match(workflow, /pushed\s*nothing since the last thread fetch, skip this wait/);
+  });
+
+  test('one push per cycle is enforced at Step 10, not only declared', () => {
+    assert.match(workflow, /\*\*One push per cycle — enforced at this step/);
+    assert.match(workflow, /ONE commit\s*and ONE push/);
+    assert.match(workflow, /Never push between steps/);
+  });
+
+  test('scope guard escalates out-of-spec suggestions when a spec governs the run', () => {
+    assert.match(workflow, /`spec_path` \(optional\)/);
+    assert.match(workflow, /\*\*Scope guard \(only when `spec_path` was provided\)\.\*\*/);
+    assert.match(workflow, /`out-of-spec-scope`/);
+    assert.match(workflow, /escalate — never apply-then-revert/);
   });
 
   test('fix cycles are bounded to 2 and thrash is detected', () => {

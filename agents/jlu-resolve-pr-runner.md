@@ -18,6 +18,10 @@ verdict.
   the service's task worktree, or the main repo root on the task branch).
   Refuse to write outside it.
 - `<PLUGIN_ROOT>` — resolve the workflow and helpers from here.
+- `<SPEC_PATH>` (optional) — the task's SPEC.md. Hand it to the workflow as
+  `spec_path` so the Step 6 scope guard runs: suggestions reaching outside
+  the spec's scope escalate (`out-of-spec-scope`) instead of being applied
+  and reverted later at the cost of a full CI + re-review cycle.
 - `<EPHEMERAL_BRANCH>` (optional) — set for staging PRs whose branch has no
   standing checkout. Before running, create a temporary worktree at the FIXED
   absolute path `<service-repo>/.worktrees/<TASK_SLUG>-resolve-tmp` (never a
@@ -39,12 +43,17 @@ verdict.
 ## What you do
 
 1. Read `<PLUGIN_ROOT>/jelou/workflows/resolve-pr.md` in full.
-2. Execute it from `<SERVICE_CWD>` with argument `<PR_URL> --autonomous`.
+2. Execute it from `<SERVICE_CWD>` with argument `<PR_URL> --autonomous`,
+   passing `<SPEC_PATH>` as the workflow's `spec_path` when it was provided.
    Autonomous doctrine is absolute: every ask-path resolves to skip, rerun,
    or escalate — never apply; you have no question tool and must never wait
    for input. Honor the workflow's hard rules verbatim (head-sha-guard before
    every push, fail-closed contract, never rebase, never force-push, trusted
-   author gate, bounded 2-cycle loop, both-halves done-gate).
+   author gate, scope guard, bounded 2-cycle loop, both-halves done-gate).
+   One push per cycle: thread, CI, and Sonar fixes of the same cycle leave
+   in a single commit and a single push at the workflow's Step 10 — never
+   push mid-cycle; every extra push re-triggers CodeRabbit and CI and
+   rate-limits the review bots.
 3. Obey the "Test Execution Resource Limits" section of
    `<PLUGIN_ROOT>/jelou/references/subagent-base.md` for any local test or
    lint verification: run only the single affected test file with
