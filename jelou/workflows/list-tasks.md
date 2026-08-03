@@ -10,21 +10,14 @@ table of the local tasks in the active workspace so the user can see what exists
 glance. This is the multi-task counterpart to `/jlu-report-task` (which drills into one
 task) and `/jlu-load-context` (which reloads one task into a session).
 
-## Step 1 — Resolve the scanner
+## Step 1 — Run the scanner
 
 The deterministic scan + parse lives in `bin/list-tasks.mjs`. It resolves the workspace
 itself (from `.spec-workspace.json` or a parent `.spec-workspace/specs/`), scans
 `specs/<date>/<slug>/`, and reads each task's `TASKS.md` (lifecycle state, sprint,
 affected services) and `SPEC.md` (title).
 
-Resolve it per `jelou/references/plugin-root.md`: `<root>` is the directory **two levels above
-this workflow file**, and the scanner is at `<root>/bin/list-tasks.mjs`. Never invoke it through
-`${PLUGIN_ROOT:-.}` — no runtime exports `PLUGIN_ROOT`, so on Codex and OpenCode it collapses to
-`.` and the scanner is looked up inside the user's service repo, where it does not exist.
-
-## Step 2 — Run the scanner
-
-Substitute the `<root>` you just resolved and run, from the current working directory:
+Run, from the current working directory:
 
 ```bash
 node "<root>/bin/list-tasks.mjs" --cwd "$PWD"
@@ -50,7 +43,7 @@ Run `/jlu-list-tasks` from a registered service repository, or run `/jlu-new-tas
 
 Do not fabricate a task list.
 
-## Step 3 — Present the table
+## Step 2 — Present the table
 
 Print the scanner's table output directly (it is already a formatted, aligned table). Then
 add a one-line footer:

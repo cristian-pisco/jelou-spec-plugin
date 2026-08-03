@@ -66,9 +66,28 @@ describe('plugin-root resolution — the PLUGIN_ROOT shell form is a ratchet', (
   });
 });
 
-describe('plugin-root reference — states the rule once', () => {
+describe('plugin-root reference — states the rule once, and only once', () => {
   const reference = 'jelou/references/plugin-root.md';
   const body = read(reference);
+
+  test('no other surface restates the rule', () => {
+    const tells = [/two levels above/i, /no runtime exports/i, /never fall back to `\$PLUGIN_ROOT`/i];
+    const offenders = [];
+    for (const surface of markdownSurfaces()) {
+      if (surface === reference) continue;
+      const text = read(surface);
+      const hits = tells.filter((t) => t.test(text)).length;
+      if (hits >= 2) offenders.push(surface);
+    }
+    assert.deepEqual(
+      offenders,
+      [],
+      `${reference} is the single source for this rule. A surface that restates it drifts from the ` +
+        'reference silently, and only the reference is tested. Angle-bracket placeholders are ' +
+        'self-evident and every agent already knows the path it read the surface from, so the ' +
+        'restatement buys nothing — delete it and let the reference carry the rule.',
+    );
+  });
 
   test('names the layout invariant for every surface kind', () => {
     for (const fragment of [
@@ -103,9 +122,5 @@ describe('plugin-root reference — states the rule once', () => {
   test('states the shipping requirement with both installers and the test', () => {
     assert.match(body, /FEATURE_BINS/);
     assert.match(body, /installer-manifest\.test\.mjs/);
-  });
-
-  test('list-tasks cites the reference instead of restating the rule', () => {
-    assert.match(read('jelou/workflows/list-tasks.md'), /jelou\/references\/plugin-root\.md/);
   });
 });

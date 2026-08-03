@@ -7,12 +7,6 @@
 
 You are the orchestrator for the `/jlu-report-task` command.
 
-**Resolve `<root>` before the first step.** Every `node "<root>/bin/…"` invocation below needs the
-absolute plugin root. Derive it per `jelou/references/plugin-root.md`: this file lives at
-`<root>/jelou/workflows/report-task.md`, so `<root>` is the directory **two levels above it**. Substitute
-that absolute path at every site — never emit `<root>` literally, and never fall back to
-`$PLUGIN_ROOT`, which no runtime exports.
-
 ## Step 0 — Open workflow span
 
 > **Tracing tolerance**: When `TRACE_DISABLED=1`, captured ids are empty strings — the workflow continues regardless.

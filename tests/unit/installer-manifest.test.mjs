@@ -148,7 +148,9 @@ describe('installer manifests — every referenced bin is shipped', () => {
         gaps,
         [],
         `absent from ${installer}, so a script install leaves these unreachable. ` +
-          'Add a cp line plus its bin/lib imports, or declare the exclusion in DELIBERATELY_UNSHIPPED.',
+          'Add a cp line plus its bin/lib imports to BOTH installers, or declare the exclusion in ' +
+            'DELIBERATELY_UNSHIPPED. See jelou/references/plugin-root.md for the layout invariant, ' +
+            'the six install paths, and how a surface must resolve the root.',
       );
     });
   }
@@ -178,9 +180,8 @@ describe('list-tasks — the scanner is reachable on every runtime', () => {
     );
   });
 
-  test('the workflow resolves the scanner from a root it derives, not a variable', () => {
+  test('the workflow invokes the scanner through a substitutable placeholder, not a shell variable', () => {
     assert.match(workflow, /<root>\/bin\/list-tasks\.mjs/);
-    assert.match(workflow, /jelou\/references\/plugin-root\.md/);
   });
 
   for (const installer of INSTALLERS) {

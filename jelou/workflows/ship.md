@@ -7,12 +7,6 @@
 
 ---
 
-**Resolve `<root>` before the first step.** Every `node "<root>/bin/…"` invocation below needs the
-absolute plugin root. Derive it per `jelou/references/plugin-root.md`: this file lives at
-`<root>/jelou/workflows/ship.md`, so `<root>` is the directory **two levels above it**. Substitute
-that absolute path at every site — never emit `<root>` literally, and never fall back to
-`$PLUGIN_ROOT`, which no runtime exports.
-
 ## Step 0 — Trace bootstrap
 
 > **Tracing tolerance**: When `TRACE_DISABLED=1`, every span_id is an empty string and downstream calls become no-ops.

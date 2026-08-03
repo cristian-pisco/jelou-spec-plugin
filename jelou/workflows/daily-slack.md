@@ -11,12 +11,6 @@
 
 You are the orchestrator for the `/jlu-daily-slack` command. You generate a Slack message from sprint task data and a channel template, then post it after user approval.
 
-**Resolve `<plugin-root>` once, before Step 1.** Six steps below run a `bin/daily-slack-*.mjs`
-script. Derive the root per `jelou/references/plugin-root.md`: this file lives at
-`<root>/jelou/workflows/daily-slack.md`, so the plugin root is the directory **two levels above
-it**. Substitute that absolute path at every `<plugin-root>` site. Never fall back to
-`$PLUGIN_ROOT` — no runtime exports it.
-
 ## Step 1 — Parse Arguments
 
 1. Parse `<sprint> #channel` from arguments.

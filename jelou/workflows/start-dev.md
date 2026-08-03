@@ -7,12 +7,6 @@
 Inputs:
 - `cwd`: the user's current working directory.
 
-**Resolve the plugin root before the first step.** Steps below run a `bin/*.mjs` script. Derive it
-per `jelou/references/plugin-root.md`: this file lives at `<root>/jelou/workflows/start-dev.md`, so the
-plugin root is the directory **two levels above it**. Substitute that absolute path wherever this
-workflow writes `<plugin-root>` or `{plugin-root}`. Never fall back to `$PLUGIN_ROOT`, which no
-runtime exports.
-
 ## Step 1 — Resolve workspace and config
 
 ```bash
