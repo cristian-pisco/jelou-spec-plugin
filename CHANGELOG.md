@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.329] — 2026-08-03
+
+### Fixed
+- derive the OpenCode install root instead of hardcoding ~/.config/opencode
+
 ## [0.3.328] — 2026-08-03
 
 ### Internal
