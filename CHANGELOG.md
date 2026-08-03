@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.326] — 2026-08-03
+
+### Fixed
+- make the task pipeline's bins reachable on Codex and OpenCode
+
 ## [0.3.325] — 2026-08-03
 
 ### Fixed
