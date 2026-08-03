@@ -10,17 +10,36 @@ table of the local tasks in the active workspace so the user can see what exists
 glance. This is the multi-task counterpart to `/jlu-report-task` (which drills into one
 task) and `/jlu-load-context` (which reloads one task into a session).
 
-## Step 1 — Run the scanner
+## Step 1 — Resolve the scanner
 
 The deterministic scan + parse lives in `bin/list-tasks.mjs`. It resolves the workspace
 itself (from `.spec-workspace.json` or a parent `.spec-workspace/specs/`), scans
 `specs/<date>/<slug>/`, and reads each task's `TASKS.md` (lifecycle state, sprint,
 affected services) and `SPEC.md` (title).
 
-Run, from the current working directory:
+Resolve it **relative to this workflow file**, not from a variable. This file lives at
+`<root>/jelou/workflows/list-tasks.md` and the scanner at `<root>/bin/list-tasks.mjs`, so
+`<root>` is the directory two levels above this file. That relationship holds on every
+install path — Claude Code marketplace, `bin/install-codex.sh` global and project-local,
+`bin/install-opencode.sh` global and project-local, and `codex plugin add`.
+
+Do NOT invoke it through `${PLUGIN_ROOT:-.}`: no runtime exports `PLUGIN_ROOT`, so on
+Codex and OpenCode it collapses to `.` and the scanner is looked up inside the user's
+service repo, where it does not exist.
+
+## Step 2 — Run the scanner
+
+Substitute the `<root>` you just resolved and run, from the current working directory:
 
 ```bash
-node "${PLUGIN_ROOT:-.}/bin/list-tasks.mjs" --cwd "$PWD"
+node "<root>/bin/list-tasks.mjs" --cwd "$PWD"
+```
+
+If that path does not exist, stop and report it as an install problem rather than
+retrying elsewhere:
+
+```
+Scanner not found at `<root>/bin/list-tasks.mjs`. The plugin install is incomplete — reinstall with `/jlu-update`.
 ```
 
 Pass through any filters the user supplied as the command argument:
@@ -36,7 +55,7 @@ Run `/jlu-list-tasks` from a registered service repository, or run `/jlu-new-tas
 
 Do not fabricate a task list.
 
-## Step 2 — Present the table
+## Step 3 — Present the table
 
 Print the scanner's table output directly (it is already a formatted, aligned table). Then
 add a one-line footer:

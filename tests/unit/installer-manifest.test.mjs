@@ -16,6 +16,8 @@ const FEATURE_BINS = [
   'bin/lib/registry/splice.mjs',
   'bin/lib/boot-engine/execute-shared-reuse.mjs',
   'bin/lib/dev-orchestrator/readiness.mjs',
+  'bin/list-tasks.mjs',
+  'bin/task-index.mjs',
 ];
 
 function shippedBins(installerText) {
@@ -37,7 +39,7 @@ function relativeImports(rel) {
   return out;
 }
 
-describe('installer manifests — boot-certification chain shipped everywhere', () => {
+describe('installer manifests — every feature bin ships everywhere', () => {
   for (const installer of INSTALLERS) {
     const shipped = shippedBins(read(installer));
 
@@ -63,6 +65,39 @@ describe('installer manifests — boot-certification chain shipped everywhere', 
             queue.push(dep);
           }
         }
+      }
+    });
+  }
+});
+
+describe('list-tasks — the scanner is reachable on every runtime', () => {
+  const workflow = read('jelou/workflows/list-tasks.md');
+
+  test('the scanner is not invoked through the undefined PLUGIN_ROOT fallback', () => {
+    assert.doesNotMatch(
+      workflow,
+      /\$\{PLUGIN_ROOT:-\.\}\/bin\/list-tasks\.mjs/,
+      'no runtime exports PLUGIN_ROOT, so this collapses to ./bin/list-tasks.mjs inside the service repo',
+    );
+  });
+
+  test('the workflow resolves the scanner relative to its own location', () => {
+    assert.match(workflow, /<root>\/bin\/list-tasks\.mjs/);
+    assert.match(workflow, /two levels above this file/);
+  });
+
+  for (const installer of INSTALLERS) {
+    test(`${installer} ships the whole task-index chain`, () => {
+      const shipped = shippedBins(read(installer));
+      for (const bin of [
+        'bin/list-tasks.mjs',
+        'bin/task-index.mjs',
+        'bin/lib/task-index/extract.mjs',
+        'bin/lib/task-index/scan.mjs',
+        'bin/lib/task-index/render.mjs',
+        'bin/lib/task-index/workspace.mjs',
+      ]) {
+        assert.ok(shipped.has(bin), `${bin} missing from ${installer}`);
       }
     });
   }
