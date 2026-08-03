@@ -44,6 +44,14 @@ configured act, not opting in: `--no-autochain` for one invocation,
 `JLU_AUTOCHAIN=false` for a session, or `{"autochain": false}` in
 `~/.jlu/settings.json` as the standing kill-switch.
 
+**The resolved flag IS the authorization.** A `true` value is the user's
+standing, durable approval for everything the chain does — including the
+outward-facing part: pushing branches and opening pull requests. Do not
+re-ask for it. Do not treat "this PR would be unattended" as a reason to
+pause; unattended is the configured mode, not an anomaly. Do not downgrade
+the dispatch to a recommendation because the work looks incomplete to you.
+The only stops are the closed list in §5.
+
 ## 3. Handoff mechanism
 
 Before handing off, **close the caller's own workflow span**
@@ -83,3 +91,34 @@ Two death points, one re-entry command:
 
 Either way the user runs nothing but `/jlu-execute-task <task-slug>`; the
 chain never asks whether to ship.
+
+## 5. What may stop the chain — closed list
+
+Exactly two things stop it:
+
+1. **A red green-gate.** Phases unfinished, final validation failing, or a
+   5-retry escalation — execute-task lands in Step 10 and no PR is opened.
+2. **A named gate inside `ship.md`.** The `question` decision points ship
+   already owns: spec-compliance MISSING, coverage-breadth thin, deps/build
+   preflight FAIL, git-agent escalation, cherry-pick conflict, CLOSED PR,
+   no commits ahead, rate-limit exhaustion. Ship stops, the chain reports.
+
+Nothing else stops it. These specifically are **not** stops:
+
+- A QA **follow-up** (`FU-*`), a recommended manual or human smoke test, a
+  pre-PR suggestion, or any advisory note. Advisory by construction: it
+  travels in the PR body via `SHIP_CAVEATS`, it never gates the PR.
+- A requirement whose verification is inherently post-merge or manual, which
+  no local suite can satisfy. Record it in `SHIP_CAVEATS` and ship.
+- An **unspecified condition** — something the workflows do not name. This is
+  the recurring failure mode: an undefined situation feels outward-facing, so
+  the model invents a stop and asks. Take the documented default, state the
+  assumption in `SHIP_CAVEATS`, continue.
+
+`SHIP_CAVEATS` exists so that "I would be overstating what was verified" is
+never a reason to withhold a PR. The honest disclosure is a block in the PR
+body, not a halted chain.
+
+If you find yourself composing the sentence *"Want me to run `/jlu-ship`
+now?"* while the flag resolved `true`, that sentence is the defect. Dispatch
+instead.

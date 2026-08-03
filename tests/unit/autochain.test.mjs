@@ -10,7 +10,20 @@ const read = (rel) => readFileSync(join(ROOT, rel), 'utf8');
 const executeTask = read('jelou/workflows/execute-task.md');
 const newTask = read('jelou/workflows/new-task.md');
 const refineTask = read('jelou/workflows/refine-task.md');
+const ship = read('jelou/workflows/ship.md');
 const runnerAgent = read('agents/jlu-resolve-pr-runner.md');
+
+const slice = (md, startHeader, endHeader) => {
+  const start = md.indexOf(startHeader);
+  assert.notEqual(start, -1, `missing section header: ${startHeader}`);
+  const end = md.indexOf(endHeader, start + startHeader.length);
+  assert.notEqual(end, -1, `missing terminator header: ${endHeader}`);
+  return md.slice(start, end);
+};
+
+const step95 = slice(executeTask, '## Step 9.5 — Auto-chain', '## Step 10 — Failure Path');
+const step8c = slice(executeTask, '### 8c. Comprehensive QA', '### 8d.');
+const step9 = slice(executeTask, '## Step 9 — Success Path', '## Step 9.5 — Auto-chain');
 
 describe('autochain surfaces', () => {
   test('settings helper, template, runner agent, and mirrors exist', () => {
@@ -53,8 +66,28 @@ describe('autochain surfaces', () => {
 describe('execute-task auto-chain (Step 9.5)', () => {
   test('chain fires only from the success path green-gate', () => {
     assert.match(executeTask, /## Step 9\.5 — Auto-chain \(ship → PRs green\)/);
-    assert.match(executeTask, /Runs ONLY from the Step 9 success path/);
-    assert.match(executeTask, /never opens an unattended PR/);
+    assert.match(step95, /Runs ONLY from the Step 9 success path/);
+    assert.match(step95, /a PR is only ever opened on a green gate/);
+  });
+
+  test('the never-ask invariant lives inside Step 9.5, not only in the resume branch', () => {
+    assert.match(step95, /\*\*Never ask the user to confirm shipping\*\*/);
+    assert.match(step95, /standing authorization to ship/);
+    assert.match(step95, /Want me to run `\/jlu-ship`\s*now\?/);
+    assert.match(step95, /closed list in §5/);
+  });
+
+  test('Step 9.5 names the non-stops explicitly', () => {
+    assert.match(step95, /is \*\*not\*\* a stop/);
+    assert.match(step95, /inherently post-merge/);
+    assert.match(step95, /overstate what was verified/);
+    assert.match(step95, /SHIP_CAVEATS/);
+  });
+
+  test('Step 9 prints the manual /jlu-ship line only when the chain is off', () => {
+    assert.match(step9, /\*\*Chain on\*\* \(`true`\)/);
+    assert.match(step9, /\*\*Chain off\*\*/);
+    assert.match(step9, /Do \*\*not\*\* print a `\/jlu-ship` line/);
   });
 
   test('flag resolution goes through jlu-settings with per-invocation opt-out', () => {
@@ -134,6 +167,55 @@ describe('execute-task auto-chain (Step 9.5)', () => {
     assert.match(executeTask, /skip Steps 3b–9 entirely and go straight to \*\*Step 9\.5\*\*/);
     assert.match(executeTask, /\*\*Never ask the user to confirm shipping\*\*/);
     assert.match(executeTask, /Resolved not `true` → the chain is opt-out/);
+  });
+});
+
+describe('advisory findings never stop the chain', () => {
+  test('8c triages QA findings into blocking vs advisory', () => {
+    assert.match(step8c, /Finding classification — advisory vs blocking/);
+    assert.match(step8c, /A QA agent cannot create a gate/);
+    assert.match(step8c, /requires\s*a smoke test/);
+    assert.match(step8c, /NEVER blocks Step 9 or Step 9\.5/);
+    assert.match(step8c, /\*\*Store\*\*: `SHIP_CAVEATS`/);
+  });
+
+  test('the QA agent emits advisory rows and cannot create a merge gate', () => {
+    const qa = read('agents/jlu-qa-agent.md');
+    assert.match(qa, /### Advisory \/ Not Verifiable Here/);
+    assert.match(qa, /become the orchestrator's\s*`SHIP_CAVEATS`/);
+    assert.match(qa, /You cannot create a merge gate/);
+    assert.match(qa, /never phrased as\s*"must be verified before merge"/);
+  });
+
+  test('an ignored E2E suite path resolves without a question', () => {
+    assert.match(executeTask, /### Step 8g — Ignored suite path/);
+    assert.match(executeTask, /git check-ignore -v <suite-path>/);
+    assert.match(executeTask, /local, uncommitted\*\* rule/);
+    assert.match(executeTask, /committed repo rule\*\*/);
+    assert.match(executeTask, /disclosure, not a\s*stop, and never a question/);
+  });
+
+  test('ship renders the caveats in both PR bodies and never drops them', () => {
+    assert.match(ship, /\*\*Caller inputs \(optional\)\.\*\*/);
+    assert.match(ship, /### Not verified by this PR/);
+    assert.match(ship, /Never silently drop a caveat/);
+    assert.match(ship, /never let a caveat become a reason to\s*skip PR creation/);
+    assert.match(ship, /append the same `### Not verified by this PR`/);
+    assert.match(ship, /never insert an extra "shall I open the PR\?"/);
+  });
+
+  test('9.5b hands the caveats to ship', () => {
+    assert.match(step95, /Hand\s*ship the `SHIP_CAVEATS` list/);
+  });
+
+  test('the recipe carries a closed list of legitimate stops', () => {
+    const recipe = read('jelou/references/autochain-handoff.md');
+    assert.match(recipe, /## 5\. What may stop the chain — closed list/);
+    assert.match(recipe, /The resolved flag IS the authorization/);
+    assert.match(recipe, /unattended is the configured mode, not an anomaly/);
+    assert.match(recipe, /Nothing else stops it/);
+    assert.match(recipe, /\*\*unspecified condition\*\*/);
+    assert.match(recipe, /that sentence is the defect/);
   });
 });
 

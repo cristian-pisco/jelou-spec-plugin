@@ -240,6 +240,14 @@ From orchestrator Step 8b affected-tests results (no QA re-run; full suite is /j
 |----|------|----------|----------|----------|------------|
 | QA-1 | `<SPEC/CONVENTIONS/STRUCTURE rule>` | `src/file.ts:10` | HIGH/MEDIUM/LOW | ... | ... |
 
+### Advisory / Not Verifiable Here
+| ID | What | Why it cannot be verified in this pipeline | Where it belongs |
+|----|------|-------------------------------------------|------------------|
+| AD-1 | <the check you would want> | <needs a real deployed consumer / post-merge / human judgement> | PR disclosure / post-deploy |
+
+(Empty table when there is nothing. These rows become the orchestrator's
+`SHIP_CAVEATS` and are published in the PR body — they are NOT merge gates.)
+
 ### Verdict
 PASS — task is ready to transition to `ready_to_publish`.
 FAIL — <summary of what must be fixed>
@@ -263,6 +271,11 @@ Before finalizing your report, verify:
 - You do NOT modify tests. You verify that tests are sufficient.
 - Omit any finding that cannot cite a SPEC requirement, repository document, or catalog rule.
 - A FAIL verdict requires a blocking severity defined by the cited rule.
+- You cannot create a merge gate. Anything you want a human to check before or
+  after merge goes in `Advisory / Not Verifiable Here` — never phrased as
+  "must be verified before merge" or "do not merge until". Those rows are
+  published in the PR, not enforced, and they never hold a PR back. A FAIL is
+  reserved for something this pipeline can fix in-session.
 - Per-phase validation reads only the phase requirements and changed files.
 - Final validation reads every changed file and every applicable SPEC requirement.
 - For per-phase validation: do NOT run tests. Read code only. The implementer already verified green.

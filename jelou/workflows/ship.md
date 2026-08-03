@@ -123,6 +123,16 @@ For **Step 8** (`gh pr edit`), on exhaustion: warn "Cross-reference update for <
 
 **Store**: `TASK_DIR`, `TASK_SLUG`, `WORKSPACE_PATH`
 
+**Caller inputs (optional).** Running inside the autochain (execute-task Step
+9.5b), the caller hands over `SHIP_CAVEATS` — advisory lines from Steps
+8c/8e/8f/8g that must be disclosed in every PR body (Step 7d). Absent or
+empty on a standalone `/jlu-ship` run. A caller-driven run adds **no**
+confirmation of its own beyond the named gates in this workflow: the chain
+already carries the user's standing authorization to ship
+(`autochain-handoff.md` §2), so never insert an extra "shall I open the PR?"
+question, and when the slug arrives as an argument the Step 1.2e confirmation
+does not apply.
+
 ---
 
 ## Step 2 — Load Task State
@@ -205,9 +215,50 @@ Read and cache task artifacts in one pass (single parallel tool-call message whe
 
 ---
 
-## Step 3 — Iterate Over Affected Services
+## Step 3 — Fan Out Per Service (one runner each)
 
-For each affected service, execute Steps 4–7. Collect results into a `PR_RESULTS` map:
+> **Orchestrator delegates. One subagent per service; you never run Steps 4–7 yourself.**
+
+For each affected service, dispatch `jlu-ship-runner` with model
+**MODEL_CONFIG.code** (default sonnet) and these inputs: `<TASK_SLUG>`,
+`<TASK_DIR>`, `<SERVICE_ID>`, `<SERVICE_CWD>` (resolved per Step 4 — the
+orchestrator resolves it, the runner does not), `<PLUGIN_ROOT>`,
+`<SETUP_MODE>`, `<DUAL_PR>`, this service's `<SYNC_MARKERS>`, `<TASK_TITLE>`,
+`<PROBLEM_STATEMENT>`, `<PROPOSAL_SUMMARY>`, this service's `<PHASE_PROGRESS>`
+and `<TEST_SUMMARY>`, `<COMPLIANCE_REPORT>`, and `<SHIP_CAVEATS>`. Wrap each
+dispatch in the span wrapper (`--agent ship-runner`).
+
+**Sequentially, concurrency 1.** Step 4b.2 runs a real build inside the runner;
+two concurrent runners mean two concurrent builds, which is the documented
+machine-freeze condition in `jelou/references/subagent-base.md`. The win here is
+context isolation — verbose install/build/git/`gh` output never enters the
+orchestrator's window — not wall-clock. Never fan these out in parallel.
+
+**Depth-limited runtimes.** The runner dispatches validators and the git-agent
+itself, which is dispatch depth 2 — Codex defaults to `agents.max_depth = 1`.
+Where depth 2 is unavailable, keep the fan-out and drop the nesting: the runner
+still runs as the one subagent per service and performs 4b.1/4b.2/5 inline in
+its own session. Never resolve it the other way (running the per-service body in
+the orchestrator to keep the validators dispatched) — isolating the verbose
+per-service output is the whole point of the fan-out.
+
+**Brokering `NEEDS_DECISION`.** The runner cannot ask the user: an
+`AskUserQuestion` one level below the orchestrator reaches nobody. When a runner
+returns `STATUS: NEEDS_DECISION gate=<...> detail=<...> options=<...>`, present
+those options with `question` yourself, then re-dispatch the same runner for the
+same service with `<DECISION>=<the user's answer>`. The runner is idempotent —
+already-pushed work is re-checked, not redone. This is the only reason a gate
+still works: the decision points stay at the orchestrator level where
+`question` functions.
+
+Inside the autochain (execute-task Step 9.5b) a brokered gate is a real chain
+stop, exactly as `autochain-handoff.md` §5 describes — but note what is NOT a
+gate: an unverified requirement, a QA follow-up, or a caveat. Those are
+`<SHIP_CAVEATS>` lines the runner renders in the PR body. Never invent a
+confirmation of your own around the fan-out.
+
+Merge each runner's `rows` into `PR_RESULTS` (and `STAGING_PR`,
+`PREFLIGHT_OVERRIDE`, `SYNC_MARKERS`) as it returns:
 
 ```
 PR_RESULTS[<service-id>] = {
@@ -218,7 +269,11 @@ PR_RESULTS[<service-id>] = {
 }
 ```
 
-**Rate limit throttle**: After completing Steps 4–7 for a service, wait 3 seconds before starting the next service iteration. The delay fires only between services, not after the final service in the loop.
+A `BLOCKED` runner records `action: "skipped"` with its reason and does not
+abort the remaining services — every service gets its runner, and Step 11
+reports the aggregate.
+
+**Rate limit throttle**: After a runner returns for a service, wait 3 seconds before dispatching the next service's runner. The delay fires only between services, not after the final service in the loop.
 
 ---
 
@@ -235,6 +290,13 @@ For the current service, apply the **mode-driven** worktree resolution algorithm
 **Store**: `SERVICE_CWD`
 
 ---
+
+> **Steps 4b–7 are the runner's body, not the orchestrator's.**
+> `jlu-ship-runner` follows them for its one service; they live here as the
+> single source of truth for the mechanics. Read every "present via `question`"
+> in them as "return `STATUS: NEEDS_DECISION` to the caller" when you are the
+> runner — Step 3 brokers it and re-dispatches you with `<DECISION>`. Steps
+> 8–11 belong to the orchestrator again.
 
 ## Step 4b — Ship Preflight (Build + Dependency Validation)
 
@@ -576,6 +638,20 @@ If `PREFLIGHT_OVERRIDE[<service-id>]` is non-empty, prepend this banner before `
 <Test summary from TASKS.md for this service, if available>
 ```
 
+If `SHIP_CAVEATS` is non-empty, append this block after `### Test Results`:
+
+```markdown
+### Not verified by this PR
+- <caveat line, verbatim>
+```
+
+Each line is one advisory item — a QA follow-up, a manual or post-merge
+verification nobody could run locally, an E2E suite that could not be
+committed. This block is why an advisory finding never has to hold a PR back:
+the reviewer learns exactly what was and was not verified, and the PR still
+opens. Never silently drop a caveat, and never let a caveat become a reason to
+skip PR creation.
+
 If `COMPLIANCE_REPORT` exists, append to the PR body:
 
 ```html
@@ -634,7 +710,9 @@ If `STAGING_SYNC[<service-id>] = "rebuild"`, prepend to the PR body (before `## 
 > Note: this branch was rebuilt from `origin/alpha` in the latest run. Prior review comments may be detached from their original commits.
 ```
 
-If `COMPLIANCE_REPORT` exists, append the same `<details>` block used in the trunk PR body.
+If `SHIP_CAVEATS` is non-empty, append the same `### Not verified by this PR`
+block used in the trunk PR body. If `COMPLIANCE_REPORT` exists, append the same
+`<details>` block used in the trunk PR body.
 
 Create the PR:
 

@@ -976,6 +976,33 @@ Pass the QA agent the captured Step 8b results (affected-tests verdict per servi
 - **Code smell detection**: Full structural review
 - **Over-engineering detection**: Verify minimum viable implementation
 
+**Finding classification — advisory vs blocking.** The QA report is triaged
+here, and the classification is closed. A QA agent cannot create a gate: no
+wording in its report ("must be verified by a human before merge", "requires
+a smoke test", "do not merge until…") promotes an item past this triage.
+
+- **Blocking** — only a failing check this pipeline itself owns and can fix
+  in-session: a Coverage-Breadth FAIL, a convention violation with a concrete
+  fix, or a cross-service contract mismatch. Dispatch `jlu-implementer` with
+  model **MODEL_CONFIG.code** (default: sonnet) and `<PLUGIN_ROOT>`, and
+  resolve it before Step 9. Blocking findings never travel to ship.
+- **Advisory** — everything else, whatever the QA agent labelled it
+  (`Advisory / Not Verifiable Here` rows, a `FU-<n>` follow-up, prose "next
+  step"): recommended manual or human smoke tests, verifications that are
+  inherently post-merge or need a real deployed consumer, the
+  `/jlu-test-suite` pre-PR suggestion, and risk notes about code outside this
+  task's scope. Collect each one verbatim as a single line into
+  `SHIP_CAVEATS`.
+
+An advisory finding NEVER blocks Step 9 or Step 9.5. It is published, not
+enforced: ship's Step 7d renders `SHIP_CAVEATS` in the PR body under
+`### Not verified by this PR`, so the reviewer sees the gap and the PR still
+opens. A requirement that only a human can verify is an advisory line, not a
+held PR.
+
+**Store**: `SHIP_CAVEATS` (list of strings, source-tagged `8c`; empty when
+the report is clean)
+
 Log the validation results to terminal:
 ```
 ## Final Validation Results
@@ -1065,6 +1092,31 @@ boot, remain owned exclusively by `/jlu-goal` (Phase 3.5) — the Testcontainers
 carve-out is path-scoped to `test/e2e/**` and the TDD pipeline never *runs* it. It is a
 no-op when no affected backend service exposes a touched endpoint.
 
+### Step 8g — Ignored suite path (applies to 8e and 8f)
+
+A generated suite whose path is excluded by git cannot travel with the PR, and
+silently leaving it uncommitted is worse than either alternative. Decide it
+here — never at ship time, never by asking the user mid-chain:
+
+1. Before committing, in the service worktree resolved in 8e/8f step 1:
+   ```bash
+   git check-ignore -v <suite-path> || echo NOT_IGNORED
+   ```
+2. `NOT_IGNORED` → commit normally, nothing to record.
+3. Excluded by a **local, uncommitted** rule (`check-ignore` points at
+   `.git/info/exclude`, or at a `.gitignore` that is itself untracked) → the
+   exclusion is one developer's local choice and must not decide what a PR
+   contains. Force-add the suite (`git add -f <suite-path>`), commit it, and
+   append one `SHIP_CAVEATS` line naming the override and the rule.
+4. Excluded by a **committed repo rule** (the matching `.gitignore` is tracked)
+   → that is the repo's deliberate convention; do not fight it and do not
+   force-add. Leave the suite uncommitted and append one `SHIP_CAVEATS` line:
+   the suite exists locally at `<path>`, is excluded by `<rule>` from
+   `<file>:<line>`, and is therefore not part of the PR.
+
+Both branches continue to Step 9. An ignored suite path is a disclosure, not a
+stop, and never a question.
+
 ---
 
 ## Step 9 — Success Path
@@ -1098,26 +1150,57 @@ If all validation passes:
    <total: +<insertions> / -<deletions> across <N> files>
 
    ### Next Steps
-   - Run `/jlu-ship` to open the pull request.
-   - After merge, run `/jlu-close-task`.
+   <one of the two blocks below — never both>
    ```
 
-   When the auto-chain fires (Step 9.5), replace the `Next Steps` block above
-   with `Auto-chain engaged — shipping and driving PRs to green (Step 9.5).`
+   Resolve the autochain flag NOW (§2 of
+   `{plugin-root}/jelou/references/autochain-handoff.md`; Step 9.5 reuses this
+   same resolved value) and pick the `Next Steps` block from it:
+
+   - **Chain on** (`true`) → print exactly
+     `Auto-chain engaged — shipping and driving PRs to green (Step 9.5).`
+     then continue into Step 9.5. Do **not** print a `/jlu-ship` line: that
+     line is the manual fallback, and printing it while the chain is on is
+     what turns an autonomous run into a question the user has to answer.
+   - **Chain off** → print the manual block:
+     `- Run /jlu-ship to open the pull request.` and
+     `- After merge, run /jlu-close-task.`
 
 ---
 
 ## Step 9.5 — Auto-chain (ship → PRs green)
 
 Runs ONLY from the Step 9 success path — that IS the green-gate: every phase
-done, final validation green, QA findings resolved. A red gate lands in
-Step 10 and never opens an unattended PR.
+done, final validation green, QA findings triaged per Step 8c. A red gate
+lands in Step 10 instead, so a PR is only ever opened on a green gate.
 
 **Resolve the flag** per §2 of
 `{plugin-root}/jelou/references/autochain-handoff.md` (precedence:
 `--no-autochain` argument > `JLU_AUTOCHAIN` env >
 `node {plugin-root}/bin/jlu-settings.mjs get autochain`). If the resolved
 value is not `true`, stop here — the manual `Next Steps` from Step 9 stand.
+
+**Resolved `true` is the user's standing authorization to ship.** It covers
+the outward-facing act — pushing branches, opening PRs — for this entire
+chain, and it was configured precisely so nobody has to type `/jlu-ship`.
+**Never ask the user to confirm shipping**, and never substitute a
+recommendation for the dispatch: printing *"Want me to run `/jlu-ship`
+now?"* while the flag is `true` is the exact gate this step exists to remove.
+"Unattended" is the configured mode here, not a risk to escalate.
+
+The stops available to you are the closed list in §5 of the recipe — a red
+green-gate, or one of ship's own named `question` gates. Everything else
+continues:
+
+- A QA follow-up (`FU-*`), a manual or human smoke test you cannot perform, a
+  verification that is inherently post-merge, or any advisory finding from
+  Step 8c is **not** a stop. It is already in `SHIP_CAVEATS`.
+- A condition the workflows do not name is **not** a stop. Take the
+  documented default, append one line to `SHIP_CAVEATS`, continue.
+- "Opening this PR would overstate what was verified" is **not** a stop — it
+  is exactly what `SHIP_CAVEATS` publishes. 9.5b hands it to ship, ship's
+  Step 7d renders it in the PR body under `### Not verified by this PR`, and
+  the reviewer sees precisely what was and was not covered.
 
 **9.5a — ClickUp bind (only when an inline reference was given).** If the
 invocation carried a ClickUp task URL or id and `<TASK_DIR>/CLICKUP_TASK.json`
@@ -1133,7 +1216,9 @@ late.)
 read `{plugin-root}/jelou/workflows/ship.md` and follow it in this session
 with argument `<TASK_SLUG>` — the same inline read-and-follow mechanism this
 workflow itself uses — and restore the snapshot after ship's own span close
-(`WORKFLOW_SPAN_ID=$EXEC_SPAN_ID; WORKFLOW_TRACE_ID=$EXEC_TRACE_ID`).
+(`WORKFLOW_SPAN_ID=$EXEC_SPAN_ID; WORKFLOW_TRACE_ID=$EXEC_TRACE_ID`). Hand
+ship the `SHIP_CAVEATS` list accumulated in Steps 8c/8e/8f — it renders in
+every PR body at Step 7d.
 Without the snapshot, ship's span close consumes this workflow's span and the
 final Step N double-closes ship's. All of ship's own gates (spec-compliance
 review, deps/build preflight) apply unchanged; if ship stops on a gate, the
