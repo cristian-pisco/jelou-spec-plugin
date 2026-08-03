@@ -16,6 +16,17 @@
           }
         ]
       }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$(git rev-parse --show-toplevel)/bin/seed-e2e-settings.mjs\"",
+            "statusMessage": "jlu: ensuring ~/.jlu/e2e-settings.json exists"
+          }
+        ]
+      }
     ]
   }
 }

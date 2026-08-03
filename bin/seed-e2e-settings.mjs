@@ -21,6 +21,10 @@ export function seedSettings(home = homedir()) {
   return store.seedSettings(home);
 }
 
+export function trySeedSettings(home = homedir()) {
+  return store.trySeed(home);
+}
+
 export function resolveVideoMode(home = homedir(), environ = env) {
   if (environ.JLU_E2E_VIDEO) return environ.JLU_E2E_VIDEO;
   const settings = store.readSettings(home);
