@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.327] — 2026-08-03
+
+### Fixed
+- ship the last nine bins and make installer distribution a hard gate
+
 ## [0.3.326] — 2026-08-03
 
 ### Fixed
