@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.331] — 2026-08-03
+
+### Fixed
+- pass PLUGIN_ROOT through the agent dispatch contract
+
 ## [0.3.330] — 2026-08-03
 
 ### Fixed
