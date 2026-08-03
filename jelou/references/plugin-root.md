@@ -85,8 +85,29 @@ When you add a bin that any surface invokes:
 2. Add the entry point to `FEATURE_BINS` in `tests/unit/installer-manifest.test.mjs`. The existing
    import-graph closure test then fails if any transitive import is missing from an allowlist.
 
-## Known gap
+## Enforcement
 
-As of v0.3.321 the surfaces reference 48 bins and the installers distribute 17. The 43 unshipped
-bins are tracked with their invocation form and blast radius; `tests/unit/plugin-root-resolution.test.mjs`
-holds the ratchet that stops the list from growing.
+The distribution half is now a **hard gate**, not a ratchet. `tests/unit/installer-manifest.test.mjs`
+asserts that every bin any workflow, agent or skill references is shipped by **both** installers, and
+names the referencing surfaces when one is missing. Adding a `node "<root>/bin/<new-script>.mjs"` line
+to a surface without touching the installers fails the suite.
+
+(That example deliberately keeps the angle brackets. The scanner matches literal `bin/<name>.mjs`
+paths anywhere in a surface file, prose included, so a concrete filename written as an illustration
+would be read as a real reference and reported as an unshipped bin.)
+
+There is exactly one declared exclusion, in `DELIBERATELY_UNSHIPPED`:
+
+| Bin | Why it is not shipped |
+|---|---|
+| `bin/sync-codex.mjs` | A repo-development script. It regenerates the `.codex/` mirrors from `skills/` and `agents/`, neither of which exists in an install, so shipping it would hand users a script that reads absent sources. It is referenced only as an instruction to plugin developers. |
+
+An entry there must stay referenced by some surface and stay absent from both installers — the test
+fails if an exclusion goes stale in either direction, so the list cannot quietly accumulate.
+
+The resolution half still has a ratchet in `tests/unit/plugin-root-resolution.test.mjs`. It is down to
+**four** entries, all agents: `jlu-build-validator`, `jlu-deps-validator`, `jlu-implementer` and
+`jlu-refactor-agent`. They are the one case the self-relative rule above cannot solve, because an
+agent does not reliably know its own path — the dispatcher has to pass `<PLUGIN_ROOT>` as a declared
+input, the way `jlu-test-suite-runner` and `jlu-dev-block-verifier` already receive it. No dispatch
+site does today, so closing those four is a dispatch-contract change.
