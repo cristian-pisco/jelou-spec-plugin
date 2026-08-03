@@ -18,6 +18,20 @@ const FEATURE_BINS = [
   'bin/lib/dev-orchestrator/readiness.mjs',
   'bin/list-tasks.mjs',
   'bin/task-index.mjs',
+  'bin/boot-dev-server.mjs',
+  'bin/build-boot-plan.mjs',
+  'bin/classify-e2e-target.mjs',
+  'bin/classify-task-scope.mjs',
+  'bin/detect-auth-collapse.mjs',
+  'bin/e2e-ensure-account.mjs',
+  'bin/e2e-login-local.mjs',
+  'bin/e2e-login.mjs',
+  'bin/e2e-session-probe.mjs',
+  'bin/e2e-session-sync.mjs',
+  'bin/extract-trace.mjs',
+  'bin/parse-goal-matrix.mjs',
+  'bin/probe-coverage-breadth.mjs',
+  'bin/seed-e2e-settings.mjs',
 ];
 
 function shippedBins(installerText) {

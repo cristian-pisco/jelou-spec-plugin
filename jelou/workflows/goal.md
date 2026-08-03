@@ -29,6 +29,12 @@ No seed system: reuses `dev` blocks + `data_isolation: per-run`. Testcontainers 
 
 ## Process
 
+**Before Phase 0 — resolve `<plugin-root>` once.** Derive it per
+`jelou/references/plugin-root.md`: this file lives at `<root>/jelou/workflows/goal.md`, so the
+plugin root is the directory **two levels above it**. Substitute that absolute path wherever this
+workflow writes `<plugin-root>` or `{plugin-root}`. Never fall back to `$PLUGIN_ROOT` — no runtime
+exports it.
+
 ### Phase 0 — Goal matrix (parse, disambiguate, persist)
 
 0a. **Parse the inline matrix.** Run

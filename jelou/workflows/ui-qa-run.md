@@ -21,6 +21,13 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
 
 ## Process
 
+**Before Phase 1 — resolve `<root>` once.** Every `node "<root>/bin/…"` invocation below needs the
+absolute plugin root. Derive it per `jelou/references/plugin-root.md`: this file lives at
+`<root>/jelou/workflows/ui-qa-run.md`, so `<root>` is the directory **two levels above it**.
+Substitute that absolute path at every site. Never emit `<root>` literally, and never fall back to
+`$PLUGIN_ROOT` — no runtime exports it, so the shell would expand it to empty and every
+invocation would silently target `/bin/…`.
+
 ### Phase 1 — Resolve task and pre-flight
 
 1. **Resolve slug.**
@@ -128,12 +135,12 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
 14a. **Certification mark — only when this run OWNS the boot.** Applies exclusively to the
     standalone case (no `--no-boot`), right after step 14's boot: for each service whose
     `dev` block is unmarked — no `verified` mark, or a `verified.block_hash` that no longer
-    matches `node "$PLUGIN_ROOT/bin/verify-dev-block.mjs" --hash --workspace <workspace> --service <id>`
+    matches `node "<root>/bin/verify-dev-block.mjs" --hash --workspace <workspace> --service <id>`
     (→ `{ "block_hash": "..." }`) — AND whose boot actually STARTED it (its `dev.command`
     executed; a reuse of an already-healthy service never marks) AND whose booted checkout
     is the canonical `svc.path` (a worktree boot never writes the mark) AND whose readiness
     passed, write the mark:
-    `node "$PLUGIN_ROOT/bin/verify-dev-block.mjs" --write-mark --workspace <workspace> --service <id> --commit <short HEAD sha of the booted checkout>`
+    `node "<root>/bin/verify-dev-block.mjs" --write-mark --workspace <workspace> --service <id> --commit <short HEAD sha of the booted checkout>`
     (exit `5` = mtime conflict → re-read the registry and retry once; still conflicted →
     WARN and continue, never block the run). Under `--no-boot` this step NEVER writes — the
     caller (`/jlu-goal`) owns the lifecycle and the marks. This step never derives a missing
@@ -152,7 +159,7 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
     # hook blocks it; the drivers self-load env from UI_WORKTREE. Check vars by name with
     # `grep -qE '^VAR=' .env.e2e` (the -q form is allowed by the hook).
 
-    if node "$PLUGIN_ROOT/bin/e2e-session-probe.mjs"; then
+    if node "<root>/bin/e2e-session-probe.mjs"; then
       echo "auth gate: stored session valid — continuing"
     else
       PROBE_EXIT=$?
@@ -172,12 +179,12 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
 
     ```bash
     # classify-e2e-target self-loads E2E_BASE_URL from UI_WORKTREE — no env is sourced into this shell.
-    if [ "$AUTH_GATE" = "login_required" ] && [ "$(node "$PLUGIN_ROOT/bin/classify-e2e-target.mjs")" = "safe" ]; then
+    if [ "$AUTH_GATE" = "login_required" ] && [ "$(node "<root>/bin/classify-e2e-target.mjs")" = "safe" ]; then
       # B — guarantee the account is deterministically loginable (emailVerified, no per-user 2FA).
-      node "$PLUGIN_ROOT/bin/e2e-ensure-account.mjs" || echo "⚠️  ensure-account exit $? — continuing; e2e-login-local will surface the real cause"
+      node "<root>/bin/e2e-ensure-account.mjs" || echo "⚠️  ensure-account exit $? — continuing; e2e-login-local will surface the real cause"
       # A — mint the session via the local dashboard API, then confirm it against the gateway.
-      if node "$PLUGIN_ROOT/bin/e2e-login-local.mjs"; then
-        if node "$PLUGIN_ROOT/bin/e2e-session-probe.mjs"; then
+      if node "<root>/bin/e2e-login-local.mjs"; then
+        if node "<root>/bin/e2e-session-probe.mjs"; then
           AUTH_GATE=healed
           echo "auth gate: local session minted deterministically (no browser/OTP)"
         else
@@ -188,7 +195,7 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
           # auto-heal: the gate never dead-ends here telling the user to run session-sync by hand,
           # and never improvises a "refresh a prod session" menu (that menu is forbidden, see below).
           echo "auth gate: local cookie minted but gateway 401 — provisioning logsM.userSessions via session-sync, then re-probing"
-          if node "$PLUGIN_ROOT/bin/e2e-session-sync.mjs" && node "$PLUGIN_ROOT/bin/e2e-session-probe.mjs"; then
+          if node "<root>/bin/e2e-session-sync.mjs" && node "<root>/bin/e2e-session-probe.mjs"; then
             AUTH_GATE=healed
             echo "auth gate: local session provisioned via session-sync (no browser/OTP/prod)"
           else
@@ -224,7 +231,7 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
     3. Launch the OTP login driver (`bin/e2e-login.mjs` — the remote/prod path; a loopback target was already healed above) in the background and watch its stdout:
        ```bash
        OTP_FILE=$(mktemp -u /tmp/jlu-otp-XXXXXX)
-       OTP_FILE="$OTP_FILE" node "$PLUGIN_ROOT/bin/e2e-login.mjs" > /tmp/jlu-login.out 2>&1 &
+       OTP_FILE="$OTP_FILE" node "<root>/bin/e2e-login.mjs" > /tmp/jlu-login.out 2>&1 &
        LOGIN_PID=$!
        ```
     4. **Race the `WAITING_OTP` marker against early process death.** Poll `/tmp/jlu-login.out`
@@ -322,7 +329,7 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
     else
       SESSION_SYNC_RC=0
       SESSION_SYNC_FAILED=""
-      SESSION_SYNC_OUT=$(node "$PLUGIN_ROOT/bin/e2e-session-sync.mjs" 2>&1) || SESSION_SYNC_RC=$?
+      SESSION_SYNC_OUT=$(node "<root>/bin/e2e-session-sync.mjs" 2>&1) || SESSION_SYNC_RC=$?
       case "$SESSION_SYNC_RC" in
         0)  echo "$SESSION_SYNC_OUT" ;;                                  # SESSION_SYNC_OK or SESSION_SYNC_SKIP <reason>
         45) SESSION_SYNC_FAILED="cookie decrypt failed — COOKIE_SECRET likely does not match the backend ($SESSION_SYNC_OUT)" ;;
@@ -394,10 +401,10 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
     # `safe` runs without --allow-prod-target. Any other class — `prod`, OR an empty/missing
     # result because the classifier could not run — blocks. The test is `!= "safe"`, never
     # `= "prod"`, so a broken invocation can never let a production target through silently.
-    # $PLUGIN_ROOT is the absolute plugin root resolved by the SKILL bootstrap (Phase 1); the
-    # orchestrator substitutes it here. `|| true` keeps a node failure from aborting under set -e;
+    # <root> is the absolute plugin root, substituted per jelou/references/plugin-root.md —
+    # never left as a literal. `|| true` keeps a node failure from aborting under set -e;
     # the empty TARGET_CLASS it yields still fails the `!= "safe"` test and blocks.
-    TARGET_CLASS=$(node "$PLUGIN_ROOT/bin/classify-e2e-target.mjs" "$E2E_BASE_URL" 2>/dev/null || true)
+    TARGET_CLASS=$(node "<root>/bin/classify-e2e-target.mjs" "$E2E_BASE_URL" 2>/dev/null || true)
     if [ "$TARGET_CLASS" != "safe" ] && [ -z "$ALLOW_PROD_TARGET" ]; then
       echo "ERROR: E2E_BASE_URL points at production or an unverified target ('$E2E_BASE_URL'; class=${TARGET_CLASS:-unknown})."
       echo "  Default-deny: only localhost / *.local / staging|dev|sandbox|qa|test targets run without override."
@@ -447,7 +454,7 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
     # env wins, else the settings file, else 'on'. Exporting it lets a consumer config that reads
     # process.env.JLU_E2E_VIDEO record EVERY run (pass or fail), so a human can watch what the
     # automated E2E actually exercised — not only the failures.
-    export JLU_E2E_VIDEO="$(node "$PLUGIN_ROOT/bin/seed-e2e-settings.mjs" --print-video 2>/dev/null || echo on)"
+    export JLU_E2E_VIDEO="$(node "<root>/bin/seed-e2e-settings.mjs" --print-video 2>/dev/null || echo on)"
 
     # --trace=retain-on-failure: produces a trace.zip for every failing test on its FIRST
     # run. Never use on-first-retry here — no retries are configured, so on-first-retry
@@ -485,13 +492,13 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
 
 17b. **Mid-suite auth collapse check.** Before dispatching any fix-loop:
     ```bash
-    if [ "$(node "$PLUGIN_ROOT/bin/detect-auth-collapse.mjs" "$TASK_DIR/services/$UI_SERVICE/e2e/run.json")" = "auth_collapse" ]; then
+    if [ "$(node "<root>/bin/detect-auth-collapse.mjs" "$TASK_DIR/services/$UI_SERVICE/e2e/run.json")" = "auth_collapse" ]; then
       # 3+ consecutive 401-shaped failures — the session died mid-suite. Fix-loop is forbidden here.
       # Safe/loopback target: re-mint the session deterministically (non-interactive — no browser,
       # no OTP, no user input) via e2e-login-local and re-probe. Recovered → the collapse was a
       # transient session expiry; re-run the suite ONCE with the refreshed storageState before judging.
-      if [ "$(node "$PLUGIN_ROOT/bin/classify-e2e-target.mjs")" = "safe" ] \
-         && node "$PLUGIN_ROOT/bin/e2e-login-local.mjs" && node "$PLUGIN_ROOT/bin/e2e-session-probe.mjs"; then
+      if [ "$(node "<root>/bin/classify-e2e-target.mjs")" = "safe" ] \
+         && node "<root>/bin/e2e-login-local.mjs" && node "<root>/bin/e2e-session-probe.mjs"; then
         echo "auth collapse: re-minted the local session non-interactively — retry the suite once"
       else
         # Remote/prod, or the re-mint failed: print the step-14b 401 abort message and exit BLOCKED (2).
