@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.3.319] — 2026-08-02
+
+### Added
+- add bin/task-index.mjs with two commands: list paginates the task set with filters and interactive navigation, get shows one task's full derived metadata with per-field provenance
+- read the filesystem on every invocation instead of persisting an index, so a result can never be stale and deleting the tool breaks nothing
+- make bin/lib/task-index/extract.mjs the canonical owner of the TASKS.md parsers; bin/list-tasks.mjs now imports them instead of carrying a second copy
+
+### Fixed
+- task ordering in list-tasks: DD-MM-YYYY dates were compared lexically, so the listing sorted by day rather than by date
+- the status of the six tasks that carry it in a Metadata table, which previously reported unknown
+- service ids kept their trailing annotations, so a filter on a service id missed the 13 of 35 ids that carried them
+- a section that exists but cannot be parsed now records a structured derivation issue; 33 tasks were reporting zero phases in total silence, one of them with 13 phase rows in the file
+- --json output was truncated at 64 KB when stdout is a pipe, losing 17 KB with exit code 0
+
 ## [0.3.318] — 2026-08-01
 
 ### Changed

@@ -141,6 +141,16 @@ describe('list-tasks — listTasks()', () => {
     assert.deepEqual(t.services, ['jelou-api']);
   });
 
+  test('dates across different months sort by calendar date, not by day of month', () => {
+    const { ws } = makeWorkspace([
+      { date: '31-03-2026', slug: 'march', tasksMd: CANONICAL_TASKS },
+      { date: '30-06-2026', slug: 'june', tasksMd: CANONICAL_TASKS },
+      { date: '01-12-2025', slug: 'december', tasksMd: CANONICAL_TASKS },
+    ]);
+    const ordered = listTasks(ws).map((t) => t.slug);
+    assert.deepEqual(ordered, ['june', 'march', 'december']);
+  });
+
   test('multiple tasks are sorted by date desc then slug asc', () => {
     const { ws } = makeWorkspace([
       { date: '10-06-2026', slug: 'older', tasksMd: CANONICAL_TASKS },
@@ -224,5 +234,73 @@ describe('list-tasks — CLI', () => {
     assert.equal(r.status, 0, r.stderr);
     const parsed = JSON.parse(r.stdout);
     assert.deepEqual(parsed.map((t) => t.slug), ['building']);
+  });
+});
+
+describe('list-tasks — stdout survives a real pipe', () => {
+  const PIPE_BUFFER = 64 * 1024;
+  const WIDE_COUNT = 900;
+
+  function wideWorkspace() {
+    const root = mkdtempSync(join(tmpdir(), 'list-tasks-wide-'));
+    const ws = join(root, '.spec-workspace');
+    for (let i = 1; i <= WIDE_COUNT; i++) {
+      const day = String((i % 28) + 1).padStart(2, '0');
+      const month = String((i % 12) + 1).padStart(2, '0');
+      const dir = join(ws, 'specs', `${day}-${month}-2026`, `wide-${String(i).padStart(4, '0')}`);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, 'TASKS.md'), CANONICAL_TASKS);
+      writeFileSync(join(dir, 'SPEC.md'), `# Derivación de estado y trazabilidad ${i}\n`);
+    }
+    return { root, ws };
+  }
+
+  function pipedCli(args) {
+    return spawnSync('bash', ['-c', 'set -o pipefail; "$0" "$@" | cat', process.execPath, SCRIPT, ...args], {
+      encoding: 'utf8',
+      maxBuffer: 64 * 1024 * 1024,
+    });
+  }
+
+  function earlyCloseCli(args) {
+    return spawnSync('bash', ['-c', '"$0" "$@" | head -c 100', process.execPath, SCRIPT, ...args], {
+      encoding: 'utf8',
+      maxBuffer: 64 * 1024 * 1024,
+    });
+  }
+
+  test('--json delivers every row through a pipe when it outgrows the pipe buffer', () => {
+    const { root, ws } = wideWorkspace();
+    const direct = spawnSync('node', [SCRIPT, '--workspace', ws, '--json'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    assert.equal(direct.status, 0, direct.stderr);
+    const size = Buffer.byteLength(direct.stdout);
+    assert.ok(size > PIPE_BUFFER + 1024, `the fixture must outgrow one pipe buffer, got ${size} bytes`);
+
+    const piped = pipedCli(['--workspace', ws, '--json']);
+    assert.equal(piped.status, 0, piped.stderr);
+    assert.equal(Buffer.byteLength(piped.stdout), size);
+    assert.equal(JSON.parse(piped.stdout).length, WIDE_COUNT);
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test('the table survives a pipe once it outgrows the pipe buffer', () => {
+    const { root, ws } = wideWorkspace();
+    const direct = spawnSync('node', [SCRIPT, '--workspace', ws], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    assert.equal(direct.status, 0, direct.stderr);
+    assert.ok(Buffer.byteLength(direct.stdout) > PIPE_BUFFER + 1024, 'the fixture must outgrow one pipe buffer');
+
+    const piped = pipedCli(['--workspace', ws]);
+    assert.equal(piped.status, 0, piped.stderr);
+    assert.equal(Buffer.byteLength(piped.stdout), Buffer.byteLength(direct.stdout));
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test('a consumer that closes the pipe early gets no stack trace and no error output', () => {
+    const { root, ws } = wideWorkspace();
+    for (const args of [['--workspace', ws, '--json'], ['--workspace', ws]]) {
+      const r = earlyCloseCli(args);
+      assert.equal(r.stderr, '', `expected silence on stderr, got: ${r.stderr}`);
+    }
+    rmSync(root, { recursive: true, force: true });
   });
 });
