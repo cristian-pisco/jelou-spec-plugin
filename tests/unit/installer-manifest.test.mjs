@@ -32,6 +32,12 @@ const FEATURE_BINS = [
   'bin/parse-goal-matrix.mjs',
   'bin/probe-coverage-breadth.mjs',
   'bin/seed-e2e-settings.mjs',
+  'bin/daily-slack-assemble.mjs',
+  'bin/daily-slack-bucket.mjs',
+  'bin/daily-slack-compose.mjs',
+  'bin/daily-slack-extract-reason.mjs',
+  'bin/daily-slack-render.mjs',
+  'bin/daily-slack-scan-urls.mjs',
 ];
 
 function shippedBins(installerText) {
