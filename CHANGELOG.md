@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.322] — 2026-08-03
+
+### Internal
+- own the plugin-root resolution rule in one reference, and ratchet the broken form
+
 ## [0.3.321] — 2026-08-03
 
 ### Fixed
