@@ -5,12 +5,6 @@
 // for task directories (those containing a TASKS.md), then parses lifecycle state,
 // sprint, and affected services from TASKS.md and the title from SPEC.md.
 //
-// TASKS.md has drifted across two on-disk schemas; both are parsed:
-//   - canonical (/jlu-new-task): `## Status: <state>`, `## Services` with
-//     `- Primary:` / `- Affected:`, `- Sprint: <n>`
-//   - alternative: `## Status` section with `- **Lifecycle**: <state>`, a
-//     YAML frontmatter `affected_services:` list, `- **Sprint**: <n>`
-//
 // Usage:
 //   node bin/list-tasks.mjs [--workspace <path>] [--cwd <path>] [--status <state>] [--json]
 //
@@ -18,85 +12,14 @@
 // task is { slug, date, title, status, sprint, services }.
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { normalizeDate, parseServices, parseSprint, parseStatus, parseTitle } from './lib/task-index/extract.mjs';
+import { exitQuietlyOnBrokenPipe, writeFlushed } from './lib/task-index/render.mjs';
+import { resolveSpecWorkspace } from './lib/task-index/workspace.mjs';
 
-const MAX_WALK_UP = 6;
-
-export function resolveWorkspace(startDir) {
-  let dir = startDir;
-  for (let i = 0; i <= MAX_WALK_UP; i++) {
-    const pointer = join(dir, '.spec-workspace.json');
-    if (existsSync(pointer)) {
-      try {
-        const ws = JSON.parse(readFileSync(pointer, 'utf8'))?.workspace;
-        if (ws && existsSync(join(ws, 'specs'))) return ws;
-      } catch {
-        // malformed pointer — fall through to directory probing
-      }
-    }
-    const local = join(dir, '.spec-workspace');
-    if (existsSync(join(local, 'specs'))) return local;
-
-    const parent = dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  return null;
-}
-
-function readMarkerValue(text, label) {
-  const re = new RegExp(`^-\\s+\\*?\\*?${label}\\*?\\*?:\\s*(\\S.*)$`, 'im');
-  const m = text.match(re);
-  return m ? m[1].replace(/\*\*/g, '').trim() : null;
-}
-
-function parseStatus(text) {
-  const inline = text.match(/^##\s+Status:\s*(\S.*)$/im);
-  if (inline) return inline[1].replace(/\*\*/g, '').trim().toLowerCase();
-  const lifecycle = readMarkerValue(text, 'Lifecycle');
-  if (lifecycle) return lifecycle.toLowerCase();
-  const status = readMarkerValue(text, 'Status');
-  if (status) return status.toLowerCase();
-  return 'unknown';
-}
-
-function parseFrontmatterServices(text) {
-  const fm = text.match(/^---\n([\s\S]*?)\n---/);
-  if (!fm) return [];
-  const block = fm[1];
-  const start = block.search(/^affected_services:\s*$/im);
-  if (start === -1) return [];
-  const ids = [];
-  for (const line of block.slice(start).split('\n').slice(1)) {
-    if (/^\S/.test(line) && !/^\s*-/.test(line)) break; // next top-level key
-    const m = line.match(/^\s*-\s+id:\s*(\S+)/);
-    if (m) ids.push(m[1]);
-  }
-  return ids;
-}
-
-function parseServices(text) {
-  const out = [];
-  const primary = readMarkerValue(text, 'Primary');
-  if (primary && !primary.startsWith('(')) out.push(primary);
-
-  const affected = readMarkerValue(text, 'Affected');
-  if (affected && !affected.startsWith('(')) {
-    for (const id of affected.split(',').map((s) => s.trim()).filter(Boolean)) {
-      out.push(id);
-    }
-  }
-
-  out.push(...parseFrontmatterServices(text));
-  return [...new Set(out)];
-}
-
-function parseTitle(specText, fallback) {
-  if (!specText) return fallback;
-  const m = specText.match(/^#\s+(.+)$/m);
-  return m ? m[1].trim() : fallback;
-}
+export { resolveSpecWorkspace };
+export const resolveWorkspace = resolveSpecWorkspace;
 
 export function listTasks(workspacePath) {
   const specsDir = join(workspacePath, 'specs');
@@ -118,15 +41,19 @@ export function listTasks(workspacePath) {
       tasks.push({
         slug,
         date,
-        title: parseTitle(specText, slug),
-        status: parseStatus(tasksText),
-        sprint: readMarkerValue(tasksText, 'Sprint'),
-        services: parseServices(tasksText),
+        title: parseTitle(specText, slug).value,
+        status: parseStatus(tasksText).value,
+        sprint: parseSprint(tasksText).value,
+        services: parseServices(tasksText).ids,
       });
     }
   }
 
-  tasks.sort((a, b) => (a.date === b.date ? a.slug.localeCompare(b.slug) : b.date.localeCompare(a.date)));
+  tasks.sort((a, b) => {
+    const aDate = normalizeDate(a.date) ?? a.date;
+    const bDate = normalizeDate(b.date) ?? b.date;
+    return aDate === bDate ? a.slug.localeCompare(b.slug) : bDate.localeCompare(aDate);
+  });
   return tasks;
 }
 
@@ -161,7 +88,12 @@ function parseArgs(argv) {
   return args;
 }
 
-function main() {
+async function main() {
+  exitQuietlyOnBrokenPipe(process.stdout, (error) => {
+    console.error(`error: cannot write to stdout: ${error.message}`);
+    process.exit(1);
+  });
+
   const args = parseArgs(process.argv);
   const workspace = args.workspace || resolveWorkspace(args.cwd || process.cwd());
   if (!workspace) {
@@ -175,9 +107,9 @@ function main() {
     tasks = tasks.filter((t) => t.status === want);
   }
 
-  process.stdout.write((args.json ? JSON.stringify(tasks) : renderTable(tasks)) + '\n');
+  await writeFlushed(process.stdout, `${args.json ? JSON.stringify(tasks) : renderTable(tasks)}\n`);
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  main();
+  await main();
 }
