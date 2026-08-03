@@ -9,12 +9,6 @@
 
 ---
 
-**Resolve `<root>` before the first step.** Every `node "<root>/bin/…"` invocation below needs the
-absolute plugin root. Derive it per `jelou/references/plugin-root.md`: this file lives at
-`<root>/jelou/workflows/execute-task.md`, so `<root>` is the directory **two levels above it**. Substitute
-that absolute path at every site — never emit `<root>` literally, and never fall back to
-`$PLUGIN_ROOT`, which no runtime exports.
-
 ## Principles
 
 > **Minimum viable work. Verify before proceeding. Escalate before guessing.**

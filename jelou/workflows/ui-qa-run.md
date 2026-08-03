@@ -21,13 +21,6 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
 
 ## Process
 
-**Before Phase 1 — resolve `<root>` once.** Every `node "<root>/bin/…"` invocation below needs the
-absolute plugin root. Derive it per `jelou/references/plugin-root.md`: this file lives at
-`<root>/jelou/workflows/ui-qa-run.md`, so `<root>` is the directory **two levels above it**.
-Substitute that absolute path at every site. Never emit `<root>` literally, and never fall back to
-`$PLUGIN_ROOT` — no runtime exports it, so the shell would expand it to empty and every
-invocation would silently target `/bin/…`.
-
 ### Phase 1 — Resolve task and pre-flight
 
 1. **Resolve slug.**
@@ -401,8 +394,7 @@ invocation would silently target `/bin/…`.
     # `safe` runs without --allow-prod-target. Any other class — `prod`, OR an empty/missing
     # result because the classifier could not run — blocks. The test is `!= "safe"`, never
     # `= "prod"`, so a broken invocation can never let a production target through silently.
-    # <root> is the absolute plugin root, substituted per jelou/references/plugin-root.md —
-    # never left as a literal. `|| true` keeps a node failure from aborting under set -e;
+    # `|| true` keeps a node failure from aborting under set -e;
     # the empty TARGET_CLASS it yields still fails the `!= "safe"` test and blocks.
     TARGET_CLASS=$(node "<root>/bin/classify-e2e-target.mjs" "$E2E_BASE_URL" 2>/dev/null || true)
     if [ "$TARGET_CLASS" != "safe" ] && [ -z "$ALLOW_PROD_TARGET" ]; then
