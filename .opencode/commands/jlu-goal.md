@@ -2,8 +2,13 @@
 description: Run a goal matrix to green against the full local stack — objectives (frontend/backend/fullstack) compile to E2E suites, the stack boots once, and a bounded convergence loop (run → auto-fix → re-run) ends only when every objective is green, with mandatory video evidence for frontend/fullstack objectives
 agent: build
 ---
+Resolve `<install-root>` first: walk up from THIS command file to the nearest ancestor directory
+that contains a `jelou/` directory. The command lives at `<install-root>/.opencode/commands/` on a
+project install and at `<install-root>/commands/` on a global one, so the depth is not fixed. Never
+assume a literal path: `$OPENCODE_HOME` moves `<install-root>` anywhere.
+
 Resolve workflow path in this order:
-1. `<HOME>/.config/opencode/jelou/workflows/goal.md` (global install preferred; resolve `<HOME>` to an absolute path first)
+1. `<install-root>/jelou/workflows/goal.md` (install preferred)
 2. `jelou/workflows/goal.md` (project-local fallback)
 
 Resolution rules:

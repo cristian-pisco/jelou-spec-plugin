@@ -2,8 +2,13 @@
 description: Run the current service's unit + integration tests with workers=1 and group failures by component (Controller, Service, Repository, etc.)
 agent: build
 ---
+Resolve `<install-root>` first: walk up from THIS command file to the nearest ancestor directory
+that contains a `jelou/` directory. The command lives at `<install-root>/.opencode/commands/` on a
+project install and at `<install-root>/commands/` on a global one, so the depth is not fixed. Never
+assume a literal path: `$OPENCODE_HOME` moves `<install-root>` anywhere.
+
 Resolve workflow path in this order:
-1. `<HOME>/.config/opencode/jelou/workflows/test-suite.md` (global install preferred; resolve `<HOME>` to an absolute path first)
+1. `<install-root>/jelou/workflows/test-suite.md` (install preferred)
 2. `jelou/workflows/test-suite.md` (project-local fallback)
 
 Resolution rules:

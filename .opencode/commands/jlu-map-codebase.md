@@ -2,9 +2,14 @@
 description: Analyze service or workspace-root codebase map
 agent: build
 ---
+Resolve `<install-root>` first: walk up from THIS command file to the nearest ancestor directory
+that contains a `jelou/` directory. The command lives at `<install-root>/.opencode/commands/` on a
+project install and at `<install-root>/commands/` on a global one, so the depth is not fixed. Never
+assume a literal path: `$OPENCODE_HOME` moves `<install-root>` anywhere.
+
 Resolve workflow path in this order:
 1. `jelou/workflows/map-codebase.md` (project-local install)
-2. `<HOME>/.config/opencode/jelou/workflows/map-codebase.md` (global install fallback; resolve `<HOME>` to an absolute path first)
+2. `<install-root>/jelou/workflows/map-codebase.md` (install fallback)
 
 Resolution rules:
 - Select the first existing path only.

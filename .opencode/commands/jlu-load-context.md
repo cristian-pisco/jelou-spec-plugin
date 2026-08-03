@@ -2,10 +2,15 @@
 description: Load task context for Q&A
 agent: build
 ---
+Resolve `<install-root>` first: walk up from THIS command file to the nearest ancestor directory
+that contains a `jelou/` directory. The command lives at `<install-root>/.opencode/commands/` on a
+project install and at `<install-root>/commands/` on a global one, so the depth is not fixed. Never
+assume a literal path: `$OPENCODE_HOME` moves `<install-root>` anywhere.
+
 Resolve workflow path in this order:
-1. `<HOME>/.config/opencode/jelou/workflows-opencode/load-context.md` (global OpenCode workflow preferred; resolve `<HOME>` to an absolute path first)
+1. `<install-root>/jelou/workflows-opencode/load-context.md` (OpenCode-specific workflow preferred)
 2. `jelou/workflows-opencode/load-context.md` (project-local OpenCode fallback)
-3. `<HOME>/.config/opencode/jelou/workflows/load-context.md` (legacy global fallback)
+3. `<install-root>/jelou/workflows/load-context.md` (legacy install fallback)
 4. `jelou/workflows/load-context.md` (legacy project-local fallback)
 
 Resolution rules:

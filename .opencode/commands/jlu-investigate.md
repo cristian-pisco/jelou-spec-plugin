@@ -2,8 +2,13 @@
 description: Stateful research/decision command — one engine per call, persisted as a resumable note
 agent: build
 ---
+Resolve `<install-root>` first: walk up from THIS command file to the nearest ancestor directory
+that contains a `jelou/` directory. The command lives at `<install-root>/.opencode/commands/` on a
+project install and at `<install-root>/commands/` on a global one, so the depth is not fixed. Never
+assume a literal path: `$OPENCODE_HOME` moves `<install-root>` anywhere.
+
 Resolve workflow path in this order:
-1. `<HOME>/.config/opencode/jelou/workflows/investigate.md` (global install preferred; resolve `<HOME>` to an absolute path first)
+1. `<install-root>/jelou/workflows/investigate.md` (install preferred)
 2. `jelou/workflows/investigate.md` (project-local fallback)
 
 Resolution rules:
