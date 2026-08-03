@@ -1216,17 +1216,24 @@ late.)
 read `{plugin-root}/jelou/workflows/ship.md` and follow it in this session
 with argument `<TASK_SLUG>` — the same inline read-and-follow mechanism this
 workflow itself uses — and restore the snapshot after ship's own span close
-(`WORKFLOW_SPAN_ID=$EXEC_SPAN_ID; WORKFLOW_TRACE_ID=$EXEC_TRACE_ID`). Hand
-ship the `SHIP_CAVEATS` list accumulated in Steps 8c/8e/8f — it renders in
-every PR body at Step 7d.
+(`WORKFLOW_SPAN_ID=$EXEC_SPAN_ID; WORKFLOW_TRACE_ID=$EXEC_TRACE_ID`).
 Without the snapshot, ship's span close consumes this workflow's span and the
-final Step N double-closes ship's. All of ship's own gates (spec-compliance
-review, deps/build preflight) apply unchanged; if ship stops on a gate, the
-chain stops with it and reports — no bypass.
+final Step N double-closes ship's.
+
+Hand ship two inputs: the `SHIP_CAVEATS` list accumulated in Steps 8c/8e/8f/8g
+(it renders in every PR body at Step 7d) and **`<AUTONOMOUS> = yes`**. That
+second one is what carries the authorization into ship's own gates: none of them
+asks, each takes its documented default and records a caveat, per ship.md's
+"Autonomous mode — how every gate resolves". The chain does not stop at a
+preflight FAIL, a compliance gap, a CLOSED PR or a rate limit — it decides,
+discloses in the PR, and moves on. Only two outcomes end work: a task status of
+`draft`/`refining` aborts the run (no agreed contract to ship against), and a
+service whose build or git push could not succeed comes back `blocked` with no
+PR. Ship's gate list is closed — never invent an extra confirmation here.
 
 **The PR set** is defined from ship's Step 11 result rows: every PR with
 `Action ∈ {created, existing}` AND `State = OPEN`. Rows with
-`Action ∈ {skipped, n/a}` (user-skipped trunk PRs, services without an
+`Action ∈ {skipped, n/a}` (nothing to ship, services without an
 `alpha` branch) are out of scope and listed as such in the 9.5e table; a
 `State = MERGED` PR is trivially green — count it GREEN without dispatching
 a runner (resolve-pr has no merged-PR guard for explicit URLs and would push
@@ -1234,6 +1241,13 @@ fix commits onto a merged branch). Persist the set NOW to
 `<TASK_DIR>/AUTOCHAIN.json` (`{ "prs": [{ "url", "service", "kind":
 "production|staging", "verdict": "pending" }] }`) — this file is the chain's
 re-entry point.
+
+**Blocked services.** A row with `Action = blocked` had a PR to open and could
+not. Record each in `AUTOCHAIN.json` as
+`{ "service", "kind", "verdict": "BLOCKED", "reason" }` with no `url`, and do
+NOT dispatch a resolve-pr runner — there is no PR to drive. These are what
+separate a partial ship from a green one at 9.5e; never fold them into
+`skipped`.
 
 **9.5c — Drive every PR to green.** For each PR in the set, dispatch the
 `jlu-resolve-pr-runner` agent via `task` — **sequentially, concurrency 1**
@@ -1268,9 +1282,13 @@ the runner's ephemeral worktree
 `staging/<TASK_SLUG>` checked out and poisons the next ship's
 `worktree add`.
 
-**Task-green = AND of every runner verdict being `GREEN`.** A `NOT_GREEN` or
-`BLOCKED` verdict does not abort the remaining runners — every PR gets its
-run; the aggregate is computed at the end.
+**Task-green = AND of every runner verdict being `GREEN`, AND no service
+`blocked` at ship.** A `NOT_GREEN` or `BLOCKED` verdict does not abort the
+remaining runners — every PR gets its run; the aggregate is computed at the
+end. A service that ship blocked has no PR and therefore no runner, so it can
+never contribute a `GREEN`: it makes task-green NO on its own. Without that
+second clause a build-failed service would silently report task-green YES
+while its code never shipped.
 
 **Re-entry.** If `<TASK_DIR>/AUTOCHAIN.json` already exists when Step 9.5
 begins (a prior chain died mid-run — context exhaustion, abort), skip 9.5b:
@@ -1298,11 +1316,17 @@ Task-green: YES | NO
 |----|---------|---------|--------|-------------|
 | <url> | <service-id> | GREEN | 1/2 | 0 |
 | <url> | <service-id> (staging) | NOT_GREEN | 2/2 | 2 |
+| — | <service-id> | BLOCKED at ship (<reason>) | — | — |
 
 ClickUp: <updated | WARN <reason> | not linked>
 
+### Autonomous gate decisions (from SHIP_CAVEATS)
+- <what ship decided at a gate, and why>
+(or "none — no gate fired")
+
 ### Escalations (verbatim from runners)
 - <signal> — <one line> — resume: /jlu-resolve-pr <pr-url>
+- <service-id> blocked at ship: <reason> — resume: fix, then /jlu-execute-task <task-slug>
 (or "none")
 
 ### Next Steps

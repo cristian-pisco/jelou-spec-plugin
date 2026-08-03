@@ -46,6 +46,6 @@ If the output is `UP_TO_DATE` or `SKIPPED`, continue silently. Update-check fail
 
 Follow the workflow file you just read. Do NOT wrap this whole workflow in a sub-agent — execute it yourself in this session. Running inline keeps the orchestrator at L2, which is required for `AskUserQuestion` to work at every gate it brokers.
 
-That is not a ban on the workflow's own delegation: Step 3 dispatches one `jlu-ship-runner` per affected service (sequentially), and Step 4b/5 dispatch validators and the git-agent inside it. Those are required — the per-service body must run in a subagent so its install/build/`gh` output never enters this window. What must stay here is the decision-making: a runner returns `NEEDS_DECISION` and you ask the question.
+That is not a ban on the workflow's own delegation: Step 3 dispatches one `jlu-ship-runner` per affected service (sequentially), and Step 4b/5 dispatch validators and the git-agent inside it. Those are required — the per-service body must run in a subagent so its install/build/`gh` output never enters this window. What must stay here is the decision-making: on an interactive run a runner returns `NEEDS_DECISION` and you ask the question. When a caller passes `<AUTONOMOUS> = yes` (the autochain does) nothing is asked at all — every gate takes its documented default from the workflow's gate table and records a caveat in the PR.
 
 The argument is `{argument}`. The plugin root is the path resolved above. The current working directory is `{cwd}`.

@@ -98,10 +98,15 @@ Exactly two things stop it:
 
 1. **A red green-gate.** Phases unfinished, final validation failing, or a
    5-retry escalation — execute-task lands in Step 10 and no PR is opened.
-2. **A named gate inside `ship.md`.** The `question` decision points ship
-   already owns: spec-compliance MISSING, coverage-breadth thin, deps/build
-   preflight FAIL, git-agent escalation, cherry-pick conflict, CLOSED PR,
-   no commits ahead, rate-limit exhaustion. Ship stops, the chain reports.
+2. **A `blocked` service at ship.** Inside the chain ship runs with
+   `<AUTONOMOUS> = yes`, so none of its named gates asks — spec-compliance
+   MISSING, coverage-breadth thin, deps preflight FAIL, cherry-pick conflict,
+   CLOSED PR, no commits ahead and rate-limit exhaustion each take the
+   documented default from ship.md's gate table and disclose it in the PR.
+   Only two outcomes end work: a task status of `draft`/`refining` aborts the
+   run (no agreed contract to ship against), and a service whose build failed
+   after 5 auto-fix rounds or whose git push escalated comes back `blocked`
+   with no PR — which makes task-green NO.
 
 Nothing else stops it. These specifically are **not** stops:
 

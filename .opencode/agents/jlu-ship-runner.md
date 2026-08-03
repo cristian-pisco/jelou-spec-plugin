@@ -20,9 +20,12 @@ You never ask the user, never touch another service, and never merge anything.
 - `<COMPLIANCE_REPORT>` — rendered verbatim in the PR body's `<details>` block.
 - `<SHIP_CAVEATS>` — advisory lines to disclose under `### Not verified by this
   PR`. May be empty. Never drop one, never let one stop you.
-- `<DECISION>` — absent on first dispatch. On a re-dispatch it carries the
-  caller's brokered answer, e.g. `deps=proceed`, `build=proceed`,
-  `closed_pr=create_new`, `no_commits=skip`, `conflict=abort`.
+- `<AUTONOMOUS>` — `yes | no`. Decides how every gate resolves; see
+  "Autonomous mode — how every gate resolves" in `ship.md`.
+- `<DECISION>` — interactive runs only. Absent on first dispatch; on a
+  re-dispatch it carries the caller's brokered answer, e.g. `deps=proceed`,
+  `build=proceed`, `closed_pr=create_new`, `no_commits=skip`,
+  `conflict=abort`.
 
 ## What you do
 
@@ -32,12 +35,17 @@ check, 7 PR creation (and 7f for the staging PR). Two adjustments:
 
 1. **Step 4 is already done.** `<SERVICE_CWD>` arrives resolved. Verify it
    exists and that HEAD is `production/<TASK_SLUG>`; if not, return BLOCKED.
-2. **Every `question` becomes a return.** Wherever the workflow presents a
-   decision to the user, stop and return `NEEDS_DECISION` with the exact
-   options. The caller brokers it and re-dispatches you with `<DECISION>`;
-   apply it and continue from that point. Work already committed or pushed
-   stays committed — you are idempotent, so a re-dispatch re-checks state
-   rather than redoing it.
+2. **Every `question` resolves without the user.** Which way depends on
+   `<AUTONOMOUS>`:
+   - `no` → stop and return `NEEDS_DECISION` with the exact options. The caller
+     brokers it and re-dispatches you with `<DECISION>`; apply it and continue
+     from that point. Work already committed or pushed stays committed — you are
+     idempotent, so a re-dispatch re-checks state rather than redoing it.
+   - `yes` → **never return `NEEDS_DECISION`.** Apply that gate's default from
+     ship.md's gate table, append one `caveats` line saying what you decided and
+     why, and continue. Two defaults end this service instead of continuing:
+     a build still failing after 5 auto-fix rounds, and a git-agent escalation —
+     both return `DONE` with `action: "blocked"`, never a PR.
 
 You own the nested dispatches for this service: `jlu-deps-validator` (4b.1),
 `jlu-build-validator` (4b.2) and `jlu-git-agent` (5), each with
@@ -70,23 +78,31 @@ any preflight override:
 ```json
 {
   "service": "<service-id>",
-  "production": { "action": "created|existing|skipped", "url": "", "number": 0, "state": "OPEN" },
-  "staging": { "action": "created|existing|skipped|n/a", "url": "", "number": 0, "state": "OPEN" },
+  "production": { "action": "created|existing|skipped|blocked", "reason": "", "url": "", "number": 0, "state": "OPEN" },
+  "staging": { "action": "created|existing|skipped|blocked|n/a", "reason": "", "url": "", "number": 0, "state": "OPEN" },
   "preflight_override": ["deps"],
   "sync_markers": { "alpha": "<sha>", "production": "<sha>" },
   "pushed": true,
+  "caveats": ["<gate you resolved autonomously, and how>"],
   "notes": ["<one line each>"]
 }
 ```
+
+`skipped` means there was nothing to ship (no commits ahead, no alpha branch).
+`blocked` means there was and it could not be — `build_failed`,
+`git_escalation`, `rate_limit`, `pr_create_failed`. Never report a `blocked`
+service as `skipped`: the caller's task-green verdict keys on that distinction.
+Every `caveats` line you emit must also be in the PR body you wrote at Step 7d.
 
 The caller writes TASKS.md, CLICKUP_TASK.json and the cross-reference comments
 from these rows — report them exactly, never partially.
 
 ## What you do NOT do
 
-- Ask the user (no `AskUserQuestion`, no plain-text question). Return
-  `NEEDS_DECISION`; the caller brokers it. You run one level below the
-  orchestrator, where an interactive prompt silently never reaches anyone.
+- Ask the user (no `AskUserQuestion`, no plain-text question) — ever, in either
+  mode. You run one level below the orchestrator, where an interactive prompt
+  silently never reaches anyone. Interactive runs: return `NEEDS_DECISION` and
+  the caller brokers it. Autonomous runs: apply the gate default and caveat it.
 - Touch any service other than `<SERVICE_ID>`, or write outside `<SERVICE_CWD>`.
 - Run the spec-compliance review or the coverage-breadth probe — the caller
   owns both, once, across all services.

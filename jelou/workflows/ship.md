@@ -54,6 +54,44 @@ Interactive approval of these suggestions lives only in `/jlu-refine-task` (the 
 
 ---
 
+## Autonomous mode — how every gate resolves
+
+`<AUTONOMOUS>` is a caller input, `no` unless the caller says otherwise.
+execute-task Step 9.5b passes `yes`: the chain carries the user's standing
+authorization (`autochain-handoff.md` §2) and nobody is watching, so a
+`question` there is a halted chain, not a decision. A standalone `/jlu-ship` is
+`no` — the user typed the command, they are present, the gates ask as written.
+
+**In autonomous mode no gate asks.** Each resolves to its default below, appends
+one `SHIP_CAVEATS` line recording what was decided and why, and continues. The
+caveat is what makes this safe: nothing is waved through silently, every
+autonomous decision is published in the PR body.
+
+Rows at Step 2 and 2b resolve in the orchestrator, before the fan-out. Rows from
+4b onward resolve inside `jlu-ship-runner`, per service.
+
+| Gate | Site | Autonomous default |
+|------|------|--------------------|
+| Task status `draft` / `refining` | Step 2 | **Abort the run.** A spec that never reached `planned` has no agreed contract to ship against. |
+| Spec-compliance MISSING requirement, or one tagged `PARTIALLY_COVERED (breadth)` | 2b decision gate (items 6a / 6b) | Proceed. Caveat lists each missing FR/NFR with the coverage ratio, or names the requirement and its untested dimension. |
+| `probe-coverage-breadth` verdict `thin` | 2b step 6b (the auditor) | Proceed. Caveat lists the `uncovered_dimensions`. Already documented as advisory friction, never a hard block. |
+| Dependency preflight FAIL | 4b.1 | Proceed, set `PREFLIGHT_OVERRIDE += deps`. The validator is report-only by design and the override banner already surfaces it in the PR. |
+| Build FAIL after 5 auto-fix rounds | 4b.2 | **Block this service.** Never proceed — a PR whose code does not compile burns a reviewer and cannot merge. |
+| git-agent escalation | Step 5 | **Block this service**, escalation verbatim in the caveat. Remaining services continue. |
+| Cherry-pick synthesis aborted | 5b | Trunk PR proceeds; this service's staging PR is dropped (`staging.action: "skipped"`). Caveat names the unresolved commit and conflicting files. Never flip `Dual PR: no` in TASKS.md — that edits the task's contract. |
+| Existing PR is `CLOSED` | 6 / 6b | Create a new PR; a closed PR is stale and shipping is the instruction. Caveat links the closed one. |
+| No commits ahead of the base | 7b | Skip this service (`action: "skipped"` — benign, nothing to ship). One note, no caveat. |
+| `gh` rate limit after 3 retries | 6 / 7e | Wait 60s and retry once. Still failing → **block this service**. |
+
+**`blocked` is not `skipped`.** `skipped` means there was nothing to ship;
+`blocked` means there was, and it could not be. Only `blocked` makes the task
+not green (execute-task Step 9.5's task-green rule). Never collapse the two.
+
+Autonomous mode never does two things: change the task's own contract (TASKS.md
+`Dual PR`, the SPEC, the status), or ship code that does not build.
+
+---
+
 ## GitHub API Rate Limit Handling
 
 All `gh` CLI commands in this workflow (Steps 6, 6b, 7e, 7f, 8, 8b) MUST use the retry protocol below.
@@ -103,6 +141,8 @@ Options:
 3. Abort the entire operation
 ```
 
+Autonomous → take option 1 once automatically. If the retry also fails, **block this service** (`action: "blocked"`, reason `rate_limit`) and continue with the rest; never abort the whole run on a transient API limit.
+
 For **Step 8** (`gh pr edit`), on exhaustion: warn "Cross-reference update for <service-id> failed due to rate limit — skipping (non-critical)" and continue to the next service.
 
 ---
@@ -124,9 +164,10 @@ For **Step 8** (`gh pr edit`), on exhaustion: warn "Cross-reference update for <
 **Store**: `TASK_DIR`, `TASK_SLUG`, `WORKSPACE_PATH`
 
 **Caller inputs (optional).** Running inside the autochain (execute-task Step
-9.5b), the caller hands over `SHIP_CAVEATS` — advisory lines from Steps
-8c/8e/8f/8g that must be disclosed in every PR body (Step 7d). Absent or
-empty on a standalone `/jlu-ship` run. A caller-driven run adds **no**
+9.5b), the caller hands over `<AUTONOMOUS> = yes` (see "Autonomous mode" above —
+it decides how every gate resolves) and `SHIP_CAVEATS` — advisory lines from
+Steps 8c/8e/8f/8g that must be disclosed in every PR body (Step 7d). Both are
+absent or empty on a standalone `/jlu-ship` run. A caller-driven run adds **no**
 confirmation of its own beyond the named gates in this workflow: the chain
 already carries the user's standing authorization to ship
 (`autochain-handoff.md` §2), so never insert an extra "shall I open the PR?"
@@ -158,7 +199,7 @@ Read and cache task artifacts in one pass (single parallel tool-call message whe
    - Existing PR entries
 
 **Validation**:
-- If status is `draft` or `refining`: warn and ask user to confirm proceeding.
+- If status is `draft` or `refining`: warn and ask user to confirm proceeding. Autonomous → abort the run (gate table).
 - If status is `closed`: stop. "Task is already closed. Cannot create PR."
 
 **Store**: `TASK_TITLE`, `PROBLEM_STATEMENT`, `PROPOSAL_SUMMARY`, `AFFECTED_SERVICES`, `SERVICE_PATHS`, `PHASE_PROGRESS`, `DUAL_PR`, `SETUP_MODE`, `SYNC_MARKERS` (map of service-id → `{alpha_sha, production_sha}`)
@@ -200,6 +241,7 @@ Read and cache task artifacts in one pass (single parallel tool-call message whe
       ```
    b. If a requirement is tagged `PARTIALLY_COVERED (breadth)` — an input-validating requirement backed only by a happy-path test, with no rejection/realistic case — present it via question exactly like a MISSING gap (Options: A) Proceed with known thin coverage · B) Abort and add the rejection + realistic tests). Do NOT silently wave a breadth gap through.
    c. Otherwise, if all requirements are COVERED or plain PARTIALLY_COVERED: log the summary to terminal and continue.
+   d. **Autonomous** (`<AUTONOMOUS> = yes`): neither 6a nor 6b asks. Proceed and append one `SHIP_CAVEATS` line per gap — the missing FR/NFR list with its coverage ratio, or the breadth-thin requirement with its untested dimension (gate table).
 6b. **Coverage-breadth check (static, scoped to changed DTOs — always runs, advisory).** This puts the `/jlu-goal` Phase 4.5 breadth gate on the always-run PR path without booting anything. Compute the DTO/validator files changed in THIS task:
    ```bash
    cd <SERVICE_CWD> && git diff --name-only <DEFAULT_BRANCH>..production/<TASK_SLUG> | grep -E '\.(dto|schema)\.[jt]sx?$'
@@ -208,7 +250,7 @@ Read and cache task artifacts in one pass (single parallel tool-call message whe
    ```bash
    node <plugin-root>/bin/probe-coverage-breadth.mjs --service <SERVICE_CWD> $(printf -- '--dto %s ' <each changed dto>) --json
    ```
-   On `verdict: thin` (exit 4), present the `uncovered_dimensions` via question — each is a validated field with no rejecting-payload test, or a collection/reference exercised only empty — and offer: A) Proceed (known thin coverage) · B) Abort and add the missing rejection/realistic tests (re-dispatch `jlu-test-writer` with `--allow-test-edits`). The auditor is a heuristic: advisory friction, never a hard block, consistent with the goal PASS-THIN stance.
+   On `verdict: thin` (exit 4), present the `uncovered_dimensions` via question — each is a validated field with no rejecting-payload test, or a collection/reference exercised only empty — and offer: A) Proceed (known thin coverage) · B) Abort and add the missing rejection/realistic tests (re-dispatch `jlu-test-writer` with `--allow-test-edits`). The auditor is a heuristic: advisory friction, never a hard block, consistent with the goal PASS-THIN stance. Autonomous → proceed with the `uncovered_dimensions` as a `SHIP_CAVEATS` line.
 7. Store the compliance report for inclusion in PR descriptions.
 
 **Store**: `COMPLIANCE_REPORT`
@@ -225,8 +267,9 @@ For each affected service, dispatch `jlu-ship-runner` with model
 orchestrator resolves it, the runner does not), `<PLUGIN_ROOT>`,
 `<SETUP_MODE>`, `<DUAL_PR>`, this service's `<SYNC_MARKERS>`, `<TASK_TITLE>`,
 `<PROBLEM_STATEMENT>`, `<PROPOSAL_SUMMARY>`, this service's `<PHASE_PROGRESS>`
-and `<TEST_SUMMARY>`, `<COMPLIANCE_REPORT>`, and `<SHIP_CAVEATS>`. Wrap each
-dispatch in the span wrapper (`--agent ship-runner`).
+and `<TEST_SUMMARY>`, `<COMPLIANCE_REPORT>`, `<SHIP_CAVEATS>`, and
+`<AUTONOMOUS>`. Wrap each dispatch in the span wrapper
+(`--agent ship-runner`).
 
 **Sequentially, concurrency 1.** Step 4b.2 runs a real build inside the runner;
 two concurrent runners mean two concurrent builds, which is the documented
@@ -242,36 +285,44 @@ its own session. Never resolve it the other way (running the per-service body in
 the orchestrator to keep the validators dispatched) — isolating the verbose
 per-service output is the whole point of the fan-out.
 
-**Brokering `NEEDS_DECISION`.** The runner cannot ask the user: an
-`AskUserQuestion` one level below the orchestrator reaches nobody. When a runner
-returns `STATUS: NEEDS_DECISION gate=<...> detail=<...> options=<...>`, present
-those options with `question` yourself, then re-dispatch the same runner for the
-same service with `<DECISION>=<the user's answer>`. The runner is idempotent —
-already-pushed work is re-checked, not redone. This is the only reason a gate
-still works: the decision points stay at the orchestrator level where
+**Brokering `NEEDS_DECISION` (interactive runs only).** With
+`<AUTONOMOUS> = no`, the runner cannot ask the user: an `AskUserQuestion` one
+level below the orchestrator reaches nobody. When a runner returns
+`STATUS: NEEDS_DECISION gate=<...> detail=<...> options=<...>`, present those
+options with `question` yourself, then re-dispatch the same runner for the same
+service with `<DECISION>=<the user's answer>`. The runner is idempotent —
+already-pushed work is re-checked, not redone. That is the only reason an
+interactive gate still works: the decision stays at the orchestrator level where
 `question` functions.
 
-Inside the autochain (execute-task Step 9.5b) a brokered gate is a real chain
-stop, exactly as `autochain-handoff.md` §5 describes — but note what is NOT a
-gate: an unverified requirement, a QA follow-up, or a caveat. Those are
-`<SHIP_CAVEATS>` lines the runner renders in the PR body. Never invent a
-confirmation of your own around the fan-out.
+With `<AUTONOMOUS> = yes` a runner never returns `NEEDS_DECISION` at all — it
+applies the gate table's default itself and reports what it decided. If one
+arrives anyway, that is a runner bug: do NOT ask the user (nobody is watching a
+chain). Apply the gate table's default for that gate yourself, caveat it, and
+re-dispatch.
+
+Never invent a confirmation of your own around the fan-out. An unverified
+requirement, a QA follow-up and a caveat are not gates — they are
+`<SHIP_CAVEATS>` lines the runner renders in the PR body.
 
 Merge each runner's `rows` into `PR_RESULTS` (and `STAGING_PR`,
-`PREFLIGHT_OVERRIDE`, `SYNC_MARKERS`) as it returns:
+`PREFLIGHT_OVERRIDE`, `SYNC_MARKERS`), and append its `caveats` to
+`SHIP_CAVEATS`, as it returns:
 
 ```
 PR_RESULTS[<service-id>] = {
-  action: "created" | "existing" | "skipped",
+  action: "created" | "existing" | "skipped" | "blocked",
+  reason: "<only for skipped | blocked>",
   url: "<pr-url>",
   number: <pr-number>,
   state: "OPEN" | "MERGED" | ...
 }
 ```
 
-A `BLOCKED` runner records `action: "skipped"` with its reason and does not
-abort the remaining services — every service gets its runner, and Step 11
-reports the aggregate.
+A `blocked` or `skipped` service never aborts the remaining ones — every service
+gets its runner, and Step 11 reports the aggregate. The difference matters
+downstream: `skipped` is benign (nothing to ship), `blocked` means the PR should
+have opened and did not, which is what makes the task not green.
 
 **Rate limit throttle**: After a runner returns for a service, wait 3 seconds before dispatching the next service's runner. The delay fires only between services, not after the final service in the loop.
 
@@ -323,6 +374,8 @@ B) Proceed anyway (record the override in the PR)
 
 On A → stop the workflow for this service (offer skip/abort like Step 5 escalation). On B → set `PREFLIGHT_OVERRIDE[<service-id>] += "deps"`.
 
+Autonomous → take B automatically (proceed + override + caveat). This validator is report-only by design, and the override banner already discloses it in the PR body.
+
 ### 4b.2 — Build validation (auto-fix)
 
 Spawn `jlu-build-validator` with model **MODEL_CONFIG.code** (default sonnet) and this task:
@@ -330,6 +383,8 @@ Spawn `jlu-build-validator` with model **MODEL_CONFIG.code** (default sonnet) an
 > Validate the build for service `<SERVICE_ID>`. SERVICE_CWD is `<SERVICE_CWD>`. PLUGIN_ROOT is `<PLUGIN_ROOT>`. Resolve the runtime exec context first (host or docker-compose) and run the build in the right place. Auto-fix build errors within the 5-round limit. Report PASS / FAIL / SKIP.
 
 On **PASS** or **SKIP** → continue to Step 5. On **FAIL** after 5 rounds → present via `question` the same A/B override. On B → set `PREFLIGHT_OVERRIDE[<service-id>] += "build"`.
+
+Autonomous → **block this service** (`action: "blocked"`, reason `build_failed`) and open no PR for it. This is the one gate whose autonomous default is a stop rather than a proceed: a PR whose code does not compile cannot merge and wastes the reviewer's pass. Remaining services still get their runner.
 
 ### 4b.3 — Record overrides
 
@@ -357,6 +412,8 @@ Spawn `jlu-git-agent` in `SERVICE_CWD` with model: **haiku** and this task:
 1. Resolve the issue and retry
 2. Skip this service
 3. Abort the entire operation
+
+Autonomous → **block this service** (`action: "blocked"`, reason `git_escalation`) with the escalation verbatim in the caveat. Never abort the whole run: the other services' PRs are independent and still worth opening.
 
 ---
 
@@ -482,6 +539,7 @@ On `{status: "aborted", unresolved_commit, conflicting_files, reason, explanatio
 3. On "A": stop the workflow. Note that the trunk PR may already exist — report its state. User resolves and re-runs.
 4. On "B": update `<TASK_DIR>/TASKS.md` → `## Branching → Dual PR: no`. Continue with trunk-only flow (skip to Step 6 for remaining services; skip all remaining 5b steps).
 5. On "C": stop the workflow.
+6. **Autonomous**: take none of the three. Drop only this service's staging PR (`staging.action: "skipped"`, reason `cherry_pick_conflict`) and continue to Step 6 so the trunk PR still opens — a staging-sync conflict says nothing about the trunk change. Caveat names the unresolved commit and the conflicting files. Do NOT choose "B": flipping `Dual PR` rewrites the task's own contract, which autonomous mode never does.
 
 ### 5b.7 — Push staging
 
@@ -564,6 +622,7 @@ Parse the result:
   2. Skip this service
   3. Abort
   ```
+  Autonomous → option 1 (create a new PR), with the closed PR's URL in a caveat. The closed PR is stale state; shipping is the standing instruction.
 - **Not found** (command fails / no PR): Proceed to Step 7.
 
 ### 6b — Check for Existing Staging PR
@@ -580,7 +639,7 @@ Parse the result:
 
 - **`OPEN`**: store URL and number. Record `STAGING_PR_ACTION[<service-id>] = "existing"`.
 - **`MERGED`**: store URL and number. Record `STAGING_PR_ACTION[<service-id>] = "existing"`.
-- **`CLOSED`**: ask the user whether to re-open a new staging PR (same flow as CLOSED for trunk PR).
+- **`CLOSED`**: ask the user whether to re-open a new staging PR (same flow as CLOSED for trunk PR). Autonomous → create a new one, closed URL in a caveat.
 - **Not found**: proceed to Step 7 for the staging PR.
 
 ---
@@ -603,7 +662,7 @@ This uses local git data (no API call). If the command fails or returns empty, f
 cd <SERVICE_CWD> && git log --oneline <DEFAULT_BRANCH>..production/<TASK_SLUG>
 ```
 
-If no commits ahead: warn "No commits ahead of `<DEFAULT_BRANCH>` for `<service-id>`. Skip PR creation?" If user says yes, record as `skipped`.
+If no commits ahead: warn "No commits ahead of `<DEFAULT_BRANCH>` for `<service-id>`. Skip PR creation?" If user says yes, record as `skipped`. Autonomous → record `skipped` and continue; this is the benign skip (nothing to ship), so it takes a note, not a caveat, and never `blocked`.
 
 ### 7c. Construct PR Title
 
@@ -841,8 +900,16 @@ Present the results:
 
 | Service | PR Type | Action | PR URL | State |
 |---------|---------|--------|--------|-------|
-| <service-id> | trunk | created / existing / skipped | <url> | OPEN / MERGED |
-| <service-id> | alpha | created / existing / skipped / n/a | <url> | OPEN / MERGED |   (alpha row present only when DUAL_PR = yes)
+| <service-id> | trunk | created / existing / skipped / blocked | <url> | OPEN / MERGED |
+| <service-id> | alpha | created / existing / skipped / blocked / n/a | <url> | OPEN / MERGED |   (alpha row present only when DUAL_PR = yes)
+
+### Blocked
+- <service-id>: <reason> — <what the caller must fix>
+(or "none")
+
+### Autonomous decisions
+- <the SHIP_CAVEATS lines this run added at a gate>
+(or "none — no gate fired" · omit the section entirely on an interactive run)
 
 ### Artifacts Updated
 - TASKS.md: External Links and Timeline updated
@@ -853,20 +920,26 @@ Present the results:
 - After merge, run `/jlu-close-task` to finalize
 ```
 
+A non-empty `Blocked` section means this ship did NOT fully succeed, whatever the
+other rows say. Report it as such — never present a partial ship as done.
+
 ---
 
 ## Error Handling
+
+> Every "ask user" row below is the interactive behaviour. With
+> `<AUTONOMOUS> = yes` it resolves per the gate table instead — no prompt.
 
 | Error | Action |
 |-------|--------|
 | No task found | Stop with message |
 | Task is closed | Stop with message |
-| Task in draft/refining | Warn, ask user to confirm |
+| Task in draft/refining | Warn, ask user to confirm · autonomous: abort |
 | `gh` CLI not installed or not authenticated | Stop: "GitHub CLI (`gh`) is required. Install it and run `gh auth login`." |
-| No commits ahead of default branch | Warn, ask user — skip or abort |
-| Git-agent escalation | Present to user, offer skip/retry/abort |
-| GitHub API rate limit | Auto-retry with exponential backoff (5s/15s/45s). After 3 failed retries, escalate to user: offer to wait 60s and retry, skip the service, or abort. |
-| PR creation fails | Report error, ask user to retry or skip service |
+| No commits ahead of default branch | Warn, ask user — skip or abort · autonomous: skip (benign) |
+| Git-agent escalation | Present to user, offer skip/retry/abort · autonomous: block this service |
+| GitHub API rate limit | Auto-retry with exponential backoff (5s/15s/45s). After 3 failed retries, escalate to user: offer to wait 60s and retry, skip the service, or abort. Autonomous: retry once, then block this service. |
+| PR creation fails | Report error, ask user to retry or skip service · autonomous: block this service |
 | Cross-reference update fails | Warn, continue |
 | CLICKUP_TASK.json write fails | Warn, continue |
 

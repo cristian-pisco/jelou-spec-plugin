@@ -95,9 +95,19 @@ describe('execute-task auto-chain (Step 9.5)', () => {
     assert.match(executeTask, /--no-autochain/);
   });
 
-  test('ship runs inline with its gates intact', () => {
+  test('ship runs inline in autonomous mode, gates auto-resolving', () => {
     assert.match(executeTask, /jelou\/workflows\/ship\.md/);
-    assert.match(executeTask, /if ship stops on a gate, the\s*chain stops with it/);
+    assert.match(step95, /\*\*`<AUTONOMOUS> = yes`\*\*/);
+    assert.match(step95, /none of them\s*asks/);
+    assert.match(step95, /Ship's gate list is closed/);
+  });
+
+  test('a blocked service breaks task-green and gets no resolve-pr runner', () => {
+    assert.match(step95, /\*\*Blocked services\.\*\*/);
+    assert.match(step95, /"verdict": "BLOCKED"/);
+    assert.match(step95, /NOT dispatch a resolve-pr runner/);
+    assert.match(step95, /AND no service\s*`blocked` at ship/);
+    assert.match(step95, /never fold them into\s*`skipped`/);
   });
 
   test('runners dispatch sequentially with mode-aware cwd and staging worktree', () => {
@@ -109,7 +119,7 @@ describe('execute-task auto-chain (Step 9.5)', () => {
   });
 
   test('task-green is the AND of every runner verdict', () => {
-    assert.match(executeTask, /\*\*Task-green = AND of every runner verdict being `GREEN`\.\*\*/);
+    assert.match(executeTask, /\*\*Task-green = AND of every runner verdict being `GREEN`, AND no service\s*`blocked` at ship\.\*\*/);
   });
 
   test('clickup steps are non-blocking and the chain notifies at the end', () => {
@@ -204,8 +214,9 @@ describe('advisory findings never stop the chain', () => {
     assert.match(ship, /never insert an extra "shall I open the PR\?"/);
   });
 
-  test('9.5b hands the caveats to ship', () => {
-    assert.match(step95, /Hand\s*ship the `SHIP_CAVEATS` list/);
+  test('9.5b hands the caveats and the autonomous flag to ship', () => {
+    assert.match(step95, /Hand ship two inputs: the `SHIP_CAVEATS` list/);
+    assert.match(step95, /8c\/8e\/8f\/8g/);
   });
 
   test('the recipe carries a closed list of legitimate stops', () => {

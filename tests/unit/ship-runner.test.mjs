@@ -39,7 +39,7 @@ describe('ship fans out one runner per service', () => {
     assert.match(ship, /reaches nobody/);
     assert.match(ship, /re-dispatch the same runner/);
     assert.match(ship, /Steps 4b–7 are the runner's body/);
-    assert.match(runner, /Every `question` becomes a return/);
+    assert.match(runner, /Every `question` resolves without the user/);
     assert.match(runner, /no `AskUserQuestion`, no plain-text question/);
   });
 
@@ -70,7 +70,47 @@ describe('ship fans out one runner per service', () => {
   });
 
   test('a blocked runner does not abort the remaining services', () => {
-    assert.match(ship, /does\s*not\s*abort the remaining services/);
+    assert.match(ship, /never aborts the remaining ones/);
+  });
+
+  test('autonomous mode is a caller input with a documented default per gate', () => {
+    assert.match(ship, /## Autonomous mode — how every gate resolves/);
+    assert.match(ship, /`<AUTONOMOUS>` is a caller input, `no` unless/);
+    assert.match(ship, /In autonomous mode no gate asks/);
+    for (const site of ['Step 2', '2b decision gate \\(items 6a \\/ 6b\\)', '2b step 6b \\(the auditor\\)', '4b\\.1', '4b\\.2', 'Step 5', '5b', '6 \\/ 6b', '7b', '6 \\/ 7e']) {
+      assert.match(ship, new RegExp(`\\| ${site} \\|`), `gate table is missing site ${site}`);
+    }
+    assert.match(ship, /Rows at Step 2 and 2b resolve in the orchestrator/);
+  });
+
+  test('only build failure and git escalation block; the rest proceed', () => {
+    assert.match(ship, /Build FAIL after 5 auto-fix rounds \| 4b\.2 \| \*\*Block this service\.\*\*/);
+    assert.match(ship, /git-agent escalation \| Step 5 \| \*\*Block this service\*\*/);
+    assert.match(ship, /the one gate whose autonomous default is a stop rather than a proceed/);
+    assert.match(ship, /Autonomous → take option 1 once automatically/);
+    assert.match(ship, /Autonomous → option 1 \(create a new PR\)/);
+  });
+
+  test('blocked and skipped stay distinct end to end', () => {
+    assert.match(ship, /\*\*`blocked` is not `skipped`\.\*\*/);
+    assert.match(ship, /"created" \| "existing" \| "skipped" \| "blocked"/);
+    assert.match(ship, /### Blocked/);
+    assert.match(ship, /never present a partial ship as done/);
+    assert.match(runner, /Never report a `blocked`\s*service as `skipped`/);
+  });
+
+  test('autonomous mode never rewrites the task contract or ships a red build', () => {
+    assert.match(ship, /Autonomous mode never does two things/);
+    assert.match(ship, /Never flip `Dual PR: no` in TASKS\.md/);
+    assert.match(ship, /Do NOT choose "B"/);
+  });
+
+  test('the runner resolves gates itself when autonomous and never prompts either way', () => {
+    assert.match(runner, /<AUTONOMOUS>/);
+    assert.match(runner, /never return `NEEDS_DECISION`/);
+    assert.match(runner, /ever, in either\s*mode/);
+    assert.match(ship, /a runner never returns `NEEDS_DECISION` at all/);
+    assert.match(ship, /do NOT ask the user \(nobody is watching a\s*chain\)/);
   });
 
   test('a depth-1 runtime drops the nesting, never the fan-out', () => {
