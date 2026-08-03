@@ -37,16 +37,6 @@ const KNOWN_UNRESOLVED = [
   ['jelou/workflows/ship.md', 'trace-reconcile.mjs'],
   ['jelou/workflows/ship.md', 'trace-start-span.mjs'],
   ['jelou/workflows/ship.md', 'trace-suggest.mjs'],
-  ['jelou/workflows/ui-qa-cleanup.md', 'seed-e2e-settings.mjs'],
-  ['jelou/workflows/ui-qa-run.md', 'classify-e2e-target.mjs'],
-  ['jelou/workflows/ui-qa-run.md', 'detect-auth-collapse.mjs'],
-  ['jelou/workflows/ui-qa-run.md', 'e2e-ensure-account.mjs'],
-  ['jelou/workflows/ui-qa-run.md', 'e2e-login-local.mjs'],
-  ['jelou/workflows/ui-qa-run.md', 'e2e-login.mjs'],
-  ['jelou/workflows/ui-qa-run.md', 'e2e-session-probe.mjs'],
-  ['jelou/workflows/ui-qa-run.md', 'e2e-session-sync.mjs'],
-  ['jelou/workflows/ui-qa-run.md', 'seed-e2e-settings.mjs'],
-  ['jelou/workflows/ui-qa-run.md', 'verify-dev-block.mjs'],
 ];
 
 function markdownSurfaces() {

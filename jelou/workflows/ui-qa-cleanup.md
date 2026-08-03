@@ -85,9 +85,9 @@ find "$TASK_DIR/services" -path '*/e2e/trace/*.zip' -mtime +14 -print -delete
 
 # E2E videos (playwright-output/**/*.webm) are large and local-only (gitignored). Sweep them on
 # the same cadence as traces, using the retention window from the plugin's E2E settings
-# (~/.jlu/e2e-settings.json → retentionDays, default 14). $PLUGIN_ROOT is resolved by the skill
-# bootstrap; the `|| echo 14` keeps the sweep working if it is unset.
-RETENTION_DAYS="$(node "$PLUGIN_ROOT/bin/seed-e2e-settings.mjs" --print-retention 2>/dev/null || echo 14)"
+# (~/.jlu/e2e-settings.json → retentionDays, default 14). Substitute <root> per
+# jelou/references/plugin-root.md; the `|| echo 14` keeps the sweep working if the read fails.
+RETENTION_DAYS="$(node "<root>/bin/seed-e2e-settings.mjs" --print-retention 2>/dev/null || echo 14)"
 find "$TASK_DIR/services" -path '*/e2e/playwright-output/*' -name '*.webm' -mtime +"$RETENTION_DAYS" -print -delete
 ```
 
