@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.328] — 2026-08-03
+
+### Internal
+- stop restating the plugin-root rule in every workflow
+
 ## [0.3.327] — 2026-08-03
 
 ### Fixed
