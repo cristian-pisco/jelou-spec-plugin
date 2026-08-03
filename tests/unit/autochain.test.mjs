@@ -110,12 +110,19 @@ describe('execute-task auto-chain (Step 9.5)', () => {
     assert.match(step95, /never fold them into\s*`skipped`/);
   });
 
-  test('runners dispatch sequentially with mode-aware cwd and staging worktree', () => {
+  test('runners dispatch in parallel across services with a hard cap of 3', () => {
     assert.match(executeTask, /jlu-resolve-pr-runner/);
-    assert.match(executeTask, /\*\*sequentially, concurrency 1\*\*/);
+    assert.match(executeTask, /\*\*in parallel across services, at most 3 runners at a\s*time\*\*/);
+    assert.match(executeTask, /never raise the cap/);
+    assert.match(executeTask, /staging dispatch\s+waits for its production verdict/);
     assert.match(executeTask, /Mode: worktree → `<service-repo>\/\.worktrees\/<TASK_SLUG>`/);
     assert.match(executeTask, /<EPHEMERAL_BRANCH>/);
     assert.match(executeTask, /staging\/<TASK_SLUG>/);
+  });
+
+  test('every runner dispatch hands the spec to the scope guard', () => {
+    assert.match(step95, /<SPEC_PATH>/);
+    assert.match(step95, /Step 6 scope guard/);
   });
 
   test('task-green is the AND of every runner verdict', () => {
@@ -290,5 +297,12 @@ describe('resolve-pr runner contract', () => {
   test('runner never merges and never force-pushes', () => {
     assert.match(runnerAgent, /Never merge the PR/);
     assert.match(runnerAgent, /never force-pushes|never force-push/);
+  });
+
+  test('runner hands the spec to the scope guard and pushes once per cycle', () => {
+    assert.match(runnerAgent, /<SPEC_PATH>/);
+    assert.match(runnerAgent, /`out-of-spec-scope`/);
+    assert.match(runnerAgent, /One push per cycle/);
+    assert.match(runnerAgent, /never\s*push mid-cycle/);
   });
 });

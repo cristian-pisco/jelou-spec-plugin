@@ -1249,18 +1249,23 @@ NOT dispatch a resolve-pr runner — there is no PR to drive. These are what
 separate a partial ship from a green one at 9.5e; never fold them into
 `skipped`.
 
-**9.5c — Drive every PR to green.** For each PR in the set, dispatch the
-`jlu-resolve-pr-runner` agent via `task` — **sequentially, concurrency 1**
-(resource-caps worker policy: each runner may run builds/lints/tests in its
-checkout; parallel runners risk the documented machine freeze). Per-service
-order: the **production PR first, then that service's staging PR**. Inputs
-per dispatch:
+**9.5c — Drive every PR to green.** Dispatch the `jlu-resolve-pr-runner`
+agent via `task` — **in parallel across services, at most 3 runners at a
+time** (one dispatch message carries up to 3; the next batch goes out as
+verdicts return — never raise the cap). Per-service order stays strict: the
+**production PR first, then that service's staging PR** — the staging runner
+needs the production runner's `fixShas`, so a service's staging dispatch
+waits for its production verdict while other services' runners keep running.
+Inputs per dispatch:
 
 - `<PR_URL>` — the PR.
 - `<SERVICE_CWD>` — ship's mode-aware resolution for that service
   (Mode: worktree → `<service-repo>/.worktrees/<TASK_SLUG>`; Mode: branch →
   the service repo root on `production/<TASK_SLUG>`).
 - `<PLUGIN_ROOT>`.
+- `<SPEC_PATH>` — `<TASK_DIR>/SPEC.md`; the runner hands it to the workflow's
+  Step 6 scope guard so suggestions that reach outside the spec's scope
+  escalate instead of applying.
 - `<EPHEMERAL_BRANCH>` — set to `staging/<TASK_SLUG>` for staging PRs (their
   temp worktree was torn down after push; the runner recreates and removes
   one).
@@ -1270,6 +1275,12 @@ per dispatch:
   code fixes ONLY by cherry-picking these SHAs — independent staging-side
   fix commits would collide with the next ship's incremental cherry-pick
   sync.
+
+Parallel dispatch is safe under the resource-caps policy: a runner's
+wall-clock is dominated by network waits — the review-arrival gate and the
+CI watch — and its local work is capped by subagent-base's worker policy
+(single test file, `--runInBand`/`--maxWorkers=2`), so 3 concurrent runners
+stay far below the uncapped full-suite profile that froze the machine.
 
 After EVERY dispatch returns (any verdict, including a killed/aborted
 runner): update that PR's `verdict` in `<TASK_DIR>/AUTOCHAIN.json` — and for
