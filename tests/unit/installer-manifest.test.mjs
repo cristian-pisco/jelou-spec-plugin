@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -101,6 +101,70 @@ describe('installer manifests — every feature bin ships everywhere', () => {
       }
     });
   }
+});
+
+const DELIBERATELY_UNSHIPPED = new Map([
+  [
+    'bin/sync-codex.mjs',
+    'a repo-development script: it regenerates .codex/ mirrors from skills/ and agents/, ' +
+      'neither of which exists in an install. Referenced only as an instruction to plugin developers.',
+  ],
+]);
+
+function surfaceMarkdownFiles() {
+  const out = [];
+  const walk = (dir) => {
+    for (const entry of readdirSync(join(ROOT, dir))) {
+      const rel = join(dir, entry);
+      if (statSync(join(ROOT, rel)).isDirectory()) walk(rel);
+      else if (entry.endsWith('.md')) out.push(rel.split('\\').join('/'));
+    }
+  };
+  for (const dir of ['jelou', 'agents', 'skills']) walk(dir);
+  return out.sort();
+}
+
+function referencedBins() {
+  const refs = new Map();
+  for (const surface of surfaceMarkdownFiles()) {
+    for (const match of read(surface).matchAll(/bin\/[a-z0-9-]+\.mjs/g)) {
+      if (!refs.has(match[0])) refs.set(match[0], []);
+      refs.get(match[0]).push(surface);
+    }
+  }
+  return refs;
+}
+
+describe('installer manifests — every referenced bin is shipped', () => {
+  const referenced = referencedBins();
+
+  for (const installer of INSTALLERS) {
+    test(`${installer} ships every bin a workflow, agent or skill invokes`, () => {
+      const shipped = shippedBins(read(installer));
+      const gaps = [...referenced.keys()]
+        .filter((bin) => !shipped.has(bin) && !DELIBERATELY_UNSHIPPED.has(bin))
+        .map((bin) => `${bin} (referenced by ${referenced.get(bin).join(', ')})`);
+      assert.deepEqual(
+        gaps,
+        [],
+        `absent from ${installer}, so a script install leaves these unreachable. ` +
+          'Add a cp line plus its bin/lib imports, or declare the exclusion in DELIBERATELY_UNSHIPPED.',
+      );
+    });
+  }
+
+  test('every deliberate exclusion is still referenced and still absent', () => {
+    for (const [bin, why] of DELIBERATELY_UNSHIPPED) {
+      assert.ok(referenced.has(bin), `${bin} is excluded but no surface references it — drop the entry`);
+      assert.ok(why.length > 40, `${bin} needs a real justification, not a placeholder`);
+      for (const installer of INSTALLERS) {
+        assert.ok(
+          !shippedBins(read(installer)).has(bin),
+          `${bin} is listed as deliberately unshipped but ${installer} ships it — drop the entry`,
+        );
+      }
+    }
+  });
 });
 
 describe('list-tasks — the scanner is reachable on every runtime', () => {
