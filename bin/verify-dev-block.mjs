@@ -10,6 +10,7 @@ import {
   persistBlock,
   spliceDevBlock,
   spliceVerifiedMark,
+  teardownSafetyCause,
   updateRegistryFile,
   writeMark,
 } from './lib/registry/splice.mjs';
@@ -17,7 +18,7 @@ import { DEFAULT_READY_TIMEOUT_S, defaultRunner, verifySharedReuse } from './lib
 
 export const EXIT_CODES = { green: 0, error: 2, 'green-preexisting': 3, failed: 4, conflict: 5 };
 
-export { computeDevBlockHash, persistBlock, spliceDevBlock, spliceVerifiedMark, updateRegistryFile, writeMark };
+export { computeDevBlockHash, persistBlock, spliceDevBlock, spliceVerifiedMark, teardownSafetyCause, updateRegistryFile, writeMark };
 
 
 export function composeEnvFiles(composeText) {
@@ -117,6 +118,8 @@ export function structuralPreflight(block, checkout, svc = {}) {
       if (!existsSync(join(composeDir, rel))) return `dockerfile ${rel} missing`;
     }
   }
+  const unsafeTeardown = teardownSafetyCause(block);
+  if (unsafeTeardown) return unsafeTeardown;
   if (HOST_LAUNCHERS.has(block.launcher) && typeof block.command === 'string' && PACKAGE_MANAGER_COMMAND_RE.test(block.command.trim())) {
     if (!existsSync(join(checkout, 'node_modules'))) {
       return `node_modules missing in checkout for command '${block.command}'`;
@@ -256,7 +259,7 @@ export function validateBlockShape(block) {
     if (!isRenderableValue(value)) return `unsupported value type for key '${key}'`;
   }
   if (hasControlChars(block)) return 'control characters are not allowed in block strings';
-  return null;
+  return teardownSafetyCause(block);
 }
 
 function readBlockFile(blockFile) {
@@ -294,6 +297,10 @@ async function main() {
   }
   if (args.writeMark) {
     if (!args.commit || args.commit === '-') fail('--write-mark requires --commit <shortsha>');
+    const { parsed } = readRegistry(args.workspace);
+    const { block } = serviceBlock(parsed, args.service);
+    const unsafe = teardownSafetyCause(block);
+    if (unsafe) fail(unsafe);
     const result = writeMark({ workspace: args.workspace, service: args.service, commit: args.commit });
     emit(result);
     process.exit(updateExitCode(result));

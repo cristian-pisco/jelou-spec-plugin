@@ -18,6 +18,7 @@ import {
   spliceDevBlock,
   spliceVerifiedMark,
   structuralPreflight,
+  teardownSafetyCause,
   updateRegistryFile,
   validateBlockShape,
   writeMark,
@@ -60,7 +61,7 @@ const FIXTURE = [
   '    dev:',
   '      launcher: npm',
   '      command: yarn dev',
-  "      teardown: \"pkill -f 'vite' || true\"",
+  "      teardown: \"pkill -f '[d]elta-web.*vite' || true\"",
   '      env_files: [.env, .env.e2e]',
   '      ready_signal:',
   '        type: port_open',
@@ -77,6 +78,17 @@ const FIXTURE = [
   '      ready_signal:',
   '        type: stdout_match',
   '        pattern: Nest application successfully started',
+  '      ready_timeout_s: 1',
+  '      data_isolation: none',
+  '  zeta-legacy:',
+  '    path: ../zeta-legacy',
+  '    dev:',
+  '      launcher: shell',
+  '      command: node src/index.js',
+  "      teardown: \"pkill -f 'node' || true\"",
+  '      ready_signal:',
+  '        type: port_open',
+  '        port: 3000',
   '      ready_timeout_s: 1',
   '      data_isolation: none',
   '',
@@ -335,8 +347,59 @@ describe('composeBuildTargets', () => {
   });
 });
 
+describe('teardownSafetyCause', () => {
+  const host = (teardown) => ({ launcher: 'shell', command: 'pnpm dev', teardown });
+
+  test('rejects a bare-runtime pattern, which matches every such process on the machine', () => {
+    assert.match(teardownSafetyCause(host("pkill -f 'node' || true")), /unsafe_teardown/);
+    assert.match(teardownSafetyCause(host('pkill -f node || true')), /unsafe_teardown/);
+    assert.match(teardownSafetyCause(host("pkill -f 'vite' || true")), /unsafe_teardown/);
+    assert.match(teardownSafetyCause(host("pkill -f 'next dev' || true")), /unsafe_teardown/);
+    assert.match(teardownSafetyCause(host("pkill -f 'npm run dev' || true")), /unsafe_teardown/);
+    assert.match(teardownSafetyCause(host("pkill -f 'bun' || true")), /unsafe_teardown/);
+  });
+
+  test('rejects name-matching kills, which always resolve to the interpreter', () => {
+    assert.match(teardownSafetyCause(host('pkill node')), /unsafe_teardown/);
+    assert.match(teardownSafetyCause(host('killall node')), /unsafe_teardown/);
+    assert.match(teardownSafetyCause(host('pkill -9 node')), /unsafe_teardown/);
+  });
+
+  test('names the offending pattern so the operator can fix it', () => {
+    assert.match(teardownSafetyCause(host("pkill -f 'node' || true")), /'node'/);
+  });
+
+  test('accepts a pattern anchored on the checkout or the entry file', () => {
+    assert.equal(teardownSafetyCause(host("pkill -f '[m]cp-server.*src/index\\.ts' || true")), null);
+    assert.equal(teardownSafetyCause(host('pkill -f "vite apps/apps" || true')), null);
+    assert.equal(teardownSafetyCause(host("pkill -f 'node.*src/server' || true")), null);
+    assert.equal(teardownSafetyCause(parseYamlLite(FIXTURE).services['delta-web'].dev), null);
+  });
+
+  test('container-scoped kills are out of scope — the pattern only ever sees the container', () => {
+    assert.equal(teardownSafetyCause(ALPHA_BLOCK), null);
+    assert.equal(teardownSafetyCause(parseYamlLite(FIXTURE).services['epsilon-worker'].dev), null);
+    assert.equal(teardownSafetyCause({
+      launcher: 'shell',
+      command: 'pnpm dev',
+      teardown: "docker compose -f docker-compose.yml exec -T app pkill -f 'node' || true",
+    }), null);
+  });
+
+  test('an absent teardown is a different concern', () => {
+    assert.equal(teardownSafetyCause(host(undefined)), null);
+    assert.equal(teardownSafetyCause(host('')), null);
+    assert.equal(teardownSafetyCause(null), null);
+  });
+});
+
 describe('structuralPreflight', () => {
   const DELTA_BLOCK = parseYamlLite(FIXTURE).services['delta-web'].dev;
+  const ZETA_BLOCK = parseYamlLite(FIXTURE).services['zeta-legacy'].dev;
+
+  test('a host teardown that would kill every node process fails preflight instead of being certified', () => {
+    assert.match(structuralPreflight(ZETA_BLOCK, makeCheckout({ compose: null })), /unsafe_teardown/);
+  });
 
   test('docker launcher with missing compose file fails with a precise cause', () => {
     const checkout = makeCheckout({ compose: null });
@@ -489,6 +552,17 @@ describe('runVerify', () => {
     assert.equal(verdict.status, 'failed');
     assert.match(verdict.cause, /node_modules missing/);
     assert.ok(calls.every((c) => c.cmd === 'git'));
+  });
+
+  test('an unsafe host teardown short-circuits before anything is started or killed', async () => {
+    const ws = makeWorkspace();
+    const { calls, runner } = recordingRunner([gitRoute()]);
+    const { verdict } = await runVerify({ workspace: ws, service: 'zeta-legacy', checkout: makeCheckout(), runner });
+    assert.equal(verdict.status, 'failed');
+    assert.match(verdict.cause, /unsafe_teardown/);
+    assert.equal(verdict.command_executed, false);
+    assert.ok(calls.every((c) => c.cmd === 'git'));
+    assert.equal(calls.some((c) => c.key.includes('pkill')), false);
   });
 
   test('service without a dev block returns an error (registry is the only source of the block)', async () => {
@@ -785,6 +859,29 @@ describe('verify-dev-block CLI contract', () => {
     assert.equal(verified.commit, 'abc1234');
     assert.equal(verified.block_hash, computeDevBlockHash(ALPHA_BLOCK));
     assert.ok([before, after].includes(verified.date));
+  });
+
+  test('--persist-block refuses a host block whose teardown is a bare-runtime kill', () => {
+    const ws = makeWorkspace();
+    const blockPath = join(mkdtempSync(join(tmpdir(), 'verify-dev-blk-')), 'block.json');
+    writeFileSync(blockPath, JSON.stringify({
+      launcher: 'shell',
+      command: 'pnpm dev',
+      teardown: "pkill -f 'node' || true",
+      data_isolation: 'none',
+    }));
+    const r = runCli(['--persist-block', '--workspace', ws, '--service', 'beta-ui', '--block-file', blockPath]);
+    assert.equal(r.status, 2);
+    assert.match(JSON.parse(r.stdout).error, /unsafe_teardown/);
+    assert.equal(registryText(ws), FIXTURE);
+  });
+
+  test('--write-mark refuses to certify a block carrying an unsafe teardown', () => {
+    const ws = makeWorkspace();
+    const r = runCli(['--write-mark', '--workspace', ws, '--service', 'zeta-legacy', '--commit', 'abc1234']);
+    assert.equal(r.status, 2);
+    assert.match(JSON.parse(r.stdout).error, /unsafe_teardown/);
+    assert.equal(registryText(ws), FIXTURE);
   });
 
   test('--write-mark without --commit exits 2', () => {

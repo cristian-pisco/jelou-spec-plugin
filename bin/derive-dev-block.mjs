@@ -65,12 +65,29 @@ export function runCommand(pm, script) {
   }
 }
 
-function findComposeFile(dir) {
-  for (const name of ['docker-compose.yml', 'docker-compose.yaml', 'compose.yml', 'compose.yaml']) {
-    const p = join(dir, name);
-    if (isFile(p)) return name;
+const CANONICAL_COMPOSE_NAMES = ['docker-compose.yml', 'docker-compose.yaml', 'compose.yml', 'compose.yaml'];
+const COMPOSE_NAME_RE = /^(?:docker-)?compose(?:[.-][\w.-]+)?\.ya?ml$/;
+
+export function composeCandidates(dir) {
+  let entries = [];
+  try { entries = readdirSync(dir); } catch { return []; }
+  const found = entries.filter((name) => COMPOSE_NAME_RE.test(name) && isFile(join(dir, name)));
+  const canonical = CANONICAL_COMPOSE_NAMES.filter((name) => found.includes(name));
+  const overlays = found.filter((name) => !CANONICAL_COMPOSE_NAMES.includes(name)).sort();
+  return [...canonical, ...overlays];
+}
+
+function resolveComposeFile(dir, declared, warnings) {
+  const candidates = composeCandidates(dir);
+  if (declared) {
+    if (isFile(join(dir, declared))) return declared;
+    warnings.push(`declared compose file not found in ${dir}: ${declared} — falling back to discovery`);
   }
-  return null;
+  const picked = candidates[0] || null;
+  if (picked && candidates.length > 1) {
+    warnings.push(`multiple compose files (${candidates.join(', ')}); picked "${picked}" — pass --compose-file to override`);
+  }
+  return picked;
 }
 
 // Indentation in real compose files varies (2 vs 4 spaces) and list items carry
@@ -214,7 +231,46 @@ function procHint(scriptCmd, pm) {
   return 'node';
 }
 
-export function deriveDevBlock(dir, { stack } = {}) {
+const GENERIC_DIR_NAMES = new Set([
+  'app', 'apps', 'src', 'api', 'web', 'ui', 'www', 'server', 'client', 'service', 'services',
+  'backend', 'frontend', 'packages', 'package', 'dist', 'build', 'main', 'core', 'repo', 'code',
+]);
+const ENTRY_SCRIPT_RE = /^[\w@./-]+\.(?:ts|tsx|js|mjs|cjs)$/;
+
+function ereEscape(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function selfMatchGuard(escaped) {
+  const i = escaped.search(/[A-Za-z0-9]/);
+  return i === -1 ? escaped : `${escaped.slice(0, i)}[${escaped[i]}]${escaped.slice(i + 1)}`;
+}
+
+function checkoutAnchor(dir) {
+  const parts = String(dir).split('/').filter(Boolean);
+  const leaf = parts[parts.length - 1] || '';
+  const parent = parts[parts.length - 2] || '';
+  const useParent = parent && GENERIC_DIR_NAMES.has(leaf.toLowerCase());
+  const escapedLeaf = selfMatchGuard(ereEscape(leaf));
+  return useParent ? `${ereEscape(parent)}/${escapedLeaf}` : escapedLeaf;
+}
+
+function entryScript(scriptCmd) {
+  let entry = null;
+  for (const token of String(scriptCmd || '').split(/\s+/)) {
+    const cleaned = token.replace(/^\.\//, '');
+    if (ENTRY_SCRIPT_RE.test(cleaned)) entry = cleaned;
+  }
+  return entry;
+}
+
+export function hostTeardownPattern(dir, scriptCmd, pm) {
+  const entry = entryScript(scriptCmd);
+  const discriminator = entry ? ereEscape(entry) : procHint(scriptCmd, pm);
+  return `${checkoutAnchor(dir)}.*${discriminator}`;
+}
+
+export function deriveDevBlock(dir, { stack, composeFile: declaredComposeFile } = {}) {
   const warnings = [];
   const pm = detectPackageManager(dir);
   if (!pm) return { block: null, reason: `no package.json / lockfile in ${dir} — cannot detect a package manager` };
@@ -229,7 +285,7 @@ export function deriveDevBlock(dir, { stack } = {}) {
   const scriptCmd = String(scripts[script] || '');
   const command = runCommand(pm, script);
 
-  const composeFile = findComposeFile(dir);
+  const composeFile = resolveComposeFile(dir, declaredComposeFile, warnings);
   const idle = composeFile && isIdleDevContainer(dir);
 
   if (idle) {
@@ -281,10 +337,12 @@ export function deriveDevBlock(dir, { stack } = {}) {
 
   // Host dev server.
   const hostPort = null;
+  const teardownPattern = hostTeardownPattern(dir, scriptCmd, pm);
+  warnings.push(`host teardown is anchored on the checkout: confirm it matches the real process with \`pgrep -af "${teardownPattern}"\` while the dev server runs (a hoisted/relocated checkout can make it match nothing)`);
   const block = {
     launcher: pm === 'npm' ? 'npm' : 'shell',
     command,
-    teardown: `pkill -f '${procHint(scriptCmd, pm)}' || true`,
+    teardown: `pkill -f '${teardownPattern}' || true`,
     env_files: ['.env', '.env.e2e'],
     ...readinessFor(stack, scriptCmd, hostPort),
     ready_timeout_s: 90,
@@ -304,22 +362,25 @@ function isMain() {
 
 if (isMain()) {
   const args = process.argv.slice(2);
-  const stackIdx = args.indexOf('--stack');
-  const stack = stackIdx !== -1 ? args[stackIdx + 1] : undefined;
-  // The token after --stack is its value, not the positional dir — skip it so
-  // `--stack nestjs <dir>` resolves dir correctly regardless of flag order.
-  // (When --stack is absent, stackIdx is -1; do NOT exclude index 0.)
-  const stackValIdx = stackIdx === -1 ? -1 : stackIdx + 1;
-  const dir = args.find((a, i) => !a.startsWith('--') && i !== stackValIdx);
+  const flagValueIndexes = new Set();
+  const flagValue = (name) => {
+    const i = args.indexOf(name);
+    if (i === -1) return undefined;
+    flagValueIndexes.add(i + 1);
+    return args[i + 1];
+  };
+  const stack = flagValue('--stack');
+  const composeFile = flagValue('--compose-file');
+  const dir = args.find((a, i) => !a.startsWith('--') && !flagValueIndexes.has(i));
   if (!dir) {
-    console.error('usage: derive-dev-block.mjs <service-dir> [--stack <stack>]');
+    console.error('usage: derive-dev-block.mjs <service-dir> [--stack <stack>] [--compose-file <name>]');
     process.exit(2);
   }
   if (!existsSync(dir)) {
     console.error(`derive-dev-block: directory not found: ${dir}`);
     process.exit(2);
   }
-  const result = deriveDevBlock(dir, { stack });
+  const result = deriveDevBlock(dir, { stack, composeFile });
   if (result.block) result.yaml = devBlockToYaml(result.block);
   process.stdout.write(JSON.stringify(result, null, 2) + '\n');
   process.exit(result.block ? 0 : 3);

@@ -19,9 +19,12 @@ import {
   parseComposeServicePorts,
   primaryHostPort,
   isIdleDevContainer,
+  composeCandidates,
+  hostTeardownPattern,
   deriveDevBlock,
   devBlockToYaml,
 } from '../../bin/derive-dev-block.mjs';
+import { teardownSafetyCause } from '../../bin/lib/registry/splice.mjs';
 
 function scratch(files) {
   const dir = mkdtempSync(join(tmpdir(), 'derive-dev-'));
@@ -31,6 +34,38 @@ function scratch(files) {
     writeFileSync(abs, content);
   }
   return dir;
+}
+
+function scratchNamed(name, files) {
+  const dir = join(mkdtempSync(join(tmpdir(), 'derive-dev-')), name);
+  mkdirSync(dir, { recursive: true });
+  for (const [rel, content] of Object.entries(files)) {
+    const abs = join(dir, rel);
+    mkdirSync(join(abs, '..'), { recursive: true });
+    writeFileSync(abs, content);
+  }
+  return dir;
+}
+
+const MCP_SERVER_ARGV = {
+  supervisor: 'node /home/dev/projects/jelou-cli/packages/mcp-server/node_modules/.bin/../tsx/dist/cli.mjs watch --clear-screen=false --env-file=.env --import ./src/instrument.ts src/index.ts',
+  child: '/home/dev/.nvm/versions/node/v24.12.0/bin/node --require /home/dev/projects/jelou-cli/packages/mcp-server/node_modules/.pnpm/tsx@4.22.4/node_modules/tsx/dist/preflight.cjs --import file:///home/dev/projects/jelou-cli/packages/mcp-server/node_modules/.pnpm/tsx@4.22.4/node_modules/tsx/dist/loader.mjs --env-file=.env --import ./src/instrument.ts src/index.ts',
+};
+
+const BYSTANDER_ARGV = [
+  'node /home/dev/.npm/_npx/57e5b9c57ed85305/node_modules/.bin/mcp-server-mysql',
+  'npm exec mongodb-mcp-server@latest',
+  'node /home/dev/.npm/_npx/de2bd410102f5eda/node_modules/.bin/mcp-server-sequential-thinking',
+  'java -jar /app/sonarqube-mcp-server.jar',
+  'node /home/dev/projects/jelou-api/node_modules/.bin/nest start --watch',
+  'node /home/dev/projects/other-ui/node_modules/.bin/vite',
+  '/usr/local/bin/node src/server.js',
+];
+
+function teardownRegex(teardown) {
+  const m = /pkill -f (?:'([^']+)'|"([^"]+)")/.exec(teardown || '');
+  assert.ok(m, `teardown does not pkill on a quoted pattern: ${teardown}`);
+  return new RegExp(m[1] ?? m[2]);
 }
 
 describe('detectPackageManager', () => {
@@ -258,15 +293,161 @@ describe('deriveDevBlock — multi-service compose avoids picking the DB', () =>
   });
 });
 
-describe('deriveDevBlock — bun teardown targets bun, not node', () => {
-  const dir = scratch({
+describe('deriveDevBlock — bun teardown targets this checkout, not every bun on the box', () => {
+  const dir = scratchNamed('beta-runtime', {
     'bun.lockb': '',
     'package.json': JSON.stringify({ scripts: { dev: 'bun run --watch index.ts' } }),
   });
   const { block } = deriveDevBlock(dir);
-  test('host bun dev server pkills bun', () => {
+  test('host bun dev server is killed by checkout anchor + entry file', () => {
     assert.equal(block.command, 'bun run dev');
-    assert.match(block.teardown, /pkill -f 'bun'/);
+    const re = teardownRegex(block.teardown);
+    assert.ok(re.test('bun /home/dev/projects/beta-runtime/node_modules/.bin/bun run --watch index.ts'));
+    assert.equal(re.test('bun /home/dev/projects/gamma-runtime/node_modules/.bin/bun run --watch index.ts'), false);
+    assert.equal(teardownSafetyCause(block), null);
+  });
+});
+
+describe('hostTeardownPattern', () => {
+  test('anchors on the checkout basename plus the entry script', () => {
+    assert.equal(hostTeardownPattern('/repo/mcp-server', 'tsx watch src/index.ts', 'pnpm'), '[m]cp-server.*src/index\\.ts');
+  });
+
+  test('falls back to the process hint when the script names no entry file', () => {
+    assert.equal(hostTeardownPattern('/repo/checkout-ui', 'vite --host', 'npm'), '[c]heckout-ui.*vite');
+  });
+
+  test('widens to the parent segment when the directory name is too generic to discriminate', () => {
+    assert.equal(hostTeardownPattern('/repo/jelou-apps/apps/apps', 'vite --host', 'pnpm'), 'apps/[a]pps.*vite');
+  });
+
+  test('escapes regex metacharacters in the anchor and the entry', () => {
+    assert.equal(hostTeardownPattern('/repo/my.service', 'node dist/main.js', 'npm'), '[m]y\\.service.*dist/main\\.js');
+  });
+});
+
+describe('deriveDevBlock — host teardown is anchored on the service, never a bare runtime', () => {
+  const dir = scratchNamed('mcp-server', {
+    'pnpm-lock.yaml': '',
+    'package.json': JSON.stringify({
+      scripts: { dev: 'tsx watch --clear-screen=false --env-file=.env --import ./src/instrument.ts src/index.ts' },
+    }),
+  });
+  const { block, warnings } = deriveDevBlock(dir, { stack: 'node-hono' });
+
+  test('kills the tsx supervisor and the node child that serves', () => {
+    const re = teardownRegex(block.teardown);
+    assert.ok(re.test(MCP_SERVER_ARGV.supervisor));
+    assert.ok(re.test(MCP_SERVER_ARGV.child));
+  });
+
+  test('spares every unrelated process on the host', () => {
+    const re = teardownRegex(block.teardown);
+    for (const argv of BYSTANDER_ARGV) assert.equal(re.test(argv), false, `matched a bystander: ${argv}`);
+  });
+
+  test('never matches the shell running the pkill itself', () => {
+    const re = teardownRegex(block.teardown);
+    assert.equal(re.test(`sh -c ${block.teardown}`), false);
+  });
+
+  test('the derived teardown passes the registry safety gate', () => {
+    assert.equal(teardownSafetyCause(block), null);
+  });
+
+  test('warns that the anchor must be confirmed against the real argv', () => {
+    assert.ok(warnings.some((w) => /pgrep -af/.test(w)), warnings.join(' | '));
+  });
+});
+
+describe('deriveDevBlock — no host block may carry a bare-runtime kill', () => {
+  const FIXTURES = [
+    ['vite', 'vite --host'],
+    ['next', 'next dev'],
+    ['nodemon', 'nodemon src/app.js'],
+    ['plain-node', 'node src/server.js'],
+    ['tsx', 'tsx watch src/index.ts'],
+    ['nest-on-host', 'nest start --watch'],
+  ];
+  for (const [name, script] of FIXTURES) {
+    test(`${name} host dev server derives a scoped teardown`, () => {
+      const dir = scratchNamed(`svc-${name}`, {
+        'package-lock.json': '',
+        'package.json': JSON.stringify({ scripts: { dev: script } }),
+      });
+      const { block } = deriveDevBlock(dir);
+      assert.equal(teardownSafetyCause(block), null, `${script} -> ${block.teardown}`);
+    });
+  }
+});
+
+describe('composeCandidates', () => {
+  test('lists canonical names first, then overlays, deterministically', () => {
+    const dir = scratch({
+      'docker-compose.dev.yml': '', 'compose.yaml': '', 'docker-compose.yml': '', 'docker-compose.local.yaml': '',
+      'package.json': '{}', 'README.yml': '',
+    });
+    assert.deepEqual(composeCandidates(dir), [
+      'docker-compose.yml', 'compose.yaml', 'docker-compose.dev.yml', 'docker-compose.local.yaml',
+    ]);
+  });
+
+  test('a directory with no compose file yields nothing', () => {
+    assert.deepEqual(composeCandidates(scratch({ 'package.json': '{}' })), []);
+  });
+});
+
+describe('deriveDevBlock — docker-compose.dev.yml is a compose file (the miss that made a container service look like a host one)', () => {
+  test('idle container behind a .dev overlay derives docker-exec with an in-container teardown', () => {
+    const dir = scratchNamed('mcp-server', {
+      'pnpm-lock.yaml': '',
+      'package.json': JSON.stringify({ scripts: { dev: 'tsx watch src/index.ts' } }),
+      'Dockerfile.dev': 'CMD sleep infinity',
+      'docker-compose.dev.yml': 'services:\n  mcp-server:\n    ports:\n      - "8787:8080"\n',
+    });
+    const { block, source } = deriveDevBlock(dir, { stack: 'node-hono' });
+    assert.equal(source, 'derived:docker-exec');
+    assert.equal(block.launcher, 'docker-exec');
+    assert.equal(block.docker.compose_file, 'docker-compose.dev.yml');
+    assert.match(block.teardown, /^docker compose -f docker-compose\.dev\.yml exec -T mcp-server pkill -f/);
+    assert.equal(teardownSafetyCause(block), null);
+  });
+
+  test('a declared compose file overrides discovery order', () => {
+    const dir = scratchNamed('svc-overlay', {
+      'package-lock.json': '',
+      'package.json': JSON.stringify({ scripts: { dev: 'nest start --watch' } }),
+      'Dockerfile.dev': 'CMD sleep infinity',
+      'docker-compose.yml': 'services:\n  app:\n    ports:\n      - "8080:8080"\n',
+      'docker-compose.dev.yml': 'services:\n  api:\n    ports:\n      - "8998:8080"\n',
+    });
+    const { block } = deriveDevBlock(dir, { stack: 'nestjs', composeFile: 'docker-compose.dev.yml' });
+    assert.equal(block.docker.compose_file, 'docker-compose.dev.yml');
+    assert.equal(block.docker.service, 'api');
+  });
+
+  test('a declared compose file that is absent warns and falls back to discovery', () => {
+    const dir = scratchNamed('svc-absent', {
+      'package-lock.json': '',
+      'package.json': JSON.stringify({ scripts: { dev: 'nest start --watch' } }),
+      'Dockerfile.dev': 'CMD sleep infinity',
+      'docker-compose.yml': 'services:\n  app:\n    ports:\n      - "8080:8080"\n',
+    });
+    const { block, warnings } = deriveDevBlock(dir, { stack: 'nestjs', composeFile: 'docker-compose.staging.yml' });
+    assert.equal(block.docker.compose_file, 'docker-compose.yml');
+    assert.ok(warnings.some((w) => /docker-compose\.staging\.yml/.test(w)), warnings.join(' | '));
+  });
+
+  test('multiple candidates warn which one was picked', () => {
+    const dir = scratchNamed('svc-many', {
+      'package-lock.json': '',
+      'package.json': JSON.stringify({ scripts: { dev: 'nest start --watch' } }),
+      'Dockerfile.dev': 'CMD sleep infinity',
+      'docker-compose.yml': 'services:\n  app:\n    ports:\n      - "8080:8080"\n',
+      'docker-compose.dev.yml': 'services:\n  app:\n    ports:\n      - "8998:8080"\n',
+    });
+    const { warnings } = deriveDevBlock(dir, { stack: 'nestjs' });
+    assert.ok(warnings.some((w) => /multiple compose files/.test(w)), warnings.join(' | '));
   });
 });
 
