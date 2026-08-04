@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.334] — 2026-08-04
+
+### Changed
+- Merge pull request #68 from cristian-pisco/fix/app-mount-gate
+
 ## [0.3.333] — 2026-08-03
 
 ### Changed
