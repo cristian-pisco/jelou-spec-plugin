@@ -70,6 +70,16 @@ describe('daily-slack-format-meetings — lines', () => {
     const r = run(setup([utc]));
     assert.equal(r.stdout, 'Sync producto (14:00–15:00)\n');
   });
+
+  test('timed event without end renders start time only', () => {
+    const r = run(setup([{ summary: 'Kickoff', start: { dateTime: '2026-08-04T11:00:00-05:00' } }]));
+    assert.equal(r.stdout, 'Kickoff (11:00)\n');
+  });
+
+  test('event without start renders bare summary and sorts first', () => {
+    const r = run(setup([daily, { summary: 'Sin fecha' }]));
+    assert.equal(r.stdout, 'Sin fecha\nDaily Apps (09:00–09:15)\n');
+  });
 });
 
 describe('daily-slack-format-meetings — payload shapes', () => {
