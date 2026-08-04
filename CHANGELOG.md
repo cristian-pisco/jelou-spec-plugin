@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.335] — 2026-08-04
+
+### Changed
+- Merge pull request #69 from cristian-pisco/feat/daily-slack-calendar-meetings
+
 ## [0.3.334] — 2026-08-04
 
 ### Changed
