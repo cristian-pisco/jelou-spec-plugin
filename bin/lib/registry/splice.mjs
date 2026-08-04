@@ -22,6 +22,98 @@ export function lineIndent(line) {
   return line.length - line.trimStart().length;
 }
 
+const TEARDOWN_HOST_LAUNCHERS = new Set(['npm', 'make', 'shell']);
+const REMOTE_EXEC_COMMANDS = new Set(['docker', 'docker-compose', 'podman', 'kubectl', 'ssh', 'nerdctl']);
+const BARE_PROCESS_TARGETS = new Set([
+  'node', 'nodejs', 'deno', 'bun', 'tsx', 'ts-node', 'nodemon', 'pm2',
+  'vite', 'webpack', 'webpack-dev-server', 'esbuild', 'rollup', 'parcel', 'turbo',
+  'next', 'next dev', 'nest', 'nest start', 'remix', 'nuxt', 'ng', 'ng serve',
+  'npm', 'npm run dev', 'npm start', 'yarn', 'yarn dev', 'pnpm', 'pnpm dev',
+  'python', 'python3', 'uvicorn', 'gunicorn', 'flask', 'ruby', 'rails', 'php', 'java', 'dotnet', 'air', 'go',
+]);
+
+function splitShellSegments(cmd) {
+  const segments = [];
+  let current = '';
+  let quote = null;
+  for (let i = 0; i < cmd.length; i += 1) {
+    const c = cmd[i];
+    if (quote) {
+      current += c;
+      if (c === quote) quote = null;
+      continue;
+    }
+    if (c === '"' || c === "'") { quote = c; current += c; continue; }
+    if (c === ';' || c === '\n' || c === '&' || c === '|') {
+      segments.push(current);
+      current = '';
+      continue;
+    }
+    current += c;
+  }
+  segments.push(current);
+  return segments.map((s) => s.trim()).filter(Boolean);
+}
+
+function tokenizeSegment(segment) {
+  const tokens = [];
+  let current = '';
+  let quote = null;
+  for (let i = 0; i < segment.length; i += 1) {
+    const c = segment[i];
+    if (quote) {
+      if (c === quote) { quote = null; continue; }
+      current += c;
+      continue;
+    }
+    if (c === '"' || c === "'") { quote = c; continue; }
+    if (/\s/.test(c)) {
+      if (current) { tokens.push(current); current = ''; }
+      continue;
+    }
+    current += c;
+  }
+  if (current) tokens.push(current);
+  return tokens;
+}
+
+function normalizePattern(pattern) {
+  return pattern
+    .replace(/\[([^\]])\]/g, '$1')
+    .replace(/\\(.)/g, '$1')
+    .replace(/\.[*+]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function pkillTargets(teardown) {
+  const targets = [];
+  for (const segment of splitShellSegments(String(teardown || ''))) {
+    const tokens = tokenizeSegment(segment);
+    if (tokens.length === 0) continue;
+    const program = tokens[0].split('/').pop();
+    if (REMOTE_EXEC_COMMANDS.has(program)) continue;
+    if (program !== 'pkill' && program !== 'killall') continue;
+    const args = tokens.slice(1).filter((t) => !t.startsWith('-'));
+    if (args.length === 0) continue;
+    targets.push({ pattern: args.join(' ') });
+  }
+  return targets;
+}
+
+export function teardownSafetyCause(block) {
+  if (!block || !TEARDOWN_HOST_LAUNCHERS.has(block.launcher)) return null;
+  const teardown = typeof block.teardown === 'string' ? block.teardown : '';
+  if (!teardown.trim()) return null;
+  for (const { pattern } of pkillTargets(teardown)) {
+    if (!BARE_PROCESS_TARGETS.has(normalizePattern(pattern))) continue;
+    return `unsafe_teardown: host teardown pattern '${pattern}' matches every such process on the machine, `
+      + 'not just this service; anchor it on the checkout and its entry file '
+      + "(e.g. pkill -f '[s]ervice-dir.*src/index\\.ts')";
+  }
+  return null;
+}
+
 function escapeRegExp(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

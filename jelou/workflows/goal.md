@@ -140,7 +140,8 @@ No seed system: reuses `dev` blocks + `data_isolation: per-run`. Testcontainers 
 
    1. Resolve the service's active worktree (`jelou/references/worktree-resolution.md`).
    2. Derive a candidate block:
-      `node <plugin-root>/bin/derive-dev-block.mjs <worktree> --stack <services.yaml stack>`.
+      `node <plugin-root>/bin/derive-dev-block.mjs <worktree> --stack <services.yaml stack>`
+      (append `--compose-file <docker.compose_file>` when the entry declares one).
       The script detects the package manager from the lockfile and the dev script from
       `package.json`, and emits one of three blocks (or exits `3` with a `reason` when it cannot
       infer one): the idle-dev-container pattern (`Dockerfile.dev` → `CMD sleep infinity`) →

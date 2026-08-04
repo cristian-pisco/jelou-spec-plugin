@@ -427,6 +427,23 @@ describe('verifySharedReuse — host launchers (npm/make/shell)', () => {
     assert.ok(calls.some((c) => c.cmd === 'sh' && c.args[1] === 'kill -- -4242'));
   });
 
+  test('the block teardown string is NEVER executed on the host path — only the spawned group is killed', async () => {
+    const { calls, runner } = makeRunner([
+      { when: 'pgrep -f', results: { code: 1, stdout: '', stderr: '' } },
+      { when: 'echo $!', results: ok('4242\n') },
+    ]);
+    let portCalls = 0;
+    const probePort = async () => {
+      portCalls += 1;
+      return portCalls >= 2;
+    };
+    const entry = npmEntry({ teardownCmd: "pkill -f 'sentinel-never-run' || true" });
+    const result = await verifySharedReuse(entry, baseDeps(runner, { probePort }));
+    assert.equal(result.teardown_clean, true);
+    assert.equal(calls.some((c) => c.key.includes('sentinel-never-run')), false);
+    assert.ok(calls.some((c) => c.cmd === 'sh' && c.args[1] === 'kill -- -4242'));
+  });
+
   test('group kill failure falls back to a plain kill and stays clean when it succeeds', async () => {
     const { calls, runner } = makeRunner([
       { when: 'pgrep -f', results: { code: 1, stdout: '', stderr: '' } },

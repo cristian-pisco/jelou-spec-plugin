@@ -11,6 +11,27 @@ The orchestrator (M2 `/jlu-ui-qa-run`) waits for each service's readiness signal
 
 Both look like flake. Get the signal right.
 
+## Teardown patterns are host-global unless you anchor them
+
+Every `teardown` below runs on the HOST, where `pkill -f 'vite'` kills every Vite in every
+checkout, and `pkill -f 'node'` kills every Node process on the machine — other services, and
+the MCP servers of every running agent session. So each pattern pairs a token unique to the
+service with the process discriminator, and hides one letter of the first token in a character
+class so the pattern never matches the shell running the `pkill`:
+
+```
+pkill -f '[o]rders-api.*src/server\.js'     # checkout dir + entry script
+pkill -f 'apps/[a]pps.*vite'                # parent segment too, when the leaf is generic
+pkill -f 'uvicorn app\.main.*--port 8010'    # …or tool + the service's own port, when argv carries no path
+```
+
+Interpreters invoked from `PATH` (`php artisan serve`, `uvicorn`, `python manage.py`) put no
+checkout path in their argv, so anchor those on the unique port instead of the directory.
+Confirm any pattern with `pgrep -af '<pattern>'` while the dev server runs, before pinning it:
+matching nothing leaks a process, but matching too much takes down the developer's machine.
+`bin/derive-dev-block.mjs` emits this shape automatically, and bare-runtime patterns are
+rejected at persist/certify time (`unsafe_teardown` — see `dev-block-schema.md`).
+
 ## Per-stack defaults
 
 ### Next.js (dev mode)
@@ -19,7 +40,7 @@ Both look like flake. Get the signal right.
 dev:
   launcher: npm
   command: npm run dev
-  teardown: pkill -f 'next dev'
+  teardown: pkill -f '[w]eb-console.*next dev'
   ready_signal:
     type: stdout_match
     pattern: "✓ Ready in"
@@ -36,7 +57,7 @@ The "✓ Ready in" line appears AFTER the first compile finishes. On cold cache,
 dev:
   launcher: npm
   command: npm run dev
-  teardown: pkill -f 'vite'
+  teardown: pkill -f 'apps/[a]pps.*vite'
   ready_signal:
     type: stdout_match
     pattern: "Local:"   # Vite prints "  Local:   http://localhost:5173/"
@@ -68,7 +89,7 @@ large monorepo (hundreds of modules) means the page serves its static loading sh
 dev:
   launcher: npm
   command: npm run serve     # or `npm start` for CRA
-  teardown: pkill -f 'webpack-dev-server'
+  teardown: pkill -f '[a]dmin-ui.*webpack-dev-server'
   ready_signal:
     type: stdout_match
     pattern: "Compiled successfully"
@@ -85,7 +106,7 @@ CRA's "Compiled successfully" only fires after the first build. Don't trust the 
 dev:
   launcher: npm
   command: npm run dev      # whatever the consumer's script is
-  teardown: pkill -f 'node.*src/server'
+  teardown: pkill -f '[o]rders-api.*src/server\.js'
   health_url: http://localhost:3001/health
   ready_timeout_s: 15
   ram_estimate_mb: 200
@@ -108,7 +129,7 @@ Express has no standard ready signal. Insist on a `/health` endpoint in the cons
 dev:
   launcher: npm
   command: npm run start:dev
-  teardown: pkill -f 'nest start'
+  teardown: pkill -f '[j]elou-api.*nest start'
   health_url: http://localhost:3000/health
   ready_timeout_s: 60        # NestJS startup is slower than Express
   ram_estimate_mb: 350
@@ -154,7 +175,7 @@ If the app *does* expose a health route, `health_url: http://localhost:<mapped-h
 dev:
   launcher: shell
   command: php artisan serve --host=0.0.0.0 --port=8000
-  teardown: pkill -f 'artisan serve'
+  teardown: pkill -f 'artisan serve.*--port=8000'
   health_url: http://localhost:8000/up
   ready_timeout_s: 20
   ram_estimate_mb: 200
@@ -168,7 +189,7 @@ Laravel 11+ ships `/up` by default. Older versions need a manual route.
 dev:
   launcher: shell
   command: uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-  teardown: pkill -f 'uvicorn app.main'
+  teardown: pkill -f 'uvicorn app\.main.*--port 8000'
   health_url: http://localhost:8000/health
   ready_timeout_s: 20
   ram_estimate_mb: 200
@@ -182,7 +203,7 @@ Add a `/health` route in `app/main.py` if the consumer hasn't already. Stock uvi
 dev:
   launcher: shell
   command: python manage.py runserver 0.0.0.0:8000 --noreload
-  teardown: pkill -f 'manage.py runserver'
+  teardown: pkill -f 'manage\.py runserver.*:8000'
   ready_signal:
     type: stdout_match
     pattern: "Starting development server at"

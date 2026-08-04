@@ -102,6 +102,37 @@ pattern (NestJS dev containers on `devlabs_mynetwork`). `launcher: docker` alone
   developer owns; the run leaves them as it found them (idle). Teardown is skipped entirely
   when boot found the app already serving (it didn't start it).
 
+### Host teardowns MUST be anchored on the checkout (hard gate)
+
+Inside a container a bare pattern is harmless — it only ever sees that container's process
+table. On the HOST it is not: `pkill -f 'node'` matches every Node process on the developer's
+machine (every other Jelou service, every MCP server of every running agent session,
+containerized processes visible in the host PID namespace). A host teardown therefore carries
+**two** anchors joined by `.*`:
+
+1. a token unique to this service — its checkout directory name (plus the parent segment when
+   the leaf is generic: `apps/apps`, not `apps`), and
+2. the process discriminator — the entry script from the dev command (`src/index.ts`) when it
+   names one, else the runtime/tool hint (`vite`, `nest start`).
+
+Wrap the anchor's first letter in a character class (`[m]cp-server`) so the pattern can never
+match the shell that runs the `pkill` itself. `bin/derive-dev-block.mjs` emits this shape
+(`hostTeardownPattern`) and warns to confirm it with `pgrep -af '<pattern>'` against the live
+process before trusting it — a relocated or dependency-hoisted checkout can make an anchored
+pattern match nothing, which leaks a process instead of killing bystanders.
+
+This is enforced, not advised: `teardownSafetyCause()` rejects a host-launcher teardown whose
+`pkill`/`killall` target is a bare runtime or tool name (`node`, `bun`, `vite`, `nodemon`,
+`next dev`, `nest start`, `npm run dev`, `python`, …). The cause `unsafe_teardown` fails
+`--persist-block`, fails `--write-mark`, and fails the verify preflight **before anything
+boots**, so such a block can never be persisted or certified. Container-scoped teardowns
+(`docker … exec -T <svc> pkill …`) are out of scope for the gate.
+
+> A host block's `teardown` string is NOT exercised by verification: for `launcher: npm|make|shell`
+> the verifier kills the process group of the PID it spawned (`kill -- -<pgid>`) and never runs
+> `teardown`. So `TEARDOWN_CLEAN: true` and a green `verified` mark say nothing about whether that
+> string works or is safe — which is exactly why the gate above is a persist/certify-time check.
+
 ## Readiness — `health_url` vs `ready_signal`
 
 Exactly one of `health_url` or `ready_signal` is required.

@@ -16,7 +16,9 @@ services:
     dev:                           # optional — required by /jlu-ui-qa-run; absence = service is skipped by E2E orchestration
       launcher: docker             # docker | docker-exec | npm | make | shell
       command: npm run dev         # required when launcher != docker; runs INSIDE the container when launcher: docker-exec
-      teardown: pkill -f 'npm run dev'   # required when launcher != docker; derived from `docker` when launcher: docker
+      teardown: pkill -f '[s]ervice-alpha.*src/main\.js'   # required when launcher != docker; derived from `docker` when launcher: docker.
+                                 # A HOST pattern MUST anchor on the checkout + entry/port — a bare `node`/`vite`/`next dev`
+                                 # kills every such process on the machine and is REJECTED (see dev-block-schema.md).
       health_url: http://localhost:4001/health  # OR ready_signal below
       ready_signal:
         type: stdout_match         # stdout_match | port_open | http_200
@@ -82,7 +84,7 @@ services:
     dev:
       launcher: npm
       command: npm run dev
-      teardown: pkill -f 'next dev'
+      teardown: pkill -f '[s]ervice-frontend.*next dev'
       ready_signal:
         type: stdout_match
         pattern: "compiled successfully"

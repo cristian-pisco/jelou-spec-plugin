@@ -168,7 +168,9 @@ workers finish.
    `already-registered`, or `skipped (<reason>)`.
 5. **Derive + persist missing `dev` blocks (orchestrator-side, fail-soft).** For each
    successful service whose entry — pre-existing or just appended — has no `dev` block, run
-   `node <plugin-root>/bin/derive-dev-block.mjs <SOURCE_ROOT> --stack <stack>`:
+   `node <plugin-root>/bin/derive-dev-block.mjs <SOURCE_ROOT> --stack <stack>` (append
+   `--compose-file <docker.compose_file>` when the entry already declares one, so the derivation
+   uses the same compose file the registry does instead of re-discovering it):
    - Exit `3` → record `CERTIFICATION[service-id]` = `exit-3(<reason>)` and continue.
    - Derivable → persist via
      `node <plugin-root>/bin/verify-dev-block.mjs --persist-block --workspace <WORKSPACE_PATH> --service <service-id> --block-file -`
@@ -520,7 +522,7 @@ Mapping a service is an explicit statement that it belongs to the workspace, so 
    ```
 5. Set `REGISTRY_ACTION` = `registered`.
 6. **Certify the `dev` block (fail-soft — nothing in this sub-step may block the docs deliverable).** After the entry is ensured — freshly registered, path-updated, or already registered — check whether it carries a `dev` block. Re-runs heal here too: an entry registered by an earlier run without a `dev` block gets one now, exactly as re-runs heal a missing registry entry. When the block is missing:
-   a. **Derive** a candidate: `node <plugin-root>/bin/derive-dev-block.mjs <SOURCE_ROOT> --stack <stack>`.
+   a. **Derive** a candidate: `node <plugin-root>/bin/derive-dev-block.mjs <SOURCE_ROOT> --stack <stack>` — append `--compose-file <docker.compose_file>` when the entry already declares one, so the derivation uses the registry's compose file instead of re-discovering it.
       On exit `3` (not derivable — a library with no dev script and no compose file is the legitimate case), record `CERTIFICATION` = `exit-3(<reason>)` for the Step 9 report and continue. This is an informative note, not an error.
    b. **Persist first** (persist-then-verify): pipe the derived block JSON to
       `node <plugin-root>/bin/verify-dev-block.mjs --persist-block --workspace <WORKSPACE_PATH> --service <service-id> --block-file -` (the block JSON on stdin). Exit `5` means an mtime conflict — a concurrent writer touched `services.yaml`; re-read the registry and retry once. A second exit `5` → WARN, set `CERTIFICATION` = `skipped (persist conflict)`, continue.
