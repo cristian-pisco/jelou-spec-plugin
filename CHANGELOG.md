@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.337] — 2026-08-04
+
+### Changed
+- Merge pull request #71 from cristian-pisco/fix/jlu-update-claude-host
+
 ## [0.3.336] — 2026-08-04
 
 ### Changed
