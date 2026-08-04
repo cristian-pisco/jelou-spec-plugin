@@ -323,6 +323,22 @@ namespaced-backend wiring is not yet supported (this covers backend↔backend on
     `bin/verify-dev-block.mjs --write-mark` (exit `5` = mtime conflict → re-read and retry
     once). A block already marked with a current hash is not re-marked.
 
+10b. **UI app-mount gate — settle the UI lane's viability BEFORE Phase 3.** For each service
+    in `ui_services`, right after its readiness passes, run the `ui-qa-run.md` step 14a'
+    app-mount probe (`UI_WORKTREE=<worktree> node "<root>/bin/e2e-app-mount-probe.mjs"`,
+    default budget 180 s). Server readiness (`http_200`/`port_open`/Vite `Local:`) is NOT
+    app readiness: on a large module graph the first browser navigation still pays the full
+    dev-transform cost, and mistaking that warm-up for a crash is how a whole UI lane gets
+    written off as "the app does not boot" hours later. This probe also pre-warms the module
+    graph so Phase 4's suite starts against a warm server.
+    - `mounted` → continue; record the mount time in `GOALS.md`'s environment notes.
+    - `not_mounted` → apply step 14a''s single self-correction (reboot via the non-force dev
+      variant when the `dev.command` forces a cold optimizer pass, re-probe full budget).
+      Still `not_mounted` → the UI lane is `BLOCKED reason=app_never_mounted` **now**: mark
+      every fullstack/frontend objective's UI half UNSATISFIED with the probe evidence,
+      surface it to the user immediately, and continue Phase 3 for the backend halves. Never
+      discover a dead UI lane at Phase 4 after the backend iterations already ran.
+
 ### Phase 3 — Backend execution (delegated)
 
 11. For each service in `backend_services`: dispatch `jlu-test-suite-runner` with
