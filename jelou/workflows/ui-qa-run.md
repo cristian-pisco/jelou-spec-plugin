@@ -140,6 +140,37 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
     `dev` block either: a non-UI service without one is still skipped per step 6 —
     derivation belongs to `/jlu-map-codebase` and `/jlu-goal` step 8b.
 
+14a'. **App-mount gate — the served page must actually mount, not just serve.** Runs after
+    boot readiness (and under `--no-boot`, right when Phase 3 begins for the UI service),
+    before the auth gate. A dev-server readiness signal (Vite's `Local:`, a `port_open`, an
+    HTTP 200 on `/`) proves the SERVER is listening, NOT that the app renders: on a large
+    module graph, Vite dev still has to transform hundreds of modules on the FIRST browser
+    navigation, so the page can sit on its static loading shell for 1–3 minutes while every
+    HTTP probe returns 200. Judging the app "crashed" or "does not boot" from a short wait
+    here is a false diagnosis — it burns the whole UI lane on an app that was merely warming.
+
+    ```bash
+    UI_WORKTREE=<worktree> node "<root>/bin/e2e-app-mount-probe.mjs"
+    ```
+
+    The probe self-loads `.env`/`.env.e2e` from `UI_WORKTREE` (never `source` them), opens
+    `E2E_BASE_URL` in the consumer's own Playwright, and polls until the app tree commits
+    (loading shell gone + interactive elements present), with a cold-transform budget of
+    `APP_MOUNT_TIMEOUT_S` (default 180 s). This first navigation doubles as the **warm-up**:
+    it forces the dev server to transform the module graph once, so the auth gate and the
+    suite run against a warm server.
+
+    - `mounted t=<s>` (exit 0) → record the mount time in the run report and continue to 14b.
+      A mount time over ~30 s is a WARN to surface (slow cold transform), never a failure.
+    - `not_mounted` (exit 1) → **self-correct once before judging**: if the service's
+      `dev.command` forces a cold optimizer pass on every boot (`--force`, or an `rm`/`rimraf`
+      of `node_modules/.vite`), reboot it via its non-force variant (`start`/plain `vite`)
+      when the consumer defines one, then re-run the probe with the full budget. Still
+      `not_mounted` → `STATUS: BLOCKED`, reason `app_never_mounted`, attaching the probe's
+      evidence line (console error count, final URL, shell/interactive state) and the last
+      50 lines of the dev-server log. Never report this as "the app does not boot" without
+      the failed second probe as evidence.
+
 14b. **Auth gate — probe the session, log in via OTP when invalid.** Runs after boot (the target app must be up) and before Playwright. See `jelou/references/auth-fixtures.md` § "Orchestrated OTP login".
 
     `UI_WORKTREE` is the worktree path resolved in step 12 — bind and export it before this block. The auth drivers (`e2e-session-probe` / `e2e-login` / `e2e-session-sync`) **self-load** `.env`+`.env.e2e` from `UI_WORKTREE` via the dotenv-style parser (`bin/lib/env-files.mjs`), so `E2E_BASE_URL`, `E2E_STORAGE_STATE`, and `TEST_EMAIL`/`TEST_PASSWORD` reach the child without ever entering the conversation — and a `.env` with an unquoted value (which would break `bash source` and trip the guard-env-reads hook) is parsed cleanly. Do **not** `source` the env files here.
@@ -353,7 +384,7 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
     Parse the runner's `STATUS:` line:
     - `PASS` / `FAIL` → record per-test results from its report; continue.
     - `BLOCKED` → surface the reason (`service_crashed` / `auth_collapse` /
-      `no_tests_collected`) and exit per the failure-modes table.
+      `no_tests_collected` / `app_never_mounted`) and exit per the failure-modes table.
     - `NEEDS_CONTEXT` → **the orchestrator brokers it**: `AskUserQuestion` with the
       runner's `missing` / `tried` / `looked_in`, then re-dispatch `jlu-ui-qa-runner`
       with `USER_FEEDBACK=<answer>`. The runner never asks the user itself.
@@ -482,6 +513,16 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
         Skip the fix-loop entirely.
     ```
 
+    **UI service exception — never judge a UI service crashed from a one-shot check.** For
+    the UI service under test, a failed one-shot readiness ping is inconclusive: Vite dev
+    mid-run re-optimization ("optimized dependencies changed. reloading") makes the app
+    transiently unresponsive while the process is healthy. Before aborting, re-run the
+    step 14a' app-mount probe with its full budget
+    (`UI_WORKTREE=<worktree> node "<root>/bin/e2e-app-mount-probe.mjs"`). If it mounts,
+    the service did NOT crash — re-run the failing specs once (the flake was the
+    re-optimization) before entering the fix-loop. Only a failed full-budget probe
+    justifies `service_crashed` for the UI service.
+
 17b. **Mid-suite auth collapse check.** Before dispatching any fix-loop:
     ```bash
     if [ "$(node "<root>/bin/detect-auth-collapse.mjs" "$TASK_DIR/services/$UI_SERVICE/e2e/run.json")" = "auth_collapse" ]; then
@@ -605,7 +646,8 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
 | Lock held | 2 | "PID <X> holds lock; wait or kill" |
 | Docker daemon down | 2 | "docker info failed; start Docker Desktop / dockerd" |
 | Service ready_timeout | 2 | "<service> didn't reach ready in <X>s; check launch log" |
-| Mid-suite service crash | 2 | "service_crashed:<id>; last 50 lines of launch log" |
+| Mid-suite service crash | 2 | "service_crashed:<id>; last 50 lines of launch log" — for the UI service, only after the step 17 full-budget app-mount probe also failed |
+| App never mounts (step 14a') | 2 | "app_never_mounted: server ready but the app tree never committed within APP_MOUNT_TIMEOUT_S; probe evidence + last 50 lines of dev-server log" — only after the non-force reboot retry |
 | UI service missing `dev` block | 2 | "UI service `<id>` is missing a `dev` block" — E2E mandatory for frontend changes; add `stack` + `dev` to services.yaml |
 | `.env.e2e` missing | 2 | "`.env.e2e` missing; create it and set E2E_BASE_URL" + reference to e2e-environment.md |
 | `.env.e2e` does not declare `E2E_BASE_URL` | 2 | "declare E2E_BASE_URL in .env.e2e" |

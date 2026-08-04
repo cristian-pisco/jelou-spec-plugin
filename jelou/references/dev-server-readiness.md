@@ -45,7 +45,22 @@ dev:
   ram_estimate_mb: 400
 ```
 
-Vite is fast; `Local:` fires reliably at the moment the server is listening.
+`Local:` fires reliably at the moment the server is listening — but that is **server**
+readiness, not **app** readiness. Vite dev transforms modules on demand: the first browser
+navigation after boot pays the transform cost of the whole route's module graph, which on a
+large monorepo (hundreds of modules) means the page serves its static loading shell for
+1–3 minutes while every HTTP probe happily returns 200. Two consequences:
+
+- **Never judge "the app does not boot" from `Local:` + a short page wait.** Confirmed in
+  the field (jelou-apps, 2026-08-04): an Nx/Vite app declared "does not boot, blocks all UI
+  E2E" mounted fine after ~15–20 s of first-load transform. Use the app-mount probe
+  (`bin/e2e-app-mount-probe.mjs`, default budget 180 s) after `Local:` and before any
+  Playwright run — it also doubles as the warm-up navigation.
+- **A `dev` script that forces a cold optimizer pass every boot** (`vite --force`, or
+  `rimraf node_modules/.vite && vite`) makes this worst-case the every-boot case, and
+  mid-run "optimized dependencies changed. reloading" events make the app transiently
+  unresponsive during a suite. For E2E boots, prefer the consumer's non-force script
+  (`start`/plain `vite`) when one exists.
 
 ### Webpack Dev Server (Vue CLI, CRA legacy)
 

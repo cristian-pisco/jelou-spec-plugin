@@ -31,7 +31,12 @@ Follow `jelou/workflows/ui-qa-run.md` steps 15–22 (the execution body only):
    uncovered field/reference dimensions in `ui_breadth_gaps`.
 3. Mid-suite crash detection (step 17) and auth-collapse detection (step 17b): on a
    crashed service or 3+ consecutive 401-shaped failures, return BLOCKED — do NOT
-   dispatch the fix-loop.
+   dispatch the fix-loop. For the UI service itself, `service_crashed` is NEVER
+   concluded from a one-shot readiness ping: first re-run the step 14a' app-mount
+   probe (`UI_WORKTREE=<worktree> node "<PLUGIN_ROOT>/bin/e2e-app-mount-probe.mjs"`)
+   with its full budget — a Vite mid-run re-optimization looks dead to a short check
+   while the process is healthy. If it mounts, re-run the failing specs once instead
+   of blocking.
 4. Own the bounded fix-loop (step 18): arm the 15-min / 10-dispatch circuit breaker,
    `bin/extract-trace.mjs` per failure, dispatch `jlu-ui-fix-loop` per failing
    assertion (3 attempts), re-run only the failing spec on `DONE`. On the loop's
@@ -49,7 +54,7 @@ Your last line MUST be one of:
 ```
 STATUS: PASS report=<path>
 STATUS: FAIL failures=<json> flagged=<json> ui_breadth_gaps=<json> report=<path>
-STATUS: BLOCKED reason=<service_crashed|auth_collapse|no_tests_collected> details="<...>"
+STATUS: BLOCKED reason=<service_crashed|auth_collapse|no_tests_collected|app_never_mounted> details="<...>"
 STATUS: NEEDS_CONTEXT missing="<what>" tried="<selectors>" looked_in="<files>"
 ```
 
