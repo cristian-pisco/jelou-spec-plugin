@@ -182,14 +182,38 @@ Look for `<workspace>/drafts/slack/<sprint>-<channel>.md`:
 - `status: draft` → ask via `question`: "A draft exists for sprint <sprint> on #<channel>. Resume editing it, or regenerate?". On resume, load the body and skip to Step 14.
 - `status: published` → ask: "This sprint already has a published report on #<channel>. Re-post it, or regenerate?". On re-post, skip to Step 15. On regenerate, continue to Step 11.
 
-## Step 11 — Prompt Manual Fields
+## Step 11 — Manual Fields (calendar auto-fill + prompts)
 
-Manual prompts run **before** the render step so the renderer can fold the `meetings` answer directly into `{{achieved_goals}}` as the `:calendar: Meets` sub-bucket. For each field in `manual_fields` (in order):
+Manual fields resolve **before** the render step so the renderer can fold the `meetings` answer directly into `{{achieved_goals}}` as the `:calendar: Meets` sub-bucket.
+
+### 11.0 — Auto-fill `meetings` from Google Calendar
+
+Runs only when `meetings` is present in `manual_fields`. On success the `meetings` prompt in 11.1 is skipped entirely — the calendar is the source of truth (full automatic replacement, per design 2026-08-04).
+
+1. `ToolSearch` for `select:mcp__claude_ai_Google_Calendar__list_events` (lazy — only here, never at bootstrap). Zero matches → fallback (point 6).
+2. Compute the window (previous business day — Monday reports Friday, weekend runs report Friday):
+   ```bash
+   node <plugin-root>/bin/daily-slack-meetings-window.mjs
+   ```
+   Capture stdout JSON `{timeMin, timeMax}`.
+3. Call `mcp__claude_ai_Google_Calendar__list_events` with `startTime=<timeMin>`, `endTime=<timeMax>`, `orderBy: "startTime"`, `pageSize: 100`, no `calendarId` (primary calendar). If the response carries `nextPageToken`, keep calling with `pageToken` and concatenate the event arrays until exhausted.
+4. Write the concatenated events as a JSON array to `<workspace>/.cache/calendar-events.json` (via Bash — cache-file rule). Do NOT filter, dedupe, or drop any event: every event in the window is included by design.
+5. Format deterministically and store the result:
+   ```bash
+   node <plugin-root>/bin/daily-slack-format-meetings.mjs \
+     --events <workspace>/.cache/calendar-events.json
+   ```
+   Store stdout verbatim as the `meetings` answer (empty stdout ⇒ `meetings: ""`, which makes the renderer omit the Meets sub-bucket — do not re-prompt). Do NOT hand-format event lines; the formatter owns the `<summary> (HH:MM–HH:MM)` shape.
+6. **Fallback.** On ToolSearch miss, any `list_events` error (including mid-pagination — discard partial pages), or a non-zero exit from either bin: print one line — `[daily-slack] Google Calendar unavailable — falling back to manual meetings prompt` — and let 11.1 prompt `meetings` manually as before. Never block or abort the workflow because of Calendar.
+
+### 11.1 — Prompt the remaining manual fields
+
+For each field in `manual_fields` (in order), skipping `meetings` when 11.0 succeeded:
 1. Read prompt from `manual_prompts.<field>`.
 2. For `planned_achievements`, append helper context to the prompt: a comma-separated list of stuck task names from Step 8. Example: `(in progress: Migration, API node)`.
 3. Ask via `question` and store the response.
 
-Write the flat answers map to `<workspace>/.cache/manual-fields.json` before continuing to Step 12 — the renderer reads `meetings` from this file.
+Write the flat answers map (including the auto-filled `meetings`) to `<workspace>/.cache/manual-fields.json` before continuing to Step 12 — the renderer reads `meetings` from this file.
 
 ## Step 12 — Render Automated Placeholders
 
