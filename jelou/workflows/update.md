@@ -7,10 +7,16 @@
 
 You are the orchestrator for the `/jlu-update` command. Your job is to bring the plugin to
 the latest version for the runtime you are running in. On Codex and OpenCode that means
-pulling the shared git cache and reinstalling. On Claude Code the plugin lives in the
-marketplace cache (no git cache); there the updater drives the non-interactive plugin CLI
-(`claude plugin marketplace update` then `claude plugin update jlu@jelou-spec-plugin`) so
+pulling the shared git cache and reinstalling. On Claude Code the plugin is loaded from the
+marketplace cache, so the updater drives the non-interactive plugin CLI
+(`claude plugin marketplace update` then `claude plugin update jlu@jelou-spec-plugin`) and
 the update is applied directly — you do not need to run `/plugin update` yourself.
+
+The script decides the host BEFORE resolving any git cache. That order matters: a machine
+with Codex or OpenCode installed also has `$JLU_HOME`, and pulling it on the `claude` host
+would refresh files the marketplace runtime never loads — a no-op that prints a successful
+update. If you ever see a Claude Code run report `Reinstalling into: claude` or a version
+transition from the git cache, the update did NOT reach the runtime.
 
 ## Step 1 — Determine your host
 
