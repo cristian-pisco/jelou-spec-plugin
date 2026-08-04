@@ -300,17 +300,19 @@ Capture stdout JSON: `{achieved_goals, not_achieved_goals, short_term_goals, tas
 ## Step 14 — Present for Review
 
 1. Display the composed body to the user.
-2. Ask via `question`: "Here's the draft for #<channel> (sprint <sprint>). Ready to post, or do you want to edit anything?"
+2. Ask via `question`:
+   - When the template declares a non-empty `preview_channel`: "Here's the draft for #<channel> (sprint <sprint>). Preview it on `<preview_channel>` first, publish directly to #<channel>, or edit something? [preview / publish / edit]". The direct-publish option MUST always be offered — the preview is a convenience, never a gate.
+   - Otherwise: "Here's the draft for #<channel> (sprint <sprint>). Ready to post, or do you want to edit anything?"
 3. If edits requested:
    - Apply changes to the body.
    - Re-run the URL safety scan from Step 13. Abort if it fires.
    - Re-save the draft.
    - Re-present.
-4. On approval, continue to Step 14b.
+4. On `preview`, continue to Step 14b. On `publish` (or plain approval when no `preview_channel` is set), skip Step 14b and go straight to Step 15.
 
-## Step 14b — Preview Round-Trip (when `preview_channel` is set)
+## Step 14b — Preview Round-Trip (only when the user chose `preview`)
 
-If the channel template's frontmatter declares `preview_channel`, post the body to that target first so the user can verify the live Slack rendering before the real publish. Skip this step entirely when `preview_channel` is absent or empty.
+Runs only when the user picked `preview` in Step 14 (an option that exists only when the template's frontmatter declares `preview_channel`). Never enter this step on `publish` or when `preview_channel` is absent or empty.
 
 1. Compose the preview payload as the body prefixed with a single banner line and a blank line:
    ```

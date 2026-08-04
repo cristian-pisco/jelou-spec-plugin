@@ -109,13 +109,16 @@ behavior).
 
 ### `preview_channel` (string)
 
-Where the workflow posts a *preview* of the composed body before publishing
+Where the workflow can post a *preview* of the composed body before publishing
 to the real channel. Accepts any Slack target the chat-post tool can address
 (e.g., `#preview-dailies`, `@username` for a DM, or a channel ID). When set,
-Step 14 of the workflow posts the rendered body there with a banner like
-`*[PREVIEW — sprint <N> for #<channel>]*`, asks the user to confirm the
-formatting renders correctly in Slack, and only then publishes to the real
-channel. Leave the field unset to skip the preview round-trip.
+Step 14 of the workflow offers the preview as one option alongside publishing
+directly to the real channel — the preview is a convenience, never a gate. On
+`preview`, the body is posted to this target with a banner like
+`*[PREVIEW — sprint <N> for #<channel>]*` and the user confirms the formatting
+renders correctly before the real publish; on `publish`, the workflow goes
+straight to the channel. Leave the field unset to drop the preview option
+entirely.
 
 ## Example: dailies (Spanish dailyBrain)
 
