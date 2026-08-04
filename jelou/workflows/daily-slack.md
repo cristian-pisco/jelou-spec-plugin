@@ -190,13 +190,13 @@ Manual fields resolve **before** the render step so the renderer can fold the `m
 
 Runs only when `meetings` is present in `manual_fields`. On success the `meetings` prompt in 11.1 is skipped entirely — the calendar is the source of truth (full automatic replacement, per design 2026-08-04).
 
-1. `ToolSearch` for `select:mcp__claude_ai_Google_Calendar__list_events` (lazy — only here, never at bootstrap). Zero matches → fallback (point 6).
+1. `ToolSearch` for `select:mcp__claude_ai_Google_Calendar__list_events` (lazy — only here, never at bootstrap). Zero matches → fallback (point 6). If `ToolSearch` itself doesn't exist in this runtime, call `list_events` directly when it is visible as a tool; otherwise fallback (point 6).
 2. Compute the window (previous business day — Monday reports Friday, weekend runs report Friday):
    ```bash
    node <plugin-root>/bin/daily-slack-meetings-window.mjs
    ```
    Capture stdout JSON `{timeMin, timeMax}`.
-3. Call `mcp__claude_ai_Google_Calendar__list_events` with `startTime=<timeMin>`, `endTime=<timeMax>`, `orderBy: "startTime"`, `pageSize: 100`, no `calendarId` (primary calendar). If the response carries `nextPageToken`, keep calling with `pageToken` and concatenate the event arrays until exhausted.
+3. Call `mcp__claude_ai_Google_Calendar__list_events` with `startTime=<timeMin>`, `endTime=<timeMax>`, `orderBy: "startTime"`, `pageSize: 100`, no `calendarId` (primary calendar). If the response carries `nextPageToken`, keep calling with the same arguments plus `pageToken` and concatenate the event arrays until exhausted.
 4. Write the concatenated events as a JSON array to `<workspace>/.cache/calendar-events.json` (via Bash — cache-file rule). Do NOT filter, dedupe, or drop any event: every event in the window is included by design.
 5. Format deterministically and store the result:
    ```bash
