@@ -196,7 +196,7 @@ Runs only when `meetings` is present in `manual_fields`. On success the `meeting
    node <plugin-root>/bin/daily-slack-meetings-window.mjs
    ```
    Capture stdout JSON `{timeMin, timeMax}`.
-3. Call `mcp__claude_ai_Google_Calendar__list_events` with `startTime=<timeMin>`, `endTime=<timeMax>`, `orderBy: "startTime"`, `pageSize: 100`, no `calendarId` (primary calendar). If the response carries `nextPageToken`, keep calling with the same arguments plus `pageToken` and concatenate the event arrays until exhausted.
+3. Call `mcp__claude_ai_Google_Calendar__list_events` with `startTime=<timeMin>`, `endTime=<timeMax>`, `orderBy: "startTime"`, `pageSize: 100`, no `calendarId` (primary calendar), and `eventType` left at its API default (which already excludes working-location and birthday entries — do not widen or narrow it). If the response carries `nextPageToken`, keep calling with the same arguments plus `pageToken` and concatenate the event arrays until exhausted.
 4. Write the concatenated events as a JSON array to `<workspace>/.cache/calendar-events.json` (via Bash — cache-file rule). Do NOT filter, dedupe, or drop any event: every event in the window is included by design.
 5. Format deterministically and store the result:
    ```bash

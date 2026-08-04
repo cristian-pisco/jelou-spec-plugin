@@ -51,7 +51,7 @@ running together.
 - `{{achieved_goals}}` — tasks whose percentage rose since the last published draft, OR whose `date_closed` falls within the cutoff window, split into sub-buckets:
   - `- :ladybug: Issues` for tasks whose ClickUp `task_type` is `"Issue"` (case-insensitive).
   - `- :clipboard: Tareas` for every other task (including ones with no `task_type`).
-  - `- :calendar: Meets` for the lines the user typed into the `meetings` manual field (one bullet per line).
+  - `- :calendar: Meets` for the lines in the `meetings` manual field (one bullet per line). `meetings` is auto-filled from Google Calendar when the MCP is reachable (see daily-slack Step 11.0); the user is only prompted on fallback.
 
   Each task bullet is `` `[<%>]` <url|name> ``; meet bullets are the user's text verbatim. Sub-buckets with no items are omitted entirely. The percentage is **always numeric** — never a status string. Mapping rules: closed → 100, anything in `status_percentages` (e.g. "pending to production" → 90, "in qa" → 80) → mapped value, in-progress → subtask ratio. Because `meetings` is folded into this placeholder, the template body MUST NOT also include a separate `{{meetings}}` placeholder — that would duplicate the input.
 - `{{not_achieved_goals}}` — tasks whose percentage did not advance. Format per task: `<name> — <auto-extracted reason>\n<url>`
@@ -62,7 +62,7 @@ On the very first run for a channel (no prior published draft), `{{achieved_goal
 renders the first-run banner instead of an empty string.
 
 ### Manual (user is prompted)
-- Any placeholder listed in `manual_fields` triggers an interactive prompt via `question`
+- Any placeholder listed in `manual_fields` triggers an interactive prompt via `question` — except `meetings`, which is auto-filled from Google Calendar when available and only falls back to a prompt (daily-slack Step 11.0)
 - The prompt text comes from `manual_prompts`
 - User responses are inserted as-is with no formatting
 

@@ -36,6 +36,8 @@ const FEATURE_BINS = [
   'bin/daily-slack-bucket.mjs',
   'bin/daily-slack-compose.mjs',
   'bin/daily-slack-extract-reason.mjs',
+  'bin/daily-slack-format-meetings.mjs',
+  'bin/daily-slack-meetings-window.mjs',
   'bin/daily-slack-render.mjs',
   'bin/daily-slack-scan-urls.mjs',
   'bin/install-dep.mjs',
