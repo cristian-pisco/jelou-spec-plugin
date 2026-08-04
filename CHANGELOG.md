@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.336] — 2026-08-04
+
+### Changed
+- Merge pull request #70 from cristian-pisco/fix/host-teardown-safety
+
 ## [0.3.335] — 2026-08-04
 
 ### Changed
