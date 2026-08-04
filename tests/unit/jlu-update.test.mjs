@@ -171,3 +171,77 @@ describe('jlu-update.sh — claude (marketplace install, no git cache)', () => {
     assert.match(r.stderr, /\/plugin update jlu@jelou-spec-plugin/);
   });
 });
+
+describe('jlu-update.sh — claude ignores the shared git cache (tri-runtime box)', () => {
+  test('dry run plans the plugin CLI, never a cache pull + setup', () => {
+    const cache = makeCache();
+    const shim = makeShim('/dev/null');
+    try {
+      const r = run(['--host', 'claude'], { JLU_HOME: cache, JLU_CLAUDE_CLI: shim.bin });
+      assert.equal(r.status, 0);
+      assert.match(r.stdout, /^HOST: claude$/m);
+      assert.match(r.stdout, /^PLAN: .*plugin update jlu@jelou-spec-plugin$/m);
+      assert.doesNotMatch(r.stdout, /PLAN: setup/);
+      assert.doesNotMatch(r.stdout, /^CACHE:/m);
+    } finally {
+      rmSync(cache, { recursive: true, force: true });
+      rmSync(shim.dir, { recursive: true, force: true });
+    }
+  });
+
+  test('applied run drives the CLI and never reinstalls from the cache', () => {
+    const cache = makeCache();
+    const logDir = mkdtempSync(join(tmpdir(), 'jlu-log-'));
+    const log = join(logDir, 'calls.txt');
+    const shim = makeShim(log);
+    try {
+      const r = run(['--host', 'claude'], {
+        JLU_HOME: cache,
+        JLU_CLAUDE_CLI: shim.bin,
+        JLU_UPDATE_DRYRUN: '0',
+      });
+      assert.equal(r.status, 0);
+      const calls = readFileSync(log, 'utf8');
+      assert.match(calls, /plugin marketplace update jelou-spec-plugin/);
+      assert.match(calls, /plugin update jlu@jelou-spec-plugin/);
+      assert.match(r.stdout, /Restart Claude Code/);
+      assert.doesNotMatch(r.stdout, /Updating cached plugin|Reinstalling into/);
+    } finally {
+      rmSync(cache, { recursive: true, force: true });
+      rmSync(shim.dir, { recursive: true, force: true });
+      rmSync(logDir, { recursive: true, force: true });
+    }
+  });
+
+  test('--source does not divert claude to the cache path either', () => {
+    const cache = makeCache();
+    const shim = makeShim('/dev/null');
+    try {
+      const r = run(['--host', 'claude', '--source', cache], {
+        JLU_HOME: '/nonexistent',
+        JLU_CLAUDE_CLI: shim.bin,
+      });
+      assert.equal(r.status, 0);
+      assert.match(r.stdout, /^PLAN: .*plugin update jlu@jelou-spec-plugin$/m);
+      assert.doesNotMatch(r.stdout, /PLAN: setup/);
+    } finally {
+      rmSync(cache, { recursive: true, force: true });
+      rmSync(shim.dir, { recursive: true, force: true });
+    }
+  });
+
+  test('a present cache does not turn a missing CLI into a silent cache reinstall', () => {
+    const cache = makeCache();
+    try {
+      const r = run(['--host', 'claude'], {
+        JLU_HOME: cache,
+        JLU_CLAUDE_CLI: '/nonexistent/claude',
+      });
+      assert.equal(r.status, 0);
+      assert.match(r.stderr, /\/plugin update jlu@jelou-spec-plugin/);
+      assert.doesNotMatch(r.stdout, /PLAN: setup/);
+    } finally {
+      rmSync(cache, { recursive: true, force: true });
+    }
+  });
+});
