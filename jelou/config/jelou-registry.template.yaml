@@ -24,7 +24,7 @@ services:
         type: stdout_match
         pattern: "Nest application successfully started"
 
-  jelou-auth-service:
+  auth-service:
     path: ../auth-service
     stack: nestjs
     peers:
@@ -49,7 +49,7 @@ services:
     path: ../api-gateway-service
     stack: nestjs
     peers:
-      jelou-auth-service: GRPC_AUTH_SERVER_URL
+      auth-service: GRPC_AUTH_SERVER_URL
       marketplace-service: MARKETPLACE_SERVER_URL
       jelou-functions-api: JELOU_FUNCTIONS_API_URL
       dashboard-server: DASHBOARD_SERVER_URL

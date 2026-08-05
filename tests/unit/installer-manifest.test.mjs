@@ -31,6 +31,7 @@ const FEATURE_BINS = [
   'bin/extract-trace.mjs',
   'bin/parse-goal-matrix.mjs',
   'bin/probe-coverage-breadth.mjs',
+  'bin/rewrite-e2e-env.mjs',
   'bin/seed-e2e-settings.mjs',
   'bin/daily-slack-assemble.mjs',
   'bin/daily-slack-bucket.mjs',
