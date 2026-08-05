@@ -82,9 +82,17 @@ COMMIT: <short sha or ->
 BLOCK_HASH: <sha256 or ->
 CAUSE: <one line or ->
 TEARDOWN_CLEAN: true|false
+ERROR_HINTS: <one per line, indented two spaces, or ->
 ```
 
 `VERDICT` maps 1:1 from the exit code (`0`→GREEN, `3`→GREEN_PREEXISTING,
 `4`→FAILED, `2`→ERROR). `GREEN_PREEXISTING` means the service was already
 serving and the derived command never ran — the orchestrator must NOT write a
 `verified` mark for it. Fields absent from the JSON verdict are `-`.
+
+`ERROR_HINTS` relays the JSON `error_hints` array verbatim when the binary emits
+it (only on `ready_timeout`). Copy the lines through unchanged — do not
+paraphrase, diagnose, or extend them. They are what lets the orchestrator tell a
+wrong `dev` block apart from a broken environment underneath it (a stale dev
+image, a missing dependency, an occupied port), which the `ready_timeout` cause
+alone cannot distinguish.

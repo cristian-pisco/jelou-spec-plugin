@@ -4,12 +4,29 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { argv, exit, stdout } from 'node:process';
 import { readUnifiedRegistry } from './lib/registry/read.mjs';
+import { teardownSafetyCause } from './lib/registry/splice.mjs';
 import { buildBootPlan } from './lib/boot-engine/plan.mjs';
 import { parseOccupiedPorts } from './lib/dev-orchestrator/stack/ports.mjs';
 
+export function unsafeTeardownEntries(plan) {
+  const out = [];
+  for (const entry of (plan && plan.services) || []) {
+    const cause = teardownSafetyCause({ launcher: entry.launcher, teardown: entry.teardownCmd });
+    if (cause) out.push({ id: entry.id, teardown: entry.teardownCmd, cause });
+  }
+  return out;
+}
+
+function assertTeardownsAreSafe(plan) {
+  const unsafe = unsafeTeardownEntries(plan);
+  if (unsafe.length === 0) return plan;
+  const detail = unsafe.map((u) => `  ${u.id}: ${u.cause}`).join('\n');
+  throw new Error(`refusing to build a boot plan — fix these dev blocks in services.yaml first:\n${detail}`);
+}
+
 export function buildPlanForWorkspace({ workspaceRoot, slug, worktreePaths, occupied, resolveImage, readEnv }) {
   const registry = readUnifiedRegistry(workspaceRoot);
-  return buildBootPlan({ registry, slug, worktreePaths, occupied, resolveImage, readEnv });
+  return assertTeardownsAreSafe(buildBootPlan({ registry, slug, worktreePaths, occupied, resolveImage, readEnv }));
 }
 
 function resolveWorktreePaths(registry, slug) {
@@ -37,6 +54,12 @@ function main() {
   const slug = argv[si + 1];
   const registry = readUnifiedRegistry(workspaceRoot);
   const plan = buildBootPlan({ registry, slug, worktreePaths: resolveWorktreePaths(registry, slug), occupied: dockerOccupied() });
+  const unsafe = unsafeTeardownEntries(plan);
+  if (unsafe.length > 0) {
+    for (const u of unsafe) console.error(`build-boot-plan: ${u.id}: ${u.cause}`);
+    console.error('build-boot-plan: refusing to emit a plan — fix these dev blocks in services.yaml first');
+    exit(3);
+  }
   stdout.write(JSON.stringify(plan, null, 2) + '\n');
 }
 

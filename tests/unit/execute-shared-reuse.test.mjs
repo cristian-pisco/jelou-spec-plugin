@@ -3,7 +3,7 @@ import { strict as assert } from 'node:assert';
 import { existsSync, mkdtempSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { DEFAULT_READY_TIMEOUT_S, verifySharedReuse } from '../../bin/lib/boot-engine/execute-shared-reuse.mjs';
+import { DEFAULT_READY_TIMEOUT_S, errorHints, verifySharedReuse } from '../../bin/lib/boot-engine/execute-shared-reuse.mjs';
 
 function ok(stdout = '') {
   return { code: 0, stdout, stderr: '' };
@@ -602,5 +602,87 @@ describe('verifySharedReuse — host launchers (npm/make/shell)', () => {
     const result = await verifySharedReuse(npmEntry({ readiness: null }), baseDeps(runner));
     assert.equal(result.status, 'failed');
     assert.equal(result.cause, 'missing_ready_signal');
+  });
+});
+
+describe('errorHints', () => {
+  test('surfaces error-shaped lines, newest last', () => {
+    const log = [
+      'starting up',
+      "Error [ERR_MODULE_NOT_FOUND]: Cannot find package '@modelcontextprotocol/server' imported from /app/src/mcp/server.ts",
+      'listening soon',
+      'Error: connect ECONNREFUSED 127.0.0.1:5432',
+    ].join('\n');
+    const hints = errorHints(log);
+    assert.equal(hints.length, 2);
+    assert.match(hints[0], /ERR_MODULE_NOT_FOUND/);
+    assert.match(hints[1], /ECONNREFUSED/);
+  });
+
+  test('never echoes env assignments, even when the value itself looks like an error', () => {
+    const log = [
+      'DATABASE_URL=refused-if-you-echo-this',
+      'AUTH_TOKEN=failed-to-look-innocent',
+      'Error: bind EADDRINUSE 0.0.0.0:8080',
+    ].join('\n');
+    const hints = errorHints(log).join('\n');
+    assert.doesNotMatch(hints, /echo-this/);
+    assert.doesNotMatch(hints, /failed-to-look-innocent/);
+    assert.match(hints, /EADDRINUSE/);
+  });
+
+  test('caps the count and the line width, and strips ANSI colour', () => {
+    const log = Array.from({ length: 9 }, (_, i) => `Error ${i}: ${'x'.repeat(400)}`).join('\n');
+    const hints = errorHints(log);
+    assert.equal(hints.length, 3);
+    assert.ok(hints[0].length <= 201, `line was ${hints[0].length} chars`);
+    assert.deepEqual(errorHints('\u001b[31mError: boom\u001b[0m'), ['Error: boom']);
+  });
+
+  test('a log with nothing error-shaped yields nothing', () => {
+    assert.deepEqual(errorHints('compiling\nwatching for changes\n'), []);
+    assert.deepEqual(errorHints(''), []);
+    assert.deepEqual(errorHints(undefined), []);
+  });
+});
+
+describe('verifySharedReuse — a failed readiness explains itself', () => {
+  test('ready_timeout carries the launch log error lines', async () => {
+    const { runner } = makeRunner([
+      { when: 'pgrep -f', results: { code: 1, stdout: '', stderr: '' } },
+      { when: 'echo $!', results: ok('4242\n') },
+      { when: 'cat ', results: ok("boot\nError [ERR_MODULE_NOT_FOUND]: Cannot find package '@x/y'\n") },
+    ]);
+    const result = await verifySharedReuse(npmEntry(), baseDeps(runner, { probePort: async () => false }));
+    assert.equal(result.status, 'failed');
+    assert.equal(result.cause, 'ready_timeout');
+    assert.match(result.error_hints.join('\n'), /ERR_MODULE_NOT_FOUND/);
+  });
+
+  test('a green boot reports no hints', async () => {
+    const { runner } = makeRunner([
+      { when: 'pgrep -f', results: { code: 1, stdout: '', stderr: '' } },
+      { when: 'echo $!', results: ok('4242\n') },
+    ]);
+    let portCalls = 0;
+    const probePort = async () => {
+      portCalls += 1;
+      return portCalls >= 2;
+    };
+    const result = await verifySharedReuse(npmEntry(), baseDeps(runner, { probePort }));
+    assert.equal(result.status, 'green');
+    assert.deepEqual(result.error_hints, []);
+  });
+
+  test('a block-level readiness failure never reads the log — nothing to learn there', async () => {
+    const { calls, runner } = makeRunner([
+      { when: 'pgrep -f', results: { code: 1, stdout: '', stderr: '' } },
+      { when: 'echo $!', results: ok('9\n') },
+    ]);
+    const entry = npmEntry({ readiness: { type: 'stdout_match', pattern: 'started (' } });
+    const result = await verifySharedReuse(entry, baseDeps(runner));
+    assert.equal(result.cause, 'bad_ready_pattern');
+    assert.deepEqual(result.error_hints, []);
+    assert.equal(calls.some((c) => c.key.includes('cat ')), false);
   });
 });

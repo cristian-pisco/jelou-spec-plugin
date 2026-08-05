@@ -188,6 +188,7 @@ export async function runVerify({ workspace, service, checkout, runner = default
   const entry = buildVerifyEntry(block, svc, checkout);
   const result = await verifySharedReuse(entry, { runner, ...probes });
   const status = result.status === 'green' && result.command_executed === false ? 'green-preexisting' : result.status;
+  const hints = result.error_hints || [];
   return {
     verdict: {
       status,
@@ -197,6 +198,7 @@ export async function runVerify({ workspace, service, checkout, runner = default
       command_executed: result.command_executed,
       teardown_clean: result.teardown_clean,
       block_hash: blockHash,
+      ...(hints.length ? { error_hints: hints } : {}),
     },
   };
 }

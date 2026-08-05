@@ -197,6 +197,14 @@ mtime).
 Verify prints one JSON line: `{ status, cause, readiness_ms, commit, command_executed,
 teardown_clean, block_hash }`. `command_executed` is evidence — the mark requires it `true`.
 
+On `cause: ready_timeout` the line also carries `error_hints`: up to three error-shaped lines
+from the launch log, ANSI-stripped and truncated, omitted entirely when the log had none. It
+exists because `ready_timeout` alone cannot distinguish a wrong `dev` block from an
+environment that is broken underneath it — a stale dev image whose `node_modules` predates a
+new dependency times out exactly like a bad readiness signal, and the fix is completely
+different. Read the hints before editing the block. Lines that look like environment
+assignments are never included, so the hints cannot echo a secret out of the log.
+
 The `jlu-dev-block-verifier` subagent wraps the verify mode and returns this envelope verbatim:
 
 ```
