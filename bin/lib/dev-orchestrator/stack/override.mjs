@@ -2,7 +2,7 @@ export function projectName(serviceName, slug) {
   return `${serviceName}-${slug}`;
 }
 
-export function renderOverride({ service, slug, allocations, networkAlias, image, nodeModulesMount = null, runtimeMounts = [] }) {
+export function renderOverride({ service, slug, allocations, networkAlias, image, nodeModulesMount = null, runtimeMounts = [], depsVolume = null }) {
   const proj = projectName(service.name, slug);
   const lines = [];
   lines.push(`name: ${proj}`);
@@ -26,11 +26,17 @@ export function renderOverride({ service, slug, allocations, networkAlias, image
   lines.push('        aliases:');
   lines.push(`          - ${proj}`);
   const mountLines = [];
+  if (depsVolume) mountLines.push(`      - ${depsVolume.name}:${depsVolume.target}`);
   if (nodeModulesMount) mountLines.push(`      - ${nodeModulesMount}:/app/node_modules`);
   for (const m of runtimeMounts) mountLines.push(`      - ${m.source}:${m.target}`);
   if (mountLines.length) {
     lines.push('    volumes:');
     for (const l of mountLines) lines.push(l);
+  }
+  if (depsVolume) {
+    lines.push('');
+    lines.push('volumes:');
+    lines.push(`  ${depsVolume.name}:`);
   }
   lines.push('');
   return lines.join('\n');

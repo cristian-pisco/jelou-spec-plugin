@@ -205,7 +205,7 @@ This prints `{ services: [entry], network, slug }` — capture it as `{planJson}
 
 Then boot each entry by following the `## Plan-driven boot` contract in `jelou/references/env-lifecycle.md`: for each entry, obtain its descriptor from `planEntryToCommands` and execute it —
 
-- **task-isolated**: write `descriptor.files[]` → `docker <descriptor.up>` (idle container, image reused, no rebuild) → if `descriptor.exec` non-null `docker <descriptor.exec>` → poll `descriptor.readiness` (http/port on the allocated host port; stdout_match tails `descriptor.readiness.logPath`) → register `docker <descriptor.teardown>` (ALWAYS). WARN if `descriptor.imageResolved` is false.
+- **task-isolated**: write `descriptor.files[]` → `docker <descriptor.up>` (idle container, image reused, no rebuild) → if `descriptor.install` non-null run it per step 4b of the boot contract (blocking, before the dev command, bounded by `install.timeoutMs`; a non-zero exit means this entry is `down` with cause `deps_install_failed` and its dev command is never exec'd) → if `descriptor.exec` non-null `docker <descriptor.exec>` → poll `descriptor.readiness` (http/port on the allocated host port; stdout_match tails `descriptor.readiness.logPath`) → register `docker <descriptor.teardown>` (ALWAYS). WARN if `descriptor.imageResolved` is false.
 - **shared-reuse**: write `descriptor.files[]` (the `wiredEnv` `.env`) if present → the existing reuse-or-reboot path (`descriptor.launcher`/`command`/`cwd`): probe the developer's container, reuse if healthy, reboot only if unhealthy/stale → poll `descriptor.readiness` (the service's normal dev port) → register `descriptor.teardown` (kill-what-started) ONLY if this run rebooted it.
 
 Track `green` (every entry reached readiness) and `down` (the entries that did not). For each `shared-reuse` entry, resolve its dev container id for the observer (Step below) by running, in the service `cwd`:
@@ -284,6 +284,8 @@ import('{plugin-root}/bin/lib/dev-orchestrator/stack/stack-state.mjs').then((ss)
 ### Precondition — base images
 
 This path assumes the Jelou dev containers' base images already exist (idle images that `sleep infinity` until a command is exec'd into them). If a per-task container cannot be created because its base image was never built, treat that as a one-time local setup precondition to report to the user — do not attempt to auto-build the image.
+
+A **stale** base image is a different case and is NOT a setup precondition: when the base compose declares a volume over `<codeTarget>/node_modules`, the container resolves its dependencies from the image rather than from any checkout, so an image built before the branch's lockfile serves outdated dependencies. Step 4b of the boot contract already handles this by taking that mount target over with a lock-keyed named volume and installing inside the container — never by rebuilding the image, and never by installing on the host, which the container cannot see.
 
 ### Observer — background log watch (F3-a) + optional auto-fix (F3-b)
 

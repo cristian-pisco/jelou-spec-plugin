@@ -228,7 +228,9 @@ made this path real and tested but has not yet re-routed a workflow through it.)
 `{ services: [entry], network, slug }` to stdout. Every `entry` carries
 `{ id, launcher, cwd, command, readiness, teardownCmd, ramEstimateMb, policy, wiredEnv }`; a
 `task-isolated` entry additionally carries
-`{ projectName, composeFile, overrideYaml, image, imageResolved, ports: [{ internal, host, portEnv, primary }] }`.
+`{ projectName, composeFile, overrideYaml, image, imageResolved, ports: [{ internal, host, portEnv, primary }], depsProvision }`.
+`depsProvision` is `{ source, lockFile, lockHash, volumeName, mountTarget, satisfied, install }`
+(or `null` when the worktree has no lockfile) — see step 4b of the task-isolated boot.
 `wiredEnv` is `null` unless the service peers a `task-isolated` service (a main-branch service
 A can carry a non-null `wiredEnv` pointing at a worktree peer B's task URL).
 
@@ -256,14 +258,37 @@ it is ALWAYS registered for teardown:
    is true (or the worktree lacks `.env`), WARN that the container may fail to start because its
    dependencies/env are unavailable. The `volumes:` block also mounts each
    `entry.runtimeMounts[]` (declared canonical runtime dirs the worktree lacks, e.g.
-   `config/secrets`) at its `/app/<path>`. Additionally, if `entry.depsDiverged` is set, WARN:
-   the worktree adds dependencies (`entry.depsDiverged.missing`) not present in the canonical
-   `node_modules`, so the mount will not satisfy them — run `entry.depsDiverged.installCmd` in
-   the worktree.
+   `config/secrets`) at its `/app/<path>`.
 3. If `descriptor.imageResolved` is `false`, WARN: the base image was not found, so the
    `compose up` has no local image to reuse and the container may fail to start.
 4. `docker <descriptor.up>` — brings up the idle container (`compose -p <projectName> -f
    <composeFile> -f docker-compose.jlu.yml up -d`); the base image is reused, NO rebuild.
+4b. **Dependency provisioning — the lockfile is the source of truth.** If
+   `descriptor.install` is non-null, run it now, BEFORE the dev command and therefore outside
+   the readiness clock:
+   - `install.runs_in: 'container'` → `docker <descriptor.install.exec>` (a blocking
+     `docker exec` into the idle container — never `-d`), bounded by
+     `install.timeoutMs`. The command is self-guarding and idempotent: it exits 0 immediately
+     when `node_modules/.jlu-lock-hash` already matches the lockfile hash, so a warm boot pays
+     one `cat`. It installs **inside the container**, which is what compiles native modules for
+     the container's platform.
+   - `install.runs_in: 'host'` → run `install.cmd` in `install.cwd` (a host launcher's
+     worktree). NEVER redirect this at the canonical checkout: it is shared with the developer.
+   - Non-zero exit → this service is NOT bootable this run. Report the cause with
+     `install.logPath` (`docker exec <projectName> cat <logPath>` for a container install) and
+     apply the caller's non-bootable policy. Do NOT exec the dev command: a boot whose
+     dependencies failed to install can only fail readiness 90 s later with a `Cannot find
+     module` no one reads.
+   `entry.depsProvision` explains what was decided and why: `source` is `named-volume` (the
+   base compose declares a volume over `<codeTarget>/node_modules`, so the container would
+   otherwise resolve dependencies from the **image**, not from any checkout — we take that
+   target over with a lock-keyed named volume), `worktree-bind`, `canonical` (the branch did
+   not change the lockfile, so the canonical mount is by definition correct — no install), or
+   `worktree` (host launcher). A `named-volume` name embeds the service, slug and lockfile
+   hash, so it is per-task and per-lockfile: the install is paid once per task, a lockfile
+   change earns a fresh volume automatically, and two tasks never write the same volume.
+   `depsProvision` is `null` when the worktree has no lockfile — then provisioning is
+   unchanged from before this contract.
 5. If `descriptor.exec` is non-null, `docker <descriptor.exec>` — execs the dev command into
    the idle container, redirecting to `/tmp/<projectName>.dev.log`. (`exec` is null for a
    non-`docker-exec` launcher, whose container runs its command from its own entrypoint.)
