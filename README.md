@@ -926,6 +926,7 @@ To bypass the hook for a one-off manual run (humans only): `JLU_TEST_GUARD=off` 
 
 ## Documentation
 
+- **[Skills Manual](./manual-skills.md)** — every user-invocable skill: signature, what it does, when to use it, flags, and prerequisites
 - **[Full Specification](./docs/archive/JELOU_SPEC_PROPOSAL.md)** — Archived historical design memo: 46 design decisions, artifact schemas, and interview transcript from initial design
 - **[Architecture Diagrams](./docs/architecture.excalidraw)** — Editable diagrams (open with [excalidraw.com](https://excalidraw.com))
 - **[`dev` Block Schema](./jelou/references/dev-block-schema.md)** — `services.yaml` extension for E2E orchestration, plus the `verified` boot-certification mark and the `verify-dev-block.mjs` CLI contract (consumed by `/jlu-ui-qa-run`, `/jlu-goal`, `/jlu-map-codebase`)
