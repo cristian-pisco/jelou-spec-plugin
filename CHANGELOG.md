@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.339] — 2026-08-05
+
+### Changed
+- Merge pull request #73 from cristian-pisco/fix/deps-provisioning-and-registry-dev-block-integrity
+
 ## [0.3.338] — 2026-08-05
 
 ### Changed
