@@ -265,9 +265,36 @@ Capture this as `{planJson}`. `{eligibleWorktreePathsJson}` is `{ <id>: <worktre
 `policy: 'shared-reuse'` (another unified-registry backend, carrying a non-null `wiredEnv` only when it
 peers an eligible service).
 
-If any eligible service booted task-isolated AND `ui_services` is non-empty, ALSO print (once):
-`⚠ UI E2E will hit the MAIN host port of task-isolated backend(s) <eligible ids> — frontend→
-namespaced-backend wiring is not yet supported (this covers backend↔backend only).`
+**Frontend→backend wiring.** If `eligible` is non-empty AND `ui_services` is non-empty, the UI must
+be pointed at the **allocated** hosts of the task-isolated backends, not at their main dev ports.
+Persist `{planJson}` to `$TASK_DIR/.goal/boot-plan.json` and, for each UI service, rewrite its E2E
+overlay BEFORE the frontend boots (step 10 always reboots a frontend fresh, so the bundle bakes
+these values):
+
+```bash
+node "{plugin-root}/bin/rewrite-e2e-env.mjs" \
+  --ui-worktree "<UI_WORKTREE>" \
+  --plan "$TASK_DIR/.goal/boot-plan.json" \
+  --workspace "{root}"
+```
+
+It rewrites a `frontend.envLocal` key **only when that key's service is `task-isolated` in the
+plan**, pointing it at the allocated host. A `shared-reuse` service's key is deliberately left
+alone: `hostByService` resolves it from `dev.ports[dev.port_env]`, which is the **container-internal**
+port — correct for backend↔backend wiring over the compose network, wrong for a browser that needs
+the published host port. Overwriting those would break URLs that already work. Every other line,
+credentials included, is preserved byte-for-byte. It prints the managed key→URL map; never echo the
+file itself. Pass
+`--frontend-host <port>` only when you need `E2E_BASE_URL` repointed too — omitted, the overlay's
+own base URL is left alone.
+
+Exit codes: **4** = the overlay is absent (it carries credentials this tool cannot synthesize —
+create it, then re-run; booting the frontend without it bakes production URLs into the bundle).
+**5** = a `frontend.envLocal` service has no host in the plan; wire it or drop the key rather than
+serving `http://localhost:undefined`. Either exit means the UI half cannot run — do NOT boot the
+frontend against a stale overlay.
+
+Never hardcode a port in the overlay: allocation shifts run to run as the eligible set changes.
 
 ### Phase 2 — Boot once
 
@@ -317,7 +344,9 @@ namespaced-backend wiring is not yet supported (this covers backend↔backend on
         to prod and is rejected (HTTP 422 / Turnstile) — the datum-legacy failure, where the reused
         Vite served prod even though `.env.e2e` was correct on disk. Stop the healthy process, boot
         fresh (next bullet sources `.env.e2e` via `set -a`), and register it in `BOOTED[]`. See
-        `env-lifecycle.md` boot().
+        `env-lifecycle.md` boot(). The overlay it sources was already repointed at the
+        task-isolated backends by the Phase 2.0 frontend→backend wiring step — boot the frontend
+        only after that step succeeded.
     - **Unhealthy, absent, or stale** → boot it fresh with `data_isolation: per-run` and register
       it in `BOOTED[]`/`TEARDOWN_CMD[]` so teardown reclaims it. This makes the run reproducible
       when no live stack exists, and frugal when one does.

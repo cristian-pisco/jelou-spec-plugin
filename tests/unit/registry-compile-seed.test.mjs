@@ -54,6 +54,62 @@ describe('compileRegistry', () => {
   });
 });
 
+describe('service-id divergence between the two sources', () => {
+  test('every template id equals the basename of its path, so a derived services.yaml cannot diverge', () => {
+    const raw = parseYamlLite(readFileSync(TEMPLATE, 'utf8'));
+    const offenders = Object.entries(raw.services)
+      .filter(([id, svc]) => id !== svc.path.split('/').filter(Boolean).pop())
+      .map(([id, svc]) => `${id} <> ${svc.path}`);
+    assert.deepEqual(offenders, [], 'map-codebase derives services.yaml ids from the repo directory name');
+  });
+
+  test('compileRegistry refuses when one path is declared under two ids', () => {
+    const ws = mkdtempSync(join(tmpdir(), 'jlu-reg-div-'));
+    mkdirSync(join(ws, 'registry'), { recursive: true });
+    writeFileSync(join(ws, 'registry', 'jelou-registry.yaml'), [
+      'base_port: 3100',
+      'services:',
+      '  jelou-auth-service:',
+      '    path: ../auth-service',
+      '    dev:',
+      '      launcher: docker-exec'
+    ].join('\n'));
+    writeFileSync(join(ws, 'registry', 'services.yaml'), [
+      'services:',
+      '  auth-service:',
+      '    path: ../auth-service',
+      '    dev:',
+      '      ready_timeout_s: 90'
+    ].join('\n'));
+    assert.throws(() => compileRegistry({ workspaceRoot: ws }), /different id in each source[\s\S]*jelou-auth-service[\s\S]*auth-service/);
+    assert.equal(existsSync(registryJsonPath(ws)), false, 'never writes a registry that silently loses task isolation');
+  });
+
+  test('matching ids compile and still overlay', () => {
+    const ws = mkdtempSync(join(tmpdir(), 'jlu-reg-ok-'));
+    mkdirSync(join(ws, 'registry'), { recursive: true });
+    writeFileSync(join(ws, 'registry', 'jelou-registry.yaml'), [
+      'base_port: 3100',
+      'services:',
+      '  auth-service:',
+      '    path: ../auth-service',
+      '    dev:',
+      '      launcher: docker-exec'
+    ].join('\n'));
+    writeFileSync(join(ws, 'registry', 'services.yaml'), [
+      'services:',
+      '  auth-service:',
+      '    path: ../auth-service',
+      '    dev:',
+      '      ready_timeout_s: 90'
+    ].join('\n'));
+    const out = compileRegistry({ workspaceRoot: ws });
+    const reg = JSON.parse(readFileSync(out.dest, 'utf8'));
+    assert.equal(reg.services[0].id, 'auth-service');
+    assert.equal(reg.services[0].dev.ready_timeout_s, 90);
+  });
+});
+
 describe('seedRegistry', () => {
   test('seeds the template when absent, then compiles; re-seed does not clobber', () => {
     const ws = mkdtempSync(join(tmpdir(), 'jlu-seed-'));

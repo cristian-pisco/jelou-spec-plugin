@@ -7,6 +7,7 @@ import { normalizeRegistry } from './lib/registry/normalize.mjs';
 import { resolveServicePath } from './lib/registry/resolve-path.mjs';
 import { mergeDevBlocks } from './lib/registry/merge-dev-blocks.mjs';
 import { devCommandMismatches, mismatchReport } from './lib/registry/validate-dev-commands.mjs';
+import { serviceIdDivergences, divergenceReport } from './lib/registry/id-divergence.mjs';
 
 export function registryYamlPath(workspaceRoot) {
   return join(workspaceRoot, 'registry', 'jelou-registry.yaml');
@@ -34,6 +35,11 @@ export function compileRegistry({ workspaceRoot }) {
     overlayServices: overlay ? overlay.services : null,
     resolve
   });
+  const divergences = serviceIdDivergences(merged);
+  if (divergences.length > 0) {
+    throw new Error(`refusing to compile the registry — these services are declared under a different id in each source:\n${divergenceReport(divergences)}\nA service whose ids disagree can never boot task-isolated: eligibility matches by id, so it silently falls back to main code. Rename the id in registry/jelou-registry.yaml (and every peers: reference to it) to match services.yaml.`);
+  }
+
   const reg = normalizeRegistry({ ...raw, services }, { resolve });
 
   const mismatches = devCommandMismatches(reg.services);
