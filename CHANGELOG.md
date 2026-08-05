@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.340] — 2026-08-05
+
+### Changed
+- Merge pull request #74 from cristian-pisco/fix/registry-id-divergence-and-frontend-rewiring
+
 ## [0.3.339] — 2026-08-05
 
 ### Changed
