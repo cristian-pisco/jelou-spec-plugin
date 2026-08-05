@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.341] — 2026-08-05
+
+### Internal
+- add manual-skills.md covering every user-invocable skill
+
 ## [0.3.340] — 2026-08-05
 
 ### Changed
