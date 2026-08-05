@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.338] — 2026-08-05
+
+### Changed
+- Merge pull request #72 from cristian-pisco/fix/boot-plan-gate-and-readiness-hints
+
 ## [0.3.337] — 2026-08-04
 
 ### Changed
