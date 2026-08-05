@@ -183,6 +183,19 @@ async function pollReadiness(entry, deps, readLogs) {
   }
 }
 
+const ERROR_HINT_RE = /(err[a-z_]*|error|exception|fatal|panic|traceback|cannot find|not found|refused|denied|unavailable|missing|failed|timed out|eaddrinuse|econnrefused|enotfound|exited with)/i;
+const ENV_ASSIGNMENT_RE = /^[A-Za-z_][A-Za-z0-9_]*=/;
+const HINT_LIMIT = 3;
+const HINT_WIDTH = 200;
+
+export function errorHints(logText, { max = HINT_LIMIT, width = HINT_WIDTH } = {}) {
+  const lines = String(logText || '')
+    .split('\n')
+    .map((line) => line.replace(/\u001b\[[0-9;]*[A-Za-z]/g, '').trim())
+    .filter((line) => line && !ENV_ASSIGNMENT_RE.test(line) && ERROR_HINT_RE.test(line));
+  return lines.slice(-max).map((line) => (line.length > width ? `${line.slice(0, width)}…` : line));
+}
+
 async function restoreToFound(entry, deps, started) {
   const { runner } = deps;
   let clean = true;
@@ -228,13 +241,14 @@ export async function verifySharedReuse(entry, {
   const started = { containers: [], processes: [] };
 
   if (await probeAlreadyServing(entry, deps)) {
-    return { status: 'green-preexisting', cause: null, readiness_ms: 0, command_executed: false, started, teardown_clean: true };
+    return { status: 'green-preexisting', cause: null, readiness_ms: 0, command_executed: false, started, teardown_clean: true, error_hints: [] };
   }
 
   let commandExecuted = false;
   let outcome;
   let teardownClean = true;
   let hostLogDir = null;
+  let hints = [];
   try {
     const boot = HOST_LAUNCHERS.has(entry.launcher)
       ? await bootHost(entry, deps, started)
@@ -247,6 +261,7 @@ export async function verifySharedReuse(entry, {
       const t0 = now();
       const readiness = await pollReadiness(entry, deps, boot.readLogs);
       const readinessMs = now() - t0;
+      if (readiness.cause === 'ready_timeout') hints = errorHints(await boot.readLogs());
       outcome = readiness.ok
         ? { status: 'green', cause: null, readiness_ms: readinessMs }
         : { status: 'failed', cause: readiness.cause, readiness_ms: readinessMs };
@@ -255,5 +270,5 @@ export async function verifySharedReuse(entry, {
     teardownClean = await restoreToFound(entry, deps, started);
     if (hostLogDir) removeHostLogDir(hostLogDir);
   }
-  return { ...outcome, command_executed: commandExecuted, started, teardown_clean: teardownClean };
+  return { ...outcome, command_executed: commandExecuted, started, teardown_clean: teardownClean, error_hints: hints };
 }
