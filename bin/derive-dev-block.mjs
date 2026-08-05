@@ -34,14 +34,9 @@ function safeRead(p) {
   } catch { return null; }
 }
 
-export function detectPackageManager(dir) {
-  if (isFile(join(dir, 'pnpm-lock.yaml'))) return 'pnpm';
-  if (isFile(join(dir, 'yarn.lock'))) return 'yarn';
-  if (isFile(join(dir, 'bun.lockb'))) return 'bun';
-  if (isFile(join(dir, 'package-lock.json'))) return 'npm';
-  if (isFile(join(dir, 'package.json'))) return 'npm';
-  return null;
-}
+import { detectPackageManager, runCommand } from './lib/registry/package-manager.mjs';
+
+export { detectPackageManager, runCommand };
 
 // Preference order: a dedicated dev/watch script beats a production `start`.
 const DEV_SCRIPT_PREFERENCE = ['start:dev', 'dev', 'start:debug', 'serve', 'develop', 'start'];
@@ -54,16 +49,7 @@ export function pickDevScript(scripts) {
   return null;
 }
 
-// `npm` needs `run`; yarn/pnpm forward bare script names; bun uses `run`.
-export function runCommand(pm, script) {
-  switch (pm) {
-    case 'yarn': return `yarn ${script}`;
-    case 'pnpm': return `pnpm ${script}`;
-    case 'bun':  return `bun run ${script}`;
-    case 'npm':
-    default:     return `npm run ${script}`;
-  }
-}
+
 
 const CANONICAL_COMPOSE_NAMES = ['docker-compose.yml', 'docker-compose.yaml', 'compose.yml', 'compose.yaml'];
 const COMPOSE_NAME_RE = /^(?:docker-)?compose(?:[.-][\w.-]+)?\.ya?ml$/;

@@ -2,12 +2,22 @@ import { allocateHostPorts } from '../dev-orchestrator/stack/ports.mjs';
 import { renderOverride } from '../dev-orchestrator/stack/override.mjs';
 import { wireEnv } from '../dev-orchestrator/stack/wiring.mjs';
 import { resolveBaseImage } from '../dev-orchestrator/stack/resolve-base-image.mjs';
+import { resolveComposeMounts } from '../dev-orchestrator/stack/resolve-compose-mounts.mjs';
+import { resolveDepsProvision } from './deps-provision.mjs';
 import { maskWiredEnv } from './env-mask.mjs';
 import { spawnSync } from 'node:child_process';
 import { readFileSync, existsSync } from 'node:fs';
 
 function defaultResolveImage({ cwd, composeFile, composeService }) {
   return resolveBaseImage({ cwd, composeFile, composeService, run: (b, a, o) => spawnSync(b, a, { encoding: 'utf8', ...o }) });
+}
+
+function defaultResolveMounts({ cwd, composeFile, composeService }) {
+  return resolveComposeMounts({ cwd, composeFile, composeService, run: (b, a, o) => spawnSync(b, a, { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024, ...o }) });
+}
+
+function defaultReadFile(p) {
+  try { return readFileSync(p, 'utf8'); } catch { return null; }
 }
 
 function defaultReadEnv(cwd) {
@@ -25,12 +35,6 @@ function nodeModulesMountFor({ launcher, worktreeDir, canonicalPath, exists }) {
 
 function defaultReadJson(p) { try { return JSON.parse(readFileSync(p, 'utf8')); } catch { return {}; } }
 
-function installCommandFor(dir, exists) {
-  if (exists(`${dir}/yarn.lock`)) return 'yarn install';
-  if (exists(`${dir}/pnpm-lock.yaml`)) return 'pnpm install';
-  return 'npm install';
-}
-
 function runtimeMountsFor({ launcher, canonicalPath, declared, exists }) {
   if (launcher !== 'docker-exec') return [];
   const out = [];
@@ -40,21 +44,13 @@ function runtimeMountsFor({ launcher, canonicalPath, declared, exists }) {
   return out;
 }
 
-function dependencyDivergence({ launcher, worktreeDir, canonicalPath, exists, readJson }) {
-  if (launcher !== 'docker-exec') return null;
-  const pkg = readJson(`${worktreeDir}/package.json`);
-  const deps = Object.keys(pkg.dependencies || {});
-  const missing = deps.filter((name) => !exists(`${canonicalPath}/node_modules/${name}`));
-  return missing.length ? { missing, installCmd: installCommandFor(worktreeDir, exists) } : null;
-}
-
 function taskReadiness(readySignal, primaryHost) {
   const r = { ...(readySignal || {}) };
   if (r.type === 'http_200' || r.type === 'port_open') r.port = primaryHost;
   return r;
 }
 
-export function buildBootPlan({ registry, slug, worktreePaths, occupied = [], resolveImage = defaultResolveImage, readEnv = defaultReadEnv, exists = defaultExists, readJson = defaultReadJson }) {
+export function buildBootPlan({ registry, slug, worktreePaths, occupied = [], resolveImage = defaultResolveImage, resolveMounts = defaultResolveMounts, readEnv = defaultReadEnv, exists = defaultExists, readJson = defaultReadJson, readFile = defaultReadFile }) {
   const wt = worktreePaths || {};
   const isolated = new Set(registry.services.filter((s) => wt[s.id]).map((s) => s.id));
   const peerInternalPort = {};
@@ -92,9 +88,26 @@ export function buildBootPlan({ registry, slug, worktreePaths, occupied = [], re
     const ports = allocations.map((a, i) => ({ internal: a.internal, host: a.host, portEnv: portEnvs[i], primary: portEnvs[i] === dev.port_env }));
     const image = resolveImage({ cwd: svc.path, composeFile: dev.docker.compose_file, composeService: dev.docker.service });
     const projectName = `${svc.id}-${slug}`;
-    const nm = nodeModulesMountFor({ launcher: dev.launcher, worktreeDir: cwd, canonicalPath: svc.path, exists });
+    const mounts = dev.launcher === 'docker-exec'
+      ? resolveMounts({ cwd: svc.path, composeFile: dev.docker.compose_file, composeService: dev.docker.service })
+      : null;
+    const depsProvision = resolveDepsProvision({
+      launcher: dev.launcher,
+      serviceId: svc.id,
+      slug,
+      worktreeDir: cwd,
+      canonicalPath: svc.path,
+      mounts,
+      exists,
+      readFile
+    });
+    const depsVolume = depsProvision && depsProvision.volumeName
+      ? { name: depsProvision.volumeName, target: depsProvision.mountTarget }
+      : null;
+    const nm = depsVolume
+      ? { mount: null, missing: false }
+      : nodeModulesMountFor({ launcher: dev.launcher, worktreeDir: cwd, canonicalPath: svc.path, exists });
     const runtimeMounts = runtimeMountsFor({ launcher: dev.launcher, canonicalPath: svc.path, declared: svc.runtimeMounts, exists });
-    const depsDiverged = dependencyDivergence({ launcher: dev.launcher, worktreeDir: cwd, canonicalPath: svc.path, exists, readJson });
 
     return {
       ...entry,
@@ -106,7 +119,7 @@ export function buildBootPlan({ registry, slug, worktreePaths, occupied = [], re
       nodeModulesMount: nm.mount,
       nodeModulesMissing: nm.missing,
       runtimeMounts,
-      depsDiverged,
+      depsProvision,
       overrideYaml: renderOverride({
         service: { name: svc.id, compose_service: dev.docker.service, mode: dev.launcher === 'docker-exec' ? 'exec' : dev.launcher },
         slug,
@@ -114,7 +127,8 @@ export function buildBootPlan({ registry, slug, worktreePaths, occupied = [], re
         networkAlias: registry.network.composeNetworkAlias,
         image,
         nodeModulesMount: nm.mount,
-        runtimeMounts
+        runtimeMounts,
+        depsVolume
       }),
       teardownCmd: `docker compose -p ${projectName} down`,
       readiness: taskReadiness(dev.ready_signal, ports.find((p) => p.primary).host)

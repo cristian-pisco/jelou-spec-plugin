@@ -1,5 +1,16 @@
 import { unmaskWiredEnv } from './env-mask.mjs';
 
+function installDescriptor(entry) {
+  const install = entry.depsProvision && entry.depsProvision.install;
+  if (!install) return null;
+  return {
+    ...install,
+    exec: install.runs_in === 'container'
+      ? ['exec', entry.projectName, 'sh', '-lc', install.cmd]
+      : null
+  };
+}
+
 function taskIsolated(entry) {
   const logPath = `/tmp/${entry.projectName}.dev.log`;
   const files = [{ path: `${entry.cwd}/docker-compose.jlu.yml`, content: entry.overrideYaml }];
@@ -12,6 +23,7 @@ function taskIsolated(entry) {
     cwd: entry.cwd,
     files,
     up: ['compose', '-p', entry.projectName, '-f', entry.composeFile, '-f', 'docker-compose.jlu.yml', 'up', '-d'],
+    install: installDescriptor(entry),
     exec,
     readiness: { ...entry.readiness, logPath },
     teardown: ['compose', '-p', entry.projectName, 'down'],

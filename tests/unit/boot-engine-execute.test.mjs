@@ -81,6 +81,44 @@ describe('planEntryToCommands task-isolated', () => {
   });
 });
 
+describe('planEntryToCommands dependency install', () => {
+  test('no depsProvision means no install step', () => {
+    assert.equal(planEntryToCommands(taskEntry()).install, null);
+    assert.equal(planEntryToCommands(taskEntry({ depsProvision: { source: 'canonical', install: null } })).install, null);
+  });
+
+  test('a container install becomes a blocking docker exec into the idle container', () => {
+    const install = { runs_in: 'container', cwd: '/app', cmd: 'cd /app || exit 1; npm ci', timeoutMs: 900000, logPath: '/tmp/jlu-install-jelou-api-t1.log' };
+    const d = planEntryToCommands(taskEntry({ depsProvision: { source: 'named-volume', install } }));
+    assert.deepEqual(d.install.exec, ['exec', 'jelou-api-t1', 'sh', '-lc', 'cd /app || exit 1; npm ci']);
+    assert.equal(d.install.timeoutMs, 900000);
+    assert.ok(!d.install.exec.includes('-d'));
+  });
+
+  test('the descriptor passes the guarded script through untouched, adding no redirect of its own', () => {
+    const cmd = 'cd /app || exit 1; if [ "$(cat node_modules/.jlu-lock-hash 2>/dev/null)" = "h" ]; then exit 0; fi; { npm ci && printf %s h > node_modules/.jlu-lock-hash; } > /tmp/i.log 2>&1';
+    const install = { runs_in: 'container', cwd: '/app', cmd, timeoutMs: 900000, logPath: '/tmp/i.log' };
+    const script = planEntryToCommands(taskEntry({ depsProvision: { source: 'named-volume', install } })).install.exec[4];
+    assert.equal(script, cmd);
+    assert.doesNotMatch(script, /\.jlu-lock-hash > \/tmp/);
+  });
+
+  test('the install runs before the dev command is exec\'d', () => {
+    const install = { runs_in: 'container', cwd: '/app', cmd: 'npm ci', timeoutMs: 900000, logPath: '/tmp/i.log' };
+    const d = planEntryToCommands(taskEntry({ depsProvision: { source: 'named-volume', install } }));
+    const keys = Object.keys(d);
+    assert.ok(keys.indexOf('up') < keys.indexOf('install'));
+    assert.ok(keys.indexOf('install') < keys.indexOf('exec'));
+  });
+
+  test('a host install carries no docker exec', () => {
+    const install = { runs_in: 'host', cwd: '/wt/jelou-api', cmd: 'npm ci', timeoutMs: 900000, logPath: '/tmp/i.log' };
+    const d = planEntryToCommands(taskEntry({ depsProvision: { source: 'worktree', install } }));
+    assert.equal(d.install.exec, null);
+    assert.equal(d.install.cwd, '/wt/jelou-api');
+  });
+});
+
 describe('planEntryToCommands shared-reuse', () => {
   test('with wiredEnv: files has the single .env, teardown string, no up/exec', () => {
     const d = planEntryToCommands(sharedEntry({ wiredEnv: 'JELOU_API_URL=http://jelou-api-t1:8080\n' }));

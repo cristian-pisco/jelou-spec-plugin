@@ -279,11 +279,19 @@ namespaced-backend wiring is not yet supported (this covers backend↔backend on
     - **Task-isolated entry** (`policy: 'task-isolated'`): boot it via the `## Plan-driven boot`
       **task-isolated** steps in `jelou/references/env-lifecycle.md` — write every `planEntryToCommands(entry).files[]` entry verbatim to `<entry.cwd>` (the `docker-compose.jlu.yml` override and, when `wiredEnv` is present, the de-obfuscated `.env`);
       `docker compose -p <entry.projectName> -f <entry.composeFile> -f docker-compose.jlu.yml up -d`;
+      **then the step 4b dependency-provisioning step** (`descriptor.install`, run BEFORE the dev
+      command and outside the readiness clock — see below);
       `docker exec -d <entry.projectName> sh -lc "cd /app && <entry.command> > /tmp/<entry.projectName>.dev.log 2>&1"`;
       wait readiness on the allocated host port (`entry.readiness.port`); register
       `BOOTED+=(<service>)` and `TEARDOWN_CMD[<service>]="docker compose -p <entry.projectName> down"`.
       WARN if `entry.imageResolved` is false. Then SKIP the reuse-or-reboot decision below for this
       service (it is fully booted).
+      **Dependency provisioning is a gate, not a WARN.** A non-zero `descriptor.install` exit
+      means the service is not bootable this run: do NOT exec the dev command, do NOT burn the
+      readiness budget. Report the cause from `install.logPath` and apply the step 8b.6
+      `--skip-unbootable` decision table (backend → informative refuse, or auto-skip + WARN with
+      the flag; UI → always refuse). Record it in `GOALS.md`'s environment notes as
+      `deps_install_failed` with the service, `depsProvision.source` and `depsProvision.lockFile`.
     - **Shared-reuse entry with a non-null `entry.wiredEnv`** (a main-branch backend peering an
       eligible one): back up `<entry.cwd>/.env` first (`bin/lib/dev-orchestrator/stack/backend-env-backup.mjs`,
       recorded so teardown restores it), write the `.env` from `planEntryToCommands(entry).files` (de-obfuscated), THEN fall through
@@ -314,7 +322,22 @@ namespaced-backend wiring is not yet supported (this covers backend↔backend on
       it in `BOOTED[]`/`TEARDOWN_CMD[]` so teardown reclaims it. This makes the run reproducible
       when no live stack exists, and frugal when one does.
 
-    On `ready_timeout` → `STATUS: BLOCKED` (teardown still runs via the trap).
+    On `ready_timeout` → `STATUS: BLOCKED` (teardown still runs via the trap). Print the
+    readiness log's error-shaped lines with the verdict — a bare "readiness timed out after N
+    seconds" makes the next agent re-read the log by hand. Extract them with the same helper the
+    dev-block verifier uses, never by hand-rolling a grep:
+    ```bash
+    node -e "
+    import('<plugin-root>/bin/lib/boot-engine/execute-shared-reuse.mjs').then(async (m) => {
+      const { readFile } = await import('node:fs/promises');
+      process.stdout.write(m.errorHints(await readFile(process.argv[1], 'utf8')).join('\n'));
+    });
+    " /tmp/<entry.projectName>.dev.log
+    ``` A missing-module cause is
+    NOT expected here anymore: step 4b provisions dependencies from the worktree lockfile before
+    the dev command runs, and fails the service at the gate instead. If a `Cannot find module`
+    still reaches this timeout, the boot's dependency source is one step 4b does not model —
+    report it as such rather than retrying.
 
     **Certification mark (applies the step 8b.5 trust rule).** After each service's boot
     resolves: an unmarked or hash-mismatched `dev` block whose service this boot actually
@@ -581,7 +604,11 @@ the top of this file), so the runners' live probes are safe to mutate.
   `--skip-unbootable` auto-skips it with a WARN (backend services only, step 8b.6). A UI
   service without a bootable `dev` block is always a hard refuse — the flag never drops a UI
   service.
-- `ready_timeout` on boot → `BLOCKED`; teardown runs.
+- `ready_timeout` on boot → `BLOCKED` with the log's `error_hints`; teardown runs.
+- `descriptor.install` non-zero on a task-isolated boot (step 4b) → that service is not bootable:
+  the dev command is never exec'd, the readiness budget is never spent, and the step 8b.6
+  `--skip-unbootable` table decides refuse-vs-skip. Never "install on the host and retry" — the
+  lockfile install already runs where the container resolves its dependencies.
 - A delegated `test-suite` / `ui-qa-run` failure → recorded; the convergence loop owns the
   retry; a red that survives the cap → overall `FAIL / NOT-CONVERGED`, teardown runs.
 - **Convergence invariant.** The loop NEVER exceeds `MAX_ITERATIONS`, never

@@ -23,12 +23,13 @@ function reg() {
   };
 }
 
+const noMounts = () => null;
 const resolveImage = () => 'jelou-api-app';
 const readEnv = () => 'CHATBOT_SERVER_URL=http://old\nOTHER=1\n';
 
 describe('buildBootPlan policy', () => {
   test('no worktree -> shared-reuse, no task extras', () => {
-    const plan = buildBootPlan({ registry: reg(), slug: 't1', worktreePaths: {}, occupied: [], resolveImage, readEnv });
+    const plan = buildBootPlan({ resolveMounts: noMounts, registry: reg(), slug: 't1', worktreePaths: {}, occupied: [], resolveImage, readEnv });
     const api = plan.services.find((s) => s.id === 'jelou-api');
     assert.equal(api.policy, 'shared-reuse');
     assert.equal(api.cwd, '/repo/jelou-api');
@@ -40,7 +41,7 @@ describe('buildBootPlan policy', () => {
   });
 
   test('worktree -> task-isolated with ports, override, image, cwd=worktree', () => {
-    const plan = buildBootPlan({ registry: reg(), slug: 't1', worktreePaths: { 'jelou-api': '/wt/jelou-api' }, occupied: [], resolveImage, readEnv });
+    const plan = buildBootPlan({ resolveMounts: noMounts, registry: reg(), slug: 't1', worktreePaths: { 'jelou-api': '/wt/jelou-api' }, occupied: [], resolveImage, readEnv });
     const api = plan.services.find((s) => s.id === 'jelou-api');
     assert.equal(api.policy, 'task-isolated');
     assert.equal(api.cwd, '/wt/jelou-api');
@@ -58,17 +59,17 @@ describe('buildBootPlan policy', () => {
   });
 
   test('policy-aware wiring: shared-reuse A gets wiredEnv only for a task-isolated peer B', () => {
-    const withWt = buildBootPlan({ registry: reg(), slug: 't1', worktreePaths: { 'chatbot-server': '/wt/chatbot' }, occupied: [], resolveImage, readEnv });
+    const withWt = buildBootPlan({ resolveMounts: noMounts, registry: reg(), slug: 't1', worktreePaths: { 'chatbot-server': '/wt/chatbot' }, occupied: [], resolveImage, readEnv });
     const api = withWt.services.find((s) => s.id === 'jelou-api');
     assert.equal(api.policy, 'shared-reuse');
     assert.ok(unmaskWiredEnv(api.wiredEnv).includes('CHATBOT_SERVER_URL=http://chatbot-server-t1:8080'));
 
-    const noWt = buildBootPlan({ registry: reg(), slug: 't1', worktreePaths: {}, occupied: [], resolveImage, readEnv });
+    const noWt = buildBootPlan({ resolveMounts: noMounts, registry: reg(), slug: 't1', worktreePaths: {}, occupied: [], resolveImage, readEnv });
     assert.equal(noWt.services.find((s) => s.id === 'jelou-api').wiredEnv, null);
   });
 
   test('image unresolved -> imageResolved false, override omits image', () => {
-    const plan = buildBootPlan({ registry: reg(), slug: 't1', worktreePaths: { 'jelou-api': '/wt/jelou-api' }, occupied: [], resolveImage: () => null, readEnv });
+    const plan = buildBootPlan({ resolveMounts: noMounts, registry: reg(), slug: 't1', worktreePaths: { 'jelou-api': '/wt/jelou-api' }, occupied: [], resolveImage: () => null, readEnv });
     const api = plan.services.find((s) => s.id === 'jelou-api');
     assert.equal(api.imageResolved, false);
     assert.ok(!api.overrideYaml.includes('image:'));
@@ -78,12 +79,12 @@ describe('buildBootPlan policy', () => {
   test('task-isolated http readiness gets the allocated primary host port', () => {
     const r = reg();
     r.services[0].dev.ready_signal = { type: 'http_200', path: '/health' };
-    const plan = buildBootPlan({ registry: r, slug: 't1', worktreePaths: { 'jelou-api': '/wt/jelou-api' }, occupied: [], resolveImage, readEnv });
+    const plan = buildBootPlan({ resolveMounts: noMounts, registry: r, slug: 't1', worktreePaths: { 'jelou-api': '/wt/jelou-api' }, occupied: [], resolveImage, readEnv });
     assert.deepEqual(plan.services.find((s) => s.id === 'jelou-api').readiness, { type: 'http_200', path: '/health', port: 3100 });
   });
 
   test('task-isolated entry carries composeFile; shared-reuse does not', () => {
-    const plan = buildBootPlan({ registry: reg(), slug: 't1', worktreePaths: { 'jelou-api': '/wt/jelou-api' }, occupied: [], resolveImage, readEnv });
+    const plan = buildBootPlan({ resolveMounts: noMounts, registry: reg(), slug: 't1', worktreePaths: { 'jelou-api': '/wt/jelou-api' }, occupied: [], resolveImage, readEnv });
     const api = plan.services.find((s) => s.id === 'jelou-api');
     const chatbot = plan.services.find((s) => s.id === 'chatbot-server');
     assert.equal(api.policy, 'task-isolated');
@@ -94,7 +95,7 @@ describe('buildBootPlan policy', () => {
 
   test('mounts canonical node_modules when worktree lacks its own', () => {
     const exists = (p) => p === '/repo/jelou-api/node_modules';
-    const plan = buildBootPlan({ registry: reg(), slug: 't1', worktreePaths: { 'jelou-api': '/wt/jelou-api' }, occupied: [], resolveImage: () => 'img', exists });
+    const plan = buildBootPlan({ resolveMounts: noMounts, registry: reg(), slug: 't1', worktreePaths: { 'jelou-api': '/wt/jelou-api' }, occupied: [], resolveImage: () => 'img', exists });
     const a = plan.services.find((s) => s.id === 'jelou-api');
     assert.equal(a.nodeModulesMount, '/repo/jelou-api/node_modules');
     assert.equal(a.nodeModulesMissing, false);
@@ -104,7 +105,7 @@ describe('buildBootPlan policy', () => {
   test('no mount when the worktree has its own node_modules', () => {
     const wtNm = '/wt/jelou-api/node_modules';
     const exists = (p) => p === wtNm || p === '/repo/jelou-api/node_modules';
-    const plan = buildBootPlan({ registry: reg(), slug: 't1', worktreePaths: { 'jelou-api': '/wt/jelou-api' }, occupied: [], resolveImage: () => 'img', exists });
+    const plan = buildBootPlan({ resolveMounts: noMounts, registry: reg(), slug: 't1', worktreePaths: { 'jelou-api': '/wt/jelou-api' }, occupied: [], resolveImage: () => 'img', exists });
     const a = plan.services.find((s) => s.id === 'jelou-api');
     assert.equal(a.nodeModulesMount, null);
     assert.equal(a.nodeModulesMissing, false);
@@ -113,7 +114,7 @@ describe('buildBootPlan policy', () => {
 
   test('flags nodeModulesMissing when neither has node_modules', () => {
     const exists = () => false;
-    const plan = buildBootPlan({ registry: reg(), slug: 't1', worktreePaths: { 'jelou-api': '/wt/jelou-api' }, occupied: [], resolveImage: () => 'img', exists });
+    const plan = buildBootPlan({ resolveMounts: noMounts, registry: reg(), slug: 't1', worktreePaths: { 'jelou-api': '/wt/jelou-api' }, occupied: [], resolveImage: () => 'img', exists });
     const a = plan.services.find((s) => s.id === 'jelou-api');
     assert.equal(a.nodeModulesMount, null);
     assert.equal(a.nodeModulesMissing, true);
@@ -135,7 +136,7 @@ describe('buildBootPlan policy', () => {
     };
     const worktreePaths = { a: '/wt/a', b: '/wt/b' };
     const readEnv = (dir) => (dir === '/repo/a' ? 'B_URL=http://b:8080\n' : '');
-    const plan = buildBootPlan({ registry, slug: 't1', worktreePaths, occupied: [], resolveImage: () => 'img', readEnv });
+    const plan = buildBootPlan({ resolveMounts: noMounts, registry, slug: 't1', worktreePaths, occupied: [], resolveImage: () => 'img', readEnv });
     const a = plan.services.find((s) => s.id === 'a');
     assert.equal(a.policy, 'task-isolated');
     assert.ok(a.wiredEnv);
@@ -146,25 +147,53 @@ describe('buildBootPlan policy', () => {
   test('resolves declared runtime mounts from canonical when present', () => {
     const r = reg(); r.services[0].runtimeMounts = ['config/secrets'];
     const exists = (p) => p === '/repo/jelou-api/config/secrets';
-    const plan = buildBootPlan({ registry: r, slug: 't1', worktreePaths: { 'jelou-api': '/wt/jelou-api' }, occupied: [], resolveImage: () => 'img', exists });
+    const plan = buildBootPlan({ resolveMounts: noMounts, registry: r, slug: 't1', worktreePaths: { 'jelou-api': '/wt/jelou-api' }, occupied: [], resolveImage: () => 'img', exists });
     const a = plan.services.find((s) => s.id === 'jelou-api');
     assert.deepEqual(a.runtimeMounts, [{ source: '/repo/jelou-api/config/secrets', target: '/app/config/secrets' }]);
     assert.match(a.overrideYaml, /\/repo\/jelou-api\/config\/secrets:\/app\/config\/secrets/);
   });
 
-  test('flags depsDiverged for a worktree dep missing from canonical node_modules', () => {
-    const readJson = () => ({ dependencies: { '@x/y': '1', 'ok': '1' } });
-    const exists = (p) => p === '/repo/jelou-api/node_modules/ok' || p === '/wt/jelou-api/package-lock.json';
-    const plan = buildBootPlan({ registry: reg(), slug: 't1', worktreePaths: { 'jelou-api': '/wt/jelou-api' }, occupied: [], resolveImage: () => 'img', exists, readJson });
+  test('a shadowing anonymous volume is taken over by a lock-keyed named volume', () => {
+    const exists = (p) => p === '/wt/jelou-api/package-lock.json' || p === '/repo/jelou-api/node_modules' || p === '/wt/jelou-api/node_modules';
+    const readFile = (p) => (p === '/wt/jelou-api/package-lock.json' ? '{"lock":1}' : null);
+    const mounts = () => ([
+      { type: 'bind', source: '/repo/jelou-api', target: '/app' },
+      { type: 'volume', target: '/app/node_modules', source: null }
+    ]);
+    const plan = buildBootPlan({ resolveMounts: mounts, registry: reg(), slug: 't1', worktreePaths: { 'jelou-api': '/wt/jelou-api' }, occupied: [], resolveImage: () => 'img', exists, readFile });
     const a = plan.services.find((s) => s.id === 'jelou-api');
-    assert.deepEqual(a.depsDiverged, { missing: ['@x/y'], installCmd: 'npm install' });
+
+    assert.equal(a.depsProvision.source, 'named-volume');
+    assert.equal(a.nodeModulesMount, null);
+    assert.match(a.overrideYaml, new RegExp(`- ${a.depsProvision.volumeName}:/app/node_modules`));
+    assert.match(a.overrideYaml, new RegExp(`^volumes:\\n  ${a.depsProvision.volumeName}:`, 'm'));
+    assert.equal(a.depsProvision.install.runs_in, 'container');
   });
 
-  test('depsDiverged null when all worktree deps present in canonical', () => {
-    const readJson = () => ({ dependencies: { 'ok': '1' } });
-    const exists = (p) => p === '/repo/jelou-api/node_modules/ok';
-    const plan = buildBootPlan({ registry: reg(), slug: 't1', worktreePaths: { 'jelou-api': '/wt/jelou-api' }, occupied: [], resolveImage: () => 'img', exists, readJson });
-    assert.equal(plan.services.find((s) => s.id === 'jelou-api').depsDiverged, null);
+  test('the mounts resolver reads the canonical checkout, not the worktree', () => {
+    const seen = [];
+    const mounts = ({ cwd }) => { seen.push(cwd); return null; };
+    buildBootPlan({ resolveMounts: mounts, registry: reg(), slug: 't1', worktreePaths: { 'jelou-api': '/wt/jelou-api' }, occupied: [], resolveImage: () => 'img', exists: () => false });
+    assert.ok(seen.includes('/repo/jelou-api'));
+    assert.ok(!seen.includes('/wt/jelou-api'));
+  });
+
+  test('an unchanged lockfile keeps the canonical mount and provisions nothing', () => {
+    const exists = (p) => ['/wt/jelou-api/package-lock.json', '/repo/jelou-api/package-lock.json', '/repo/jelou-api/node_modules'].includes(p);
+    const readFile = () => '{"lock":1}';
+    const plan = buildBootPlan({ resolveMounts: noMounts, registry: reg(), slug: 't1', worktreePaths: { 'jelou-api': '/wt/jelou-api' }, occupied: [], resolveImage: () => 'img', exists, readFile });
+    const a = plan.services.find((s) => s.id === 'jelou-api');
+    assert.equal(a.depsProvision.source, 'canonical');
+    assert.equal(a.depsProvision.install, null);
+    assert.equal(a.nodeModulesMount, '/repo/jelou-api/node_modules');
+  });
+
+  test('no lockfile leaves depsProvision null and the mount topology unchanged', () => {
+    const exists = (p) => p === '/repo/jelou-api/node_modules';
+    const plan = buildBootPlan({ resolveMounts: noMounts, registry: reg(), slug: 't1', worktreePaths: { 'jelou-api': '/wt/jelou-api' }, occupied: [], resolveImage: () => 'img', exists });
+    const a = plan.services.find((s) => s.id === 'jelou-api');
+    assert.equal(a.depsProvision, null);
+    assert.equal(a.nodeModulesMount, '/repo/jelou-api/node_modules');
   });
 });
 
@@ -172,7 +201,7 @@ describe('buildBootPlan base image resolution', () => {
   test('resolves the base image from the canonical checkout, not the worktree', () => {
     const seen = [];
     const spy = ({ cwd }) => { seen.push(cwd); return 'jelou-api-app'; };
-    buildBootPlan({ registry: reg(), slug: 't1', worktreePaths: { 'jelou-api': '/wt/jelou-api' }, occupied: [], resolveImage: spy, readEnv, exists: () => false });
+    buildBootPlan({ resolveMounts: noMounts, registry: reg(), slug: 't1', worktreePaths: { 'jelou-api': '/wt/jelou-api' }, occupied: [], resolveImage: spy, readEnv, exists: () => false });
     assert.ok(seen.includes('/repo/jelou-api'));
     assert.ok(!seen.includes('/wt/jelou-api'));
   });
