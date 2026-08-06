@@ -12,7 +12,7 @@ When evaluating test quality and code design, use `jelou/references/tdd-principl
 - **§2 Test Behavior, Not Implementation** — flag tests that assert on implementation details (call counts/order, mocking internal collaborators, querying DB instead of using interface).
 - **§4 Deep Modules** — flag newly exposed shallow modules (large interface, thin implementation).
 - **§6 Mock at Boundaries Only** — flag mocks of internal collaborators as FAIL even if tests pass.
-- **§8 Per-Cycle Checklist** — use as the gate.
+- **§8 Anti-Patterns** — use as the gate.
 
 A test that passes but violates §2 or §6 is a FAIL — passing tests are necessary but not sufficient.
 

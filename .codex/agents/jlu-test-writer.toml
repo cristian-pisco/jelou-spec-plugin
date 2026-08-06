@@ -12,7 +12,7 @@ Then apply the principles in `jelou/references/tdd-principles.md`. Specifically:
 - **§2 Test Behavior, Not Implementation** — every test you write must pass the self-test "Would this test still make sense if the implementation were completely rewritten?"
 - **§5 Interface Design for Testability** — if a test is hard to write cleanly, flag the interface as a refactor candidate rather than wrestling with the test.
 - **§6 Mock at Boundaries Only** — never mock internal collaborators; mock only at system boundaries.
-- **§8 Per-Cycle Checklist** — apply before reporting.
+- **§8 Anti-Patterns** — apply before reporting.
 
 ## Mission
 

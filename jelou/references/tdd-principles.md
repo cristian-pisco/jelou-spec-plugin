@@ -5,12 +5,15 @@
 ## 1. The Cycle
 
 ```
-RED → GREEN → REFACTOR → (repeat)
+RED → GREEN → (repeat)
 ```
 
 - **RED**: write one failing test that describes one observable behavior.
 - **GREEN**: write the *minimum* production code that makes it pass.
-- **REFACTOR**: improve the code (or surrounding code the new code revealed as smelly) without changing behavior. Tests must remain green after every refactor step.
+
+**Refactoring is not part of the loop.** It runs once per service at the end of the
+task (execute-task Step 8a.3, `jlu-refactor-agent`), guided by §7. During the loop,
+authoring agents only *report* refactor candidates — they never apply them.
 
 **Never refactor while RED.** Get to GREEN first.
 
@@ -67,6 +70,11 @@ How this plugin applies it:
 - `jlu-tdd-cycle` runs vertical slicing literally (one agent, FR-by-FR loop) for every
   phase. Keep phases small (the proposal agent splits large phases) so a single session
   stays within its context budget.
+
+One deliberate exception: rejection cases for the same DTO/validation surface are
+batched into a single RED→GREEN cycle (see `tdd-cycle.md` "Case-Matrix Derivation
+Procedure"). The coverage floor is untouched — batching changes how many test runs
+the loop pays, not how many cases exist.
 
 ## 4. Deep Modules
 
@@ -169,17 +177,25 @@ Stop conditions:
 - The next candidate would change behavior — that needs a new RED → GREEN cycle, not a refactor.
 - The diff is starting to balloon — refactor scope should stay near the new code's blast radius.
 
-## 8. Per-Cycle Checklist
+## 8. Anti-Patterns
 
-Before declaring a cycle done, every one of these must be true:
+Check every slice against these three before moving on. Each one names a failure
+mode, its tell, and the fix:
 
-- [ ] Test describes behavior, not implementation.
-- [ ] Test uses public interface only.
-- [ ] Test would survive an internal refactor of the module under test.
-- [ ] Production code is minimal for this test — no untested code paths.
-- [ ] No speculative features added.
-- [ ] Mocks (if any) are at system boundaries only.
-- [ ] No new shallow modules were introduced.
+- **Implementation-coupled** — the test mocks internal collaborators, asserts call
+  counts/order, tests private methods, or verifies through a side channel (querying
+  the DB instead of using the interface). The tell: the test breaks when you
+  refactor but behavior hasn't changed. Fix per §2 and §6.
+- **Tautological** — the assertion recomputes the expected value the way the code
+  does (`expect(add(a, b)).toBe(a + b)`), so it passes by construction and can never
+  disagree with the code. Expected values must come from an independent source of
+  truth — a known-good literal, a worked example, the spec.
+- **Horizontal slicing** — tests written in bulk ahead of implementation verify
+  *imagined* behavior. One slice at a time, per §3 (rejection batches for one
+  surface are the only multi-test slice).
+
+Minimality still holds: production code is minimal for the current tests, no
+speculative features, no new shallow modules (§4).
 
 ## 9. When You're Stuck
 
