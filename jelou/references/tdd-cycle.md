@@ -35,7 +35,10 @@ The same agent then writes the minimum code necessary to make it pass.
 
 ### 3. Refactor — Improve Without Breaking Green
 
-After all tests pass, `jlu-refactor-agent` runs in Step 7g (skipped when `PHASE_IS_TRIVIAL`) and applies surgical refactors guided by `tdd-principles.md` §7:
+Refactoring is not part of the per-phase loop. After ALL phases are complete,
+`jlu-refactor-agent` runs once per affected service (Step 8a.3, skipped when every
+phase was trivial or no candidates were reported) and applies surgical refactors
+against the union of the task's `Refactor Candidates`, guided by `tdd-principles.md` §7:
 
 - Eliminate duplication.
 - Deepen shallow modules (small interface, deep implementation).
@@ -54,7 +57,7 @@ RED→GREEN loop per requirement in one session. Multi-service phases fan out on
 | Agent | Role | Model Tier |
 |-------|------|------------|
 | **tdd-cycle** | Per-FR loop: one behavior slice at a time (rejection cases batched per surface) → RED → GREEN → next FR | Sonnet |
-| **refactor-agent** | Surfaces/applies refactor candidates after GREEN (Step 7g) | Sonnet |
+| **refactor-agent** | Applies aggregated refactor candidates once per service (Step 8a.3) | Sonnet |
 
 `jlu-test-writer` and `jlu-implementer` are not part of per-phase authoring. They
 retain other roles: `jlu-test-writer` authors Tier 2 integration tests (Step 8a) and
@@ -125,7 +128,7 @@ The TDD cycle uses a tiered testing strategy to keep the feedback loop fast whil
 - No external infrastructure (no databases, no running services, no containers).
 - Mocks at system boundaries only — see `tdd-principles.md` §6.
 - Must run in under 5 seconds per phase.
-- Used during Red-Green-Refactor (Steps 7d, 7g).
+- Used during Red-Green (Step 7d) and the task-level refactor pass (Step 8a.3).
 - Run only the phase's test files, not the full suite.
 - Every run carries the worker cap — see `subagent-base.md` "Test Execution Resource Limits".
 
@@ -150,9 +153,9 @@ The TDD cycle's value comes from speed. Integration tests' value comes from fide
 | Step | What runs | Times |
 |------|-----------|-------|
 | 7d TDD Cycle | Phase test files only (Tier 1) | per slice |
-| 7g Refactor | Phase test files only (Tier 1) | 0-1 per phase |
 | 7h QA | Nothing (static analysis) | 0 |
 | Step 8a Tier 2 | Deferred Tier 2 test files only | ≤1 total |
+| 8a.3 Refactor | Union of task test files (Tier 1) | 0-1 per service |
 | Step 8a.5 Build | Nothing (compile only) | 1 per service |
 | Step 8b Regression | Affected tests only (`--maxWorkers=2`) | 1 total |
 

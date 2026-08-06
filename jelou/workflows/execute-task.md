@@ -445,7 +445,7 @@ Then, at the start of each wave:
 
 ### Step 7 — Agent dispatch wrapper (referenced by every subagent dispatch below)
 
-Each subagent dispatch in this Step (test-writer, implementer, tdd-cycle, refactor-agent, qa-agent, build-validator) is wrapped in a span pair. Apply this pattern around every dispatch:
+Each subagent dispatch in this Step (test-writer, implementer, tdd-cycle, qa-agent, build-validator) is wrapped in a span pair. Apply this pattern around every dispatch:
 
 **Before the dispatch:**
 ```bash
@@ -488,7 +488,7 @@ This wrapper applies to every `task` (OpenCode) / `Agent` (Claude Code) dispatch
 
 ### 7a. Report Persistence Discipline (context-saturation guard)
 
-For every sub-agent dispatched within this Step 7 loop (`jlu-test-writer`, `jlu-implementer`, `jlu-tdd-cycle`, `jlu-refactor-agent`, `jlu-qa-agent`), the orchestrator MUST follow this protocol to keep its own context window bounded across an N-phase task:
+For every sub-agent dispatched within this Step 7 loop (`jlu-test-writer`, `jlu-implementer`, `jlu-tdd-cycle`, `jlu-qa-agent`), the orchestrator MUST follow this protocol to keep its own context window bounded across an N-phase task:
 
 1. **Receive the agent's full report** as the tool result. Parse the structured sections immediately.
 2. **Persist the full report to disk** at `<TASK_DIR>/services/<service-id>/phases/<NN>-reports/<agent-name>-<round>.md`. Round suffix is `1` for the first dispatch in this phase, `2` for the first retry, etc. Create the parent directory on first write.
@@ -511,9 +511,9 @@ For every sub-agent dispatched within this Step 7 loop (`jlu-test-writer`, `jlu-
    }
    ```
 
-   Capture only the fields that subsequent steps gate on (`PHASE_IS_TRIVIAL`, refactor skip, additive-only check). The full prose stays on disk for audit; the orchestrator does NOT keep it in context.
+   Capture only the fields that subsequent steps gate on (`PHASE_IS_TRIVIAL`, task-level refactor aggregation, additive-only check). The full prose stays on disk for audit; the orchestrator does NOT keep it in context.
 
-4. **When a downstream step needs the full report** (e.g., per-phase QA needs to see refactor candidate detail; final QA at 8c needs implementer file lists across all phases), re-read the report from disk on demand instead of relying on conversation history. This makes the cost N reads instead of N reports persistently held.
+4. **When a downstream step needs the full report** (e.g., the task-level refactor pass at 8a.3 needs each phase's `Refactor Candidates`; final QA at 8c needs implementer file lists across all phases), re-read the report from disk on demand instead of relying on conversation history. This makes the cost N reads instead of N reports persistently held.
 
 5. **Failure-context recycling**: when retrying a failed agent (up to 5 attempts), the orchestrator passes only the structured digest + the last 50 lines of the previous attempt's failure output, not the full prior report. The agent reads its own predecessor's full report from disk if it needs more context.
 
@@ -596,7 +596,7 @@ Log to terminal:
 
 3. If the diff is empty, abort: `Phase <NN> declared mode: docs but the working tree contains no documentation changes. Make the edits or remove the phase.`
 4. Stage and commit using Step 7j's commit procedure but with `<type> = docs`. The commit message body still references `Phase <NN> of production/<TASK_SLUG>`.
-5. Skip refactor (7g) and per-phase QA (7h) for docs phases — they have nothing to evaluate. Jump straight to Step 7l (Complete Phase) after the commit lands.
+5. Skip per-phase QA (7h) for docs phases — it has nothing to evaluate. Jump straight to Step 7l (Complete Phase) after the commit lands.
 
 Log: `Phase <NN> docs path complete — <N> doc files committed.`
 
@@ -615,9 +615,10 @@ After all return, compare `artifacts` arrays to detect cross-service file overla
   - Service source path (worktree or repo)
   - SPEC.md relevant sections
   - `TEST_TIER: 1` (TDD cycle — fast, isolated tests only; Tier 2 deferred to Step 8a)
-- **Task**: For each requirement, write one failing test (RED), implement the minimum
-  code to make it pass (GREEN), then move to the next. Derive coverage from the canonical
-  case-matrix procedure. Document any test rewrite under `Test Rewrites` with a spec quote.
+- **Task**: For each requirement, write the slice's failing test(s) (RED), implement the
+  minimum code to make them pass (GREEN), then move to the next slice — a rejection batch
+  counts as one slice. Derive coverage from the canonical case-matrix procedure. Document
+  any test rewrite under `Test Rewrites` with a spec quote.
 - **Output**: a `TDD Cycle Report — Phase <N>` with `Files Modified`, `Tests Written`,
   `Refactor Candidates`, `Test Rewrites`, and a final `Command:` line.
 
@@ -636,7 +637,7 @@ the stderr and continue).
 
 ### 7e — Phase Triviality Classification
 
-After Green is verified, classify the phase to gate downstream agents (refactor, per-phase QA). Delegated to `bin/classify-phase.sh trivial` — the orchestrator no longer runs `git diff --shortstat` + grep loops inline.
+After Green is verified, classify the phase to gate downstream agents (per-phase QA) and the task-level refactor aggregation. Delegated to `bin/classify-phase.sh trivial` — the orchestrator no longer runs `git diff --shortstat` + grep loops inline.
 
 **Invocation**:
 
@@ -664,38 +665,11 @@ The script enforces:
 
 Log to terminal:
 
-- If trivial: `Phase <NN> classified as trivial — skipping refactor (7g) and per-phase QA (7h).`
+- If trivial: `Phase <NN> classified as trivial — skipping per-phase QA (7h).`
 - If not trivial: `Phase <NN> non-trivial — running full per-phase pipeline.`
 - If a frontmatter override was downgraded: `Phase <NN> trivial override rejected — <downgrade_reason>.`
 
 **Store**: `PHASE_IS_TRIVIAL` (from `trivial` field).
-
-### 7g. Refactor Pass
-
-**Skip if `PHASE_IS_TRIVIAL`.** Trivial phases (≤ 20 LOC, ≤ 3 files, no lockfile/migration/exported-symbol changes) don't earn the refactor pass overhead.
-
-**Skip if the tdd-cycle agent's report's `Refactor Candidates` section is empty or contains only `None`.** No candidates means there is nothing for the refactor agent to act on — dispatching it would burn a sub-agent dispatch to return `NO_CHANGES`. Log `Phase <NN> refactor skipped — tdd-cycle agent reported no candidates.` and continue to 7h.
-
-Otherwise, spawn `jlu-refactor-agent` with model: **MODEL_CONFIG.code** (default: sonnet). The agent applies at most three refactors, one at a time, within `Files Modified`; it preserves public APIs and runs the phase tests after every change.
-
-- **Input**:
-  - `<PLUGIN_ROOT>` (the agent cannot derive it — see `jelou/references/plugin-root.md`)
-  - Phase context (phase number, service-id)
-  - Service source path (worktree or repo)
-  - The tdd-cycle agent's full report (especially `Files Modified` and `Refactor Candidates`)
-  - The exact test command the tdd-cycle agent reported (so the agent runs the same suite)
-  - `<WORKSPACE_PATH>/services/<service-id>/codebase/CONVENTIONS.md`
-  - `<WORKSPACE_PATH>/services/<service-id>/codebase/ARCHITECTURE.md`
-- **Task**: Apply refactor candidates one at a time. Re-run the phase test files after each. Roll back any refactor that goes red. Stay within `Files Modified`. Never touch test files. Never change a public API.
-- **Output**: A `Refactor Agent Report — Phase <N>` with `Status: APPLIED | NO_CHANGES | BLOCKED`.
-
-**Handling the report:**
-
-- `APPLIED`: continue to 7h.
-- `NO_CHANGES`: continue to 7h.
-- `BLOCKED` (two consecutive refactors went red on first try): log the agent's last error output and continue to 7h with a note in the per-phase QA prompt — do not retry the refactor agent. The remaining candidates are not load-bearing.
-
-No re-run of the phase tests is needed at the orchestrator level — the refactor agent re-runs after every step and reports the final state. Trust the report unless `Status` or the green confirmation is missing, in which case re-run the phase test files locally.
 
 ### 7h. Per-Phase QA (Decision #13)
 
@@ -710,9 +684,8 @@ No re-run of the phase tests is needed at the orchestrator level — the refacto
    ```
    The script computes `git diff --diff-filter=M` and `--diff-filter=D` and returns `additive=true` only when both are empty. Output also includes `modified_count` and `deleted_count` for logging.
 2. The tdd-cycle agent's report lists no `Test Objections` AND no `Deviations from Expected Approach`. Both fields must be either absent or contain only the literal "None".
-3. The refactor agent — if it ran — returned `Status: NO_CHANGES` (or 7g was skipped because there were no candidates).
 
-The reasoning: per-phase QA's primary value is catching convention drift and pattern violations in *modified* code. For purely additive code that ran clean through the tdd-cycle agent + refactor, the static review is duplicate effort with the final QA at Step 8c (which sees the same files). The risk of deferral is bounded — Step 8c catches any issues before the task transitions to `ready_to_publish`.
+The reasoning: per-phase QA's primary value is catching convention drift and pattern violations in *modified* code. For purely additive code that ran clean through the tdd-cycle agent, the static review is duplicate effort with the final QA at Step 8c (which sees the same files). The risk of deferral is bounded — Step 8c catches any issues before the task transitions to `ready_to_publish`.
 
 Log `Phase <NN> per-phase QA skipped — purely additive, tdd-cycle agent clean, deferred to final QA (8c).` and pass the phase's `Files Modified` list through to a `DEFERRED_QA_PHASES` accumulator that Step 8c reads.
 
@@ -843,6 +816,42 @@ Otherwise, for each service that has Tier 2 deferred requirements:
    - **TEST_TIER: 2** (integration tests against host-resident infrastructure only — no containers, no Testcontainers)
    - **Task**: Write integration tests for all deferred requirements. Assume any required real dependency (database, queue, peer service) is already running on the host; if it isn't, mark the test skipped with a clear reason rather than starting anything yourself.
 3. Spawn `jlu-implementer` with model: **MODEL_CONFIG.code** (default: sonnet) and `<PLUGIN_ROOT>` if the integration tests reveal missing wiring (e.g., a repository method needs a real database query that was mocked in Tier 1).
+
+### 8a.3 — Task-Level Refactor Pass (once per service)
+
+The Refactor step of TDD runs once per affected service against the task's full diff,
+instead of once per phase. Refactoring per phase re-visited the same files repeatedly
+and paid one agent dispatch plus test re-runs per phase; a single end-of-task pass
+sees every `Refactor Candidates` entry at once, and Steps 8a.5 (build) + 8b (affected
+tests) verify the result with runs that happen anyway.
+
+For each affected service (honor `PHASE_PARALLELISM` for cross-service fan-out; default sequential):
+
+1. **Skip** when every one of the service's phases was classified trivial (`PHASE_IS_TRIVIAL`), or when no phase captured `refactor_candidates_present: true`. Log `Refactor pass skipped for <service-id> — no candidates reported.` and continue to the next service.
+2. **Aggregate**: re-read the service's phase reports from disk and collect the union of `Files Modified` and `Refactor Candidates` across phases (include Tier 2 wiring files from Step 8a if any).
+3. Dispatch `jlu-refactor-agent` (model: **MODEL_CONFIG.code**, default sonnet), wrapped in the span wrapper (per the dispatch-wrapper block above; `--agent refactor-agent`):
+   - `<PLUGIN_ROOT>` (the agent cannot derive it — see `jelou/references/plugin-root.md`)
+   - Service id and service source path (worktree or repo)
+   - The aggregated `Files Modified` union (its scope boundary) and `Refactor Candidates` union
+   - The union of the phases' test files and the exact capped test command from the last phase report (the agent re-runs these after every refactor)
+   - `<WORKSPACE_PATH>/services/<service-id>/codebase/CONVENTIONS.md` + `ARCHITECTURE.md`
+4. Handle the report:
+   - `APPLIED` → commit via `finalize-phase.sh`, mirroring Step 8a.5's fix-commit call:
+     ```bash
+     FINALIZE_SOURCE_PATH="<SERVICE_SOURCE_PATH>" \
+     FINALIZE_TASK_SLUG="<TASK_SLUG>" \
+     FINALIZE_PHASE_NN="final" \
+     FINALIZE_PHASE_TITLE="task-level refactor pass" \
+     FINALIZE_SERVICE_ID="<service-id>" \
+     FINALIZE_COMMIT_TYPE="refactor" \
+     FINALIZE_EXPECTED="$(printf '%s\n' <refactor-agent Refactors Applied file 1> <file 2> ...)" \
+     <plugin-root>/bin/finalize-phase.sh
+     ```
+     Parse the output exactly as Step 7j does (same abort-reason table).
+   - `NO_CHANGES` → continue.
+   - `BLOCKED` (two consecutive refactors went red on first try) → log the agent's last error output and continue — the remaining candidates are not load-bearing. Do not retry.
+
+No orchestrator-level test re-run is needed — the agent re-runs after every change, and Steps 8a.5 + 8b independently validate the final state.
 
 ### 8a.5 — Build Validation (once per service)
 

@@ -15,7 +15,7 @@ You are the sole per-phase authoring agent for every TDD phase. For a multi-serv
 
 Then apply the principles in `jelou/references/tdd-principles.md` end-to-end. Specifically:
 
-- **§1 The Cycle** — RED → GREEN. Refactor is handled by `jlu-refactor-agent` in Step 7g, not by you.
+- **§1 The Cycle** — RED → GREEN. Refactoring is not part of the loop; `jlu-refactor-agent` runs it once per service at Step 8a.3, not you.
 - **§2 Test Behavior, Not Implementation** — every test must pass the self-test "Would this test still make sense if the implementation were completely rewritten?"
 - **§3 Vertical Slicing Within a Phase** — this is your operating mode. One behavior slice → one implementation → next slice. Never start a new slice before the current one is GREEN (a rejection batch is one slice, per Operational Guardrails).
 - **§4 Deep Modules**, **§5 Interface Design for Testability**, **§6 Mock at Boundaries Only** — apply when shaping the implementation.
@@ -202,7 +202,7 @@ Per requirement that validates/types input or resolves a cross-field reference:
 - **Phase tests**: X passing
 - **Command**: `<exact command used>`
 
-### Refactor Candidates (for Step 7g)
+### Refactor Candidates (for the task-level refactor pass — Step 8a.3)
 - <per `tdd-principles.md` §7: duplication, shallow modules, feature envy, primitive obsession, what the new code revealed. Each entry: file:line + one-sentence rationale. Write "None" if you genuinely see none.>
 
 ### Test Rewrites (if any)
