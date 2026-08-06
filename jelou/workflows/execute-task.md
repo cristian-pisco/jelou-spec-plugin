@@ -631,9 +631,11 @@ blocked), spawn a fresh `jlu-tdd-cycle` with accumulated failure context; retry 
 times total; pause and notify the user after the 5th (see Escalation Format).
 
 **Post-Green lint/format**: invoke `bin/format-changed-files.sh` over the union of the
-report's `Files Modified` + `Tests Written`, exactly as before (`status=ok` → re-run the
-phase test files to confirm Green held; `status=skip` → continue; `status=failed` → surface
-the stderr and continue).
+report's `Files Modified` + `Tests Written`. Handle by status: `status=ok` with
+`changed_by_format=0` → the formatter touched nothing, so Green cannot have moved; log
+`Format changed 0 files — Green re-run skipped.` and continue. `status=ok` with
+`changed_by_format>0` → re-run the phase test files to confirm Green held. `status=skip`
+→ continue. `status=failed` → surface the stderr and continue.
 
 ### 7e — Phase Triviality Classification
 
