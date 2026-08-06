@@ -616,8 +616,8 @@ After all return, compare `artifacts` arrays to detect cross-service file overla
   - SPEC.md relevant sections
   - `TEST_TIER: 1` (TDD cycle — fast, isolated tests only; Tier 2 deferred to Step 8a)
 - **Task**: For each requirement, write the slice's failing test(s) (RED), implement the
-  minimum code to make them pass (GREEN), then move to the next slice — a rejection batch
-  counts as one slice. Derive coverage from the canonical case-matrix procedure. Document
+  minimum code to make them pass (GREEN), then move to the next slice — a surface batch
+  (rejections + boundary cases) counts as one slice. Derive coverage from the canonical case-matrix procedure. Document
   any test rewrite under `Test Rewrites` with a spec quote.
 - **Output**: a `TDD Cycle Report — Phase <N>` with `Files Modified`, `Tests Written`,
   `Refactor Candidates`, `Test Rewrites`, and a final `Command:` line.

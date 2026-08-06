@@ -103,13 +103,18 @@ c. Assemble the matrix: one **success** slice; one rejection case per
    decorator/type constraint (violating value → documented 4xx + error shape); one
    **realistic** slice populating every cross-field reference (collections non-empty,
    never the empty stub); **boundary** slices where they apply.
-d. Work the matrix vertically — one behavior slice (success / realistic / boundary)
-   at a time. Rejection cases are batched: all rejection cases that target the same
+d. Work the matrix vertically — one behavior slice (success / realistic) at a time.
+   Rejection cases are batched: all rejection cases that target the same
    DTO/validation surface are authored and wired as ONE batched slice — write every
    rejecting test for that surface, run them once (RED), wire every missing
-   decorator/guard/pipe, run them once (GREEN). Coverage is unchanged: the batch
-   still contains one rejection case per decorator/type constraint; only the cycle
-   granularity changes. Never interleave two surfaces in one batch.
+   decorator/guard/pipe, run them once (GREEN). Boundary cases join the same
+   surface's batch: boundary-reject cases are rejections, and boundary-accept cases
+   (the exact-limit value that must pass) ride the batch's GREEN run — they may
+   already be green on the batch's RED run once the success slice exists, which is
+   fine; the RED gate applies to the rejecting tests. Coverage is unchanged: the
+   batch still contains one rejection case per decorator/type constraint plus the
+   surface's boundary cases; only the cycle granularity changes. Never interleave
+   two surfaces in one batch.
 
 ### Multi-Service Closure (Section 14.3)
 
