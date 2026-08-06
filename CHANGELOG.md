@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.342] — 2026-08-06
+
+### Internal
+- refresh lifecycle and agent architecture diagrams in README
+
 ## [0.3.341] — 2026-08-05
 
 ### Internal
