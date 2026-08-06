@@ -315,6 +315,88 @@ describe('format-changed-files.sh — detection chain (dry-run)', () => {
   });
 });
 
+describe('format-changed-files.sh — changed_by_format', () => {
+  test('reports 0 when the formatter is a no-op', () => {
+    const dir = mktmp();
+    try {
+      writeFileSync(join(dir, 'package.json'), JSON.stringify({
+        name: 'x',
+        scripts: { format: 'true' },
+      }));
+      writeFileSync(join(dir, 'a.ts'), 'x\n');
+      const r = runScript({
+        FORMAT_SOURCE_PATH: dir,
+        FORMAT_CHANGED_FILES: 'a.ts',
+      });
+      assert.equal(r.parsed.status, 'ok');
+      assert.equal(r.parsed.changed_by_format, '0');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('counts only files the formatter rewrote', () => {
+    const dir = mktmp();
+    try {
+      writeFileSync(join(dir, 'fmt.sh'), 'printf "formatted\\n" > a.ts\n');
+      writeFileSync(join(dir, 'package.json'), JSON.stringify({
+        name: 'x',
+        scripts: { format: 'sh fmt.sh' },
+      }));
+      writeFileSync(join(dir, 'a.ts'), 'x\n');
+      writeFileSync(join(dir, 'b.ts'), 'y\n');
+      const r = runScript({
+        FORMAT_SOURCE_PATH: dir,
+        FORMAT_CHANGED_FILES: 'a.ts\nb.ts',
+      });
+      assert.equal(r.parsed.status, 'ok');
+      assert.equal(r.parsed.changed_by_format, '1');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('idempotent rewrite with identical content counts 0', () => {
+    const dir = mktmp();
+    try {
+      writeFileSync(join(dir, 'fmt.sh'), 'printf "x\\n" > a.ts\n');
+      writeFileSync(join(dir, 'package.json'), JSON.stringify({
+        name: 'x',
+        scripts: { format: 'sh fmt.sh' },
+      }));
+      writeFileSync(join(dir, 'a.ts'), 'x\n');
+      const r = runScript({
+        FORMAT_SOURCE_PATH: dir,
+        FORMAT_CHANGED_FILES: 'a.ts',
+      });
+      assert.equal(r.parsed.status, 'ok');
+      assert.equal(r.parsed.changed_by_format, '0');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('dry-run emits no changed_by_format', () => {
+    const dir = mktmp();
+    try {
+      writeFileSync(join(dir, 'package.json'), JSON.stringify({
+        name: 'x',
+        scripts: { format: 'true' },
+      }));
+      writeFileSync(join(dir, 'a.ts'), 'x\n');
+      const r = runScript({
+        FORMAT_SOURCE_PATH: dir,
+        FORMAT_CHANGED_FILES: 'a.ts',
+        FORMAT_DRY_RUN: '1',
+      });
+      assert.equal(r.parsed.status, 'ok');
+      assert.equal(r.parsed.changed_by_format, undefined);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('format-changed-files.sh — execution', () => {
   test('runs npm script and returns ok with files_count', () => {
     const dir = mktmp();

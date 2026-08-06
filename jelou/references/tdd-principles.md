@@ -71,10 +71,11 @@ How this plugin applies it:
   phase. Keep phases small (the proposal agent splits large phases) so a single session
   stays within its context budget.
 
-One deliberate exception: rejection cases for the same DTO/validation surface are
-batched into a single RED→GREEN cycle (see `tdd-cycle.md` "Case-Matrix Derivation
-Procedure"). The coverage floor is untouched — batching changes how many test runs
-the loop pays, not how many cases exist.
+One deliberate exception: rejection cases for the same DTO/validation surface —
+together with that surface's boundary cases — are batched into a single RED→GREEN cycle
+(see `tdd-cycle.md` "Case-Matrix Derivation Procedure"). The coverage floor is
+untouched — batching changes how many test runs the loop pays, not how many cases
+exist.
 
 ## 4. Deep Modules
 

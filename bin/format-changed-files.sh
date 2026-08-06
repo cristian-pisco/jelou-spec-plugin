@@ -141,6 +141,11 @@ if [[ "${FORMAT_DRY_RUN:-}" == "1" ]]; then
   exit 0
 fi
 
+declare -A PRE_SUM
+for f in "${FILTERED[@]}"; do
+  PRE_SUM["$f"]="$(md5sum "$f" | cut -d' ' -f1)"
+done
+
 if ! eval "$FULL_CMD" >&2; then
   echo "status=failed"
   echo "command=$FULL_CMD"
@@ -158,7 +163,17 @@ if [[ "$DETECTION_SOURCE" == "default_eslint" ]] && command -v npx >/dev/null 2>
   fi
 fi
 
+CHANGED_BY_FORMAT=0
+for f in "${FILTERED[@]}"; do
+  [[ -e "$f" ]] || continue
+  POST_SUM="$(md5sum "$f" | cut -d' ' -f1)"
+  if [[ "$POST_SUM" != "${PRE_SUM[$f]}" ]]; then
+    CHANGED_BY_FORMAT=$((CHANGED_BY_FORMAT + 1))
+  fi
+done
+
 echo "status=ok"
 echo "command=$FULL_CMD$PRETTIER_RAN"
 echo "detection_source=$DETECTION_SOURCE"
 echo "files_count=$FILES_COUNT"
+echo "changed_by_format=$CHANGED_BY_FORMAT"
