@@ -23,6 +23,11 @@ describe('doctrine consolidation — anti-patterns replace the per-cycle checkli
 
   test('principles §1 takes refactoring out of the loop', () => {
     assert.match(principles, /Refactoring is not part of the loop/);
+    assert.doesNotMatch(principles, /REFACTOR/);
+  });
+
+  test('principles §3 pins the batching exception', () => {
+    assert.match(principles, /One deliberate exception[\s\S]*?batched into a single RED→GREEN cycle/);
   });
 
   test('agents cite §8 Anti-Patterns, not the checklist', () => {
@@ -35,7 +40,7 @@ describe('doctrine consolidation — anti-patterns replace the per-cycle checkli
 
   test('tdd-cycle agent replaced the 10-item per-slice checklist', () => {
     const agent = read('agents/jlu-tdd-cycle.md');
-    assert.doesNotMatch(agent, /Per-Slice Checklist/);
+    assert.doesNotMatch(agent, /per-slice checklist/i);
     assert.match(agent, /Anti-Pattern Check/);
   });
 });

@@ -127,7 +127,7 @@ Then, for the current slice:
 Check the slice against `tdd-principles.md` §8 (implementation-coupled, tautological,
 horizontal slicing) plus minimality (minimal production code, no speculative
 features, mocks at boundaries only, no new shallow modules, teardown for every
-allocated resource).
+allocated resource or mock state).
 
 If any applies, fix it now (before the next slice). The longer you wait, the more
 code accumulates on top of the violation.
