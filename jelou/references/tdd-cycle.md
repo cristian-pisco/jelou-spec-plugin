@@ -96,11 +96,17 @@ a. Locate the input surface (controller method + DTO/`class-validator` decorator
 b. Enumerate every validation rule on that surface — this list IS the rejection list.
    A field typed `number`/`string`/`uuid` with no visible decorator still carries a
    type constraint; count it.
-c. Assemble the matrix: one **success** slice; one **rejection** slice per
+c. Assemble the matrix: one **success** slice; one rejection case per
    decorator/type constraint (violating value → documented 4xx + error shape); one
    **realistic** slice populating every cross-field reference (collections non-empty,
    never the empty stub); **boundary** slices where they apply.
-d. Work the matrix one slice at a time (vertical slicing still holds).
+d. Work the matrix vertically — one behavior slice (success / realistic / boundary)
+   at a time. Rejection cases are batched: all rejection cases that target the same
+   DTO/validation surface are authored and wired as ONE batched slice — write every
+   rejecting test for that surface, run them once (RED), wire every missing
+   decorator/guard/pipe, run them once (GREEN). Coverage is unchanged: the batch
+   still contains one rejection case per decorator/type constraint; only the cycle
+   granularity changes. Never interleave two surfaces in one batch.
 
 ### Multi-Service Closure (Section 14.3)
 

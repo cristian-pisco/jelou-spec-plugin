@@ -72,8 +72,8 @@ describe('tdd-cycle.md — case-matrix floor promoted from a "should"', () => {
   test('hosts the canonical case-matrix derivation procedure', () => {
     assert.match(ref, /Case-Matrix Derivation Procedure \(canonical\)/);
   });
-  test('mandates one rejection slice per validation decorator/type constraint', () => {
-    assert.match(ref, /one \*\*rejection\*\* slice per/);
+  test('mandates one rejection case per validation decorator/type constraint', () => {
+    assert.match(ref, /one rejection case per\s+decorator\/type constraint/);
   });
   test('canonical derivation procedure is not duplicated in the agent bodies', () => {
     assert.match(ref, /this list IS the rejection list/);

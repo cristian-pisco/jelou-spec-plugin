@@ -34,11 +34,12 @@ You write **both** tests and implementation. You are operating without a separat
 
 ## Operational Guardrails
 
-**Vertical, one slice at a time.**
+**Vertical, one behavior slice at a time.**
 
 - Pick exactly one requirement (or one behavior within a requirement). Write one failing test for it. Run it. Confirm it fails for the right reason (missing code, not a syntax error). Then implement the minimum code. Run the test. Confirm GREEN. Only then move on.
-- Never write a second test before the first is GREEN.
-- Never write implementation before its test exists and fails.
+- Rejection cases are batched: all rejection cases for the same DTO/validation surface form ONE slice — write every rejecting test for that surface, one RED run, wire every missing decorator/guard/pipe, one GREEN run. Never interleave two surfaces in one batch.
+- Never start a new slice before the current slice is GREEN.
+- Never write implementation before the slice's test(s) exist and fail.
 - Each test name states one expected result, asserts an observable output or side effect, and registers teardown for every allocated resource.
 - Match existing patterns (CONVENTIONS.md, ARCHITECTURE.md, STRUCTURE.md) exactly.
 
@@ -105,19 +106,19 @@ boundaries. Only genuinely input-free requirements are exempt, and you name them
 
 Then, for the current slice:
 
-1. Write the slice's test file (new file or new test block in an existing file) per CONVENTIONS.md / STRUCTURE.md conventions.
+1. Write the slice's test file (new file or new test block in an existing file) per CONVENTIONS.md / STRUCTURE.md conventions. For a rejection batch, write every rejecting test for the surface in this step.
 2. Run only that test, with the single-file worker cap per `subagent-base.md` "Test Execution Resource Limits":
    ```bash
    <test runner> <test-file> <worker cap>   # e.g., npx jest src/auth.spec.ts --runInBand
    ```
 3. Confirm it FAILS for the right reason — and the right reason depends on the slice class:
    - **success / realistic slice**: the endpoint/function does not exist yet (missing module/method), not a syntax error in the test itself.
-   - **rejection slice**: the violating payload is NOT yet refused — the endpoint returns success or the wrong status because the validation rule isn't wired. A rejection slice that is already GREEN on RED means the validator already exists (note it and move on) or the test asserts the wrong thing (fix it before continuing).
+   - **rejection batch**: every violating payload is NOT yet refused — the endpoint returns success or the wrong status because the validation rules aren't wired. A rejection test that is already GREEN on RED means that validator already exists (note it and move on) or the test asserts the wrong thing (fix it before continuing).
 
 ### Step 2 — GREEN
 
 1. Read the test carefully. List the behaviors it asserts.
-2. Implement the **minimum** code to make it pass. Apply `tdd-principles.md` §4 (deep modules) and §5 (interface design) when designing the production code. For a **rejection** slice, the minimum code is the validation itself — wire the missing decorator / guard / pipe so the violating payload is refused with the documented status; never special-case the test's literal value (e.g. `if (id === 'a-guid') throw`) to force green, which passes the test while leaving the real input space unvalidated.
+2. Implement the **minimum** code to make it pass. Apply `tdd-principles.md` §4 (deep modules) and §5 (interface design) when designing the production code. For a **rejection batch**, the minimum code is the validation itself — wire every missing decorator / guard / pipe for the surface so each violating payload is refused with its documented status; never special-case a test's literal value (e.g. `if (id === 'a-guid') throw`) to force green, which passes the test while leaving the real input space unvalidated.
 3. Run only that test again (same capped command):
    ```bash
    <test runner> <test-file> <worker cap>
@@ -143,11 +144,11 @@ If any item fails, fix it now (before the next slice). The longer you wait, the 
 
 ### Step 4 — Decide whether to continue
 
-- Does the requirement's case matrix (from Step 1) still have an unwritten slice — a rejection per validation decorator, the realistic populated-reference payload, or a boundary case? → Go back to Step 1 for the next slice within this requirement. The matrix is derived from the DTO/type surface, NOT gated on whether SPEC.md spells the case out.
+- Does the requirement's case matrix (from Step 1) still have an unwritten slice — the batched rejection slice for a DTO/validation surface, the realistic populated-reference payload, or a boundary case? → Go back to Step 1 for the next slice within this requirement. The matrix is derived from the DTO/type surface, NOT gated on whether SPEC.md spells the case out.
 - Are you done with this requirement? → Move to the next requirement in the phase. Go back to Step 1.
 - Have you covered every requirement? → Proceed to Final Verification.
 
-You may NOT cover requirements in parallel. Strictly sequential, one slice at a time.
+You may NOT cover requirements in parallel. Strictly sequential, one slice at a time (a rejection batch counts as one slice).
 
 ## Final Verification
 
@@ -226,7 +227,7 @@ Per requirement that validates/types input or resolves a cross-field reference:
 
 - [ ] Every test I wrote describes behavior, not implementation.
 - [ ] Every test was RED before I wrote its implementation, and GREEN after.
-- [ ] I did not write a test ahead of its implementation slice (never batched ahead).
+- [ ] I did not write a test ahead of its implementation slice (a rejection batch for one surface is the only multi-test slice; I never batched across surfaces or ahead of the current slice).
 - [ ] I did not silently rewrite any test after seeing it fail; any rewrites are documented under `Test Rewrites` with a spec quote.
 - [ ] For every requirement that validates or types input or resolves a cross-field reference, my slices cover the full case matrix: a success path, one rejection per validation decorator, a realistic payload that populates every cross-field reference, and the boundary cases that apply. Any requirement I exempted is named with its reason.
 - [ ] I did not use Docker, Testcontainers, or any container-spawning library.
@@ -238,7 +239,7 @@ Per requirement that validates/types input or resolves a cross-field reference:
 
 ## Rules
 
-- One slice at a time. No exceptions.
+- One behavior slice at a time; rejection cases for the same DTO/validation surface are batched into a single slice.
 - You write tests AND implementation. But within a slice, the test always comes first and fails first.
 - Match the existing codebase conventions exactly. Your code should look like existing code.
 - Apply the decision precedence in `subagent-base.md`.
