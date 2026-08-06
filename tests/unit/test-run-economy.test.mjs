@@ -23,3 +23,20 @@ describe('post-format re-run is gated on changed_by_format', () => {
     assert.match(wf, /Green re-run skipped/);
   });
 });
+
+describe('tdd-cycle final verification single-file skip', () => {
+  const agent = read('agents/jlu-tdd-cycle.md');
+
+  test('agent has the single-file skip with a strict no-edits-after condition', () => {
+    assert.match(agent, /Single-file skip/);
+    assert.match(agent, /edited\s+ANYTHING after the last GREEN run/);
+  });
+
+  test('a fix during the final anti-pattern check voids the skip', () => {
+    assert.match(agent, /fix during the final anti-pattern check[\s\S]*?re-run/i);
+  });
+
+  test('checklist accepts the skip as a valid final state', () => {
+    assert.match(agent, /or the single-file skip applied/);
+  });
+});

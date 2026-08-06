@@ -148,12 +148,18 @@ You may NOT cover requirements in parallel. Strictly sequential, one slice at a 
 
 After the last slice:
 
-1. Run all the test files you created or modified in this session, together, with the multi-file worker cap per `subagent-base.md`:
+1. **Single-file skip**: if every slice in this phase wrote to the same single test
+   file AND you edited nothing — production or test code — after that file's last
+   GREEN run, the combined run is already satisfied by that last GREEN run. Record it
+   as the Final Test Run (same command, same counts) and go to step 3. If you edited
+   ANYTHING after the last GREEN run (a Step 3 anti-pattern fix, a rename, anything),
+   the skip is off — run step 2.
+2. Otherwise, run all the test files you created or modified in this session, together, with the multi-file worker cap per `subagent-base.md`:
    ```bash
    <test runner> <test-file-1> <test-file-2> ... <worker cap>   # e.g., npx jest a.spec.ts b.spec.ts --maxWorkers=2
    ```
-2. Confirm everything is GREEN.
-3. Apply the §8 anti-patterns check one more time against the whole phase.
+3. Confirm everything is GREEN.
+4. Apply the §8 anti-patterns check one more time against the whole phase. If a fix during the final anti-pattern check touches any file, the previous runs are void — re-run step 2 (the single-file skip never applies after such a fix).
 
 If anything is red at this point, fix it before reporting — do not report `status: GREEN` with red tests.
 
@@ -201,6 +207,7 @@ Per requirement that validates/types input or resolves a cross-field reference:
 - **Status**: GREEN (all written tests pass)
 - **Phase tests**: X passing
 - **Command**: `<exact command used>`
+- **Single-file skip**: applied (last GREEN run covered every file written this phase) | not applied
 
 ### Refactor Candidates (for the task-level refactor pass — Step 8a.3)
 - <per `tdd-principles.md` §7: duplication, shallow modules, feature envy, primitive obsession, what the new code revealed. Each entry: file:line + one-sentence rationale. Write "None" if you genuinely see none.>
@@ -228,7 +235,7 @@ Per requirement that validates/types input or resolves a cross-field reference:
 - [ ] My code matches the existing codebase style — naming, imports, error handling, formatting.
 - [ ] No function I wrote exceeds 100 lines.
 - [ ] Every line of production code traces to a failing test.
-- [ ] The final combined test run is GREEN.
+- [ ] The final combined test run is GREEN (or the single-file skip applied and the last GREEN run covered every file written this phase).
 - [ ] Every test run named explicit file paths and carried the worker cap. I never invoked the bare package test script or watch mode.
 
 ## Rules
