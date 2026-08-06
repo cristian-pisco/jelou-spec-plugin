@@ -29,6 +29,7 @@ describe('refactor pass moved to end of task', () => {
   test('refactor agent is task-scoped', () => {
     assert.match(agent, /once per affected service/i);
     assert.doesNotMatch(agent, /Refactor Agent Report — Phase/);
+    assert.doesNotMatch(agent, /implementer's/);
   });
 
   test('reference doc points the Refactor step at 8a.3', () => {

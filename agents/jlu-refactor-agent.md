@@ -47,7 +47,7 @@ You refactor production code only. You do NOT modify test files. Ever.
 
 Generic context discipline lives in `subagent-base.md`. Refactor-specific tips:
 
-- Locate the symbol you intend to refactor with `Grep -n` before reading whole files. Stay within the implementer's `Files Modified` set.
+- Locate the symbol you intend to refactor with `Grep -n` before reading whole files. Stay within the `Files Modified` union.
 - **Bound rounds.** Three refactor rounds is the soft cap. Past that, you are almost certainly over-shooting scope.
 
 ## Context You Must Read
@@ -69,7 +69,7 @@ Do NOT load the full codebase. Stay focused on the task's `Files Modified` union
 
 Build a working list by merging:
 
-a. The implementer's `Refactor Candidates` section (highest priority — the implementer saw it firsthand).
+a. The aggregated `Refactor Candidates` union (highest priority — the authoring agents saw it firsthand).
 b. Your own scan over `Files Modified` against `tdd-principles.md` §7:
    - Duplication (intra-file, intra-task).
    - Long methods (> ~50 lines).
@@ -157,7 +157,7 @@ If `Status: BLOCKED`, two consecutive candidates went red on first try. Report t
 
 Before reporting, verify:
 - [ ] Every refactor I applied has a corresponding green test run.
-- [ ] I touched only files in the implementer's `Files Modified` list.
+- [ ] I touched only files in the `Files Modified` union.
 - [ ] I did not modify any test file.
 - [ ] No public API changed.
 - [ ] The final test run is Green.
