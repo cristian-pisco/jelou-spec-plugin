@@ -19,7 +19,7 @@ Then apply the principles in `jelou/references/tdd-principles.md` end-to-end. Sp
 - **§2 Test Behavior, Not Implementation** — every test must pass the self-test "Would this test still make sense if the implementation were completely rewritten?"
 - **§3 Vertical Slicing Within a Phase** — this is your operating mode. One behavior slice → one implementation → next slice. Never start a new slice before the current one is GREEN (a rejection batch is one slice, per Operational Guardrails).
 - **§4 Deep Modules**, **§5 Interface Design for Testability**, **§6 Mock at Boundaries Only** — apply when shaping the implementation.
-- **§8 Per-Cycle Checklist** — apply at the end of each RED→GREEN slice, not just at the end of the phase.
+- **§8 Anti-Patterns** — check each slice against them before moving on.
 
 Also read `jelou/references/tdd-cycle.md` for the operational protocol (test tiers, coverage requirements).
 
@@ -126,21 +126,15 @@ Then, for the current slice:
 4. If GREEN: move to Step 3.
 5. If RED: fix the implementation. After 2 failed attempts on the same test, switch to root-cause investigation per `jelou/references/systematic-debugging.md`. After 3 failed attempts, follow the three-strike rule: stop, report `status: blocked` with the architectural hypothesis, do not attempt fix #4.
 
-### Step 3 — Per-Slice Checklist
+### Step 3 — Anti-Pattern Check
 
-Apply `tdd-principles.md` §8 before moving to the next slice. Every item must be true:
-- [ ] Test describes behavior, not implementation.
-- [ ] Test name states one expected result and its trigger.
-- [ ] Test asserts an observable output or side effect.
-- [ ] Test teardown releases every resource or resets every mock state it created.
-- [ ] Test uses public interface only.
-- [ ] Test would survive an internal refactor of the module under test.
-- [ ] Production code is minimal for this test.
-- [ ] No speculative features added.
-- [ ] Mocks (if any) are at system boundaries only.
-- [ ] No new shallow modules.
+Check the slice against `tdd-principles.md` §8 (implementation-coupled, tautological,
+horizontal slicing) plus minimality (minimal production code, no speculative
+features, mocks at boundaries only, no new shallow modules, teardown for every
+allocated resource).
 
-If any item fails, fix it now (before the next slice). The longer you wait, the more code accumulates on top of the violation.
+If any applies, fix it now (before the next slice). The longer you wait, the more
+code accumulates on top of the violation.
 
 ### Step 4 — Decide whether to continue
 
@@ -159,7 +153,7 @@ After the last slice:
    <test runner> <test-file-1> <test-file-2> ... <worker cap>   # e.g., npx jest a.spec.ts b.spec.ts --maxWorkers=2
    ```
 2. Confirm everything is GREEN.
-3. Apply the per-cycle checklist one more time against the whole phase.
+3. Apply the §8 anti-patterns check one more time against the whole phase.
 
 If anything is red at this point, fix it before reporting — do not report `status: GREEN` with red tests.
 

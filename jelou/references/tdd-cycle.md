@@ -2,7 +2,7 @@
 
 > This document defines the strict Test-Driven Development cycle enforced by the Jelou Spec Plugin. TDD is not optional — it is a core engineering principle (Precedence #4) and is enforced by the orchestrator at every implementation phase.
 >
-> For the *philosophical* foundations every agent in the TDD pipeline must apply (behavior-not-implementation, vertical slicing, deep modules, interface design, mocking at boundaries, refactor candidates, per-cycle checklist), see `tdd-principles.md`. This file describes the *operational* protocol only.
+> For the *philosophical* foundations every agent in the TDD pipeline must apply (behavior-not-implementation, vertical slicing, deep modules, interface design, mocking at boundaries, refactor candidates, anti-patterns), see `tdd-principles.md`. This file describes the *operational* protocol only.
 
 ## The Red-Green-Refactor Cycle
 

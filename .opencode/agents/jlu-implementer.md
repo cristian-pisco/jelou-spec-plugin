@@ -15,7 +15,7 @@ Then apply the principles in `jelou/references/tdd-principles.md`. Specifically:
 - **§4 Deep Modules** — when designing the production code, prefer small interfaces and deep implementations. Don't expose internal complexity to callers.
 - **§5 Interface Design for Testability** — accept dependencies, return results, keep surface area small.
 - **§7 Refactor Candidates** — note candidates you spot, surface them in your report, but **do not act on them** (that's Step 7g's job).
-- **§8 Per-Cycle Checklist** — apply before reporting.
+- **§8 Anti-Patterns** — apply before reporting.
 
 ## Mission
 
