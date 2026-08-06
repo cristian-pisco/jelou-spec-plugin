@@ -951,26 +951,28 @@ All state is file-based. No external database required.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> draft : /jlu-new-task
-    draft --> refining : /jlu-new-task (inline interview)
-    refining --> planned : spec approved
+    [*] --> draft : /jlu-new-task (seed)
+    draft --> refining : inline interview (spec-interviewer)
+    refining --> planned : spec approved + stories coherence gate
     planned --> implementing : /jlu-execute-task
     implementing --> validating : all phases done
-    validating --> ready_to_publish : QA passed
-    ready_to_publish --> done : closure approved
+    validating --> ready_to_publish : final validation green
+    ready_to_publish --> done : PRs merged (pending production)
+    ready_to_publish --> closed : /jlu-close-task
     done --> closed : /jlu-close-task
 
-    implementing --> refining : /jlu-extend-phase (major)
-    implementing --> planned : /jlu-extend-phase (minor)
+    implementing --> refining : /jlu-extend-phase (spec-level)
+    implementing --> planned : /jlu-extend-phase (implementation-level)
     validating --> planned : /jlu-extend-phase
+    validating --> implementing : /jlu-refine-task (phases reopened)
 
     state implementing {
         [*] --> proposal_generation
-        proposal_generation --> phase_execution
+        proposal_generation --> wave_planning
+        wave_planning --> phase_execution
         state phase_execution {
-            [*] --> red_tests
-            red_tests --> green_impl
-            green_impl --> refactor
+            [*] --> tdd_cycle
+            tdd_cycle --> refactor
             refactor --> per_phase_qa
             per_phase_qa --> commit
             commit --> [*]
@@ -979,7 +981,16 @@ stateDiagram-v2
     }
 
     note right of implementing
+        tdd_cycle: Red→Green per FR (vertical slices)
+        final_validation: Tier 2 tests · build once per service ·
+        affected-tests regression · E2E suites materialized from SPEC.md
         Session recovery: resume / re-validate / start over
+    end note
+
+    note right of ready_to_publish
+        Auto-chain (default ON): /jlu-ship opens PRs, then
+        /jlu-resolve-pr drives them green — zero commands
+        after the interview. Opt out with --no-autochain.
     end note
 ```
 
@@ -988,62 +999,94 @@ stateDiagram-v2
 ```mermaid
 flowchart TB
     subgraph commands["User Commands"]
-        new["/jlu-new-task"]
         map["/jlu-map-codebase"]
+        new["/jlu-new-task"]
         refine["/jlu-refine-task"]
         exec["/jlu-execute-task"]
-        close["/jlu-close-task"]
+        ship["/jlu-ship"]
+        rpr["/jlu-resolve-pr"]
+        goal["/jlu-goal"]
+        uiqa["/jlu-ui-qa-run"]
         ubiq["/jlu-ubiquitous-language"]
         arch["/jlu-architecture-review"]
+        diag["/jlu-diagnose · /jlu-autofix"]
     end
 
-    subgraph opus["Orchestrator Tier — Opus"]
+    subgraph opus["Interview Tier — Opus"]
         spec_int["spec-interviewer"]
         grill["architecture-grill"]
     end
 
     subgraph sonnet["Research & Implementation Tier — Sonnet"]
-        subgraph researchers["2 Parallel Analyzers"]
-            structural["structural analyzer"]
-            operational["operational analyzer"]
+        subgraph mapping["Codebase Mapping"]
+            structural["codebase-analyzer-structural"]
+            operational["codebase-analyzer-operational"]
+            mapper["codebase-mapper · root batch"]
+            devblock["dev-block-verifier · boot certification"]
         end
-        proposal["proposal-agent"]
-        tw["test-writer · Red"]
-        impl["implementer · Green"]
-        qa["qa-agent"]
-        tasks_ag["tasks-agent"]
-        build["build-validator"]
+        subgraph tdd_pipeline["TDD Pipeline"]
+            proposal["proposal-agent"]
+            tddc["tdd-cycle · Red→Green per FR"]
+            refac["refactor-agent"]
+            tw["test-writer · Tier 2 + backend E2E"]
+            uiw["ui-e2e-writer · Playwright"]
+            impl["implementer · fix agent"]
+            qa["qa-agent"]
+            build["build-validator"]
+        end
+        subgraph delivery["Delivery"]
+            specrev["spec-reviewer"]
+            shipr["ship-runner · per service"]
+            confl["conflict-resolver"]
+            rprr["resolve-pr-runner · per PR"]
+        end
+        subgraph qa_runners["QA Runners"]
+            tsr["test-suite-runner"]
+            be2e["backend-e2e-runner"]
+            uiqar["ui-qa-runner"]
+            uifl["ui-fix-loop"]
+        end
         gloss_x["glossary-extractor"]
         gloss_c["glossary-curator"]
         arch_x["architecture-explorer"]
+        devdiag["dev-diagnoser"]
     end
 
     subgraph haiku["Operations Tier — Haiku"]
         git["git-agent"]
+        deps["deps-validator"]
     end
 
     subgraph artifacts["Artifacts"]
-        spec_file["SPEC.md"]
-        prop_file["PROPOSAL.md"]
-        phase_files["Phase files"]
-        codebase["6 codebase files"]
-        tasks_file["TASKS.md"]
+        spec_file["SPEC.md + stories/*.story.md"]
+        prop_file["PROPOSAL.md + phase files"]
+        codebase["6 codebase docs + verified dev blocks"]
         gloss_file["UBIQUITOUS_LANGUAGE.md"]
-        review_file["ARCHITECTURE_REVIEW.md"]
-        adr_file["ADR-NNNN-*.md"]
+        review_file["ARCHITECTURE_REVIEW.md + ADRs"]
+        prs["GitHub PRs"]
     end
 
-    map --> researchers --> codebase
+    map --> structural & operational --> codebase
+    map --> mapper
+    map --> devblock
     new --> spec_int --> spec_file
     refine --> spec_int
-    exec --> proposal --> prop_file & phase_files
-    exec --> tw --> impl --> qa
-    qa --> tasks_ag --> tasks_file
-    qa --> git
-    close --> git
+    exec --> proposal --> prop_file
+    exec --> tddc --> refac --> qa
+    qa --> impl
+    exec --> tw & uiw
+    exec --> build
+    ship --> specrev
+    ship --> shipr --> prs
+    shipr --> deps & build & confl & git
+    rpr --> rprr
+    goal --> tsr & be2e & uiqar
+    uiqa --> uiqar --> uifl
     ubiq --> gloss_x --> gloss_c --> gloss_file
-    arch --> arch_x --> review_file
-    arch --> grill --> review_file & adr_file
+    arch --> arch_x --> grill --> review_file
+    diag --> devdiag
+
+    new -. auto-chain .-> exec -. auto-chain .-> ship -. auto-chain .-> rpr
 ```
 
 ## Full Specification
