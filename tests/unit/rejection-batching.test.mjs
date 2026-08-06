@@ -23,6 +23,7 @@ describe('rejection batching — cycle granularity', () => {
   test('agent batches rejections and drops the absolute one-slice rule', () => {
     assert.match(agent, /Rejection cases are batched/);
     assert.doesNotMatch(agent, /One slice at a time\. No exceptions\./);
+    assert.doesNotMatch(agent, /Never write two tests before the first is GREEN/);
   });
 
   test('agent never batches across surfaces', () => {

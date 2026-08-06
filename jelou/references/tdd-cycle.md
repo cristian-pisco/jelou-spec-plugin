@@ -53,7 +53,7 @@ RED→GREEN loop per requirement in one session. Multi-service phases fan out on
 
 | Agent | Role | Model Tier |
 |-------|------|------------|
-| **tdd-cycle** | Per-FR loop: write one failing test → RED → implement → GREEN → next FR | Sonnet |
+| **tdd-cycle** | Per-FR loop: one behavior slice at a time (rejection cases batched per surface) → RED → GREEN → next FR | Sonnet |
 | **refactor-agent** | Surfaces/applies refactor candidates after GREEN (Step 7g) | Sonnet |
 
 `jlu-test-writer` and `jlu-implementer` are not part of per-phase authoring. They
