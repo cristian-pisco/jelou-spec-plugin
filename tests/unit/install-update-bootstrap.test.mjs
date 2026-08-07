@@ -8,6 +8,7 @@ import { spawnSync } from 'node:child_process';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const UPDATER = join(ROOT, 'bin/jlu-update.sh');
+const PHASE_HELPERS = ['classify-phase.sh', 'finalize-phase.sh', 'format-changed-files.sh'];
 
 function assertUpdaterInstalled(path) {
   assert.equal(readFileSync(path, 'utf8'), readFileSync(UPDATER, 'utf8'));
@@ -28,6 +29,13 @@ function assertUpdaterBootstraps(path, host) {
   assert.match(result.stdout, new RegExp(`^PLAN: setup --host ${host}$`, 'm'));
 }
 
+function assertPhaseHelpersInstalled(binDir) {
+  for (const helper of PHASE_HELPERS) {
+    const path = join(binDir, helper);
+    assert.notEqual(statSync(path).mode & 0o111, 0, `${helper} is not executable`);
+  }
+}
+
 describe('runtime installers — update bootstrap', () => {
   test('Codex installs an executable updater beside global workflows', () => {
     const codexHome = mkdtempSync(join(tmpdir(), 'codex-update-bootstrap-'));
@@ -41,6 +49,7 @@ describe('runtime installers — update bootstrap', () => {
     const installedUpdater = join(codexHome, 'jelou/bin/jlu-update.sh');
     assertUpdaterInstalled(installedUpdater);
     assertUpdaterBootstraps(installedUpdater, 'codex');
+    assertPhaseHelpersInstalled(join(codexHome, 'bin'));
   });
 
   test('OpenCode installs an executable updater beside global workflows', () => {
@@ -55,5 +64,6 @@ describe('runtime installers — update bootstrap', () => {
     const installedUpdater = join(openCodeHome, 'jelou/bin/jlu-update.sh');
     assertUpdaterInstalled(installedUpdater);
     assertUpdaterBootstraps(installedUpdater, 'opencode');
+    assertPhaseHelpersInstalled(join(openCodeHome, 'bin'));
   });
 });

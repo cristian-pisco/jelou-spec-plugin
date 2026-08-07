@@ -22,6 +22,7 @@ const FEATURE_BINS = [
   'bin/build-boot-plan.mjs',
   'bin/classify-e2e-target.mjs',
   'bin/classify-task-scope.mjs',
+  'bin/classify-phase.sh',
   'bin/detect-auth-collapse.mjs',
   'bin/e2e-ensure-account.mjs',
   'bin/e2e-login-local.mjs',
@@ -29,6 +30,8 @@ const FEATURE_BINS = [
   'bin/e2e-session-probe.mjs',
   'bin/e2e-session-sync.mjs',
   'bin/extract-trace.mjs',
+  'bin/finalize-phase.sh',
+  'bin/format-changed-files.sh',
   'bin/parse-goal-matrix.mjs',
   'bin/probe-coverage-breadth.mjs',
   'bin/rewrite-e2e-env.mjs',
@@ -108,6 +111,18 @@ describe('installer manifests — every feature bin ships everywhere', () => {
 
 const DELIBERATELY_UNSHIPPED = new Map([
   [
+    'bin/check-update.sh',
+    'a Claude Code skill bootstrap used only from canonical skills that script installs do not distribute',
+  ],
+  [
+    'bin/install-codex.sh',
+    'the Codex bootstrap installer itself, referenced by installation documentation rather than runtime surfaces',
+  ],
+  [
+    'bin/install-opencode.sh',
+    'the OpenCode bootstrap installer itself, referenced by installation documentation rather than runtime surfaces',
+  ],
+  [
     'bin/sync-codex.mjs',
     'a repo-development script: it regenerates .codex/ mirrors from skills/ and agents/, ' +
       'neither of which exists in an install. Referenced only as an instruction to plugin developers.',
@@ -130,7 +145,7 @@ function surfaceMarkdownFiles() {
 function referencedBins() {
   const refs = new Map();
   for (const surface of surfaceMarkdownFiles()) {
-    for (const match of read(surface).matchAll(/bin\/[a-z0-9-]+\.mjs/g)) {
+    for (const match of read(surface).matchAll(/bin\/[a-z0-9-]+\.(?:mjs|sh)/g)) {
       if (!refs.has(match[0])) refs.set(match[0], []);
       refs.get(match[0]).push(surface);
     }

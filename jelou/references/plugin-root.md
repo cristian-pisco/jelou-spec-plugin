@@ -22,6 +22,7 @@ And from that root, `bin/` is always a direct child:
 
 ```
 <root>/bin/<script>.mjs
+<root>/bin/<script>.sh
 <root>/bin/lib/<area>/<module>.mjs
 ```
 
@@ -80,8 +81,9 @@ someone installs with the script.
 
 When you add a bin that any surface invokes:
 
-1. Add a `cp "$PLUGIN_DIR/bin/<script>.mjs" …` line to **both** installers, plus its
-   `bin/lib/**` imports and the `mkdir -p` for their directories.
+1. Add a `cp "$PLUGIN_DIR/bin/<script>.<mjs|sh>" …` line to **both** installers, plus any
+   `bin/lib/**` imports and the `mkdir -p` for their directories. Shell entry points must remain
+   executable after installation.
 2. Add the entry point to `FEATURE_BINS` in `tests/unit/installer-manifest.test.mjs`. The existing
    import-graph closure test then fails if any transitive import is missing from an allowlist.
 
@@ -96,10 +98,13 @@ to a surface without touching the installers fails the suite.
 paths anywhere in a surface file, prose included, so a concrete filename written as an illustration
 would be read as a real reference and reported as an unshipped bin.)
 
-There is exactly one declared exclusion, in `DELIBERATELY_UNSHIPPED`:
+Declared exclusions live in `DELIBERATELY_UNSHIPPED`:
 
 | Bin | Why it is not shipped |
 |---|---|
+| `bin/check-update.sh` | A Claude Code bootstrap used by canonical skills, which script installs do not distribute. |
+| `bin/install-codex.sh` | The bootstrap installer itself, referenced only by installation documentation. |
+| `bin/install-opencode.sh` | The bootstrap installer itself, referenced only by installation documentation. |
 | `bin/sync-codex.mjs` | A repo-development script. It regenerates the `.codex/` mirrors from `skills/` and `agents/`, neither of which exists in an install, so shipping it would hand users a script that reads absent sources. It is referenced only as an instruction to plugin developers. |
 
 An entry there must stay referenced by some surface and stay absent from both installers — the test
