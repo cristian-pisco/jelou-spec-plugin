@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.343] — 2026-08-07
+
+### Fixed
+- ship classify-phase.sh, finalize-phase.sh, and format-changed-files.sh through Codex and OpenCode installers
+- enforce executable phase helpers and scan referenced shell binaries in installer regressions
+
 ## [0.3.342] — 2026-08-06
 
 ### Internal
