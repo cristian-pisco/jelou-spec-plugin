@@ -64,11 +64,12 @@ Interactive approval of these suggestions lives only in `/jlu-refine-task` (the 
 
 Read `.spec-workspace.json` once at the start of this step (if present) and cache it as `WORKSPACE_CONFIG`. Reuse this cached object in Step 2b instead of reading the file again.
 
-**Argument parsing.** The invocation may carry up to three tokens: the first
+**Argument parsing.** The invocation may carry up to four tokens: the first
 non-flag, non-ClickUp token is the `task-slug`; a ClickUp URL
 (`app.clickup.com/t/<id>`) or bare ClickUp id token is captured for Step
 9.5a (never treated as a slug); `--no-autochain` is captured for the Step
-9.5 gate. Strip the captured tokens before slug resolution.
+9.5 gate; `--refactor` is captured for the Step 8a.3 opt-in gate. Strip the
+captured tokens before slug resolution.
 
 1. If a `task-slug` is provided as a command argument:
    a. Use `WORKSPACE_CONFIG.workspace` to get the workspace path.
@@ -265,7 +266,15 @@ Spawn `jlu-proposal-agent` with model: **MODEL_CONFIG.proposal** (default: sonne
 
 ### 4c. Local Detail Pass (Multi-Service Only)
 
-If there are **2+ affected services**, spawn one `jlu-proposal-agent` per service, model: **MODEL_CONFIG.proposal** (default: sonnet). Honor `PHASE_PARALLELISM` (Step 6.4): when `> 1`, fan out in a single orchestrator message; when `= 1` (default), dispatch sequentially. Each prompt includes:
+If there are **2+ affected services**, spawn one `jlu-proposal-agent` per service, model: **MODEL_CONFIG.proposal** (default: sonnet).
+
+**Compute `TASK_FANOUT_CAP` NOW — this is its first point of use** (this step runs before the Step 6 throttles are set). Invoke the planner's cap-only mode and cache the number for every later consumer (Steps 6.4, 7d, 8a.3, 8a.5, 8b.4):
+
+```bash
+TASK_FANOUT_CAP=$(node <plugin-root>/bin/plan-phase-waves.mjs --emit-cap-only --limit=<N_affected_services>)
+```
+
+The cap formula lives ONLY in the planner (`bin/plan-phase-waves.mjs` — auto cap from host cores, with `JLU_PHASE_PARALLELISM` applied as a reduce-only manual ceiling); never restate it in this workflow. Honor `TASK_FANOUT_CAP`: when `> 1`, fan out in a single orchestrator message; when `= 1`, dispatch sequentially. Each prompt includes:
 
 - **Inlined**: full SPEC.md, the global strategy draft from 4b, the target service's `services.yaml` entry.
 - **Paths to Read**: the 6 codebase files for the target service (same paths as 4b, scoped to one service).
@@ -354,11 +363,12 @@ Skip proposal generation. Read the existing PROPOSAL.md and phase files to resum
 
 4. **Set local CPU safety throttles (once per task).**
 
-   - `PHASE_PARALLELISM`: default `1` (sequential) unless explicitly overridden by `JLU_PHASE_PARALLELISM`. Clamp to `1..N` where `N = number of affected services`.
+   - `PHASE_PARALLELISM`: default `auto` for Step 7. The wave planner (`bin/plan-phase-waves.mjs`) resolves `auto` to a numeric cap itself and reports it as `auto_cap`/`chosen_cap` in the wave-plan JSON; `JLU_PHASE_PARALLELISM`, when set, is a manual ceiling the planner applies reduce-only. The planner is the single source of the cap formula — this workflow never restates or recomputes it. Same-service safety does not depend on the cap value: the planner enforces at-most-one-phase-per-service-per-chunk unconditionally, which retires the old orchestrator-side clamp.
+   - `TASK_FANOUT_CAP`: the numeric cap for every orchestrator-side fan-out comparison (Steps 4c, 7d, 8a.3, 8a.5, 8b.4). It was computed and cached at its first point of use — Step 4c — via `plan-phase-waves.mjs --emit-cap-only --limit=<N_affected_services>`. If Step 4c did not run (single-service task, or PROPOSAL.md already existed), compute it here with that same invocation and cache it. Later steps reference the cached value; they never re-derive it.
 
 The orchestrator no longer runs the full test suite — Step 8b is reduced to an **affected-tests** regression check (lightweight). The full suite is now owned by the dedicated `/jlu-test-suite` skill, which the developer invokes on-demand before opening a PR. For background: `JLU_FINAL_TEST_PARALLELISM` and `JLU_TEST_MAX_WORKERS` are no longer read here; see `jelou/references/parallel-dispatch.md` for the deprecation note.
 
-**Store** (task-level): `PHASE_PARALLELISM`.
+**Store** (task-level): `PHASE_PARALLELISM` (the value handed to the planner, resolved only by the planner), `TASK_FANOUT_CAP` (cached numeric cap from Step 4c or computed here).
 
 ---
 
@@ -390,12 +400,17 @@ node <plugin-root>/bin/plan-phase-waves.mjs \
   --phase-parallelism="<PHASE_PARALLELISM>"
 ```
 
+`<PHASE_PARALLELISM>` is the Step 6.4 value (default `auto`); the planner resolves it to the numeric cap itself.
+
 **Output (single JSON object on stdout)**:
 
 ```json
 {
   "strategy": "sequential" | "per-service-parallel",
   "phase_parallelism": <N>,
+  "auto_cap": <N>,
+  "chosen_cap": <N>,
+  "downgrade_reason": "<only present when the planner downgraded the strategy>",
   "lanes": { "<service-id>": [{ "phase": "01", "phase_file": "<abs path>" }, ...] },
   "waves": [
     [{ "service": "<service-id>", "phase": "<NN>", "phase_file": "<abs path>" }, ...],
@@ -405,20 +420,24 @@ node <plugin-root>/bin/plan-phase-waves.mjs \
 }
 ```
 
+If `WAVE_PLAN.downgrade_reason` is present, log it as a one-line WARN (the planner degraded `per-service-parallel` to `sequential` — e.g. the PROPOSAL.md `Dependency Order` column declares `after <service>`) and continue with the plan as emitted.
+
 Parse the JSON once, store as `WAVE_PLAN`, and iterate `WAVE_PLAN.waves` for the rest of Step 7. The script handles:
 
 - **Sequential**: one phase per wave, services alphabetical, phases lex within service.
-- **Per-service-parallel**: zip per-service lanes by dependency level, then chunk each wave by `PHASE_PARALLELISM` cap when a wave's phase count exceeds the cap.
+- **Per-service-parallel**: zip per-service lanes by dependency level, then chunk each wave by the plan's `chosen_cap` when a wave's phase count exceeds the cap.
 - **Phase id parsing**: filenames like `03a-name.md` yield `phase=03a` so sub-phases (3a, 3b, 3c) stay in order.
 
-Each wave lists the phases that may run together. With intra-service `**Needs:**` edges declared on the phase files, a wave can now contain more than one phase from the *same* service (an independent "level"); absent `**Needs:**`, each phase defaults to depending on its predecessor and waves stay one-phase-per-service as before. `PHASE_PARALLELISM` (default 1) still chunks every wave, so behavior is unchanged until the cap is raised.
+Each wave lists the phases that may run together. With intra-service `**Needs:**` edges declared on the phase files, a wave can now contain more than one phase from the *same* service (an independent "level"); absent `**Needs:**`, each phase defaults to depending on its predecessor. The plan's `chosen_cap` chunks every wave; when it resolves to 1, behavior is identical to the old sequential iteration.
 
 #### Concurrency cap
 
-Apply `PHASE_PARALLELISM` (from Step 6.4) as a cap on the number of phases dispatched simultaneously within a wave:
+The wave plan arrives pre-chunked: the planner resolves `PHASE_PARALLELISM` (including `auto`) to the numeric `chosen_cap` in its JSON and splits any wave whose phase count exceeds the cap into chunks processed serially. The orchestrator consumes the plan as emitted — it never recomputes, restates, or overrides the cap. Two planner invariants replace the old orchestrator-side `1..N` clamp:
 
-- If a wave has K phases and `PHASE_PARALLELISM = P` with `K > P`, split the wave into chunks of size P, processed serially.
-- Default `PHASE_PARALLELISM = 1` keeps the wave plan but serializes each wave's phases — equivalent to sequential, just iterated differently. The developer (or a future autotune) can bump it via `JLU_PHASE_PARALLELISM`. The runtime clamp is `1..N` where `N = len(AFFECTED_SERVICES)`.
+- **At most one phase per service per chunk, unconditionally** — regardless of the cap's value or origin (auto or manual). Same-checkout safety lives in the planner, not in the cap.
+- `JLU_PHASE_PARALLELISM`, when set, is a reduce-only manual ceiling the planner applies over its auto cap; no env var can raise concurrency above what the planner computes.
+
+When `chosen_cap = 1`, the wave plan serializes each wave's phases — sequential is still the outcome, just iterated wave-by-wave.
 
 #### Per-wave execution
 
@@ -436,8 +455,8 @@ If a phase in a wave hits the 5-retry pause (Escalation Format), the orchestrato
 
 At the start of Step 7, log a one-line plan summary:
 
-- `Sequential: <total-phases> phases, <N> services, PHASE_PARALLELISM=<P>.`
-- `Per-service parallel: <total-phases> phases across <N> service lanes (max <MAX_LANE> phases), <MAX_LANE> waves, PHASE_PARALLELISM=<P>.`
+- `Sequential: <total-phases> phases, <N> services, chosen_cap=<WAVE_PLAN.chosen_cap>.`
+- `Per-service parallel: <total-phases> phases across <N> service lanes (max <MAX_LANE> phases), <MAX_LANE> waves, chosen_cap=<WAVE_PLAN.chosen_cap> (auto_cap=<WAVE_PLAN.auto_cap>).`
 
 Then, at the start of each wave:
 
@@ -453,11 +472,15 @@ DS_OUT=$(node "<root>/bin/trace-start-span.mjs" \
   --name agent_dispatch --scope task \
   --agent "<agent-role>" --model "$MODEL_FOR_AGENT" \
   --task "$TASK_SLUG" --service "$SERVICE_ID" --phase "$PHASE_NUM" \
+  --phase-parallelism "$WAVE_CHOSEN_CAP" \
+  --wave-index "$WAVE_INDEX" --wave-width "$WAVE_WIDTH" \
   --parent "$PHASE_SPAN_ID" --trace "$WORKFLOW_TRACE_ID")
 DISPATCH_SPAN_ID=$(echo "$DS_OUT" | jq -r '.span_id // ""')
 ```
 
 Replace `<agent-role>` with the literal agent role (`test-writer`, `implementer`, `tdd-cycle`, `refactor-agent`, `qa-agent`, `build-validator`). `$MODEL_FOR_AGENT` is resolved from `MODEL_CONFIG` (Step 2b).
+
+Measurement attrs (they make per-phase duration, critical path, and Step 7+8 wall-clock derivable from the spans): `$WAVE_CHOSEN_CAP` = `WAVE_PLAN.chosen_cap`; `$WAVE_INDEX` = the 1-based index of the current wave; `$WAVE_WIDTH` = the number of phases dispatched concurrently in the current chunk. For dispatches outside the Step 7 wave loop (8a.3, 8a.5), pass `--phase-parallelism "$TASK_FANOUT_CAP"` and omit the two wave flags.
 
 **After parsing the agent's JSON report:**
 
@@ -606,7 +629,7 @@ Log: `Phase <NN> docs path complete — <N> doc files committed.`
 
 Dispatch `jlu-tdd-cycle` (model: **MODEL_CONFIG.code**, default sonnet). For a
 multi-service phase, dispatch one per service in a single orchestrator message when
-`PHASE_PARALLELISM > 1` (sequential otherwise) — see `jelou/references/parallel-dispatch.md`.
+`TASK_FANOUT_CAP > 1` (sequential otherwise) — see `jelou/references/parallel-dispatch.md`.
 After all return, compare `artifacts` arrays to detect cross-service file overlap.
 
 - **Input**:
@@ -821,13 +844,20 @@ Otherwise, for each service that has Tier 2 deferred requirements:
 
 ### 8a.3 — Task-Level Refactor Pass (once per service)
 
+**Opt-in gate (evaluate first, before any per-service work):** this pass runs ONLY
+when the skill invocation carried `--refactor` (captured in Step 1 argument parsing,
+same plumbing as `--no-autochain`) or `JLU_REFACTOR=1` is set in the env. Otherwise
+log exactly `Refactor pass skipped — opt-in (--refactor)` and continue to Step 8a.5.
+The `jlu-refactor-agent` and the `Refactor Candidates` report field are unchanged —
+the candidates remain advisory in the persisted phase reports either way.
+
 The Refactor step of TDD runs once per affected service against the task's full diff,
 instead of once per phase. Refactoring per phase re-visited the same files repeatedly
 and paid one agent dispatch plus test re-runs per phase; a single end-of-task pass
 sees every `Refactor Candidates` entry at once, and Steps 8a.5 (build) + 8b (affected
 tests) verify the result with runs that happen anyway.
 
-For each affected service (honor `PHASE_PARALLELISM` for cross-service fan-out; default sequential):
+For each affected service (honor `TASK_FANOUT_CAP` for cross-service fan-out; sequential when it is 1):
 
 1. **Skip** when every one of the service's phases was classified trivial (`PHASE_IS_TRIVIAL`), or when no phase captured `refactor_candidates_present: true`. Log `Refactor pass skipped for <service-id> — no candidates reported.` and continue to the next service.
 2. **Aggregate**: re-read the service's phase reports from disk and collect the union of `Files Modified` and `Refactor Candidates` across phases (include Tier 2 wiring files from Step 8a if any).
@@ -859,7 +889,7 @@ No orchestrator-level test re-run is needed — the agent re-runs after every ch
 
 The build now runs exactly once per affected service here, against the task's full diff, instead of once per phase. The last per-phase build always subsumed the earlier ones — this removes that O(M) waste while still catching compile errors, including any introduced by the Tier 2 wiring in Step 8a, before the affected-tests regression in Step 8b.
 
-For each affected service (honor `PHASE_PARALLELISM` for cross-service fan-out; default sequential):
+For each affected service (honor `TASK_FANOUT_CAP` for cross-service fan-out; sequential when it is 1):
 
 1. Gate on compilable changes, computed inline (no scratch file — the diff feeds the classifier through an env var, exactly as the old per-phase check did):
    ```bash
@@ -933,15 +963,21 @@ Same detection chain as `/jlu-test-suite` Step 4 (read CONVENTIONS.md, fall back
 | go | `go test -p 2 $(go list -deps ./... \| grep -Ff <(awk -F/ '{print $1"/"$2}' .changed-files.txt \| sort -u))` | Lists packages depending on changed packages. If shell magic above is risky, fall back to `go test ./...` with `-p 2` |
 | unknown | (skip) | Log: `Affected-tests unavailable for unknown runner. Run /jlu-test-suite before opening PR.` |
 
-The cap is **fixed at 2 workers** here (not a configurable env var). Affected sets are usually small (10–50 tests); two workers is enough to be fast and never overloads the box. If you want more parallelism, that's the dev's call — they run `/jlu-test-suite` (which still uses 1 worker but covers the full suite) or invoke the runner directly.
+The worker caps above are **fixed** (not a configurable env var) and conditional on fan-out:
+
+- `TASK_FANOUT_CAP = 1` (sequential per service): the 2-worker forms in the table apply as written.
+- `TASK_FANOUT_CAP > 1`: drop every command to **1 worker** (`--maxWorkers=1`, `--poolOptions.threads.maxThreads=1`, `-n 1`, `-p 1`). Without this the effective worker count is `2 × cap` — the resource invariant is one test worker per concurrent lane.
+
+Affected sets are usually small (10–50 tests); these caps are enough to be fast and never overload the box. If you want more parallelism, that's the dev's call — they run `/jlu-test-suite` (which still uses 1 worker but covers the full suite) or invoke the runner directly.
 
 Never inject `--coverage` or `--cov` here. Coverage belongs in CI.
 
 #### 8b.4 — Dispatch
 
-1. Use `PHASE_PARALLELISM` from Step 6.4 to decide cross-service fan-out. Default `1` (sequential per service).
+1. Use the cached `TASK_FANOUT_CAP` (computed at Step 4c, referenced in Step 6.4) to decide cross-service fan-out: when `> 1`, run up to that many services concurrently (with the 1-worker commands from 8b.3); when `= 1`, run sequentially per service.
 2. Per service, run the constructed command on the host runtime. Stream stdout for dev visibility.
-3. Capture the runner's exit code as `AFFECTED_TESTS_RESULT[service-id]`.
+3. **Wrap each service's run in the Step 7 span wrapper** so Step 7+8 wall-clock is measurable from the spans: open with `--name affected_tests --scope task --task "$TASK_SLUG" --service "$SERVICE_ID" --phase-parallelism "$TASK_FANOUT_CAP" --parent "$WORKFLOW_SPAN_ID" --trace "$WORKFLOW_TRACE_ID"` (no `--agent`, no wave flags — this is an orchestrator Bash run, not an agent dispatch), and close with `trace-end-span.mjs` passing `--status ok` on exit 0, `--status failed` otherwise. Empty span ids under `TRACE_DISABLED=1` are tolerated as everywhere else.
+4. Capture the runner's exit code as `AFFECTED_TESTS_RESULT[service-id]`.
 
 #### 8b.5 — Handle failures
 

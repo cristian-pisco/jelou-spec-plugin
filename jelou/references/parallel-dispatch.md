@@ -10,11 +10,11 @@ When a phase affects N services with no shared state and no sequential dependenc
 
 Parallel fan-out is optional, not mandatory. Use it only when the workflow-level throttle allows it:
 
-- `PHASE_PARALLELISM > 1` for per-phase agent fan-out AND for per-task fan-out (proposal-agent multi-service, codebase analyzers).
+- The resolved numeric cap is `> 1` for per-phase agent fan-out AND for per-task fan-out (proposal-agent multi-service, codebase analyzers). Inside `execute-task` that cap is `TASK_FANOUT_CAP` / the wave plan's `chosen_cap`; in `map-codebase` it is `JLU_PHASE_PARALLELISM` directly.
 
-Default local behavior is sequential (`=1`) to prevent CPU/RAM spikes on developer machines. Opt in to higher parallelism explicitly.
+Inside `execute-task`, the default is planner-resolved `auto`: `bin/plan-phase-waves.mjs` computes the numeric cap (`chosen_cap` in the wave-plan JSON; `--emit-cap-only` for the orchestrator-side `TASK_FANOUT_CAP`), and `JLU_PHASE_PARALLELISM` acts as a reduce-only manual ceiling over it. Sequential is still the outcome when the resolved cap is 1 (W=1 — the common mono-service case). Outside `execute-task` (`map-codebase`), the old semantics stand: direct cap from `JLU_PHASE_PARALLELISM`, default `1` (sequential).
 
-When `PHASE_PARALLELISM > 1`, every concurrently dispatched agent must tighten its test runs to ONE worker (`--runInBand`, `maxThreads=1`, `-n 1`, `-p 1`): the per-agent cap of 2 workers in `subagent-base.md` "Test Execution Resource Limits" assumes a single agent running tests at a time. State this in each dispatched prompt.
+When the resolved cap is `> 1`, every concurrently dispatched agent must tighten its test runs to ONE worker (`--runInBand`, `maxThreads=1`, `-n 1`, `-p 1`): the per-agent cap of 2 workers in `subagent-base.md` "Test Execution Resource Limits" assumes a single agent running tests at a time. State this in each dispatched prompt. The same invariant governs the orchestrator's own Step 8b affected-tests commands (1 worker when `TASK_FANOUT_CAP > 1`).
 
 ### Deprecated throttles
 
@@ -99,7 +99,7 @@ Per-task fan-out points (also gated by `PHASE_PARALLELISM`; sequential by defaul
 | `execute-task` | Step 8a.5 (build) | `jlu-build-validator` per affected service with a compilable diff |
 | `new-task` | Step 8 (worktree setup) | per-service git worktree creation |
 
-These were previously dispatched in parallel by precedent. They're now gated by `PHASE_PARALLELISM` so a developer running multiple agents under heavy local load can flip a single env var and get full sequential behavior.
+These were previously dispatched in parallel by precedent. They're now gated by the resolved cap (`TASK_FANOUT_CAP` in `execute-task`, `JLU_PHASE_PARALLELISM` directly in `map-codebase`), so a developer running multiple agents under heavy local load can set `JLU_PHASE_PARALLELISM=1` — a reduce-only ceiling inside `execute-task` — and get full sequential behavior.
 
 `map-codebase` root batch mode must remain flat: the orchestrator dispatches one
 `jlu-codebase-mapper` per service, and each mapper executes the structural and
@@ -128,6 +128,6 @@ After parallel dispatch returns:
 
 ## When in Doubt
 
-Default to sequential on local runs unless parallelism was explicitly enabled. Predictable resource usage beats theoretical speedups that can crash the machine.
+Inside `execute-task`, the planner resolves the default (`auto`); sequential is still the outcome when the resolved cap is 1 (W=1). Outside `execute-task`, default to sequential unless parallelism was explicitly enabled. Predictable resource usage beats theoretical speedups that can crash the machine.
 
 If you enable parallelism, keep it conservative and validate there is no shared-state contention before fan-out.

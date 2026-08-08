@@ -10,7 +10,7 @@ import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { tmpdir, availableParallelism } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -252,16 +252,16 @@ describe('plan-phase-waves — phase id parsing', () => {
 });
 
 describe('intra-service needs', () => {
-  test('two independent phases in one service share a level (per-service-parallel, cap 2)', () => {
+  test('two independent phases in one service serialize even at cap 2 (per-service-parallel)', () => {
     const dir = mkTaskDirWithNeeds({
       'svc-a': { '01-base': 'none', '02-x': '01', '03-y': '01' },
     });
     try {
       const r = runScript([`--task-dir=${dir}`, '--strategy=per-service-parallel', '--phase-parallelism=2']);
       assert.equal(r.code, 0);
-      assert.equal(r.parsed.waves.length, 2);
-      assert.deepEqual(r.parsed.waves[0].map((p) => p.phase), ['01']);
-      assert.deepEqual(r.parsed.waves[1].map((p) => p.phase).sort(), ['02', '03']);
+      assert.equal(r.parsed.waves.length, 3);
+      for (const w of r.parsed.waves) assert.equal(w.length, 1);
+      assert.deepEqual(r.parsed.waves.map((w) => w[0].phase), ['01', '02', '03']);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -281,15 +281,16 @@ describe('intra-service needs', () => {
     }
   });
 
-  test('sequential exploits levels for a single service (cap 2)', () => {
+  test('sequential serializes a shared level within a single service even at cap 2', () => {
     const dir = mkTaskDirWithNeeds({
       'svc-a': { '01-base': 'none', '02-x': '01', '03-y': '01' },
     });
     try {
       const r = runScript([`--task-dir=${dir}`, '--strategy=sequential', '--phase-parallelism=2']);
       assert.equal(r.code, 0);
-      assert.equal(r.parsed.waves.length, 2);
-      assert.deepEqual(r.parsed.waves[1].map((p) => p.phase).sort(), ['02', '03']);
+      assert.equal(r.parsed.waves.length, 3);
+      for (const w of r.parsed.waves) assert.equal(w.length, 1);
+      assert.deepEqual(r.parsed.waves.map((w) => w[0].phase), ['01', '02', '03']);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -342,6 +343,285 @@ describe('intra-service needs', () => {
       const r = runScript([`--task-dir=${dir}`, '--strategy=sequential']);
       assert.equal(r.code, 3);
       assert.match(r.stderr, /dependency cycle/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+const NO_CAP_ENV = { JLU_PHASE_PARALLELISM: '', PLAN_PHASE_PARALLELISM: '' };
+const machineFloor = Math.max(Math.floor(availableParallelism() / 4), 1);
+
+function mkMixedWaveDir() {
+  return mkTaskDirWithNeeds({
+    'svc-a': { '01-a': 'none', '02-a': 'none' },
+    'svc-b': { '01-b': 'none' },
+  });
+}
+
+describe('service-aware chunker', () => {
+  test('mixed wave [A1,A2,B1] at cap 2 chunks to [[A1,B1],[A2]]', () => {
+    const dir = mkMixedWaveDir();
+    try {
+      const r = runScript([`--task-dir=${dir}`, '--strategy=psp', '--phase-parallelism=2'], NO_CAP_ENV);
+      assert.equal(r.code, 0);
+      assert.deepEqual(
+        r.parsed.waves.map((w) => w.map((p) => `${p.service}:${p.phase}`)),
+        [['svc-a:01', 'svc-b:01'], ['svc-a:02']],
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('manual cap above cross-service width never co-schedules same-service phases', () => {
+    const dir = mkMixedWaveDir();
+    try {
+      const r = runScript([`--task-dir=${dir}`, '--strategy=psp', '--phase-parallelism=8'], NO_CAP_ENV);
+      assert.equal(r.code, 0);
+      assert.deepEqual(
+        r.parsed.waves.map((w) => w.map((p) => `${p.service}:${p.phase}`)),
+        [['svc-a:01', 'svc-b:01'], ['svc-a:02']],
+      );
+      for (const w of r.parsed.waves) {
+        const distinct = new Set(w.map((p) => p.service));
+        assert.equal(distinct.size, w.length);
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('auto cap resolution', () => {
+  test('--phase-parallelism=auto clamps floor(availableParallelism/4) to cross-service width', () => {
+    const dir = mkTaskDir({ 'svc-a': ['01-a'], 'svc-b': ['01-b'] });
+    try {
+      const r = runScript([`--task-dir=${dir}`, '--strategy=psp', '--phase-parallelism=auto'], NO_CAP_ENV);
+      assert.equal(r.code, 0);
+      const expected = Math.min(machineFloor, 2);
+      assert.equal(r.parsed.auto_cap, expected);
+      assert.equal(r.parsed.chosen_cap, expected);
+      assert.equal(r.parsed.phase_parallelism, expected);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('JLU_PHASE_PARALLELISM reduces the auto cap', () => {
+    const dir = mkTaskDir({ 'svc-a': ['01-a'], 'svc-b': ['01-b'] });
+    try {
+      const r = runScript(
+        [`--task-dir=${dir}`, '--strategy=psp', '--phase-parallelism=auto'],
+        { ...NO_CAP_ENV, JLU_PHASE_PARALLELISM: '1' },
+      );
+      assert.equal(r.code, 0);
+      assert.equal(r.parsed.chosen_cap, 1);
+      assert.equal(r.parsed.auto_cap, Math.min(machineFloor, 2));
+      for (const w of r.parsed.waves) assert.equal(w.length, 1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('JLU_PHASE_PARALLELISM can never raise the cap above auto', () => {
+    const dir = mkTaskDir({ 'svc-a': ['01-a'], 'svc-b': ['01-b'] });
+    try {
+      const r = runScript(
+        [`--task-dir=${dir}`, '--strategy=psp', '--phase-parallelism=auto'],
+        { ...NO_CAP_ENV, JLU_PHASE_PARALLELISM: '999' },
+      );
+      assert.equal(r.code, 0);
+      assert.equal(r.parsed.chosen_cap, r.parsed.auto_cap);
+      assert.ok(r.parsed.chosen_cap <= 2);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('PLAN_PHASE_PARALLELISM no longer raises the default cap', () => {
+    const dir = mkTaskDir({ 'svc-a': ['01-a'], 'svc-b': ['01-b'] });
+    try {
+      const r = runScript(
+        [`--task-dir=${dir}`, '--strategy=psp'],
+        { ...NO_CAP_ENV, PLAN_PHASE_PARALLELISM: '8' },
+      );
+      assert.equal(r.code, 0);
+      assert.equal(r.parsed.chosen_cap, 1);
+      assert.equal(r.parsed.waves.length, 2);
+      for (const w of r.parsed.waves) assert.equal(w.length, 1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('PLAN_PHASE_PARALLELISM can never raise the cap above auto', () => {
+    const dir = mkTaskDir({ 'svc-a': ['01-a'], 'svc-b': ['01-b'] });
+    try {
+      const r = runScript(
+        [`--task-dir=${dir}`, '--strategy=psp', '--phase-parallelism=auto'],
+        { ...NO_CAP_ENV, PLAN_PHASE_PARALLELISM: '999' },
+      );
+      assert.equal(r.code, 0);
+      assert.equal(r.parsed.chosen_cap, r.parsed.auto_cap);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('env ceiling also reduces a manual numeric cap', () => {
+    const dir = mkTaskDir({ 'svc-a': ['01-a'], 'svc-b': ['01-b'] });
+    try {
+      const r = runScript(
+        [`--task-dir=${dir}`, '--strategy=psp', '--phase-parallelism=2'],
+        { ...NO_CAP_ENV, JLU_PHASE_PARALLELISM: '1' },
+      );
+      assert.equal(r.code, 0);
+      assert.equal(r.parsed.chosen_cap, 1);
+      for (const w of r.parsed.waves) assert.equal(w.length, 1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('--emit-cap-only', () => {
+  test('prints the clamped cap without requiring a task dir', () => {
+    const r = runScript(['--emit-cap-only', '--limit=3'], NO_CAP_ENV);
+    assert.equal(r.code, 0);
+    assert.equal(r.stdout.trim(), String(Math.min(machineFloor, 3)));
+  });
+
+  test('JLU_PHASE_PARALLELISM is reduce-only in cap-only mode', () => {
+    const reduced = runScript(['--emit-cap-only', '--limit=8'], { ...NO_CAP_ENV, JLU_PHASE_PARALLELISM: '1' });
+    assert.equal(reduced.code, 0);
+    assert.equal(reduced.stdout.trim(), '1');
+    const raised = runScript(['--emit-cap-only', '--limit=8'], { ...NO_CAP_ENV, JLU_PHASE_PARALLELISM: '999' });
+    assert.equal(raised.code, 0);
+    assert.equal(raised.stdout.trim(), String(Math.min(machineFloor, 8)));
+  });
+
+  test('--limit=1 always prints 1', () => {
+    const r = runScript(['--emit-cap-only', '--limit=1'], { ...NO_CAP_ENV, JLU_PHASE_PARALLELISM: '999' });
+    assert.equal(r.code, 0);
+    assert.equal(r.stdout.trim(), '1');
+  });
+
+  test('requires a positive integer --limit', () => {
+    const r = runScript(['--emit-cap-only'], NO_CAP_ENV);
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, /--limit must be a positive integer/);
+  });
+});
+
+describe('strategy downgrade on Dependency Order', () => {
+  const PROPOSAL_WITH_ORDER = [
+    '# Proposal — Sample',
+    '',
+    '## Affected Services',
+    '| Service | Role | Dependency Order |',
+    '|---------|------|-----------------|',
+    '| svc-a | Primary | 1 (first) |',
+    '| svc-b | Consumer | 2 (after svc-a) |',
+    '',
+    '## Execution Strategy',
+    '`per-service-parallel`',
+    '',
+  ].join('\n');
+
+  const PROPOSAL_UNIFORM = [
+    '# Proposal — Sample',
+    '',
+    '## Affected Services',
+    '| Service | Role | Dependency Order |',
+    '|---------|------|-----------------|',
+    '| svc-a | Primary | 1 (parallel) |',
+    '| svc-b | Consumer | 1 (parallel) |',
+    '',
+    '## Execution Strategy',
+    '`per-service-parallel`',
+    '',
+  ].join('\n');
+
+  test('per-service-parallel downgrades to sequential when the table declares after <service>', () => {
+    const dir = mkTaskDir({ 'svc-a': ['01-a'], 'svc-b': ['01-b'] });
+    writeFileSync(join(dir, 'PROPOSAL.md'), PROPOSAL_WITH_ORDER);
+    try {
+      const r = runScript([`--task-dir=${dir}`, '--strategy=per-service-parallel', '--phase-parallelism=2'], NO_CAP_ENV);
+      assert.equal(r.code, 0);
+      assert.equal(r.parsed.strategy, 'sequential');
+      assert.match(r.parsed.downgrade_reason, /after svc-a/);
+      assert.match(r.stderr, /WARN/);
+      assert.equal(r.parsed.waves.length, 2);
+      for (const w of r.parsed.waves) assert.equal(w.length, 1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('uniform Dependency Order keeps per-service-parallel with no downgrade_reason', () => {
+    const dir = mkTaskDir({ 'svc-a': ['01-a'], 'svc-b': ['01-b'] });
+    writeFileSync(join(dir, 'PROPOSAL.md'), PROPOSAL_UNIFORM);
+    try {
+      const r = runScript([`--task-dir=${dir}`, '--strategy=per-service-parallel', '--phase-parallelism=2'], NO_CAP_ENV);
+      assert.equal(r.code, 0);
+      assert.equal(r.parsed.strategy, 'per-service-parallel');
+      assert.equal(r.parsed.downgrade_reason, undefined);
+      assert.equal(r.parsed.waves.length, 1);
+      assert.equal(r.parsed.waves[0].length, 2);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('missing PROPOSAL.md never downgrades', () => {
+    const dir = mkTaskDir({ 'svc-a': ['01-a'], 'svc-b': ['01-b'] });
+    try {
+      const r = runScript([`--task-dir=${dir}`, '--strategy=per-service-parallel', '--phase-parallelism=2'], NO_CAP_ENV);
+      assert.equal(r.code, 0);
+      assert.equal(r.parsed.strategy, 'per-service-parallel');
+      assert.equal(r.parsed.downgrade_reason, undefined);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('CRITICAL regression — auto with W=1 matches the sequential status quo', () => {
+  test('strategy=sequential under auto yields chosen_cap=1 and byte-identical waves', () => {
+    const dir = mkTaskDirWithNeeds({
+      'svc-a': { '01-base': 'none', '02-x': '01', '03-y': '01' },
+    });
+    try {
+      const baseline = runScript([`--task-dir=${dir}`, '--strategy=sequential'], NO_CAP_ENV);
+      const auto = runScript([`--task-dir=${dir}`, '--strategy=sequential', '--phase-parallelism=auto'], NO_CAP_ENV);
+      assert.equal(auto.code, 0);
+      assert.equal(auto.parsed.chosen_cap, 1);
+      assert.equal(JSON.stringify(auto.parsed.waves), JSON.stringify(baseline.parsed.waves));
+      assert.deepEqual(
+        auto.parsed.waves.map((w) => w.map((p) => `${p.service}:${p.phase}`)),
+        [['svc-a:01'], ['svc-a:02'], ['svc-a:03']],
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('strategy=per-service-parallel with a single service under auto yields chosen_cap=1 and byte-identical waves', () => {
+    const dir = mkTaskDirWithNeeds({
+      'svc-a': { '01-base': 'none', '02-x': '01', '03-y': '01' },
+    });
+    try {
+      const baseline = runScript([`--task-dir=${dir}`, '--strategy=psp'], NO_CAP_ENV);
+      const auto = runScript([`--task-dir=${dir}`, '--strategy=psp', '--phase-parallelism=auto'], NO_CAP_ENV);
+      assert.equal(auto.code, 0);
+      assert.equal(auto.parsed.chosen_cap, 1);
+      assert.equal(auto.parsed.auto_cap, 1);
+      assert.equal(JSON.stringify(auto.parsed.waves), JSON.stringify(baseline.parsed.waves));
+      assert.deepEqual(
+        auto.parsed.waves.map((w) => w.map((p) => `${p.service}:${p.phase}`)),
+        [['svc-a:01'], ['svc-a:02'], ['svc-a:03']],
+      );
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

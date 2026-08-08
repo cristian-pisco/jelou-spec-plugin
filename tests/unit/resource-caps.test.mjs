@@ -129,10 +129,12 @@ describe('qa-agent — never re-executes tests', () => {
 });
 
 describe('orchestrator workflows — capped invocations stay capped', () => {
-  test('execute-task Step 8b keeps fixed worker caps', () => {
+  test('execute-task Step 8b keeps fixed worker caps with the fan-out conditional', () => {
     const executeTask = read('jelou/workflows/execute-task.md');
     assert.match(executeTask, /--findRelatedTests \$CHANGED_SOURCES --maxWorkers=2/);
     assert.match(executeTask, /--poolOptions\.threads\.maxThreads=2/);
+    assert.match(executeTask, /`TASK_FANOUT_CAP > 1`: drop every command to \*\*1 worker\*\*/);
+    assert.match(executeTask, /--maxWorkers=1/);
     assert.match(executeTask, /never invokes the bare full-suite command/);
   });
 
@@ -171,5 +173,8 @@ describe('references — no stale full-suite guidance', () => {
   test('parallel-dispatch tightens caps to one worker under fan-out', () => {
     const parallelDispatch = read('jelou/references/parallel-dispatch.md');
     assert.match(parallelDispatch, /tighten its test runs to ONE worker/);
+    assert.match(parallelDispatch, /planner-resolved `auto`/);
+    assert.match(parallelDispatch, /[Ss]equential is still the outcome when the resolved cap is 1/);
+    assert.doesNotMatch(parallelDispatch, /Default local behavior is sequential/);
   });
 });

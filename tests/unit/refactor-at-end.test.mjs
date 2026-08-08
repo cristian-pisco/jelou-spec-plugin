@@ -36,6 +36,25 @@ describe('refactor pass moved to end of task', () => {
     assert.match(ref, /Step 8a\.3/);
   });
 
+  test('8a.3 is opt-in behind --refactor / JLU_REFACTOR=1', () => {
+    const gate = wf.slice(wf.indexOf('### 8a.3'), wf.indexOf('### 8a.5'));
+    assert.match(gate, /\*\*Opt-in gate/);
+    assert.match(gate, /--refactor/);
+    assert.match(gate, /JLU_REFACTOR=1/);
+    assert.match(gate, /Refactor pass skipped — opt-in \(--refactor\)/);
+    assert.match(gate, /Refactor Candidates/);
+  });
+
+  test('Step 1 argument parsing captures the --refactor flag', () => {
+    assert.match(wf, /`--refactor` is captured for the Step 8a\.3 opt-in gate/);
+  });
+
+  test('all three skill argument surfaces expose --refactor', () => {
+    assert.match(read('skills/execute-task/SKILL.md'), /--refactor/);
+    assert.match(read('.opencode/commands/jlu-execute-task.md'), /--refactor/);
+    assert.match(read('.codex/skills/jlu-execute-task/SKILL.md'), /--refactor/);
+  });
+
   test('no stray 7g references remain', () => {
     for (const p of [
       'jelou/workflows/execute-task.md',

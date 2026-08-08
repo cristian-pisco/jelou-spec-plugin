@@ -96,6 +96,33 @@ describe('bin/trace-start-span.mjs', () => {
     assert.equal(line.attrs.model_used, 'sonnet');
   });
 
+  test('span carries --phase-parallelism, --wave-index and --wave-width as numeric attrs', () => {
+    const r = run(['--name', 'agent_dispatch', '--scope', 'task',
+                   '--agent', 'tdd-cycle', '--model', 'sonnet',
+                   '--phase-parallelism', '2',
+                   '--wave-index', '1', '--wave-width', '3']);
+    assert.equal(r.status, 0, r.stderr);
+    const line = JSON.parse(readFileSync(file, 'utf8').split('\n')[0]);
+    assert.equal(line.attrs.model_used, 'sonnet');
+    assert.equal(line.attrs.phase_parallelism, 2);
+    assert.equal(line.attrs.wave_index, 1);
+    assert.equal(line.attrs.wave_width, 3);
+  });
+
+  test('exits 1 when --wave-index is not a number', () => {
+    const r = run(['--name', 'phase', '--scope', 'task',
+                   '--wave-index', 'abc']);
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /--wave-index must be a number/);
+  });
+
+  test('exits 1 when --phase-parallelism is not a number', () => {
+    const r = run(['--name', 'phase', '--scope', 'task',
+                   '--phase-parallelism', 'auto']);
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /--phase-parallelism must be a number/);
+  });
+
   test('TRACE_FILE unset: resolves <WORKSPACE>/.traces/spans.jsonl from cwd', () => {
     const r = spawnSync('node', [SCRIPT, '--name', 'execute_task',
                                  '--scope', 'task'], {

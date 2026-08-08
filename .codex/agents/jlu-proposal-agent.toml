@@ -126,7 +126,12 @@ One of:
 - `sequential` — phases run one at a time in PROPOSAL.md dependency order. Default. Use this when any service depends on a contract that another service must produce first within the same task.
 - `per-service-parallel` — same-index phases across services run concurrently in waves. Use this ONLY when each service's lane can execute without waiting on a contract from another service in the same task. Cross-service contracts established outside the task (e.g., production APIs already live) are fine.
 
-Justify the choice in one sentence. If unsure, write `sequential` — the orchestrator's `/jlu-execute-task` Step 7.0 honors this verbatim, so caution beats overconfident parallelism.
+Justify the choice in one sentence. The choice is deterministic, not a judgment call. Emit `per-service-parallel` IF AND ONLY IF both signals hold:
+
+- (a) no phase's `- **Dependencies**:` entry references a phase of another service, AND
+- (b) the `Dependency Order` column of Affected Services is uniform — no row reads `after <service>`.
+
+Any `after <service>` entry in the Dependency Order column, and any absent or ambiguous per-phase `- **Dependencies**:` section, degrades the strategy to `sequential`. Caution survives as the fallback for ambiguity, not as the default for clean lanes. The orchestrator's `/jlu-execute-task` Step 7.0 honors the emitted value verbatim, and `bin/plan-phase-waves.mjs` independently downgrades `per-service-parallel` to `sequential` (with a `downgrade_reason`) when the Dependency Order column contradicts it — a proposal that disagrees with its own table never dispatches services in parallel.
 
 ## Contract Boundaries
 ### <Service A> <-> <Service B>
@@ -216,6 +221,7 @@ Before finalizing the proposal, verify:
 - [ ] Risks reference specific CONCERNS.md IDs, not vague "could be risky."
 - [ ] The phase count isn't inflated. Fewer phases with clear scope beats many micro-phases.
 - [ ] **If `affected_services` includes a UI service, the Testing Strategy lists at least one E2E flow and the phase plan includes a run of `/jlu:ui-qa-run`.** No "manual QA only" or "deferred for MVP" language anywhere in the proposal.
+- [ ] **The emitted `Execution Strategy` AGREES with both signals in this very PROPOSAL.md**: `per-service-parallel` only when no `- **Dependencies**:` entry references a phase of another service AND the `Dependency Order` column contains no `after <service>` row; any disagreement or ambiguity means `sequential`.
 
 ## Rules
 

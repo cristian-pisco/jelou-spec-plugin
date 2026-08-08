@@ -1,7 +1,7 @@
 ---
 name: jlu-execute-task
 description: "Use when a spec is approved and ready to implement — runs the full TDD pipeline with proposal generation, phase execution, and QA. Triggers: \"execute task\", \"start implementation\", \"build it\", \"run the task\""
-argument-hint: "[task-slug] [clickup-url|id] [--no-autochain]"
+argument-hint: "[task-slug] [clickup-url|id] [--no-autochain] [--refactor]"
 ---
 Resolve the workflow file in this order, and use the first one that exists:
 1. `$CODEX_HOME/jelou/workflows/execute-task.md` (script install; `$CODEX_HOME` defaults to `~/.codex` — resolve it to an absolute path first).
