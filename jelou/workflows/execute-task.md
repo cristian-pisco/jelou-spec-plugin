@@ -350,6 +350,22 @@ Skip proposal generation. Read the existing PROPOSAL.md and phase files to resum
       - `## Branching` section absent (legacy `spec/<slug>` tasks only): defer to `references/worktree-resolution.md` §3c.
    b. Record current HEAD as the pre-execution baseline: `cd <SERVICE_SOURCE_PATH[service-id]> && git rev-parse --short HEAD`. Per-service `git rev-parse` calls can run in parallel (single orchestrator message) when 2+ services.
 
+   c. Populate `SERVICE_DOC_CACHE[service-id]` — the immutable codebase context the per-phase TDD agent needs. It is resolved **once here**, not re-read by each phase dispatch, because these docs do not change during the task:
+
+      ```bash
+      CODEBASE_DIR="<WORKSPACE_PATH>/services/<service-id>/codebase"
+      cat "$CODEBASE_DIR/CONVENTIONS.md"
+      node <plugin-root>/bin/extract-doc-sections.mjs \
+        --file="$CODEBASE_DIR/STRUCTURE.md" \
+        --section="Module Organization" \
+        --section="File Naming Conventions"
+      ```
+
+      The cached payload is CONVENTIONS.md **in full** plus **only** those two STRUCTURE.md sections — never STRUCTURE.md's directory tree, and never STACK.md or ARCHITECTURE.md (`agents/jlu-tdd-cycle.md` → Rules forbids the TDD agent from reading those two at all).
+
+      - If `extract-doc-sections.mjs` exits non-zero (missing file, or a section absent from STRUCTURE.md), cache CONVENTIONS.md alone and log `WARN: STRUCTURE.md sections unavailable for <service-id> — <stderr>. Caching CONVENTIONS.md only.` Never fall back to injecting the whole file.
+      - **Size bound**: if a service's cached payload exceeds ~8k tokens (≈32k characters — `wc -c` / 4), cache the **paths** instead of the contents and log `WARN: SERVICE_DOC_CACHE[<service-id>] is ~<N> tokens (> 8k) — caching paths instead of contents.` The Step 7a per-phase context increment (~200 tokens) must not become unbounded through this cache.
+
    **Do NOT** run `docker compose up -d`, `docker compose ps`, or compute any container exec prefix here. The TDD pipeline runs entirely on the host — tests, build, lint, and format never go through a container. If the developer wants a dev container running for the service, that is `/jlu-start-dev`'s job and is independent of this workflow.
 
 3. Update TASKS.md with the per-service baselines:
@@ -359,11 +375,11 @@ Skip proposal generation. Read the existing PROPOSAL.md and phase files to resum
    - <service-id-2> pre-execution commit: <sha>
    ```
 
-**Store** (per-service maps): `SERVICE_SOURCE_PATH`.
+**Store** (per-service maps): `SERVICE_SOURCE_PATH`, `SERVICE_DOC_CACHE`.
 
 4. **Set local CPU safety throttles (once per task).**
 
-   - `PHASE_PARALLELISM`: default `auto` for Step 7. The wave planner (`bin/plan-phase-waves.mjs`) resolves `auto` to a numeric cap itself and reports it as `auto_cap`/`chosen_cap` in the wave-plan JSON; `JLU_PHASE_PARALLELISM`, when set, is a manual ceiling the planner applies reduce-only. The planner is the single source of the cap formula — this workflow never restates or recomputes it. Same-service safety does not depend on the cap value: the planner enforces at-most-one-phase-per-service-per-chunk unconditionally, which retires the old orchestrator-side clamp.
+   - `PHASE_PARALLELISM`: default `auto` for Step 7. The wave planner (`bin/plan-phase-waves.mjs`) resolves `auto` to a numeric cap itself and reports it as `auto_cap`/`chosen_cap` in the wave-plan JSON; `JLU_PHASE_PARALLELISM`, when set, is a manual ceiling the planner applies reduce-only. The planner is the single source of the cap formula — this workflow never restates or recomputes it. Same-service safety does not depend on the cap value: the planner enforces at-most-one-phase-per-service-per-chunk unconditionally, which retires the old orchestrator-side clamp. A corollary worth knowing before tuning anything: on a single-service task that invariant makes phase-level parallelism structurally impossible, whatever the cap resolves to.
    - `TASK_FANOUT_CAP`: the numeric cap for every orchestrator-side fan-out comparison (Steps 4c, 7d, 8a.3, 8a.5, 8b.4). It was computed and cached at its first point of use — Step 4c — via `plan-phase-waves.mjs --emit-cap-only --limit=<N_affected_services>`. If Step 4c did not run (single-service task, or PROPOSAL.md already existed), compute it here with that same invocation and cache it. Later steps reference the cached value; they never re-derive it.
 
 The orchestrator no longer runs the full test suite — Step 8b is reduced to an **affected-tests** regression check (lightweight). The full suite is now owned by the dedicated `/jlu-test-suite` skill, which the developer invokes on-demand before opening a PR. For background: `JLU_FINAL_TEST_PARALLELISM` and `JLU_TEST_MAX_WORKERS` are no longer read here; see `jelou/references/parallel-dispatch.md` for the deprecation note.
@@ -428,13 +444,15 @@ Parse the JSON once, store as `WAVE_PLAN`, and iterate `WAVE_PLAN.waves` for the
 - **Per-service-parallel**: zip per-service lanes by dependency level, then chunk each wave by the plan's `chosen_cap` when a wave's phase count exceeds the cap.
 - **Phase id parsing**: filenames like `03a-name.md` yield `phase=03a` so sub-phases (3a, 3b, 3c) stay in order.
 
-Each wave lists the phases that may run together. With intra-service `**Needs:**` edges declared on the phase files, a wave can now contain more than one phase from the *same* service (an independent "level"); absent `**Needs:**`, each phase defaults to depending on its predecessor. The plan's `chosen_cap` chunks every wave; when it resolves to 1, behavior is identical to the old sequential iteration.
+Each emitted wave lists the phases that may run together. Intra-service `**Needs:**` edges can place more than one phase of the *same* service on the same dependency **level** (absent `**Needs:**`, each phase defaults to depending on its predecessor) — but a level is not a wave. The planner chunks every level by `chosen_cap` and admits **at most one phase per service per chunk, unconditionally**, so `WAVE_PLAN.waves` as emitted never contains two phases of the same service: independent same-service phases are serialized across consecutive waves. When `chosen_cap` resolves to 1, behavior is identical to the old sequential iteration.
+
+**Corollary — a single-service task never gets phase-level parallelism.** With one affected service every chunk holds at most one phase by that same invariant, whatever `chosen_cap` resolves to (auto or manual). Phase-level parallelism is structurally impossible there; raising the cap changes nothing.
 
 #### Concurrency cap
 
 The wave plan arrives pre-chunked: the planner resolves `PHASE_PARALLELISM` (including `auto`) to the numeric `chosen_cap` in its JSON and splits any wave whose phase count exceeds the cap into chunks processed serially. The orchestrator consumes the plan as emitted — it never recomputes, restates, or overrides the cap. Two planner invariants replace the old orchestrator-side `1..N` clamp:
 
-- **At most one phase per service per chunk, unconditionally** — regardless of the cap's value or origin (auto or manual). Same-checkout safety lives in the planner, not in the cap.
+- **At most one phase per service per chunk, unconditionally** — regardless of the cap's value or origin (auto or manual). Same-checkout safety lives in the planner, not in the cap. This is the invariant behind the level-vs-wave distinction above, and it is why a single-service task gets no phase-level parallelism at any cap.
 - `JLU_PHASE_PARALLELISM`, when set, is a reduce-only manual ceiling the planner applies over its auto cap; no env var can raise concurrency above what the planner computes.
 
 When `chosen_cap = 1`, the wave plan serializes each wave's phases — sequential is still the outcome, just iterated wave-by-wave.
@@ -561,11 +579,12 @@ Empty span_id (when `TRACE_DISABLED=1`) is tolerated.
 2. Update TASKS.md with phase start timestamp.
 3. Output milestone to terminal: "Starting Phase <NN>: <Phase Name> for <service-id>"
 
-### 7c. Resolve Service Source Path (cached lookup)
+### 7c. Resolve Per-Service Cached Values (lookup only)
 
-Per-service setup ran once at task start in Step 6.2. Look up the precomputed value for the current service:
+Per-service setup ran once at task start in Step 6.2. This step **looks up** the precomputed values for the current service; it never recomputes or re-reads them:
 
 - `SERVICE_SOURCE_PATH = SERVICE_SOURCE_PATH[service-id]`
+- `SERVICE_DOCS = SERVICE_DOC_CACHE[service-id]` — CONVENTIONS.md contents plus the projected STRUCTURE.md sections (or, when the Step 6.2c size bound tripped, their paths). Step 7d injects this into the tdd-cycle prompt.
 
 Tests, build, lint, and format all run on the host runtime against this path — never via a container.
 
@@ -634,7 +653,7 @@ After all return, compare `artifacts` arrays to detect cross-service file overla
 
 - **Input**:
   - Phase requirements (from the phase file's immutable section)
-  - `<WORKSPACE_PATH>/services/<service-id>/codebase/{CONVENTIONS,STACK,STRUCTURE,ARCHITECTURE}.md`
+  - `SERVICE_DOCS` (from Step 7c) **inlined into the prompt as contents, not as paths**: CONVENTIONS.md in full plus the projected STRUCTURE.md sections (`## Module Organization`, `## File Naming Conventions`). When the Step 6.2c size bound tripped, pass the paths instead and say so. Pass nothing else from `codebase/`; the agent's own Rules forbid the rest.
   - Service source path (worktree or repo)
   - SPEC.md relevant sections
   - `TEST_TIER: 1` (TDD cycle — fast, isolated tests only; Tier 2 deferred to Step 8a)
