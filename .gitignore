@@ -26,3 +26,6 @@ docs/
 # Codex project-local skill install target (.agents/plugins/ stays tracked)
 .agents/skills/
 .worktrees/
+
+# Per-machine workspace pointer — resolves to a path outside this repo
+.spec-workspace.json
