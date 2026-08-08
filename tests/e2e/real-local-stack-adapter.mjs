@@ -4,6 +4,14 @@ import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
+const REQUIRED_DRIVER_METHODS = [
+  'runMode',
+  'provisionAndVerify',
+  'collectEvidence',
+  'cleanupResource',
+  'inspectCleanup',
+];
+
 function run(command, args, options = {}) {
   return spawnSync(command, args, { encoding: 'utf8', ...options });
 }
@@ -93,6 +101,18 @@ async function loadDriver(config) {
   return module.createStackDriver(config);
 }
 
+async function driverProof(load) {
+  try {
+    const stackDriver = await load();
+    const missing = REQUIRED_DRIVER_METHODS.filter((name) => typeof stackDriver?.[name] !== 'function');
+    return missing.length === 0
+      ? { ok: true }
+      : { ok: false, reason: `stack driver lacks required live evidence methods: ${missing.join(', ')}` };
+  } catch (error) {
+    return { ok: false, reason: `stack driver could not load: ${error.message}` };
+  }
+}
+
 export async function createAdapter(config) {
   let driverPromise;
   const driver = () => {
@@ -100,20 +120,25 @@ export async function createAdapter(config) {
     return driverPromise;
   };
   return {
-    async inspectPreflight() {
+    async inspectPreflight(options) {
       const services = config.services || [];
       const repositories = services.length > 0 && services.every(({ path }) => commandProof('git', ['-C', path, 'rev-parse', '--is-inside-work-tree']).ok)
         ? { ok: true }
         : { ok: false, reason: 'every registered repository must be an available Git checkout' };
+      const adapterFilesExist = existsSync(config.provisioningAdapterPath || '') && existsSync(config.stackDriverPath || '');
+      let provisioningAdapter = adapterFilesExist
+        ? await driverProof(driver)
+        : { ok: false, reason: 'provisioning adapter and stack driver must both exist' };
+      if (provisioningAdapter.ok && !options?.passwordCanary) {
+        provisioningAdapter = { ok: false, reason: 'JLU_LOCAL_STACK_E2E_PASSWORD_CANARY is required for live redaction evidence' };
+      }
       return {
         docker: commandProof('docker', ['info']),
         repositories,
         keyring: commandProof('secret-tool', ['--version']),
         localDatabase: localDatabaseProof(config.localDatabase),
         browser: fileProof(config.browserExecutable || '', 'browser executable'),
-        provisioningAdapter: existsSync(config.provisioningAdapterPath || '') && existsSync(config.stackDriverPath || '')
-          ? { ok: true }
-          : { ok: false, reason: 'provisioning adapter and stack driver must both exist' },
+        provisioningAdapter,
         dashboard: serviceProof(services, config.dashboardServiceId, 'dashboard'),
         api: serviceProof(services, config.apiServiceId, 'API'),
         ui: serviceProof(services, config.uiServiceId, 'UI'),
@@ -126,7 +151,7 @@ export async function createAdapter(config) {
       const written = writeFixtureWorkspace(config, fixtureRoot, identity, cloned);
       const runtimeRoot = join(fixtureRoot, 'runtime');
       mkdirSync(runtimeRoot, { recursive: true });
-      registerResource({ kind: 'runtime', id: runtimeRoot, path: runtimeRoot, owner: identity.marker });
+      registerResource({ kind: 'runtimeFile', id: runtimeRoot, path: runtimeRoot, owner: identity.marker });
       return {
         root: fixtureRoot,
         runtimeRoot,
@@ -150,12 +175,18 @@ export async function createAdapter(config) {
     async provisionAndVerify(input) {
       return (await driver()).provisionAndVerify(input);
     },
+    async collectEvidence(input) {
+      return (await driver()).collectEvidence(input);
+    },
+    async inspectCleanup(input) {
+      return (await driver()).inspectCleanup(input);
+    },
     async cleanupResource(resource) {
-      if (['worktree', 'runtime', 'workspace', 'overlay'].includes(resource.kind)) {
+      if (['worktree', 'runtimeFile', 'workspace', 'overlay'].includes(resource.kind)) {
         rmSync(resource.path, { recursive: true, force: true });
         return;
       }
-      await (await driver()).cleanupResource(resource);
+      return (await driver()).cleanupResource(resource);
     },
   };
 }

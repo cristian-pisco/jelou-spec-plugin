@@ -24,6 +24,26 @@ const TOPOLOGY_DIRECTIONS = new Set([
   'docker-to-docker',
 ]);
 
+const REQUIRED_EVIDENCE_FIELDS = [
+  'reachability',
+  'overlayRestarts',
+  'onboarding',
+  'database',
+  'credentials',
+  'authentication',
+  'redaction',
+];
+
+const CLEANUP_KINDS = [
+  'worktree',
+  'process',
+  'container',
+  'overlay',
+  'runtimeFile',
+  'keyringEntry',
+  'databaseRecord',
+];
+
 function assertModeResult(result, sourceMode) {
   if (result.sourceMode !== sourceMode) throw new Error(`expected ${sourceMode} mode result`);
   if (sourceMode === 'main' && Object.values(result.sources || {}).some((source) => source !== 'main')) {
@@ -110,6 +130,101 @@ export async function cleanupOwnedResources(resources, marker, cleanupResource) 
   return { removed, refused };
 }
 
+function incompleteEvidence(message) {
+  const error = new Error(message);
+  error.code = 'E2E_EVIDENCE_INCOMPLETE';
+  return error;
+}
+
+function normalizeEvidence(result) {
+  const evidence = result?.evidence || result;
+  if (!evidence || typeof evidence !== 'object') {
+    throw incompleteEvidence('stack driver returned no live evidence');
+  }
+  const missing = REQUIRED_EVIDENCE_FIELDS.filter((field) => evidence[field] === undefined);
+  if (missing.length > 0) {
+    throw incompleteEvidence(`stack driver omitted live evidence fields: ${missing.join(', ')}`);
+  }
+  return Object.fromEntries(REQUIRED_EVIDENCE_FIELDS.map((field) => [field, evidence[field]]));
+}
+
+function normalizeCleanupEvidence(result, resources, marker) {
+  if (!result || typeof result !== 'object') {
+    throw incompleteEvidence('stack driver returned no cleanup residue evidence');
+  }
+  const missing = CLEANUP_KINDS.filter((kind) => !result.inventory?.[kind]);
+  if (missing.length > 0) {
+    throw incompleteEvidence(`stack driver omitted cleanup residue kinds: ${missing.join(', ')}`);
+  }
+  const inventory = Object.fromEntries(CLEANUP_KINDS.map((kind) => {
+    const created = new Set(resources
+      .filter((resource) => resource.kind === kind && sameMarker(resource.owner, marker))
+      .map(({ id }) => id)).size;
+    return [kind, { created, remaining: result.inventory[kind].remaining }];
+  }));
+  const invalid = CLEANUP_KINDS.filter((kind) => (
+    inventory[kind].created <= 0
+    || !Number.isInteger(inventory[kind].remaining)
+    || inventory[kind].remaining < 0
+  ));
+  if (invalid.length > 0) {
+    throw incompleteEvidence(`stack driver returned invalid cleanup residue evidence for: ${invalid.join(', ')}`);
+  }
+  if (!Array.isArray(result.preserved)) {
+    throw incompleteEvidence('stack driver omitted preserved-resource evidence');
+  }
+  return {
+    inventory,
+    preserved: result.preserved,
+  };
+}
+
+function assertSecretsRedacted(evidence, secrets) {
+  const serialized = JSON.stringify(evidence);
+  if (secrets.some((secret) => secret && serialized.includes(secret))) {
+    const error = new Error('live evidence contained a secret value');
+    error.code = 'E2E_SECRET_LEAK';
+    throw error;
+  }
+}
+
+function redactKnownSecret(value, secret) {
+  if (typeof value !== 'string' || !secret) return value;
+  return value.replaceAll(secret, '[REDACTED]');
+}
+
+async function collectLiveEvidence(options, adapter, input, resources) {
+  if (typeof adapter.collectEvidence !== 'function') return undefined;
+  const result = await adapter.collectEvidence({
+    options,
+    ...input,
+    passwordCanary: options.passwordCanary,
+  });
+  resources.push(...(result?.resources || []));
+  const evidence = normalizeEvidence(result);
+  assertSecretsRedacted(evidence, [
+    options.passwordCanary,
+    ...Object.values(input.identity.users).map(({ password }) => password),
+  ]);
+  return evidence;
+}
+
+async function collectCleanupEvidence(adapter, resources, marker, cleanup) {
+  if (typeof adapter.inspectCleanup !== 'function') return cleanup;
+  const result = {
+    ...cleanup,
+    ...normalizeCleanupEvidence(await adapter.inspectCleanup({ resources, marker, cleanup }), resources, marker),
+  };
+  const residue = CLEANUP_KINDS.filter((kind) => result.inventory[kind].remaining > 0);
+  if (residue.length > 0) {
+    const error = new Error(`local-stack E2E left owned resource residue: ${residue.join(', ')}`);
+    error.code = 'E2E_CLEANUP_FAILED';
+    error.cleanup = result;
+    throw error;
+  }
+  return result;
+}
+
 export async function runDeterministicFullStackE2e(options, adapter) {
   const preflight = await adapter.inspectPreflight(options);
   const failures = REQUIRED_PREFLIGHTS
@@ -157,11 +272,37 @@ export async function runDeterministicFullStackE2e(options, adapter) {
       provisioning.push(result);
       if (options.injectFailureAfter === plan) throw new Error(`injected failure after ${plan}`);
     }
-    report = { status: 'passed', preflight, marker: identity.marker, fixture, modes: [main, taskAware, taskAwareRepeated], provisioning };
+    const modes = [main, taskAware, taskAwareRepeated];
+    const evidence = await collectLiveEvidence(options, adapter, {
+      fixture,
+      identity,
+      modes,
+      provisioning,
+      registerResource,
+    }, resources);
+    report = {
+      status: 'passed',
+      preflight,
+      marker: identity.marker,
+      fixture,
+      modes,
+      provisioning,
+      ...(evidence ? { evidence } : {}),
+    };
   } catch (error) {
     failure = error;
   }
-  const cleanup = await cleanupOwnedResources(resources, identity.marker, adapter.cleanupResource);
+  let cleanup = await cleanupOwnedResources(resources, identity.marker, adapter.cleanupResource);
+  if (typeof adapter.inspectCleanup === 'function') {
+    try {
+      cleanup = await collectCleanupEvidence(adapter, resources, identity.marker, cleanup);
+    } catch (error) {
+      cleanup = error.cleanup || cleanup;
+      error.cleanup = cleanup;
+      if (!failure) failure = error;
+      else failure.cleanupInspectionFailure = error.message;
+    }
+  }
   if (failure) {
     failure.cleanup = cleanup;
     throw failure;
@@ -217,21 +358,25 @@ async function main() {
     const result = await runDeterministicFullStackE2e({
       ...config,
       injectFailureAfter: args.injectFailureAfter,
+      passwordCanary: process.env.JLU_LOCAL_STACK_E2E_PASSWORD_CANARY,
     }, adapter);
     process.stdout.write(`${JSON.stringify({
       status: result.status,
       runId: result.marker.runId,
       sourceModes: result.modes.map(({ sourceMode }) => sourceMode),
       plans: result.provisioning.map(({ plan }) => plan),
+      evidence: result.evidence,
       cleanup: result.cleanup,
     })}\n`);
   } catch (error) {
+    const passwordCanary = process.env.JLU_LOCAL_STACK_E2E_PASSWORD_CANARY;
     process.stderr.write(`${JSON.stringify({
       status: 'failed',
       code: error.code || 'E2E_RUN_FAILED',
-      message: error.message,
+      message: redactKnownSecret(error.message, passwordCanary),
       failures: error.failures,
       cleanup: error.cleanup,
+      cleanupInspectionFailure: redactKnownSecret(error.cleanupInspectionFailure, passwordCanary),
     })}\n`);
     process.exitCode = 1;
   }
