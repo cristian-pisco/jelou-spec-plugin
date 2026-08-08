@@ -50,16 +50,48 @@ function taskReadiness(readySignal, primaryHost) {
   return r;
 }
 
-export function buildBootPlan({ registry, slug, worktreePaths, occupied = [], resolveImage = defaultResolveImage, resolveMounts = defaultResolveMounts, readEnv = defaultReadEnv, exists = defaultExists, readJson = defaultReadJson, readFile = defaultReadFile }) {
+function topologyFor(service, network) {
+  if (service.dev.launcher !== 'docker-exec') return { runtime: 'host', host: 'localhost', container: null };
+  return {
+    runtime: 'container',
+    host: 'localhost',
+    container: {
+      service: service.dev.docker.service,
+      network: network.composeNetworkAlias,
+    },
+  };
+}
+
+function descriptorPorts({ service, workspaceId, slug, sourceMode, taken, basePort, portAllocations }) {
+  const portEnvs = [service.dev.port_env, ...(service.dev.extra_ports || [])];
+  return portEnvs.map((portEnv) => {
+    const internal = service.dev.ports[portEnv];
+    const persisted = (portAllocations || []).find((allocation) => allocation.serviceId === service.id && allocation.portEnv === portEnv);
+    const allocation = persisted || allocateHostPorts({ mappings: [{ internal }], occupied: [...taken], basePort: taken.has(internal) ? basePort : internal })[0];
+    taken.add(allocation.host);
+    return {
+      internal,
+      host: allocation.host,
+      portEnv,
+      primary: portEnv === service.dev.port_env,
+      ownerTag: `${workspaceId}:${slug}:${sourceMode}:${service.id}:${portEnv}`,
+    };
+  });
+}
+
+export function buildBootPlan({ registry, workspaceId, slug, worktreePaths, sources, sourceMode, portAllocations, occupied = [], resolveImage = defaultResolveImage, resolveMounts = defaultResolveMounts, readEnv = defaultReadEnv, exists = defaultExists, readJson = defaultReadJson, readFile = defaultReadFile }) {
   const wt = worktreePaths || {};
-  const isolated = new Set(registry.services.filter((s) => wt[s.id]).map((s) => s.id));
+  const sourceByService = new Map((sources || []).map((source) => [source.serviceId, source]));
+  const completeDescriptors = sourceByService.size > 0;
+  const isolated = new Set(registry.services.filter((s) => wt[s.id] || sourceByService.get(s.id)?.affected).map((s) => s.id));
   const peerInternalPort = {};
   for (const s of registry.services) peerInternalPort[s.id] = s.dev.ports[s.dev.port_env];
 
   const taken = new Set(occupied);
   const services = registry.services.map((svc) => {
     const dev = svc.dev;
-    const cwd = isolated.has(svc.id) ? wt[svc.id] : svc.path;
+    const source = sourceByService.get(svc.id);
+    const cwd = source?.sourcePath || (isolated.has(svc.id) ? wt[svc.id] : svc.path);
     const wiredPeers = {};
     for (const [target, envVar] of Object.entries(svc.peers || {})) {
       if (isolated.has(target)) wiredPeers[target] = envVar;
@@ -80,12 +112,35 @@ export function buildBootPlan({ registry, slug, worktreePaths, occupied = [], re
       wiredEnv
     };
 
+    if (completeDescriptors) {
+      const ports = descriptorPorts({ service: svc, workspaceId, slug, sourceMode, taken, basePort: registry.network.basePort, portAllocations });
+      Object.assign(entry, {
+        affected: source.affected,
+        source,
+        topology: topologyFor(svc, registry.network),
+        dependencies: [...(svc.depends_on || [])],
+        ports,
+        readiness: taskReadiness(dev.ready_signal, ports.find((port) => port.primary).host),
+        environmentOverlay: { path: null, digest: null, restartRequired: false },
+        ownership: {
+          source: source.ownership,
+          runtime: `${workspaceId}:${slug}:${sourceMode}:${svc.id}`,
+        },
+      });
+    }
+
     if (!isolated.has(svc.id)) return entry;
 
+    if (dev.launcher !== 'docker-exec') return entry;
+
     const portEnvs = [dev.port_env, ...(dev.extra_ports || [])];
-    const allocations = allocateHostPorts({ mappings: portEnvs.map((e) => ({ internal: dev.ports[e] })), occupied: [...taken], basePort: registry.network.basePort });
-    for (const a of allocations) taken.add(a.host);
-    const ports = allocations.map((a, i) => ({ internal: a.internal, host: a.host, portEnv: portEnvs[i], primary: portEnvs[i] === dev.port_env }));
+    const allocations = completeDescriptors
+      ? entry.ports.map((port) => ({ internal: port.internal, host: port.host }))
+      : allocateHostPorts({ mappings: portEnvs.map((e) => ({ internal: dev.ports[e] })), occupied: [...taken], basePort: registry.network.basePort });
+    if (!completeDescriptors) for (const a of allocations) taken.add(a.host);
+    const ports = completeDescriptors
+      ? entry.ports
+      : allocations.map((a, i) => ({ internal: a.internal, host: a.host, portEnv: portEnvs[i], primary: portEnvs[i] === dev.port_env }));
     const image = resolveImage({ cwd: svc.path, composeFile: dev.docker.compose_file, composeService: dev.docker.service });
     const projectName = `${svc.id}-${slug}`;
     const mounts = dev.launcher === 'docker-exec'

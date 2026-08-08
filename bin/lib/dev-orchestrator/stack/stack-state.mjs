@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
+import { chmodSync, mkdirSync, writeFileSync, readFileSync, existsSync, renameSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { stateDir } from '../state.mjs';
 
@@ -7,7 +7,7 @@ export function stackStatePath(opts) {
 }
 
 export function emptyStackState() {
-  return { projects: [], hostPids: [], frontendEnv: null, backendEnvBackups: [] };
+  return { projects: [], hostPids: [], frontendEnv: null, backendEnvBackups: [], portAllocations: [] };
 }
 
 export function addProject(state, project) {
@@ -45,7 +45,10 @@ export function readStackState(opts) {
 export function writeStackState(opts, state) {
   const p = stackStatePath(opts);
   mkdirSync(dirname(p), { recursive: true });
-  writeFileSync(p, JSON.stringify(state, null, 2) + '\n', 'utf8');
+  const temporary = `${p}.tmp-${process.pid}`;
+  writeFileSync(temporary, JSON.stringify(state, null, 2) + '\n', { encoding: 'utf8', mode: 0o600 });
+  renameSync(temporary, p);
+  chmodSync(p, 0o600);
   return p;
 }
 

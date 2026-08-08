@@ -5,11 +5,13 @@
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildPlanForWorkspace, unsafeTeardownEntries } from '../../bin/build-boot-plan.mjs';
+import { computeWorkspaceId } from '../../bin/lib/dev-orchestrator/workspace.mjs';
+import { readStackState, stackStatePath, writeStackState } from '../../bin/lib/dev-orchestrator/stack/stack-state.mjs';
 
 const CLI = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'bin', 'build-boot-plan.mjs');
 
@@ -149,6 +151,283 @@ describe('buildPlanForWorkspace — normalized source contract', () => {
       branch: 'main',
       ownership: 'main',
     });
+  });
+});
+
+describe('buildPlanForWorkspace — complete hybrid descriptors', () => {
+  test('describes affected and unaffected backends plus jelou-apps through one boot contract', () => {
+    const slug = 'hybrid-task';
+    const branch = `production/${slug}`;
+    const affectedBackend = hostService('api-service', "pkill -f '[a]pi-service.*src/index\\.ts' || true");
+    affectedBackend.path = '/repos/api-service';
+    affectedBackend.depends_on = ['dashboard-server'];
+    affectedBackend.dev.ports.PORT = 4100;
+    affectedBackend.dev.ready_signal = { type: 'http_200', path: '/health' };
+    const unaffectedBackend = containerService('dashboard-server');
+    unaffectedBackend.path = '/repos/dashboard-server';
+    unaffectedBackend.dev.ports.APP_PORT = 8484;
+    const apps = hostService('jelou-apps', "pkill -f '[j]elou-apps.*vite' || true");
+    apps.path = '/repos/jelou-apps';
+    apps.depends_on = ['api-service', 'dashboard-server'];
+    apps.dev.ports.PORT = 5173;
+    const ws = makeWorkspace(registry([affectedBackend, unaffectedBackend, apps]));
+    const workspaceId = computeWorkspaceId(ws);
+    const worktree = (serviceId) => `/repos/${serviceId}/.worktrees/${slug}`;
+    const taskContext = {
+      slug,
+      mode: 'worktree',
+      affectedServices: [
+        { id: 'api-service', branch },
+        { id: 'jelou-apps', branch },
+      ],
+    };
+    const inspectGit = (path) => ({
+      topLevel: path,
+      commit: path.includes('api-service')
+        ? '1111111111111111111111111111111111111111'
+        : path.includes('dashboard-server')
+          ? '2222222222222222222222222222222222222222'
+          : '3333333333333333333333333333333333333333',
+      branch: path.includes('.worktrees') ? branch : 'main',
+      worktrees: path.includes('.worktrees') ? [{ path, branch, prunable: false }] : [],
+    });
+
+    const plan = buildPlanForWorkspace({
+      workspaceRoot: ws,
+      slug,
+      sourceMode: 'task-aware',
+      taskContext,
+      occupied: [],
+      pathExists: () => true,
+      inspectGit,
+    });
+
+    assert.equal(plan.sourceMode, 'task-aware');
+    assert.equal(plan.services.length, 3);
+    assert.deepEqual(plan.services.map((service) => service.id), ['api-service', 'dashboard-server', 'jelou-apps']);
+    assert.deepEqual(plan.services.map((service) => ({
+      id: service.id,
+      affected: service.affected,
+      sourcePath: service.source.sourcePath,
+      commit: service.source.commit,
+      launcher: service.launcher,
+      topology: service.topology,
+      dependencies: service.dependencies,
+      ports: service.ports,
+      readiness: service.readiness,
+      environmentOverlay: service.environmentOverlay,
+      ownership: service.ownership,
+    })), [
+      {
+        id: 'api-service',
+        affected: true,
+        sourcePath: worktree('api-service'),
+        commit: '1111111111111111111111111111111111111111',
+        launcher: 'shell',
+        topology: { runtime: 'host', host: 'localhost', container: null },
+        dependencies: ['dashboard-server'],
+        ports: [{ internal: 4100, host: 4100, portEnv: 'PORT', primary: true, ownerTag: `${workspaceId}:${slug}:task-aware:api-service:PORT` }],
+        readiness: { type: 'http_200', path: '/health', port: 4100 },
+        environmentOverlay: { path: null, digest: null, restartRequired: false },
+        ownership: { source: 'task', runtime: `${workspaceId}:${slug}:task-aware:api-service` },
+      },
+      {
+        id: 'dashboard-server',
+        affected: false,
+        sourcePath: '/repos/dashboard-server',
+        commit: '2222222222222222222222222222222222222222',
+        launcher: 'docker-exec',
+        topology: { runtime: 'container', host: 'localhost', container: { service: 'app', network: 'app-network' } },
+        dependencies: [],
+        ports: [{ internal: 8484, host: 8484, portEnv: 'APP_PORT', primary: true, ownerTag: `${workspaceId}:${slug}:task-aware:dashboard-server:APP_PORT` }],
+        readiness: { type: 'stdout_match', pattern: 'started' },
+        environmentOverlay: { path: null, digest: null, restartRequired: false },
+        ownership: { source: 'main', runtime: `${workspaceId}:${slug}:task-aware:dashboard-server` },
+      },
+      {
+        id: 'jelou-apps',
+        affected: true,
+        sourcePath: worktree('jelou-apps'),
+        commit: '3333333333333333333333333333333333333333',
+        launcher: 'shell',
+        topology: { runtime: 'host', host: 'localhost', container: null },
+        dependencies: ['api-service', 'dashboard-server'],
+        ports: [{ internal: 5173, host: 5173, portEnv: 'PORT', primary: true, ownerTag: `${workspaceId}:${slug}:task-aware:jelou-apps:PORT` }],
+        readiness: { type: 'port_open', port: 5173 },
+        environmentOverlay: { path: null, digest: null, restartRequired: false },
+        ownership: { source: 'task', runtime: `${workspaceId}:${slug}:task-aware:jelou-apps` },
+      },
+    ]);
+  });
+
+  test('reuses the same deterministic allocation from task-scoped runtime state', () => {
+    const slug = 'stable-task';
+    const service = hostService('api-service', "pkill -f '[a]pi-service.*src/index\\.ts' || true");
+    service.path = '/repos/api-service';
+    const ws = makeWorkspace(registry([service]));
+    const workspaceId = computeWorkspaceId(ws);
+    const stateBaseDir = mkdtempSync(join(tmpdir(), 'boot-plan-state-'));
+    const liveDefault = [{ port: 8080, ownerTag: 'another-workspace:other-task:task-aware:api-service:PORT', pid: 41 }];
+    const input = {
+      workspaceRoot: ws,
+      slug,
+      sourceMode: 'main',
+      taskContext: { slug },
+      livePorts: liveDefault,
+      persistState: true,
+      stateBaseDir,
+      pathExists: () => true,
+      inspectGit: (path) => ({
+        topLevel: path,
+        commit: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        branch: 'main',
+        worktrees: [],
+      }),
+    };
+
+    const first = buildPlanForWorkspace(input);
+    const allocation = first.services[0].ports[0];
+    const second = buildPlanForWorkspace({
+      ...input,
+      livePorts: [...liveDefault, { port: allocation.host, ownerTag: allocation.ownerTag, pid: 42 }],
+    });
+
+    assert.notEqual(allocation.host, 8080);
+    assert.deepEqual(second.services[0].ports, first.services[0].ports);
+    assert.deepEqual(
+      readStackState({ workspaceId, slug, baseDir: stateBaseDir }).portAllocations,
+      first.services[0].ports.map((port) => ({ serviceId: 'api-service', ...port })),
+    );
+  });
+
+  test('an affected branch-mode service launches from its exact canonical task source', () => {
+    const slug = 'branch-task';
+    const branch = `production/${slug}`;
+    const apps = hostService('jelou-apps', "pkill -f '[j]elou-apps.*vite' || true");
+    apps.path = '/repos/jelou-apps';
+    apps.dev.ports.PORT = 5173;
+    const ws = makeWorkspace(registry([apps]));
+
+    const plan = buildPlanForWorkspace({
+      workspaceRoot: ws,
+      slug,
+      sourceMode: 'task-aware',
+      taskContext: {
+        slug,
+        mode: 'branch',
+        affectedServices: [{ id: 'jelou-apps', branch }],
+      },
+      livePorts: [],
+      pathExists: () => true,
+      inspectGit: (path) => ({
+        topLevel: path,
+        commit: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        branch,
+        worktrees: [],
+      }),
+    });
+
+    assert.equal(plan.services[0].cwd, '/repos/jelou-apps');
+    assert.equal(plan.services[0].policy, 'task-isolated');
+    assert.equal(plan.services[0].source.sourcePath, '/repos/jelou-apps');
+    assert.equal(plan.services[0].source.commit, 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb');
+  });
+
+  test('keeps deterministic allocations isolated across source-mode switches', () => {
+    const slug = 'mode-switch-task';
+    const branch = `production/${slug}`;
+    const service = hostService('api-service', "pkill -f '[a]pi-service.*src/index\\.ts' || true");
+    service.path = '/repos/api-service';
+    const ws = makeWorkspace(registry([service]));
+    const workspaceId = computeWorkspaceId(ws);
+    const stateBaseDir = mkdtempSync(join(tmpdir(), 'boot-plan-state-'));
+    const common = {
+      workspaceRoot: ws,
+      slug,
+      taskContext: {
+        slug,
+        mode: 'worktree',
+        affectedServices: [{ id: 'api-service', branch }],
+      },
+      persistState: true,
+      stateBaseDir,
+      pathExists: () => true,
+      inspectGit: (path) => ({
+        topLevel: path,
+        commit: path.includes('.worktrees') ? 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' : 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        branch: path.includes('.worktrees') ? branch : 'main',
+        worktrees: path.includes('.worktrees') ? [{ path, branch, prunable: false }] : [],
+      }),
+    };
+
+    const main = buildPlanForWorkspace({ ...common, sourceMode: 'main', livePorts: [] });
+    const taskAware = buildPlanForWorkspace({
+      ...common,
+      sourceMode: 'task-aware',
+      livePorts: [{ port: main.services[0].ports[0].host, ownerTag: main.services[0].ports[0].ownerTag, pid: 51 }],
+    });
+    const stored = readStackState({ workspaceId, slug, baseDir: stateBaseDir }).portAllocations;
+
+    assert.notEqual(taskAware.services[0].ports[0].host, main.services[0].ports[0].host);
+    assert.deepEqual(stored.map((allocation) => allocation.ownerTag).sort(), [
+      `${workspaceId}:${slug}:main:api-service:PORT`,
+      `${workspaceId}:${slug}:task-aware:api-service:PORT`,
+    ]);
+  });
+});
+
+describe('buildPlanForWorkspace — preflight mutation boundary', () => {
+  test('an unsafe descriptor creates no runtime state', () => {
+    const slug = 'preflight-task';
+    const ws = makeWorkspace(registry([hostService('legacy-api', "pkill -f 'node' || true")]));
+    const workspaceId = computeWorkspaceId(ws);
+    const stateBaseDir = mkdtempSync(join(tmpdir(), 'boot-plan-state-'));
+    const stateOptions = { workspaceId, slug, baseDir: stateBaseDir };
+
+    assert.throws(
+      () => buildPlanForWorkspace({
+        workspaceRoot: ws,
+        slug,
+        sourceMode: 'main',
+        taskContext: { slug },
+        livePorts: [],
+        persistState: true,
+        stateBaseDir,
+        pathExists: () => true,
+        inspectGit: (path) => ({ topLevel: path, commit: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', branch: 'main', worktrees: [] }),
+      }),
+      /unsafe_teardown.*legacy-api|legacy-api.*unsafe_teardown/s,
+    );
+    assert.equal(existsSync(stackStatePath(stateOptions)), false);
+  });
+
+  test('an unrelated live owner leaves the persisted allocation unchanged', () => {
+    const slug = 'preflight-task';
+    const service = hostService('api-service', "pkill -f '[a]pi-service.*src/index\\.ts' || true");
+    service.path = '/repos/api-service';
+    const ws = makeWorkspace(registry([service]));
+    const workspaceId = computeWorkspaceId(ws);
+    const stateBaseDir = mkdtempSync(join(tmpdir(), 'boot-plan-state-'));
+    const stateOptions = { workspaceId, slug, baseDir: stateBaseDir };
+    const ownerTag = `${workspaceId}:${slug}:main:api-service:PORT`;
+    const portAllocations = [{ serviceId: 'api-service', portEnv: 'PORT', internal: 8080, host: 43210, primary: true, ownerTag }];
+    writeStackState(stateOptions, { ...readStackState(stateOptions), portAllocations });
+
+    assert.throws(
+      () => buildPlanForWorkspace({
+        workspaceRoot: ws,
+        slug,
+        sourceMode: 'main',
+        taskContext: { slug },
+        livePorts: [{ port: 43210, ownerTag: null, pid: 912, command: 'python local-server.py' }],
+        persistState: true,
+        stateBaseDir,
+        pathExists: () => true,
+        inspectGit: (path) => ({ topLevel: path, commit: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', branch: 'main', worktrees: [] }),
+      }),
+      /api-service.*43210.*unrelated.*912/i,
+    );
+    assert.deepEqual(readStackState(stateOptions).portAllocations, portAllocations);
   });
 });
 

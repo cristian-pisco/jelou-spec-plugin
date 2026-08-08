@@ -4,7 +4,7 @@
 
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -13,6 +13,10 @@ import {
 } from '../../bin/lib/dev-orchestrator/stack/stack-state.mjs';
 
 describe('stack-state pure helpers', () => {
+  test('a fresh state exposes an empty deterministic port-allocation collection', () => {
+    assert.deepEqual(emptyStackState().portAllocations, []);
+  });
+
   test('addProject dedupes by projectName', () => {
     let s = emptyStackState();
     s = addProject(s, { projectName: 'a-t1', cwd: '/a', composeFile: 'c.yml', overrideFile: 'o.yml' });
@@ -63,5 +67,25 @@ describe('stack-state persistence', () => {
     writeStackState(opts, emptyStackState());
     writeFileSync(stackStatePath(opts), '{ not json');
     assert.deepEqual(readStackState(opts), emptyStackState());
+  });
+
+  test('atomically replaces task-scoped owner-tagged port allocations', () => {
+    const baseDir = mkdtempSync(join(tmpdir(), 'jlu-stack-state-'));
+    const opts = { workspaceId: 'workspace-1', slug: 'task-a', baseDir };
+    const first = {
+      ...emptyStackState(),
+      portAllocations: [{ serviceId: 'api-service', portEnv: 'PORT', internal: 8080, host: 4100, primary: true, ownerTag: 'workspace-1:task-a:task-aware:api-service:PORT' }],
+    };
+    const second = {
+      ...emptyStackState(),
+      portAllocations: [{ serviceId: 'api-service', portEnv: 'PORT', internal: 8080, host: 4101, primary: true, ownerTag: 'workspace-1:task-a:task-aware:api-service:PORT' }],
+    };
+
+    writeStackState(opts, first);
+    const path = writeStackState(opts, second);
+
+    assert.deepEqual(readStackState(opts).portAllocations, second.portAllocations);
+    assert.deepEqual(readdirSync(join(baseDir, 'workspaces', 'workspace-1', 'task-a')), ['stack-state.json']);
+    assert.equal(statSync(path).mode & 0o777, 0o600);
   });
 });

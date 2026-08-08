@@ -6,10 +6,12 @@ import { argv, exit, stdout } from 'node:process';
 import { readUnifiedRegistry } from './lib/registry/read.mjs';
 import { teardownSafetyCause } from './lib/registry/splice.mjs';
 import { buildBootPlan } from './lib/boot-engine/plan.mjs';
-import { parseOccupiedPorts } from './lib/dev-orchestrator/stack/ports.mjs';
+import { allocateOwnedPorts, parseListeningPorts } from './lib/dev-orchestrator/stack/ports.mjs';
+import { readStackState, writeStackState } from './lib/dev-orchestrator/stack/stack-state.mjs';
 import { normalizeSourceMode } from './lib/dev-orchestrator/source-mode.mjs';
 import { resolveTaskSources } from './lib/dev-orchestrator/task-source.mjs';
 import { resolveTaskContext } from './lib/dev-orchestrator/task-context.mjs';
+import { computeWorkspaceId } from './lib/dev-orchestrator/workspace.mjs';
 
 export function unsafeTeardownEntries(plan) {
   const out = [];
@@ -27,7 +29,16 @@ function assertTeardownsAreSafe(plan) {
   throw new Error(`refusing to build a boot plan — fix these dev blocks in services.yaml first:\n${detail}`);
 }
 
-export function buildPlanForWorkspace({ workspaceRoot, slug, sourceMode, taskContext, worktreePaths, occupied, resolveImage, readEnv, inspectGit, pathExists }) {
+function portRequests(registry) {
+  return registry.services.flatMap((service) => [service.dev.port_env, ...(service.dev.extra_ports || [])].map((portEnv) => ({
+    serviceId: service.id,
+    portEnv,
+    internal: service.dev.ports[portEnv],
+    primary: portEnv === service.dev.port_env,
+  })));
+}
+
+export function buildPlanForWorkspace({ workspaceRoot, slug, sourceMode, taskContext, worktreePaths, occupied, livePorts, persistState = false, stateBaseDir, resolveImage, readEnv, inspectGit, pathExists }) {
   const registry = readUnifiedRegistry(workspaceRoot);
   if (sourceMode === undefined) {
     return assertTeardownsAreSafe(buildBootPlan({ registry, slug, worktreePaths, occupied, resolveImage, readEnv }));
@@ -43,7 +54,36 @@ export function buildPlanForWorkspace({ workspaceRoot, slug, sourceMode, taskCon
   const resolvedWorktrees = Object.fromEntries(
     sources.filter((source) => source.mode === 'worktree').map((source) => [source.serviceId, source.sourcePath]),
   );
-  const plan = assertTeardownsAreSafe(buildBootPlan({ registry, slug, worktreePaths: resolvedWorktrees, occupied, resolveImage, readEnv }));
+  const workspaceId = computeWorkspaceId(workspaceRoot);
+  const stateOptions = { workspaceId, slug, baseDir: stateBaseDir };
+  const previousState = persistState ? readStackState(stateOptions) : null;
+  const listeners = livePorts || (occupied || []).map((port) => ({ port, ownerTag: null }));
+  const portAllocations = allocateOwnedPorts({
+    requests: portRequests(registry),
+    workspaceId,
+    taskSlug: slug,
+    sourceMode: normalizedMode,
+    basePort: registry.network.basePort,
+    persisted: previousState?.portAllocations || [],
+    live: listeners,
+  });
+  const plan = assertTeardownsAreSafe(buildBootPlan({
+    registry,
+    workspaceId,
+    slug,
+    worktreePaths: resolvedWorktrees,
+    sources,
+    sourceMode: normalizedMode,
+    portAllocations,
+    occupied,
+    resolveImage,
+    readEnv,
+  }));
+  if (persistState) {
+    const currentOwners = new Set(portAllocations.map((allocation) => allocation.ownerTag));
+    const retainedAllocations = (previousState.portAllocations || []).filter((allocation) => !currentOwners.has(allocation.ownerTag));
+    writeStackState(stateOptions, { ...previousState, portAllocations: [...retainedAllocations, ...portAllocations] });
+  }
   const sourceByService = new Map(sources.map((source) => [source.serviceId, source]));
   return {
     ...plan,
@@ -61,9 +101,9 @@ function resolveWorktreePaths(registry, slug) {
   return out;
 }
 
-function dockerOccupied() {
-  const r = spawnSync('docker', ['ps', '--format', '{{.Ports}}'], { encoding: 'utf8' });
-  return [...parseOccupiedPorts(r.stdout || '')];
+function hostLivePorts() {
+  const r = spawnSync('ss', ['-ltnpH'], { encoding: 'utf8' });
+  return parseListeningPorts(r.stdout || '');
 }
 
 function main() {
@@ -95,7 +135,8 @@ function main() {
         slug,
         sourceMode,
         taskContext,
-        occupied: dockerOccupied(),
+        livePorts: hostLivePorts(),
+        persistState: true,
       });
       stdout.write(JSON.stringify(plan, null, 2) + '\n');
     } catch (error) {
@@ -105,7 +146,7 @@ function main() {
     return;
   }
   const registry = readUnifiedRegistry(workspaceRoot);
-  const plan = buildBootPlan({ registry, slug, worktreePaths: resolveWorktreePaths(registry, slug), occupied: dockerOccupied() });
+  const plan = buildBootPlan({ registry, slug, worktreePaths: resolveWorktreePaths(registry, slug), occupied: hostLivePorts().map((listener) => listener.port) });
   const unsafe = unsafeTeardownEntries(plan);
   if (unsafe.length > 0) {
     for (const u of unsafe) console.error(`build-boot-plan: ${u.id}: ${u.cause}`);
