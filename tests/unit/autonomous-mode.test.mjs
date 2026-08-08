@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 const ROOT = new URL('../..', import.meta.url).pathname;
@@ -113,3 +113,27 @@ for (const name of AUTONOMOUS_SKILLS) {
     assert.match(text, /--autonomous/, `jlu-${name} OpenCode command must document the flag`);
   });
 }
+
+test('only Codex skills whose workflow has a gate table carry the autonomous exception', () => {
+  const skillsDir = join(ROOT, '.codex/skills');
+  const workflowsDir = join(ROOT, 'jelou/workflows');
+  const CLAUSE = 'Autonomous mode is the one exception';
+
+  for (const entry of readdirSync(skillsDir)) {
+    const skillPath = join(skillsDir, entry, 'SKILL.md');
+    if (!existsSync(skillPath)) continue;
+    const carriesClause = readFileSync(skillPath, 'utf8').includes(CLAUSE);
+    const workflowPath = join(workflowsDir, `${entry.replace(/^jlu-/, '')}.md`);
+    const hasGateTable =
+      existsSync(workflowPath) &&
+      readFileSync(workflowPath, 'utf8').includes('## Autonomous mode — how every gate resolves');
+
+    assert.equal(
+      carriesClause,
+      hasGateTable,
+      carriesClause
+        ? `${entry} tells Codex it may skip questions, but its workflow publishes no gate table — a model could over-generalize and skip a gate with no documented default`
+        : `${entry}'s workflow has a gate table but the Codex mirror never grants the exception, so autonomous mode would still block on Codex`,
+    );
+  }
+});

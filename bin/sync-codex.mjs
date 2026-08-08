@@ -22,13 +22,20 @@ import {
 } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { parseAgentFile, renderCodexAgent } from './lib/agent-frontmatter.mjs';
-import { renderCodexSkill } from './lib/codex-skill.mjs';
+import { renderCodexSkill, AUTONOMOUS_SECTION_HEADING } from './lib/codex-skill.mjs';
 
 const cwd = process.cwd();
 const AGENTS_SRC = join(cwd, 'agents');
 const SKILLS_SRC = join(cwd, 'skills');
 const AGENTS_DEST = join(cwd, '.codex/agents');
 const SKILLS_DEST = join(cwd, '.codex/skills');
+const WORKFLOWS_SRC = join(cwd, 'jelou/workflows');
+
+function workflowSupportsAutonomous(skill) {
+  const path = join(WORKFLOWS_SRC, `${skill}.md`);
+  if (!existsSync(path)) return false;
+  return readFileSync(path, 'utf8').includes(AUTONOMOUS_SECTION_HEADING);
+}
 const CHECK_MODE = process.argv.includes('--check');
 
 function listMd(dir) {
@@ -108,7 +115,9 @@ function main() {
   for (const skill of listSkills(SKILLS_SRC)) {
     const raw = readFileSync(join(SKILLS_SRC, skill, 'SKILL.md'), 'utf8');
     const { frontmatter } = parseAgentFile(raw);
-    skillExpected[`jlu-${skill}/SKILL.md`] = renderCodexSkill(skill, frontmatter);
+    skillExpected[`jlu-${skill}/SKILL.md`] = renderCodexSkill(skill, frontmatter, {
+      supportsAutonomous: workflowSupportsAutonomous(skill),
+    });
   }
 
   const agents = syncPair(agentExpected, AGENTS_DEST);
