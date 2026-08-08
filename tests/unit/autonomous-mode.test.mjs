@@ -106,6 +106,18 @@ for (const name of AUTONOMOUS_SKILLS) {
     );
   });
 
+  test(`${name} skill states the autonomous exception where the question ban is written`, () => {
+    const lines = readFileSync(join(ROOT, 'skills', name, 'SKILL.md'), 'utf8').split('\n');
+    const banIndex = lines.findIndex((line) => /Never skip a prescribed question/.test(line));
+    assert.notEqual(banIndex, -1, `${name} skill must still carry the question ban`);
+    const nearBan = lines.slice(banIndex, banIndex + 3).join(' ');
+    assert.match(
+      nearBan,
+      /autonomous/i,
+      `${name}: the question ban must carry its autonomous exception inline — a model reading top-down would otherwise take the ban as absolute and block on a gate the caller already authorised`,
+    );
+  });
+
   test(`${name} OpenCode command carries the autonomous contract`, () => {
     const path = join(ROOT, '.opencode/commands', `jlu-${name}.md`);
     assert.ok(existsSync(path), `hand-authored OpenCode command missing for ${name}`);

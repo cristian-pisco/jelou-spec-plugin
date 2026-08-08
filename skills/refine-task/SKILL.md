@@ -29,6 +29,7 @@ If neither resolves, stop with: "Plugin root not found. Ensure jelou-spec-plugin
 - Workflow says `task` → invoke `Agent` (subagent dispatch).
 - Agent namespace: the workflow names agents bare (`jlu-<name>`). Dispatch them prefixed with the plugin namespace — `subagent_type: "jlu:jlu-<name>"` (e.g. `jlu:jlu-resolve-pr-runner`). The plugin is the source of truth; a stale `~/.claude/agents/` copy must never shadow it. If the prefixed name isn't registered (e.g. a manual install), retry once with the bare `jlu-<name>`.
 - Never narrate questions as plain text. Never skip a prescribed question.
+- The one exception is autonomous mode (see Phase 2): with `--autonomous` or `JLU_AUTONOMOUS=true`, no gate asks — each takes its documented default from the workflow's gate table and is disclosed there. Without that flag the ban above stands in full.
 
 **Run these in parallel** (single tool-call message — do NOT serialize):
 1. `Bash`: `<plugin-root>/bin/check-update.sh 2>/dev/null || echo SKIPPED`
