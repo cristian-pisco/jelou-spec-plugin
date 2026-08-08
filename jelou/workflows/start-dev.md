@@ -517,76 +517,25 @@ import('{plugin-root}/bin/lib/dev-orchestrator/stack/stack-state.mjs').then((sta
 
 Emit the provisioning lifecycle outcome through the existing redacted lifecycle boundary. Do not print the request, credential, hash, or unsanitized graph.
 
-### Step G — Login for the auth cookie
+### Step G — Establish the genuine authenticated session
 
-The `auth` block and `hostByService` come from Step A (`readUnifiedRegistry`) and Step C respectively; `resolveAuthUrls` consumes the normalized `auth.verify` array and `auth.dashboardService`'s policy-aware host.
+The `auth` block and `hostByService` come from Step A and Step C. Resolve `loginUrl`, `verifyMfaUrl`, `cookieName`, and `verifyUrls` with `resolveAuthUrls`. Read `localAuthProfile` from the task stack state and stop if the profile or its `keyringIdentity` is missing. Credentials come only from `createOsKeyring`; do not read an environment credential file or place the password or cookie in arguments, environment variables, stdout, stderr, snapshots, traces, pane output, or reports.
 
-Read `E2E_USER_EMAIL` / `E2E_USER_PASSWORD` from `<auth.credentials.envFile>` — never print these values or the resulting cookie. Resolve the auth URLs, then perform the login, passing the password via the `E2E_PASSWORD` environment variable rather than `process.argv` (argv is visible in `ps` output and in the logged Bash tool-call input; env vars are not):
+Resolve Playwright from `registry.frontend.path` so the browser runtime is the one owned by `jelou-apps`. Launch Chromium and pass `createBrowserContext: () => browser.newContext()` into `establishAuthenticatedSession`. Pass the task state identity, the keyring-backed profile, the resolved dashboard login contract, every protected API URL, `appUrl: http://localhost:{frontendPort}/`, and `protectedPath: registry.frontend.protectedPath || '/home'`.
 
-```bash
-E2E_PASSWORD="{password}" node -e "
-Promise.all([
-  import('{plugin-root}/bin/lib/dev-orchestrator/stack/auth-urls.mjs'),
-  import('{plugin-root}/bin/lib/dev-orchestrator/stack/login-cookie.mjs'),
-  import('{plugin-root}/bin/lib/dev-orchestrator/stack/auth-runtime.mjs')
-]).then(async ([{ resolveAuthUrls }, { loginForCookie }, { postJson, readOtpFromRedis }]) => {
-  const auth = JSON.parse(process.argv[1]);
-  const hostByService = JSON.parse(process.argv[2]);
-  const { loginUrl, verifyMfaUrl, cookieName } = resolveAuthUrls({ auth, hostByService });
-  const result = await loginForCookie({
-    loginUrl, verifyMfaUrl, cookieName,
-    email: process.argv[3], password: process.env.E2E_PASSWORD,
-    postJson,
-    readOtp: readOtpFromRedis(auth.otpFallback)
-  });
-  process.stdout.write(JSON.stringify({ status: result.status }));
-});
-" '{registry.authJson}' '{hostByServiceJson}' "{email}"
-```
+Pass `postJson` and `readOtpFromRedis(auth.otpFallback)` from `auth-runtime.mjs`, `request: fetch`, and an `onLifecycle` adapter that calls `appendLifecycleEvent(eventsLogPath({ workspaceId, slug }), { ...event, taskSlug: slug })`. Close Chromium in `finally`.
 
-Capture the cookie value out-of-band (never echoed to stdout/logs). If `status` is not `ok`, map the cause and stop before touching the browser: `rejected` → bad credentials or an inactive account; `otp-missing` → no OTP found at the configured Redis key; `otp-rejected` → the OTP was read but the dashboard rejected it.
+`establishAuthenticatedSession` first probes a stored task cookie. A valid cookie is reused without a credential lookup. A missing, expired, redirected, or rejected cookie permits exactly one keyring-backed login against the configured dashboard. Only a genuine `jelou_auth` response is eligible for verification and atomic `0600` persistence. Invalid credentials, a missing expected cookie, or a rejected refreshed cookie clears rejected task state, never injects the stale value, and returns the actionable `--reconfigure` failure.
 
-### Step H — Inject the cookie and open the browser
+### Step H — Verify protected browser and API access
 
-Start the inject server. `startInjectServer` calls `server.listen(...)` and keeps the Node event loop alive, so this must be launched as a **backgrounded** process (the same way Step F backgrounds the Vite boot) — a synchronous `node -e` invocation would never return and would hang the orchestrator. Pass the cookie value via the `JLU_INJECT_COOKIE` environment variable rather than `process.argv` (argv is visible in `ps` output and in the logged Bash tool-call input; env vars are not):
+The session module injects the genuine cookie directly through the Playwright browser context for the `jelou-apps` origin. It requests every configured protected API with manual redirect handling, then opens the configured protected route. Authentication succeeds only when every API returns HTTP `200` and the final browser URL remains outside `/login`. The returned result contains status, source, API statuses, and final URL only; it never contains the password or cookie.
 
-```bash
-JLU_INJECT_COOKIE="{cookieValue}" node -e "
-import('{plugin-root}/bin/lib/dev-orchestrator/stack/inject-page.mjs').then(({ renderInjectPage, startInjectServer }) => {
-  const page = renderInjectPage({
-    cookieName: process.argv[1],
-    cookieValue: process.env.JLU_INJECT_COOKIE,
-    appUrl: process.argv[2],
-    account: process.argv[3]
-  });
-  startInjectServer({ port: Number(process.argv[4]), page });
-});
-" "{cookieName}" "http://localhost:{frontendPort}/" "{email}" "{injectPort}" > /tmp/jlu-inject-server-{slug}.log 2>&1 &
-```
+### Step I — Report the authenticated stack
 
-Immediately after the inject server launches with `&`, capture its PID in the same shell (`INJECT_PID=$!`), then record its PID into stack-state (`kind: 'hostPid'`, role `inject`) so `/jlu:stop-dev` tears it down:
-
-```bash
-node -e "
-import('{plugin-root}/bin/lib/dev-orchestrator/stack/stack-state.mjs').then((m) => {
-  const opts = { workspaceId: process.argv[1], slug: process.argv[2] };
-  let s = m.readStackState(opts);
-  const resource = JSON.parse(process.argv[3]);
-  const runIdentity = { workspaceId: process.argv[1], taskSlug: process.argv[2], runId: process.argv[4] };
-  s = m.addHostPid(s, resource);
-  s = m.recordOwnedMutation(s, runIdentity, { kind: 'process', resource });
-  m.writeStackState(opts, s);
-});
-" "{workspaceId}" "{slug}" '{"role":"inject","pid":<INJECT_PID>}' "{runId}"
-```
-
-Then, using `mcp__chrome-devtools__*`: `navigate_page` to `http://localhost:<injectPort>/`, `wait_for` the app to render, and if the page is blank reload once (Vite's cold-cache re-optimization can stall the first hit). Confirm the session is authenticated via `take_snapshot` — the URL must not be `/login` and real app content must be present — then close out with `take_screenshot`. Never print the cookie value in any tool output or report.
-
-### Step I — Verify
-
-For each URL in `resolveAuthUrls({ auth, hostByService }).verifyUrls`, issue a request with header `Cookie: <cookieName>=<cookieValue>` and confirm a `200` response. Only declare auth green once every verify URL passes.
+Report whether the session source was `stored`, `login`, or `refreshed`, together with the protected API statuses and final non-login route. Do not include request headers, browser storage, the keyring value, or the cookie file contents.
 
 ### Notes — frontend + auth
 
-- **Browser MCP override.** This path drives the browser exclusively through `mcp__chrome-devtools__*`. That is a deliberate, standing override of the global "use `/browse` for all web browsing" preference — the preference concerns the separate `mcp__claude-in-chrome__*` MCP and does not apply to this local-stack auth path, per the same override documented by the `jelou-local-stack` skill.
+- **Browser boundary.** Resolve Playwright through the `jelou-apps` checkout selected by the boot plan. Do not substitute an HTML cookie injector or a globally installed browser package.
 - **OTP key mismatch (informational).** `bin/lib/api-login.mjs`'s own CLI path uses `mfa-code-<email>` as the Redis key, while this path reads the registry's `auth.otpFallback.keyPrefix` (`2fa-code-`), per `jelou-local-stack`. The configured E2E account has 2FA disabled, so the OTP branch is normally never exercised — if 2FA is ever armed on that account, confirm which key prefix the auth-service actually writes before trusting `readOtpFromRedis`.

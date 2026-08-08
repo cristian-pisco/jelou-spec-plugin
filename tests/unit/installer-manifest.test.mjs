@@ -220,6 +220,24 @@ describe('list-tasks — the scanner is reachable on every runtime', () => {
   }
 });
 
+describe('local auth session — the runtime chain ships everywhere', () => {
+  for (const installer of INSTALLERS) {
+    test(`${installer} ships the genuine cookie and browser-session chain`, () => {
+      const shipped = shippedBins(read(installer));
+      for (const bin of [
+        'bin/lib/dev-orchestrator/stack/auth-cookie-state.mjs',
+        'bin/lib/dev-orchestrator/stack/auth-runtime.mjs',
+        'bin/lib/dev-orchestrator/stack/auth-session.mjs',
+        'bin/lib/dev-orchestrator/stack/auth-urls.mjs',
+        'bin/lib/dev-orchestrator/stack/login-cookie.mjs',
+        'bin/lib/dev-orchestrator/stack/local-keyring.mjs',
+      ]) {
+        assert.ok(shipped.has(bin), `${bin} missing from ${installer}`);
+      }
+    });
+  }
+});
+
 describe('boot-certification workflows — referenced bins exist in the repo', () => {
   const surfaces = [
     'jelou/workflows/map-codebase.md',

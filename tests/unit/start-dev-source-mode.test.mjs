@@ -54,4 +54,19 @@ describe('start-dev source selection', () => {
     assert.match(step, /auth[\s\S]{0,200}!.*localProvisioningAdapter[\s\S]{0,200}stop/i);
     assert.doesNotMatch(step, /--password|E2E_USER_PASSWORD|PASSWORD=/);
   });
+
+  test('establishes the protected jelou-apps session through task cookie state and the keyring profile', () => {
+    const login = workflow.indexOf('### Step G');
+    const notes = workflow.indexOf('### Notes — frontend + auth');
+    const step = workflow.slice(login, notes);
+
+    assert.match(step, /establishAuthenticatedSession/);
+    assert.match(step, /createOsKeyring/);
+    assert.match(step, /localAuthProfile/);
+    assert.match(step, /createBrowserContext/);
+    assert.match(step, /protectedPath/);
+    assert.match(step, /appendLifecycleEvent/);
+    assert.match(step, /exactly one keyring-backed login/i);
+    assert.doesNotMatch(step, /E2E_PASSWORD|E2E_USER_PASSWORD|JLU_INJECT_COOKIE|renderInjectPage|credentials\.envFile/);
+  });
 });
