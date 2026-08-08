@@ -7,7 +7,7 @@ export function stackStatePath(opts) {
 }
 
 export function emptyStackState() {
-  return { projects: [], hostPids: [], frontendEnv: null, backendEnvBackups: [], portAllocations: [] };
+  return { projects: [], hostPids: [], frontendEnv: null, backendEnvBackups: [], portAllocations: [], environmentOverlays: [] };
 }
 
 export function addProject(state, project) {

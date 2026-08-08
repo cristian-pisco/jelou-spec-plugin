@@ -8,6 +8,8 @@ import { teardownSafetyCause } from './lib/registry/splice.mjs';
 import { buildBootPlan } from './lib/boot-engine/plan.mjs';
 import { allocateOwnedPorts, parseListeningPorts } from './lib/dev-orchestrator/stack/ports.mjs';
 import { readStackState, writeStackState } from './lib/dev-orchestrator/stack/stack-state.mjs';
+import { stateDir } from './lib/dev-orchestrator/state.mjs';
+import { persistTopologyOverlays } from './lib/dev-orchestrator/stack/wiring.mjs';
 import { normalizeSourceMode } from './lib/dev-orchestrator/source-mode.mjs';
 import { resolveTaskSources } from './lib/dev-orchestrator/task-source.mjs';
 import { resolveTaskContext } from './lib/dev-orchestrator/task-context.mjs';
@@ -75,14 +77,23 @@ export function buildPlanForWorkspace({ workspaceRoot, slug, sourceMode, taskCon
     sources,
     sourceMode: normalizedMode,
     portAllocations,
+    overlayDirectory: join(stateDir(stateOptions), 'overlays', normalizedMode),
+    previousEnvironmentOverlays: previousState?.environmentOverlays || [],
     occupied,
     resolveImage,
     readEnv,
   }));
   if (persistState) {
+    persistTopologyOverlays(plan.overlayFiles);
     const currentOwners = new Set(portAllocations.map((allocation) => allocation.ownerTag));
     const retainedAllocations = (previousState.portAllocations || []).filter((allocation) => !currentOwners.has(allocation.ownerTag));
-    writeStackState(stateOptions, { ...previousState, portAllocations: [...retainedAllocations, ...portAllocations] });
+    const retainedOverlays = (previousState.environmentOverlays || []).filter((overlay) => overlay.sourceMode !== normalizedMode);
+    const environmentOverlays = plan.overlayFiles.map(({ serviceId, sourceMode: mode, path, digest }) => ({ serviceId, sourceMode: mode, path, digest }));
+    writeStackState(stateOptions, {
+      ...previousState,
+      portAllocations: [...retainedAllocations, ...portAllocations],
+      environmentOverlays: [...retainedOverlays, ...environmentOverlays],
+    });
   }
   const sourceByService = new Map(sources.map((source) => [source.serviceId, source]));
   return {

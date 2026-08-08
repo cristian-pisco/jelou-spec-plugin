@@ -1,6 +1,6 @@
 import { allocateHostPorts } from '../dev-orchestrator/stack/ports.mjs';
 import { renderOverride } from '../dev-orchestrator/stack/override.mjs';
-import { wireEnv } from '../dev-orchestrator/stack/wiring.mjs';
+import { applyTopologyOverlays, wireEnv } from '../dev-orchestrator/stack/wiring.mjs';
 import { resolveBaseImage } from '../dev-orchestrator/stack/resolve-base-image.mjs';
 import { resolveComposeMounts } from '../dev-orchestrator/stack/resolve-compose-mounts.mjs';
 import { resolveDepsProvision } from './deps-provision.mjs';
@@ -79,7 +79,7 @@ function descriptorPorts({ service, workspaceId, slug, sourceMode, taken, basePo
   });
 }
 
-export function buildBootPlan({ registry, workspaceId, slug, worktreePaths, sources, sourceMode, portAllocations, occupied = [], resolveImage = defaultResolveImage, resolveMounts = defaultResolveMounts, readEnv = defaultReadEnv, exists = defaultExists, readJson = defaultReadJson, readFile = defaultReadFile }) {
+export function buildBootPlan({ registry, workspaceId, slug, worktreePaths, sources, sourceMode, portAllocations, overlayDirectory = null, previousEnvironmentOverlays = [], occupied = [], resolveImage = defaultResolveImage, resolveMounts = defaultResolveMounts, readEnv = defaultReadEnv, exists = defaultExists, readJson = defaultReadJson, readFile = defaultReadFile }) {
   const wt = worktreePaths || {};
   const sourceByService = new Map((sources || []).map((source) => [source.serviceId, source]));
   const completeDescriptors = sourceByService.size > 0;
@@ -96,7 +96,7 @@ export function buildBootPlan({ registry, workspaceId, slug, worktreePaths, sour
     for (const [target, envVar] of Object.entries(svc.peers || {})) {
       if (isolated.has(target)) wiredPeers[target] = envVar;
     }
-    const wiredEnv = Object.keys(wiredPeers).length
+    const wiredEnv = !completeDescriptors && Object.keys(wiredPeers).length
       ? maskWiredEnv(wireEnv({ envText: readEnv(svc.path), peers: wiredPeers, slug, peerInternalPort }))
       : null;
 
@@ -190,5 +190,18 @@ export function buildBootPlan({ registry, workspaceId, slug, worktreePaths, sour
     };
   });
 
-  return { services, network: registry.network, slug };
+  if (completeDescriptors && overlayDirectory) {
+    const overlays = applyTopologyOverlays({
+      services,
+      registryServices: registry.services,
+      slug,
+      sourceMode,
+      overlayDirectory,
+      previousOverlays: previousEnvironmentOverlays,
+      hostGateway: registry.network.hostGateway,
+    });
+    return { services: overlays.services, network: registry.network, slug, overlayFiles: overlays.overlayFiles };
+  }
+
+  return { services, network: registry.network, slug, overlayFiles: [] };
 }

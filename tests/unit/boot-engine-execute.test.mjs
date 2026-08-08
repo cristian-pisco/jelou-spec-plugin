@@ -79,6 +79,19 @@ describe('planEntryToCommands task-isolated', () => {
     const d = planEntryToCommands(taskEntry({ imageResolved: false }));
     assert.equal(d.imageResolved, false);
   });
+
+  test('a Docker consumer receives its generated overlay at process launch without a source env write', () => {
+    const path = '/runtime/overlays/task-aware/jelou-api.env';
+    const d = planEntryToCommands(taskEntry({
+      environmentOverlay: { path, digest: 'stable-digest', restartRequired: false },
+    }));
+
+    assert.deepEqual(d.files, [
+      { path: '/wt/jelou-api/docker-compose.jlu.yml', content: 'services:\n  app:\n    image: jelou-api-app\n' },
+    ]);
+    assert.deepEqual(d.environmentFiles, [path]);
+    assert.deepEqual(d.exec, ['exec', '--env-file', path, '-d', 'jelou-api-t1', 'sh', '-lc', 'cd /app && yarn start:dev > /tmp/jelou-api-t1.dev.log 2>&1']);
+  });
 });
 
 describe('planEntryToCommands dependency install', () => {
@@ -135,6 +148,28 @@ describe('planEntryToCommands shared-reuse', () => {
     const d = planEntryToCommands(sharedEntry({ teardownCmd: null }));
     assert.deepEqual(d.files, []);
     assert.equal(d.teardown, null);
+  });
+
+  test('a changed task overlay requires restart before readiness under its new digest', () => {
+    const d = planEntryToCommands(sharedEntry({
+      launcher: 'shell',
+      environmentOverlay: {
+        path: '/runtime/overlays/main/chatbot-server.env',
+        digest: 'new-digest',
+        restartRequired: true,
+      },
+    }));
+
+    assert.deepEqual(d.files, []);
+    assert.deepEqual(d.environmentFiles, ['/runtime/overlays/main/chatbot-server.env']);
+    assert.equal(d.restartRequired, true);
+    assert.deepEqual(d.readiness, {
+      type: 'stdout_match',
+      pattern: 'started',
+      overlayDigest: 'new-digest',
+      priorReadinessValid: false,
+      requiresRestartBeforeReady: true,
+    });
   });
 });
 

@@ -5,7 +5,7 @@
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -428,6 +428,93 @@ describe('buildPlanForWorkspace — preflight mutation boundary', () => {
       /api-service.*43210.*unrelated.*912/i,
     );
     assert.deepEqual(readStackState(stateOptions).portAllocations, portAllocations);
+  });
+});
+
+describe('buildPlanForWorkspace — task-scoped environment overlays', () => {
+  test('persists a deterministic routed-only overlay without changing the source environment', (t) => {
+    const consumer = hostService('consumer', "pkill -f '[c]onsumer.*src/index\\.ts' || true");
+    const provider = hostService('provider', "pkill -f '[p]rovider.*src/index\\.ts' || true");
+    const sourceRoot = mkdtempSync(join(tmpdir(), 'boot-plan-sources-'));
+    t.after(() => rmSync(sourceRoot, { recursive: true, force: true }));
+    consumer.path = join(sourceRoot, 'consumer');
+    provider.path = join(sourceRoot, 'provider');
+    consumer.peers = { provider: 'API_URL' };
+    consumer.depends_on = ['provider'];
+    consumer.dev.ports.PORT = 4100;
+    provider.dev.ports.PORT = 4200;
+    mkdirSync(consumer.path, { recursive: true });
+    mkdirSync(provider.path, { recursive: true });
+    const sourceEnv = 'API_URL=https://production.example\nSECRET=developer-owned\n';
+    writeFileSync(join(consumer.path, '.env'), sourceEnv);
+    const ws = makeWorkspace(registry([consumer, provider]));
+    t.after(() => rmSync(ws, { recursive: true, force: true }));
+    const workspaceId = computeWorkspaceId(ws);
+    const stateBaseDir = mkdtempSync(join(tmpdir(), 'boot-plan-state-'));
+    t.after(() => rmSync(stateBaseDir, { recursive: true, force: true }));
+    const input = {
+      workspaceRoot: ws,
+      slug: 'overlay-task',
+      sourceMode: 'main',
+      taskContext: { slug: 'overlay-task' },
+      livePorts: [],
+      persistState: true,
+      stateBaseDir,
+      pathExists: () => true,
+      inspectGit: (path) => ({ topLevel: path, commit: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', branch: 'main', worktrees: [] }),
+    };
+
+    const first = buildPlanForWorkspace(input);
+    const second = buildPlanForWorkspace(input);
+    const overlay = first.services.find((service) => service.id === 'consumer').environmentOverlay;
+    const stored = readStackState({ workspaceId, slug: 'overlay-task', baseDir: stateBaseDir });
+
+    assert.equal(readFileSync(join(consumer.path, '.env'), 'utf8'), sourceEnv);
+    assert.equal(readFileSync(overlay.path, 'utf8'), 'API_URL=http://localhost:4200\n');
+    assert.match(overlay.digest, /^[a-f0-9]{64}$/);
+    assert.equal(overlay.path.includes('/overlays/main/consumer.env'), true);
+    assert.deepEqual(second.services.find((service) => service.id === 'consumer').environmentOverlay, overlay);
+    assert.deepEqual(stored.environmentOverlays, [{ serviceId: 'consumer', sourceMode: 'main', path: overlay.path, digest: overlay.digest }]);
+    assert.equal(statSync(overlay.path).mode & 0o777, 0o600);
+  });
+
+  test('a changed overlay digest requires the consumer to restart before readiness', (t) => {
+    const consumer = hostService('consumer', "pkill -f '[c]onsumer.*src/index\\.ts' || true");
+    const providerA = hostService('provider-a', "pkill -f '[p]rovider-a.*src/index\\.ts' || true");
+    const providerB = hostService('provider-b', "pkill -f '[p]rovider-b.*src/index\\.ts' || true");
+    consumer.peers = { 'provider-a': 'API_URL' };
+    consumer.dev.ports.PORT = 4100;
+    providerA.dev.ports.PORT = 4200;
+    providerB.dev.ports.PORT = 4300;
+    const ws = makeWorkspace(registry([consumer, providerA, providerB]));
+    t.after(() => rmSync(ws, { recursive: true, force: true }));
+    const workspaceId = computeWorkspaceId(ws);
+    const stateBaseDir = mkdtempSync(join(tmpdir(), 'boot-plan-state-'));
+    t.after(() => rmSync(stateBaseDir, { recursive: true, force: true }));
+    const input = {
+      workspaceRoot: ws,
+      slug: 'overlay-change-task',
+      sourceMode: 'main',
+      taskContext: { slug: 'overlay-change-task' },
+      livePorts: [],
+      persistState: true,
+      stateBaseDir,
+      pathExists: () => true,
+      inspectGit: (path) => ({ topLevel: path, commit: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', branch: 'main', worktrees: [] }),
+    };
+
+    const first = buildPlanForWorkspace(input);
+    consumer.peers = { 'provider-b': 'API_URL' };
+    writeFileSync(join(ws, 'registry', 'registry.json'), JSON.stringify(registry([consumer, providerA, providerB])));
+    const second = buildPlanForWorkspace(input);
+    const firstOverlay = first.services.find((service) => service.id === 'consumer').environmentOverlay;
+    const secondOverlay = second.services.find((service) => service.id === 'consumer').environmentOverlay;
+    const stored = readStackState({ workspaceId, slug: 'overlay-change-task', baseDir: stateBaseDir });
+
+    assert.notEqual(secondOverlay.digest, firstOverlay.digest);
+    assert.equal(secondOverlay.restartRequired, true);
+    assert.equal(readFileSync(secondOverlay.path, 'utf8'), 'API_URL=http://localhost:4300\n');
+    assert.equal(stored.environmentOverlays.find((overlay) => overlay.serviceId === 'consumer').digest, secondOverlay.digest);
   });
 });
 
