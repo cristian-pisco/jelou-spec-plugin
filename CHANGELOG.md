@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.344] — 2026-08-08
+
+### Changed
+- Merge pull request #78 from cristian-pisco/feat/speed-lote-1
+
 ## [0.3.343] — 2026-08-07
 
 ### Fixed
