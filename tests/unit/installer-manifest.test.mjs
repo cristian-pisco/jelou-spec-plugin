@@ -29,6 +29,7 @@ const FEATURE_BINS = [
   'bin/e2e-login.mjs',
   'bin/e2e-session-probe.mjs',
   'bin/e2e-session-sync.mjs',
+  'bin/extract-doc-sections.mjs',
   'bin/extract-trace.mjs',
   'bin/finalize-phase.sh',
   'bin/format-changed-files.sh',
