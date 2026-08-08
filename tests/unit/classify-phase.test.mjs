@@ -1,8 +1,8 @@
 // tests/unit/classify-phase.test.mjs
 //
-// Tests for bin/classify-phase.sh — the 4 subcommands (mode | trivial |
-// additive | compilable) that replace inline Bash classifiers in
-// execute-task.md Steps 7c.1, 7e.1, 7h, and 8a.5.
+// Tests for bin/classify-phase.sh — the 3 subcommands (mode | trivial |
+// compilable) that replace inline Bash classifiers in
+// execute-task.md Steps 7c.1, 7e, and 8a.5.
 //
 // Run: `node --test tests/unit/classify-phase.test.mjs`
 
@@ -325,53 +325,6 @@ describe('classify-phase.sh trivial', () => {
       });
       assert.equal(r.parsed.trivial, 'false');
       assert.match(r.parsed.downgrade_reason, /lockfile/);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-});
-
-// ===========================================================================
-// additive subcommand
-// ===========================================================================
-describe('classify-phase.sh additive', () => {
-  test('additive=true when only new files added', () => {
-    const dir = setupRepo();
-    try {
-      writeFileSync(join(dir, 'newfile.ts'), 'x\n');
-      git(dir, 'add', 'newfile.ts');
-      const r = runScript('additive', { CLASSIFY_SOURCE_PATH: dir });
-      assert.equal(r.code, 0);
-      assert.equal(r.parsed.additive, 'true');
-      assert.equal(r.parsed.modified_count, '0');
-      assert.equal(r.parsed.deleted_count, '0');
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test('additive=false when existing file is modified', () => {
-    const dir = setupRepo();
-    try {
-      writeFileSync(join(dir, 'baseline.txt'), 'x\nmore\n');
-      const r = runScript('additive', { CLASSIFY_SOURCE_PATH: dir });
-      assert.equal(r.parsed.additive, 'false');
-      assert.equal(r.parsed.modified_count, '1');
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test('additive=false when a file is deleted', () => {
-    const dir = setupRepo();
-    try {
-      writeFileSync(join(dir, 'extra.txt'), 'y\n');
-      git(dir, 'add', 'extra.txt');
-      git(dir, 'commit', '-q', '-m', 'add extra');
-      rmSync(join(dir, 'extra.txt'));
-      const r = runScript('additive', { CLASSIFY_SOURCE_PATH: dir });
-      assert.equal(r.parsed.additive, 'false');
-      assert.equal(r.parsed.deleted_count, '1');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

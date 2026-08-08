@@ -222,6 +222,7 @@ Read and cache task artifacts in one pass (single parallel tool-call message whe
       cd <SERVICE_CWD> && git diff <DEFAULT_BRANCH>..production/<TASK_SLUG>
       ```
 4. Spawn `jlu-spec-reviewer` agent with model: **MODEL_CONFIG.code** (default: sonnet):
+   - The dispatch prompt's FIRST line is the literal `MODE: compliance` — the mode contract: without a valid `MODE` line the agent returns `STATUS: NEEDS_CONTEXT` instead of inferring a mode.
    - Pass: SPEC.md content, PROPOSAL.md content (or empty), SPEC-changelog.md content (or empty), combined git diff for all services, service source paths.
 5. Receive the compliance report from the agent.
 6. **Decision gate**:

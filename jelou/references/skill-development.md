@@ -220,7 +220,7 @@ Apply when:
 
 ## Extending the Harness
 
-`tests/pressure/runner.mjs` currently registers two agents in `const AGENTS = [...]`. To bring TDD mode to a new agent (e.g., `jlu-implementer`, `jlu-qa-agent`):
+`tests/pressure/runner.mjs` currently registers two agents in `const AGENTS = [...]`. To bring TDD mode to a new agent (e.g., `jlu-implementer`, `jlu-spec-reviewer`):
 
 1. Add the agent name to the `AGENTS` array in `runner.mjs`.
 2. Create `tests/fixtures/<agent-short-name>/` with at minimum one fixture (`001-happy-path` or equivalent baseline).

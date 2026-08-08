@@ -116,23 +116,30 @@ describe('test-running agents — reference the policy and carry caps', () => {
   });
 });
 
-describe('qa-agent — never re-executes tests', () => {
-  const qa = read('agents/jlu-qa-agent.md');
+describe('spec-reviewer — never executes tests in either mode', () => {
+  const reviewer = read('agents/jlu-spec-reviewer.md');
 
-  test('per-phase validation stays static', () => {
-    assert.match(qa, /Do NOT run the test suite during per-phase validation/);
+  test('the never-executes rule is a shared rule across both modes', () => {
+    assert.match(reviewer, /You are static in both modes/);
+    assert.match(reviewer, /NEVER execute tests or coverage/);
+  });
+
+  test('Final QA mode consumes Step 8b evidence instead of re-running', () => {
+    assert.match(reviewer, /Do NOT re-run tests in this agent/);
   });
 
   test('coverage analysis stays read-only', () => {
-    assert.match(qa, /Do NOT invoke `jest --coverage`/);
+    assert.match(reviewer, /Do NOT invoke `jest --coverage`/);
   });
 });
 
 describe('orchestrator workflows — capped invocations stay capped', () => {
-  test('execute-task Step 8b keeps fixed worker caps', () => {
+  test('execute-task Step 8b keeps fixed worker caps with the fan-out conditional', () => {
     const executeTask = read('jelou/workflows/execute-task.md');
     assert.match(executeTask, /--findRelatedTests \$CHANGED_SOURCES --maxWorkers=2/);
     assert.match(executeTask, /--poolOptions\.threads\.maxThreads=2/);
+    assert.match(executeTask, /`TASK_FANOUT_CAP > 1`: drop every command to \*\*1 worker\*\*/);
+    assert.match(executeTask, /--maxWorkers=1/);
     assert.match(executeTask, /never invokes the bare full-suite command/);
   });
 
@@ -171,5 +178,8 @@ describe('references — no stale full-suite guidance', () => {
   test('parallel-dispatch tightens caps to one worker under fan-out', () => {
     const parallelDispatch = read('jelou/references/parallel-dispatch.md');
     assert.match(parallelDispatch, /tighten its test runs to ONE worker/);
+    assert.match(parallelDispatch, /planner-resolved `auto`/);
+    assert.match(parallelDispatch, /[Ss]equential is still the outcome when the resolved cap is 1/);
+    assert.doesNotMatch(parallelDispatch, /Default local behavior is sequential/);
   });
 });

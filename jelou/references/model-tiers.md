@@ -19,7 +19,7 @@
 | **proposal-agent** | Translates spec into execution-ready plan with phases, dependencies, risks. Structured document generation from clear inputs. |
 | **code agents** (test-writer, implementer) | Write tests and implementation code. Need strong coding ability with awareness of conventions and patterns. |
 | **tasks-agent** | Manages TASKS.md updates, tracks progress, handles execution state. Needs accuracy in structured updates. |
-| **qa-agent** | Validates implementations against spec, reviews coverage, checks cross-service contracts. Needs thorough analytical ability. |
+| **spec-reviewer** | Final static verifier: spec compliance report (ship) and Final QA (Step 8c) — coverage review, cross-service contracts, smell catalogs. Needs thorough analytical ability. |
 
 ### Tier 3: Haiku — Lightweight Operational Roles
 
@@ -67,7 +67,7 @@ Users can override model assignments by adding a `models` section to `.spec-work
 | `orchestrator` | opus | main orchestrator (new-task, execute-task) |
 | `research` | sonnet | codebase-analyzer-structural, codebase-analyzer-operational |
 | `proposal` | sonnet | proposal-agent |
-| `code` | sonnet | test-writer, implementer, qa-agent, build-validator |
+| `code` | sonnet | test-writer, implementer, spec-reviewer, build-validator |
 | `operational` | haiku | git-agent, tasks-agent |
 
 ### Resolution Order

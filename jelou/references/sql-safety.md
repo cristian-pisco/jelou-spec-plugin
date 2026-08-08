@@ -1,6 +1,6 @@
 # SQL Safety Gate
 
-> Inject this block into every agent prompt that has Bash access (test-writer, implementer, qa-agent, build-validator, build-validator's fix loop).
+> Inject this block into every agent prompt that has Bash access (test-writer, implementer, spec-reviewer, build-validator, build-validator's fix loop).
 
 ```
 ## SQL Safety Gate
@@ -15,5 +15,5 @@ Whenever the orchestrator dispatches a subagent that has the `Bash` tool, prepen
 
 ## When NOT to inject
 
-- Read-only / planning agents (proposal-agent, qa-agent in static mode without Bash).
+- Read-only / planning agents (proposal-agent, any agent dispatched without Bash).
 - Inline orchestrator Bash that the orchestrator itself runs (the orchestrator is governed by its own system prompt, not by this gate).

@@ -73,6 +73,18 @@ if (args.phase != null && Number.isNaN(phaseNum)) die('--phase must be a number'
 const attrs = {};
 if (args.model) attrs.model_used = args.model;
 
+const NUMERIC_ATTR_FLAGS = [
+  ['phase-parallelism', 'phase_parallelism'],
+  ['wave-index', 'wave_index'],
+  ['wave-width', 'wave_width'],
+];
+for (const [flag, attr] of NUMERIC_ATTR_FLAGS) {
+  if (args[flag] == null) continue;
+  const value = Number(args[flag]);
+  if (Number.isNaN(value)) die(`--${flag} must be a number`);
+  attrs[attr] = value;
+}
+
 const r = startSpan(resolveTraceFile(), {
   scope: args.scope,
   name: args.name,

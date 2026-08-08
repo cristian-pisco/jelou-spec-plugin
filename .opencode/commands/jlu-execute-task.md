@@ -19,6 +19,7 @@ Resolution rules:
 Read exactly one resolved workflow file and execute it exactly.
 
 Command arguments: $ARGUMENTS
+Supported flags in $ARGUMENTS: `--no-autochain` (skip the Step 9.5 ship chain) and `--refactor` (opt in to the Step 8a.3 task-level refactor pass, skipped by default).
 Current directory is the project working directory.
 
 Use `question` for user prompts (OpenCode equivalent of question).

@@ -1,6 +1,6 @@
 # QA Smell Catalog
 
-> Code smells and over-engineering patterns the `jlu-qa-agent` reviews during Final Validation. Read on demand — do not preload for per-phase reviews.
+> Code smells and over-engineering patterns `jlu-spec-reviewer` reviews in Final QA mode (Step 8c). Read on demand.
 >
 > For each finding: provide exact file path and line range, classify severity, include a one-line fix suggestion. Do not flag patterns that match the codebase's established architecture (check CONVENTIONS.md and ARCHITECTURE.md).
 

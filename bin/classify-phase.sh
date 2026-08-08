@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
-# classify-phase.sh — consolidates the 4 phase classifiers used by execute-task
-# Steps 7c.1, 7e, 7h, and 8a.5.
+# classify-phase.sh — consolidates the 3 phase classifiers used by execute-task
+# Steps 7c.1, 7e, and 8a.5.
 #
 # Invoked with a subcommand as the first positional arg:
 #   classify-phase.sh mode         (Step 7c.1: docs | tdd)
 #   classify-phase.sh trivial      (Step 7e: trivial yes/no, with safety override)
-#   classify-phase.sh additive     (Step 7h:  purely-additive diff yes/no)
 #   classify-phase.sh compilable   (Step 8a.5:  compilable source file present yes/no)
 #
 # Output (stdout, key=value lines) is subcommand-specific. See each subcommand
@@ -22,7 +21,7 @@ set -euo pipefail
 
 SUBCOMMAND="${1:-}"
 if [[ -z "$SUBCOMMAND" ]]; then
-  echo "ERROR: subcommand required (mode|trivial|additive|compilable)" >&2
+  echo "ERROR: subcommand required (mode|trivial|compilable)" >&2
   exit 1
 fi
 
@@ -213,42 +212,6 @@ classify_trivial() {
 }
 
 # ===========================================================================
-# Subcommand: additive
-# ===========================================================================
-classify_additive() {
-  : "${CLASSIFY_SOURCE_PATH:?CLASSIFY_SOURCE_PATH required (path to service worktree/repo)}"
-
-  if [[ ! -d "$CLASSIFY_SOURCE_PATH" ]]; then
-    echo "ERROR: source path not found: $CLASSIFY_SOURCE_PATH" >&2
-    exit 1
-  fi
-
-  cd "$CLASSIFY_SOURCE_PATH"
-
-  MODIFIED="$(git diff --diff-filter=M --name-only HEAD 2>/dev/null || echo "")"
-  DELETED="$(git diff --diff-filter=D --name-only HEAD 2>/dev/null || echo "")"
-
-  MODIFIED_COUNT=0
-  DELETED_COUNT=0
-  if [[ -n "$MODIFIED" ]]; then
-    MODIFIED_COUNT="$(echo "$MODIFIED" | grep -c '^')"
-  fi
-  if [[ -n "$DELETED" ]]; then
-    DELETED_COUNT="$(echo "$DELETED" | grep -c '^')"
-  fi
-
-  if [[ "$MODIFIED_COUNT" -eq 0 ]] && [[ "$DELETED_COUNT" -eq 0 ]]; then
-    ADDITIVE="true"
-  else
-    ADDITIVE="false"
-  fi
-
-  echo "additive=$ADDITIVE"
-  echo "modified_count=$MODIFIED_COUNT"
-  echo "deleted_count=$DELETED_COUNT"
-}
-
-# ===========================================================================
 # Subcommand: compilable
 # ===========================================================================
 classify_compilable() {
@@ -327,10 +290,9 @@ classify_compilable() {
 case "$SUBCOMMAND" in
   mode)        classify_mode ;;
   trivial)     classify_trivial ;;
-  additive)    classify_additive ;;
   compilable)  classify_compilable ;;
   *)
-    echo "ERROR: unknown subcommand: $SUBCOMMAND (expected mode|trivial|additive|compilable)" >&2
+    echo "ERROR: unknown subcommand: $SUBCOMMAND (expected mode|trivial|compilable)" >&2
     exit 1
     ;;
 esac

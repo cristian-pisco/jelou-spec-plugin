@@ -423,7 +423,7 @@ setting `status: closed` in its frontmatter.
 
 | Env var | Default | Effect |
 |---------|---------|--------|
-| `JLU_PHASE_PARALLELISM` | `1` | Concurrent agent fan-out per phase AND per-task (proposal-agent multi-service, codebase analyzers, Step 8b across services). Bump only if your box has headroom. |
+| `JLU_PHASE_PARALLELISM` | `auto` in `/jlu-execute-task`; `1` in `/jlu-map-codebase` | Inside `execute-task` the semantics changed: the wave planner (`bin/plan-phase-waves.mjs`) resolves the cap automatically, and this variable is a **manual ceiling over auto — reduce-only** (it can lower concurrency, never raise it above the planner's cap). `map-codebase` keeps the old semantics: direct cap, default `1`. |
 | `JLU_FINAL_TEST_PARALLELISM` | — | **Deprecated.** No longer read — the orchestrator no longer runs the full suite. |
 | `JLU_TEST_MAX_WORKERS` | — | **Deprecated.** Step 8b is fixed at 2 workers; `/jlu-test-suite` is fixed at 1. |
 
@@ -729,7 +729,7 @@ Use the `/jlu-trace-report` skill to inspect the workspace traces:
 # agent_role       n   p50      p95      retry_rate  escalation_rate
 # implementer      14  62.0s    140.0s   21%         0%
 # test-writer      8   28.0s    35.0s    0%          0%
-# qa-agent         5   18.0s    24.0s    0%          0%
+# spec-reviewer    5   18.0s    24.0s    0%          0%
 ```
 
 Other modes: `--by-phase` (durations grouped by `service:phase_num`), `--by-task <slug>` (full span tree of one task), `--trends` (week-over-week dispatch counts per agent).
@@ -765,8 +765,8 @@ You don't instrument anything by hand: running the normal lifecycle emits the wh
 ```bash
 /jlu-trace-report --by-agent
 # agent_role   n   p50    p95     retry_rate  escalation_rate
-# implementer  19  1.0s   1.0s    42%         0%
-# qa-agent     1   1.0s   1.0s    0%          100%
+# implementer    19  1.0s   1.0s    42%         0%
+# spec-reviewer  1   1.0s   1.0s    0%          100%
 
 node bin/trace-analyze.mjs --by-task add-auth   # full span tree for one task
 ```
@@ -972,9 +972,7 @@ stateDiagram-v2
         wave_planning --> phase_execution
         state phase_execution {
             [*] --> tdd_cycle
-            tdd_cycle --> refactor
-            refactor --> per_phase_qa
-            per_phase_qa --> commit
+            tdd_cycle --> commit
             commit --> [*]
         }
         phase_execution --> final_validation
@@ -1031,7 +1029,6 @@ flowchart TB
             tw["test-writer · Tier 2 + backend E2E"]
             uiw["ui-e2e-writer · Playwright"]
             impl["implementer · fix agent"]
-            qa["qa-agent"]
             build["build-validator"]
         end
         subgraph delivery["Delivery"]
@@ -1072,8 +1069,9 @@ flowchart TB
     new --> spec_int --> spec_file
     refine --> spec_int
     exec --> proposal --> prop_file
-    exec --> tddc --> refac --> qa
-    qa --> impl
+    exec --> tddc --> refac
+    exec --> specrev
+    specrev --> impl
     exec --> tw & uiw
     exec --> build
     ship --> specrev

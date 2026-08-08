@@ -41,7 +41,7 @@
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `agent` | string | yes | The role of the reporting agent (e.g., `test-writer`, `implementer`, `qa-agent`, `proposal-agent`). |
+| `agent` | string | yes | The role of the reporting agent (e.g., `test-writer`, `implementer`, `spec-reviewer`, `proposal-agent`). |
 | `task` | string | yes | The task slug this work belongs to. |
 | `service` | string | yes | The service ID the agent was working on. Use `"global"` for agents working across services (e.g., proposal-agent global pass). |
 | `status` | enum | yes | Current status: `pending` (not started), `in_progress` (still working), `success` (completed successfully), `blocked` (cannot continue), `failed` (completed with errors). |
@@ -114,11 +114,11 @@
 }
 ```
 
-### QA Agent Final Validation
+### Final QA Validation (spec-reviewer)
 
 ```json
 {
-  "agent": "qa-agent",
+  "agent": "spec-reviewer",
   "task": "add-user-auth",
   "service": "service-auth",
   "status": "success",

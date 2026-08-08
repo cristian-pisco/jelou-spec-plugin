@@ -73,12 +73,12 @@ describe('no-comments rule — every code-authoring agent inherits the doctrine'
 });
 
 describe('no-comments rule — QA gate enforces it on the diff', () => {
-  test('jlu-qa-agent.md flags narrating comments as FAIL', () => {
-    const src = read('agents/jlu-qa-agent.md');
+  test('jlu-spec-reviewer.md flags narrating comments as FAIL', () => {
+    const src = read('agents/jlu-spec-reviewer.md');
     assert.match(
       src,
       RULE_PHRASE,
-      'jlu-qa-agent.md must keep the check that flags line-by-line comments as a FAIL',
+      'jlu-spec-reviewer.md must keep the check that flags line-by-line comments as a FAIL',
     );
   });
 });

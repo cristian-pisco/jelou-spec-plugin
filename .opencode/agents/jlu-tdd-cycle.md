@@ -213,6 +213,12 @@ Per requirement that validates/types input or resolves a cross-field reference:
 ### Test Rewrites (if any)
 - <list any tests you rewrote mid-phase, with the spec quote that drove the rewrite. Write "None" if none occurred.>
 
+### Test Objections
+- <one bullet per objection: a test you believe asserts the wrong behavior, a spec requirement you could not test faithfully, or an assertion you weakened under constraint — what you objected to + why. Write the literal `None` if you have none. The orchestrator carries this section into `tdd_flags` for priority scrutiny at final QA (Step 8c).>
+
+### Deviations from Expected Approach
+- <one bullet per deviation from the phase file's expected approach (different module, different pattern, skipped guidance) — what you did instead + why. Write the literal `None` if you have none. The orchestrator carries this section into `tdd_flags` for priority scrutiny at final QA (Step 8c).>
+
 ### Tier 2 Deferred
 | Requirement | Reason | Integration Test Needed |
 |-------------|--------|-------------------------|
@@ -250,4 +256,4 @@ Per requirement that validates/types input or resolves a cross-field reference:
 
 - Every slice's test was red before its implementation existed.
 - The final report has zero `Test Rewrites` (or, if there are some, they each have a spec quote that justifies them).
-- Per-phase QA (Step 7h) finds zero TDD-principle violations introduced.
+- Final QA (Step 8c) finds zero TDD-principle violations introduced.
