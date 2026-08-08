@@ -25,3 +25,4 @@ docs/
 
 # Codex project-local skill install target (.agents/plugins/ stays tracked)
 .agents/skills/
+.worktrees/
