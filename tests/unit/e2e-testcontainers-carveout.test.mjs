@@ -17,11 +17,15 @@ const read = (p) => readFileSync(join(ROOT, p), 'utf8');
 const E2E_PATH = /test\/e2e\/\*\*|\*\.e2e-spec\.ts/;
 
 describe('Testcontainers carve-out — E2E path is the only exception', () => {
-  test('qa-agent exempts the E2E path and still bans it elsewhere', () => {
-    const qa = read('agents/jlu-qa-agent.md');
-    assert.match(qa, E2E_PATH);
-    assert.match(qa, /\/jlu-goal/);
-    assert.match(qa, /outside the E2E path/i);
+  test('the ban is canonical in tdd-cycle.md and spec-reviewer applies it by reference', () => {
+    const tdd = read('jelou/references/tdd-cycle.md');
+    assert.match(tdd, /### Test Tier Compliance \(canonical Docker\/Testcontainers ban\)/);
+    const reviewer = read('agents/jlu-spec-reviewer.md');
+    assert.match(reviewer, /canonical in `jelou\/references\/tdd-cycle\.md`/);
+    assert.match(reviewer, /"Test Tier Compliance"/);
+    assert.match(reviewer, E2E_PATH);
+    assert.match(reviewer, /\/jlu-goal/);
+    assert.match(reviewer, /outside the E2E path/i);
   });
 
   test('test-writer allows Testcontainers only in the E2E path', () => {

@@ -75,8 +75,8 @@ describe('QA gate — breadth-aware coverage', () => {
     assert.match(c, /payload realism/);
   });
 
-  test('jlu-qa-agent.md derives the rejection space from the contract', () => {
-    const a = read('agents/jlu-qa-agent.md');
+  test('jlu-spec-reviewer.md Final QA derives the rejection space from the contract', () => {
+    const a = read('agents/jlu-spec-reviewer.md');
     assert.match(a, /[Dd]erive the rejection space from the contract/);
     assert.match(a, /Coverage-Breadth Smells/);
   });

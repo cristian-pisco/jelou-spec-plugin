@@ -5,7 +5,7 @@
 
 > **Execution policy**: This workflow runs fully autonomous. The ONLY case where execution pauses for user input is after 5 failed retry attempts on a phase or build step. All other decisions are auto-resolved.
 
-> **SQL Safety Gate**: inject the block from `jelou/references/sql-safety.md` into every Bash-capable agent prompt (test-writer, implementer, qa-agent, build-validator).
+> **SQL Safety Gate**: inject the block from `jelou/references/sql-safety.md` into every Bash-capable agent prompt (test-writer, implementer, spec-reviewer, build-validator).
 
 ---
 
@@ -109,7 +109,7 @@ captured tokens before slug resolution.
 3. Store as `MODEL_CONFIG` — a map of group name → model name.
 4. When spawning agents in subsequent steps, resolve the model:
    - For proposal-agent: use `MODEL_CONFIG.proposal` or default `"sonnet"`
-   - For test-writer, implementer, qa-agent, build-validator: use `MODEL_CONFIG.code` or default `"sonnet"`
+   - For test-writer, implementer, spec-reviewer (final QA), build-validator: use `MODEL_CONFIG.code` or default `"sonnet"`
    - For git-agent, tasks-agent: use `MODEL_CONFIG.operational` or default `"haiku"`
 
 ---
@@ -464,7 +464,7 @@ Then, at the start of each wave:
 
 ### Step 7 — Agent dispatch wrapper (referenced by every subagent dispatch below)
 
-Each subagent dispatch in this Step (test-writer, implementer, tdd-cycle, qa-agent, build-validator) is wrapped in a span pair. Apply this pattern around every dispatch:
+Each subagent dispatch in this Step (test-writer, implementer, tdd-cycle, build-validator) is wrapped in a span pair. Apply this pattern around every dispatch:
 
 **Before the dispatch:**
 ```bash
@@ -478,7 +478,7 @@ DS_OUT=$(node "<root>/bin/trace-start-span.mjs" \
 DISPATCH_SPAN_ID=$(echo "$DS_OUT" | jq -r '.span_id // ""')
 ```
 
-Replace `<agent-role>` with the literal agent role (`test-writer`, `implementer`, `tdd-cycle`, `refactor-agent`, `qa-agent`, `build-validator`). `$MODEL_FOR_AGENT` is resolved from `MODEL_CONFIG` (Step 2b).
+Replace `<agent-role>` with the literal agent role (`test-writer`, `implementer`, `tdd-cycle`, `refactor-agent`, `spec-reviewer`, `build-validator`). `$MODEL_FOR_AGENT` is resolved from `MODEL_CONFIG` (Step 2b).
 
 Measurement attrs (they make per-phase duration, critical path, and Step 7+8 wall-clock derivable from the spans): `$WAVE_CHOSEN_CAP` = `WAVE_PLAN.chosen_cap`; `$WAVE_INDEX` = the 1-based index of the current wave; `$WAVE_WIDTH` = the number of phases dispatched concurrently in the current chunk. For dispatches outside the Step 7 wave loop (8a.3, 8a.5), pass `--phase-parallelism "$TASK_FANOUT_CAP"` and omit the two wave flags.
 
@@ -511,7 +511,7 @@ This wrapper applies to every `task` (OpenCode) / `Agent` (Claude Code) dispatch
 
 ### 7a. Report Persistence Discipline (context-saturation guard)
 
-For every sub-agent dispatched within this Step 7 loop (`jlu-test-writer`, `jlu-implementer`, `jlu-tdd-cycle`, `jlu-qa-agent`), the orchestrator MUST follow this protocol to keep its own context window bounded across an N-phase task:
+For every sub-agent dispatched within this Step 7 loop (`jlu-test-writer`, `jlu-implementer`, `jlu-tdd-cycle`), the orchestrator MUST follow this protocol to keep its own context window bounded across an N-phase task:
 
 1. **Receive the agent's full report** as the tool result. Parse the structured sections immediately.
 2. **Persist the full report to disk** at `<TASK_DIR>/services/<service-id>/phases/<NN>-reports/<agent-name>-<round>.md`. Round suffix is `1` for the first dispatch in this phase, `2` for the first retry, etc. Create the parent directory on first write.
@@ -534,7 +534,7 @@ For every sub-agent dispatched within this Step 7 loop (`jlu-test-writer`, `jlu-
    }
    ```
 
-   Capture only the fields that subsequent steps gate on (`PHASE_IS_TRIVIAL`, task-level refactor aggregation, additive-only check). The full prose stays on disk for audit; the orchestrator does NOT keep it in context.
+   Capture only the fields that subsequent steps gate on (`PHASE_IS_TRIVIAL`, task-level refactor aggregation, the phase's `DEFERRED_QA_PHASES` entry). The full prose stays on disk for audit; the orchestrator does NOT keep it in context.
 
 4. **When a downstream step needs the full report** (e.g., the task-level refactor pass at 8a.3 needs each phase's `Refactor Candidates`; final QA at 8c needs implementer file lists across all phases), re-read the report from disk on demand instead of relying on conversation history. This makes the cost N reads instead of N reports persistently held.
 
@@ -606,7 +606,7 @@ Log to terminal:
 
 ### 7df. Docs Path (docs mode only)
 
-**Skip this step unless `PHASE_MODE == docs`.** For docs phases, the orchestrator does NOT dispatch the tdd-cycle agent or per-phase QA. The developer (or the parent orchestrator in nested-execution mode) is expected to have already made the documentation edits on the task branch before invoking execution; the orchestrator's job here is to scope-check and commit them.
+**Skip this step unless `PHASE_MODE == docs`.** For docs phases, the orchestrator does NOT dispatch the tdd-cycle agent. The developer (or the parent orchestrator in nested-execution mode) is expected to have already made the documentation edits on the task branch before invoking execution; the orchestrator's job here is to scope-check and commit them.
 
 1. Capture the current diff on the task branch:
    ```bash
@@ -619,7 +619,7 @@ Log to terminal:
 
 3. If the diff is empty, abort: `Phase <NN> declared mode: docs but the working tree contains no documentation changes. Make the edits or remove the phase.`
 4. Stage and commit using Step 7j's commit procedure but with `<type> = docs`. The commit message body still references `Phase <NN> of production/<TASK_SLUG>`.
-5. Skip per-phase QA (7h) for docs phases — it has nothing to evaluate. Jump straight to Step 7l (Complete Phase) after the commit lands.
+5. Append the phase's `DEFERRED_QA_PHASES` entry (Step 7e.1) with the committed doc files as `files_modified` and empty `test_rewrites` / `tdd_flags` of `None` (docs phases have no tdd-cycle report), then jump straight to Step 7l (Complete Phase) after the commit lands.
 
 Log: `Phase <NN> docs path complete — <N> doc files committed.`
 
@@ -643,7 +643,8 @@ After all return, compare `artifacts` arrays to detect cross-service file overla
   (rejections + boundary cases) counts as one slice. Derive coverage from the canonical case-matrix procedure. Document
   any test rewrite under `Test Rewrites` with a spec quote.
 - **Output**: a `TDD Cycle Report — Phase <N>` with `Files Modified`, `Tests Written`,
-  `Refactor Candidates`, `Test Rewrites`, and a final `Command:` line.
+  `Refactor Candidates`, `Test Rewrites`, `Test Objections`, `Deviations from Expected
+  Approach` (both default to the literal `None`), and a final `Command:` line.
 
 **Verification (trust-the-report)**: the agent already ran every slice's tests in its own
 session and reports `Status` + `Command:` + a per-slice table. Trust it when the report
@@ -662,7 +663,7 @@ report's `Files Modified` + `Tests Written`. Handle by status: `status=ok` with
 
 ### 7e — Phase Triviality Classification
 
-After Green is verified, classify the phase to gate downstream agents (per-phase QA) and the task-level refactor aggregation. Delegated to `bin/classify-phase.sh trivial` — the orchestrator no longer runs `git diff --shortstat` + grep loops inline.
+After Green is verified, classify the phase to feed the task-level refactor aggregation (Step 8a.3). Delegated to `bin/classify-phase.sh trivial` — the orchestrator no longer runs `git diff --shortstat` + grep loops inline.
 
 **Invocation**:
 
@@ -690,45 +691,34 @@ The script enforces:
 
 Log to terminal:
 
-- If trivial: `Phase <NN> classified as trivial — skipping per-phase QA (7h).`
-- If not trivial: `Phase <NN> non-trivial — running full per-phase pipeline.`
+- If trivial: `Phase <NN> classified as trivial.`
+- If not trivial: `Phase <NN> non-trivial.`
 - If a frontmatter override was downgraded: `Phase <NN> trivial override rejected — <downgrade_reason>.`
 
 **Store**: `PHASE_IS_TRIVIAL` (from `trivial` field).
 
-### 7h. Per-Phase QA (Decision #13)
+### 7e.1 — Defer QA to the Final Gate (Step 8c)
 
-**Skip if `PHASE_IS_TRIVIAL`.** Comprehensive QA still runs at Step 8c against the full task scope.
+No QA dispatch happens inside the phase loop. The final static verification for the entire task runs once, at Step 8c. Every completed phase — docs or TDD, trivial or not — appends one entry to the `DEFERRED_QA_PHASES` accumulator that Step 8c consumes:
 
-**Skip if the phase is purely additive AND the tdd-cycle agent reported no issues.** A phase is purely additive when:
+```json
+{
+  "phase_id": "<NN>",
+  "service_id": "<service-id>",
+  "files_modified": ["<path>", ...],
+  "test_rewrites": ["<verbatim `Test Rewrites` entries, each with its spec quote>", ...],
+  "tdd_flags": {
+    "test_objections": "<the report's `Test Objections` section, or `None`>",
+    "deviations": "<the report's `Deviations from Expected Approach` section, or `None`>"
+  }
+}
+```
 
-1. `bin/classify-phase.sh additive` returns `additive=true`. Invocation:
-   ```bash
-   CLASSIFY_SOURCE_PATH="<SERVICE_SOURCE_PATH>" \
-   <plugin-root>/bin/classify-phase.sh additive
-   ```
-   The script computes `git diff --diff-filter=M` and `--diff-filter=D` and returns `additive=true` only when both are empty. Output also includes `modified_count` and `deleted_count` for logging.
-2. The tdd-cycle agent's report lists no `Test Objections` AND no `Deviations from Expected Approach`. Both fields must be either absent or contain only the literal "None".
+- `files_modified`: the union of the tdd-cycle report's `Files Modified` + `Tests Written` (for docs phases, the committed doc files).
+- `test_rewrites`: the report's `Test Rewrites` entries verbatim; empty when the section is absent or `None`.
+- `tdd_flags`: the report's `Test Objections` and `Deviations from Expected Approach` sections (the tdd-cycle report defaults both to the literal `None`). Docs phases have no tdd-cycle report — record both as `None`.
 
-The reasoning: per-phase QA's primary value is catching convention drift and pattern violations in *modified* code. For purely additive code that ran clean through the tdd-cycle agent, the static review is duplicate effort with the final QA at Step 8c (which sees the same files). The risk of deferral is bounded — Step 8c catches any issues before the task transitions to `ready_to_publish`.
-
-Log `Phase <NN> per-phase QA skipped — purely additive, tdd-cycle agent clean, deferred to final QA (8c).` and pass the phase's `Files Modified` list through to a `DEFERRED_QA_PHASES` accumulator that Step 8c reads.
-
-Otherwise, spawn `jlu-qa-agent` with model: **MODEL_CONFIG.code** (default: sonnet) for a static per-phase review:
-- Phase file with requirements
-- List of files created/modified in this phase
-- `<WORKSPACE_PATH>/services/<service-id>/codebase/CONVENTIONS.md`
-- `<WORKSPACE_PATH>/services/<service-id>/codebase/STRUCTURE.md`
-- If the `jlu-tdd-cycle` report had a non-empty `Test Rewrites` section: pass the rewrites list and ask QA to verify each rewrite has a valid spec quote and that the rewritten tests still describe behavior, not implementation.
-
-The QA agent performs static analysis ONLY — it reads code and checks conventions. It does NOT run tests. Test execution is reserved for Step 8.
-
-If QA finds code quality issues (convention violations, function length, test tier violations):
-- Log issues to terminal.
-- Attempt to fix automatically: spawn `jlu-implementer` with model: **MODEL_CONFIG.code** (default: sonnet), `<PLUGIN_ROOT>`, and QA findings.
-- After fix, re-run ONLY the phase test files to confirm Green is maintained.
-- Retry up to 5 times total.
-- If still failing after 5 attempts: pause and notify user (see Escalation Format below).
+No agent dispatch happens here. Convention drift, pattern violations, test-rewrite verification, and every flag the tdd-cycle raised are evaluated at Step 8c against the full task scope.
 
 ### 7i. Update TASKS.md (inline)
 
@@ -1008,16 +998,18 @@ AFFECTED_TESTS_RESULT = {
 
 ### 8c. Comprehensive QA (static only)
 
-Spawn `jlu-qa-agent` with model: **MODEL_CONFIG.code** (default: sonnet) for a **static** comprehensive review. The QA agent **must NOT run the test suite** — not the affected-tests subset, not coverage, not anything. Test execution this task is owned by Step 8b (affected) and by `/jlu-test-suite` (on-demand full); the QA agent's job is static analysis.
+Spawn `jlu-spec-reviewer` (subagent_type `jlu:jlu-spec-reviewer`, bare `jlu-spec-reviewer` fallback) with model: **MODEL_CONFIG.code** (default: sonnet) for a **static** comprehensive review. The dispatch prompt's FIRST line is the literal `MODE: final-qa` — the mode contract: without a valid `MODE` line the agent returns `STATUS: NEEDS_CONTEXT` instead of inferring a mode. The reviewer **must NOT run the test suite** — not the affected-tests subset, not coverage, not anything. Test execution this task is owned by Step 8b (affected) and by `/jlu-test-suite` (on-demand full); the reviewer's job is static analysis.
 
-Pass the QA agent the captured Step 8b results (affected-tests verdict per service):
+**File inventory — the authoritative diff.** The file set the reviewer inspects comes from `git diff PRE_SHA..HEAD --name-only` per service (the pre-execution commit cached in TASKS.md "Commit Tracking") — never from report file lists alone, which are blind to Tier 2 wiring, refactor-pass, and build-validator fixes. The per-phase `files_modified` lists (including every `DEFERRED_QA_PHASES` entry) are passed as provenance annotation over that diff, not as the inventory.
+
+Pass the reviewer the captured Step 8b results (affected-tests verdict per service):
 
 - **Step 8b affected-tests results** (`AFFECTED_TESTS_RESULT` from 8b.6): PASS/FAIL/SKIPPED/NO_DIFF per service, exact command run, failing tests if any
-- **Deferred per-phase QA review** (`DEFERRED_QA_PHASES` from Step 7h): the list of phases that skipped per-phase QA because they were purely additive with a clean tdd-cycle agent report. For each deferred phase, the entry includes `{phase_id, service_id, files_modified}`. The QA agent must explicitly include these phases' `files_modified` in its convention/code-smell/over-engineering scan and flag any issue it would have flagged in per-phase QA. If `DEFERRED_QA_PHASES` is empty, treat this as the normal final-validation case.
+- **Deferred QA review** (`DEFERRED_QA_PHASES` from Step 7e.1): one entry per completed phase, shape `{phase_id, service_id, files_modified, test_rewrites, tdd_flags}`. The reviewer must (a) include every entry's `files_modified` in its convention/code-smell/over-engineering scan; (b) verify each entry's `test_rewrites`: every rewrite must carry a valid spec quote and the rewritten test must still describe behavior, not implementation — a violation is a BLOCKING finding per the taxonomy below; (c) give priority scrutiny to entries whose `tdd_flags` are not `None` — a flagged objection or deviation is where the tdd-cycle itself signalled doubt.
 - **Full coverage analysis**: Are all requirements from SPEC.md covered by tests? (read SPEC.md and test files; do not run them). Note: this is static — checking that every requirement has at least one test file asserting the behavior, not measuring runtime coverage percentages
-- **Pre-PR recommendation**: if any service's 8b result was SKIPPED (mocha, plugin-less pytest, or only config files changed), the QA agent surfaces a clear note in its report:
+- **Pre-PR recommendation**: if any service's 8b result was SKIPPED (mocha, plugin-less pytest, or only config files changed), the reviewer surfaces a clear note in its report:
   > `Pre-PR action: run /jlu-test-suite from <service-path> before opening the pull request to confirm no regressions in the full suite.`
-- **Edge case & coverage-breadth review**: Were edge cases from the spec addressed? AND — this is the fallback for phases where per-phase QA (7h) was skipped (trivial / additive / docs) — pass the QA agent the union of new/modified DTO/validator files across ALL phases (from each phase's `Files Modified`, including `DEFERRED_QA_PHASES` and trivial phases) and restate the Coverage-Breadth FAIL rule verbatim: a new/modified validated DTO field (request body or typed query parameter) with no test that sends a violating payload and asserts the 4xx is a FAIL, and a collection/reference field exercised only empty is a FAIL. The breadth gate must fire at 8c whenever 7h was skipped.
+- **Edge case & coverage-breadth review**: Were edge cases from the spec addressed? AND — the coverage-breadth backstop is UNCONDITIONAL: pass the reviewer the union of new/modified DTO/validator files across ALL phases (from the authoritative per-service diff) and restate the Coverage-Breadth FAIL rule verbatim: a new/modified validated DTO field (request body or typed query parameter) with no test that sends a violating payload and asserts the 4xx is a FAIL, and a collection/reference field exercised only empty is a FAIL. The breadth gate must fire at 8c unconditionally — it is the single static gate for the whole task.
 - **Cross-service contract verification** (if multi-service): Do the services communicate correctly? Are contracts honored?
 - **Convention compliance**: Final check against CONVENTIONS.md
 - **Code smell detection**: Full structural review
@@ -1030,9 +1022,15 @@ a smoke test", "do not merge until…") promotes an item past this triage.
 
 - **Blocking** — only a failing check this pipeline itself owns and can fix
   in-session: a Coverage-Breadth FAIL, a convention violation with a concrete
-  fix, or a cross-service contract mismatch. Dispatch `jlu-implementer` with
-  model **MODEL_CONFIG.code** (default: sonnet) and `<PLUGIN_ROOT>`, and
-  resolve it before Step 9. Blocking findings never travel to ship.
+  fix, a cross-service contract mismatch, a test rewrite without a valid spec
+  quote or whose rewritten test describes implementation instead of behavior,
+  or a security finding with a concrete in-session fix. Dispatch
+  `jlu-implementer` with model **MODEL_CONFIG.code** (default: sonnet) and
+  `<PLUGIN_ROOT>`, and resolve it before Step 9. Blocking findings never
+  travel to ship. **Post-fix re-validation**: after each blocking-finding fix
+  is applied, re-run the affected tests of the files the fix touched (build
+  the command per Step 8b.3, scoped to those files) BEFORE Step 9 — a late
+  fix never leaves the final state unvalidated.
 - **Advisory** — everything else, whatever the QA agent labelled it
   (`Advisory / Not Verifiable Here` rows, a `FU-<n>` follow-up, prose "next
   step"): recommended manual or human smoke tests, verifications that are
@@ -1498,7 +1496,7 @@ Awaiting your input to proceed.
 | #7 | PROPOSAL.md bridges SPEC.md and implementation |
 | #9 | Dependency-driven multi-service execution order |
 | #10 | User stories auto-generated from spec in hybrid format |
-| #13 | QA: lightweight per-phase + full final validation |
+| #13 | **Superseded**: QA consolidated into the single final static gate (Step 8c, spec-reviewer in final-qa mode) |
 | #19 | Phase files: immutable requirements + mutable execution |
 | #21 | Two-pass proposal: global strategy + per-service detail |
 | #29 | **Superseded**: always autonomous, execution mode selection removed |

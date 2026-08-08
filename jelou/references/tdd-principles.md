@@ -1,6 +1,6 @@
 # TDD Principles
 
-> Canonical philosophical reference for `jlu-test-writer`, `jlu-implementer`, `jlu-tdd-cycle`, `jlu-refactor-agent`, and `jlu-qa-agent`. The *operational* protocol (which agent runs when, tier system) lives in `tdd-cycle.md`. This doc is the shared *philosophical* source — every agent in the TDD pipeline must apply these principles regardless of which step it owns.
+> Canonical philosophical reference for `jlu-test-writer`, `jlu-implementer`, `jlu-tdd-cycle`, `jlu-refactor-agent`, and `jlu-spec-reviewer`. The *operational* protocol (which agent runs when, tier system) lives in `tdd-cycle.md`. This doc is the shared *philosophical* source — every agent in the TDD pipeline must apply these principles regardless of which step it owns.
 
 ## 1. The Cycle
 

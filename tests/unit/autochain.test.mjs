@@ -196,12 +196,12 @@ describe('advisory findings never stop the chain', () => {
     assert.match(step8c, /\*\*Store\*\*: `SHIP_CAVEATS`/);
   });
 
-  test('the QA agent emits advisory rows and cannot create a merge gate', () => {
-    const qa = read('agents/jlu-qa-agent.md');
-    assert.match(qa, /### Advisory \/ Not Verifiable Here/);
-    assert.match(qa, /become the orchestrator's\s*`SHIP_CAVEATS`/);
-    assert.match(qa, /You cannot create a merge gate/);
-    assert.match(qa, /never phrased as\s*"must be verified before merge"/);
+  test('the final QA reviewer emits advisory rows and cannot create a merge gate', () => {
+    const reviewer = read('agents/jlu-spec-reviewer.md');
+    assert.match(reviewer, /### Advisory \/ Not Verifiable Here/);
+    assert.match(reviewer, /become the orchestrator's\s*`SHIP_CAVEATS`/);
+    assert.match(reviewer, /You cannot create a merge gate/);
+    assert.match(reviewer, /never phrased as\s*"must be verified before merge"/);
   });
 
   test('an ignored E2E suite path resolves without a question', () => {
@@ -234,6 +234,30 @@ describe('advisory findings never stop the chain', () => {
     assert.match(recipe, /Nothing else stops it/);
     assert.match(recipe, /\*\*unspecified condition\*\*/);
     assert.match(recipe, /that sentence is the defect/);
+  });
+});
+
+describe('spec-reviewer dual-mode contract', () => {
+  const reviewer = read('agents/jlu-spec-reviewer.md');
+
+  test('the agent requires a literal first-line MODE and never infers it', () => {
+    assert.match(reviewer, /The FIRST line of every dispatch prompt you receive is a literal mode declaration/);
+    assert.match(reviewer, /MODE: compliance/);
+    assert.match(reviewer, /MODE: final-qa/);
+    assert.match(reviewer, /missing, malformed, or names any other mode, return `STATUS: NEEDS_CONTEXT`/);
+    assert.match(reviewer, /NEVER infer the mode/);
+  });
+
+  test('both dispatch sites lead with their literal MODE line', () => {
+    assert.match(step8c, /FIRST line is the literal `MODE: final-qa`/);
+    assert.match(ship, /FIRST line is the literal `MODE: compliance`/);
+  });
+
+  test('tdd-cycle report produces the sections that feed tdd_flags', () => {
+    const tddCycle = read('agents/jlu-tdd-cycle.md');
+    assert.match(tddCycle, /### Test Objections/);
+    assert.match(tddCycle, /### Deviations from Expected Approach/);
+    assert.match(tddCycle, /carries this section into `tdd_flags`/);
   });
 });
 

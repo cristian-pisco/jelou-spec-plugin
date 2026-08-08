@@ -116,15 +116,20 @@ describe('test-running agents — reference the policy and carry caps', () => {
   });
 });
 
-describe('qa-agent — never re-executes tests', () => {
-  const qa = read('agents/jlu-qa-agent.md');
+describe('spec-reviewer — never executes tests in either mode', () => {
+  const reviewer = read('agents/jlu-spec-reviewer.md');
 
-  test('per-phase validation stays static', () => {
-    assert.match(qa, /Do NOT run the test suite during per-phase validation/);
+  test('the never-executes rule is a shared rule across both modes', () => {
+    assert.match(reviewer, /You are static in both modes/);
+    assert.match(reviewer, /NEVER execute tests or coverage/);
+  });
+
+  test('Final QA mode consumes Step 8b evidence instead of re-running', () => {
+    assert.match(reviewer, /Do NOT re-run tests in this agent/);
   });
 
   test('coverage analysis stays read-only', () => {
-    assert.match(qa, /Do NOT invoke `jest --coverage`/);
+    assert.match(reviewer, /Do NOT invoke `jest --coverage`/);
   });
 });
 

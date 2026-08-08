@@ -61,7 +61,7 @@ RED→GREEN loop per requirement in one session. Multi-service phases fan out on
 
 `jlu-test-writer` and `jlu-implementer` are not part of per-phase authoring. They
 retain other roles: `jlu-test-writer` authors Tier 2 integration tests (Step 8a) and
-backend E2E suites (Step 8f); `jlu-implementer` applies fixes (QA-fix in 7h,
+backend E2E suites (Step 8f); `jlu-implementer` applies fixes (final-QA fix in 8c,
 affected-test fix in 8b) and Tier 2 wiring. There is no separate test-dispute
 mechanism — the authoring agent owns both test and implementation, and the
 Self-Correction rule (documented test rewrites with a spec quote, audited by QA)
@@ -139,11 +139,20 @@ The TDD cycle uses a tiered testing strategy to keep the feedback loop fast whil
 
 ### Tier 2: Final Validation
 - Integration tests against **host-resident** infrastructure only (e.g., a real Postgres the developer started via `/jlu-start-dev`).
-- No Testcontainers, no `dockerode`, no `docker compose` shell-outs in any tier — these are banned in all TDD tiers (see `jlu-qa-agent.md` Test Tier Compliance). The only exception is the E2E path (`test/e2e/**`, `*.e2e-spec.ts`), which the TDD pipeline never runs — only `/jlu-goal` does.
+- No Testcontainers, no `dockerode`, no `docker compose` shell-outs in any tier — these are banned in all TDD tiers (canonical rule: the "Test Tier Compliance" section below). The only exception is the E2E path (`test/e2e/**`, `*.e2e-spec.ts`), which the TDD pipeline never runs — only `/jlu-goal` does.
 - Written after all phases are complete, for requirements that couldn't be meaningfully tested with mocks.
 - If a required dependency is not running on the host, the test is reported skipped with a clear reason — agents never start anything.
 - Run exactly ONCE, at Step 8a (Final Validation), as targeted test files with the worker cap — never as a bare full-suite run.
 - The full suite never runs inside the task workflow: Step 8b runs affected tests only (`--maxWorkers=2`), and the full suite belongs to the on-demand `/jlu-test-suite` skill (workers=1) and CI on push.
+
+### Test Tier Compliance (canonical Docker/Testcontainers ban)
+
+This section is the canonical owner of the ban. `jlu-spec-reviewer` (Final QA mode) enforces it verbatim:
+
+- Verify that Tier 1 test files do NOT import database connection utilities or other heavy infrastructure.
+- Verify that no test file outside the E2E path (`test/e2e/**`, `*.e2e-spec.ts`) imports Testcontainers, `dockerode`, or any library that spawns containers, and that no such test or helper shells out to `docker`, `docker compose`, or `podman`. Docker is banned in the TDD pipeline. The E2E path is the single exception — it is executed only by `/jlu-goal`, never by the TDD pipeline, so finding Testcontainers there is allowed; finding it anywhere else is a FAIL.
+- If Tier 1 tests depend on real infrastructure, report as FAIL — the test-writer wrote the wrong tier.
+- If any tier imports or invokes Docker, report as FAIL regardless of tier.
 
 ### Why no Docker in any tier
 - Memory and CPU pressure on the host from accumulating containers across iterations.
@@ -158,19 +167,18 @@ The TDD cycle's value comes from speed. Integration tests' value comes from fide
 | Step | What runs | Times |
 |------|-----------|-------|
 | 7d TDD Cycle | Phase test files only (Tier 1) | per slice |
-| 7h QA | Nothing (static analysis) | 0 |
+| Step 8c Final QA | Nothing (static analysis) | 0 |
 | Step 8a Tier 2 | Deferred Tier 2 test files only | ≤1 total |
 | 8a.3 Refactor | Union of task test files (Tier 1) | 0-1 per service |
 | Step 8a.5 Build | Nothing (compile only) | 1 per service |
 | Step 8b Regression | Affected tests only (`--maxWorkers=2`) | 1 total |
 
-## QA Agent Validation (Decision #13)
+## Final QA Validation
 
-The QA agent operates at two levels:
+Static quality validation happens exactly once per task: after all phases are done, `jlu-spec-reviewer` (Final QA mode, Step 8c) runs a full static pass covering:
 
-1. **Continuous (per-phase)**: After each phase completes, a lightweight static review verifies convention compliance, requirement coverage, and test tier correctness. No test execution.
-2. **Final (task-level)**: After all phases are done, a full validation pass covers:
-   - Coverage analysis across the entire task scope.
-   - Edge case review against the spec.
-   - Cross-service contract verification.
-   - Consistency between artifacts (SPEC.md requirements vs. test coverage vs. implementation).
+- Coverage analysis across the entire task scope (inferred statically — no test execution).
+- Edge case and coverage-breadth review against the spec and the input contracts.
+- Cross-service contract verification.
+- Test-rewrite audit and `tdd_flags` scrutiny from the deferred per-phase entries.
+- Consistency between artifacts (SPEC.md requirements vs. test coverage vs. implementation).
