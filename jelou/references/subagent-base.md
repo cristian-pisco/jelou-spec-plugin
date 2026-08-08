@@ -48,7 +48,7 @@ Test runners default to one worker per CPU core, and each Jest/Vitest worker is 
    | mocha | nothing — single-process by default |
 
    Canonical forms: `npx jest <files> --maxWorkers=2` · `npm test -- <files> --maxWorkers=2`.
-3. **One heavy process at a time.** Never start a second test/build/lint run while one is executing — no `&`, no parallel Bash calls that each spawn a runner or compiler. Wait for the previous one to exit.
+3. **One heavy process at a time.** Never start a second test/build/lint run while one is executing — no `&`, no parallel Bash calls that each spawn a runner or compiler. Wait for the previous one to exit — by the mechanisms in `Waiting on Long Commands` below, never by sleeping a guessed duration.
 4. **Never watch mode.** `--watch`, `--watchAll`, bare `vitest`, `tsc --watch` never exit; their resident workers starve the machine and hang your session waiting on a process that will not terminate.
 5. **Never coverage.** `--coverage`, `--cov`, `test:cov` multiply RAM via instrumentation. Coverage analysis is static — QA reads existing reports, nothing re-executes tests.
 6. **Inherited commands inherit no safety.** A command copied from CONVENTIONS.md, `package.json` scripts, or another agent's report gets the worker cap appended before you run it — verify, don't trust.
@@ -58,6 +58,20 @@ Test runners default to one worker per CPU core, and each Jest/Vitest worker is 
   run one service's E2E at a time, bring up one dependency set at a time, and run its
   teardown of that dependency set before the next service. No orphaned containers may survive the run.
   This is the only place Testcontainers is permitted; everywhere else the ban in the `Docker is Forbidden` section applies.
+
+## Waiting on Long Commands
+
+**Never sleep a fixed duration to wait for something to finish.** A blind wait — `sleep 400`, `sleep 600 && cat log`, any hardcoded delay used as a stand-in for "it should be done by now" — is always a defect. It cannot be right: guess short and you read partial output and report a false verdict; guess long and you burn that wall-clock for nothing. The harness already tells you when a process ends; a sleep is a worse substitute for a signal you are given for free.
+
+Choose by what you are actually waiting for:
+
+1. **A command you started, expected under ~10 minutes** → run it in the **foreground** with an explicit `timeout` on the Bash call (milliseconds, max `600000`). It returns the instant the process exits. This is the default for test, build, lint, and install runs. No sleep.
+2. **A command you started, expected longer than that** → start it with `run_in_background: true`, redirecting output to a log file. You are re-invoked automatically when the process exits, and the result carries the output path — `Read` it then. Do not poll it, and do not sleep waiting for it. No sleep.
+3. **A condition you do not own** (a service becoming ready, a port opening, a marker appearing in a log) → poll the **condition**, with a sampling interval and a hard deadline, and exit the moment it is satisfied: `until <condition>; do sleep 2; done` under a `timeout`. Here the sleep is the sampling interval, not the wait — the loop ends on observation, never on the clock. This is the only legitimate use of `sleep`.
+
+The distinguishing test is **what ends the wait**. If it ends because a duration elapsed, it is a blind wait and it is forbidden. If it ends because the process exited or a condition was observed — with the deadline only as a failsafe — it is correct.
+
+When a deadline in form 1 or 3 does expire, that is a finding, not a retry cue: report it with the elapsed budget and the last observed state. Never re-run the same wait with a bigger number hoping it lands.
 
 ## Three-Strike Rule
 
