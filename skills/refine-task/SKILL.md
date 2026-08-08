@@ -47,4 +47,13 @@ If the output is `UP_TO_DATE` or `SKIPPED`, continue silently. Update-check fail
 
 Follow the workflow file you just read. Do NOT spawn a sub-agent — execute the workflow yourself in this session.
 
+**Autonomous mode.** Resolve `<AUTONOMOUS>` before following the workflow: it is
+`yes` when the argument contains `--autonomous`, or when `JLU_AUTONOMOUS=true` is
+set in the environment; `no` otherwise. Strip `--autonomous` (and an optional
+`--answers=<path>`, which becomes `<ANSWERS_FILE>`) from the argument before
+treating the rest as the workflow's own input. When it resolves to `yes`, follow
+the workflow's "Autonomous mode — how every gate resolves" section: no gate asks,
+each takes its documented default, and every decision is disclosed. Never infer
+autonomous mode from context — an interactive user always gets the questions.
+
 The argument is `{argument}`. The plugin root is the path resolved above. The current working directory is `{cwd}`.

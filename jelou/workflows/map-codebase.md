@@ -4,7 +4,32 @@
 > Maps one service's codebase, or maps every project under a root directory using
 > one parallel mapper agent per project.
 
-> **Tool requirement**: All prompts, questions, and confirmations to the user in this workflow MUST use `question`. Never output questions as plain text.
+> **Tool requirement**: All prompts, questions, and confirmations to the user in this workflow MUST use `question`. Never output questions as plain text. The one exception is autonomous mode, below, where no gate asks at all.
+
+---
+
+## Autonomous mode — how every gate resolves
+
+`<AUTONOMOUS>` is a caller input, `no` unless the caller says otherwise. The
+shared contract is `{plugin-root}/jelou/references/autonomous-mode.md`. This
+section is this workflow's **closed gate table**.
+
+This workflow is already near-silent: batch mapping never runs per-service
+interviews, and the single-service path defers the user interview unless asked
+for. Autonomous mode closes the one remaining prompt.
+
+| Gate | Site | Autonomous default |
+|---|---|---|
+| Consolidated batch interview | Step for batch mode, item 1 (`--interview`) | Do not ask. Force `BATCH_INTERVIEW_MODE = deferred` even when `--interview` was passed — a flag requesting a prompt cannot be honoured with no human present. Disclose in the concerns doc. |
+| Per-service user interview | `jlu-codebase-analyzer-operational` dispatch | Dispatch with the interview suppressed, exactly as batch mode already does. `CONCERNS.md` records `User interview: deferred (autonomous)`. |
+
+**No abort floor.** Mapping is derived entirely from the code on disk; there is no
+contract to be missing. An autonomous run always produces docs, with the user's
+tribal knowledge marked deferred rather than invented.
+
+**Never in autonomous mode:** write a concern the code does not evidence. A
+deferred interview means the concerns doc is incomplete, and it must say so
+rather than fill the gap with plausible guesses.
 
 ---
 
@@ -92,6 +117,9 @@ compete for user prompts.
 1. If `--interview` was provided, ask one consolidated `question` before dispatch:
    > "Batch mapping will not ask per-service questions. Share any known scaling limits, planned deprecations, fragile areas, or security concerns that should be included across these services. Reply `none` to continue without user concerns."
    Store the answer as `USER_CONCERNS` and set `BATCH_INTERVIEW_MODE` = `provided`.
+   Autonomous → do not ask; force `BATCH_INTERVIEW_MODE` = `deferred` even with
+   `--interview`, since a flag asking for a prompt cannot be honoured with no human
+   present (gate table).
 2. If `--defer-interview` was provided, set `BATCH_INTERVIEW_MODE` = `deferred`.
 3. If neither flag was provided, default `BATCH_INTERVIEW_MODE` = `deferred` and
    `USER_CONCERNS` = `none provided`.

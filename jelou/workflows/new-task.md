@@ -3,7 +3,39 @@
 > Orchestrator workflow for `/jlu-new-task [task description]`
 > Creates a new task, runs the spec interview inline, and creates worktrees in the background.
 
-> **Tool requirement**: All prompts, questions, and confirmations to the user in this workflow MUST use `question`. Never output questions as plain text.
+> **Tool requirement**: All prompts, questions, and confirmations to the user in this workflow MUST use `question`. Never output questions as plain text. The one exception is autonomous mode, below, where no gate asks at all.
+
+---
+
+## Autonomous mode — how every gate resolves
+
+`<AUTONOMOUS>` is a caller input, `no` unless the caller says otherwise. The
+shared contract is `{plugin-root}/jelou/references/autonomous-mode.md` — read it
+once when `<AUTONOMOUS> = yes`. This section is this workflow's **closed gate
+table**: a decision not listed here may not become a question, and may not be
+picked silently either.
+
+**In autonomous mode no gate asks.** Each resolves to its default below, appends
+one `SPEC_ASSUMPTIONS` line recording what was decided and why, and continues.
+
+| Gate | Site | Autonomous default |
+|---|---|---|
+| Pending council seed exists | Step 12 (183c) | Do **not** consume it. Seeds change what gets built; only a seed named explicitly in the command argument is read. Assumption line names the skipped seed. |
+| Dual-PR intent | Step 8b | `DUAL_PR = false` — the workflow's own documented default. Assumption line states no staging PR was requested. |
+| Open interview gaps | Step 14b | Resolve per the shared contract's resolution order (inputs → `<ANSWERS_FILE>` → conservative default). One assumption line per gap resolved at the third level. See 14b-auto below. |
+| Spec approval | Step 15 | Approve — set `status=planned`. The assumption list IS the disclosure; a caller with no human cannot review prose. Never auto-approve a spec that tripped the abort floor (there is no spec to approve). |
+| Setup mode | Step 16 | `worktree` when the task touches more than one service or any affected service has a Docker dev block; `branch` otherwise. Assumption line states which rule fired. |
+
+**Abort floor (shared contract).** If Step 14a finds no concrete functional
+requirement derivable from `TASK_DESCRIPTION` — a want with no contract, e.g.
+"we need reports" — abort before creating anything: no TASK_DIR, no branch, no
+worktree. Return `STATUS: ABORTED` with `reason: no_derivable_requirement` and
+the specific ambiguity. This is a correct outcome; inventing the missing
+requirement is the failure.
+
+**Never in autonomous mode:** edit a spec requirement the user wrote, flip an
+already-stored `DUAL_PR`, or waive the Case-Coverage self-check (Step 14c). That
+floor is not a gate.
 
 ---
 
@@ -182,7 +214,9 @@ After service registration (or if already registered):
         this matches exactly where `/jlu-council` writes. 2-pass: shortlist filenames, read only the chosen one.
      c. If one or more pending seeds exist and none was passed explicitly, ask via `question`
         (most recent first, labelled by idea + timestamp) whether to seed from the council outcome
-        or start fresh.
+        or start fresh. Autonomous → do not ask and do not consume any seed (gate
+        table): a seed changes what gets built, so only one named explicitly in the
+        command argument is read. Record the skipped seed as an assumption.
    - **When a council seed is selected:** read it; set `TASK_DESCRIPTION` from its refined idea;
      fold its accepted conditions, surviving trade-offs and in-scope services into the interview
      prefill/hints so the interview is short and grounded; keep its `COUNCIL_REPORT.md` pointer for
@@ -330,7 +364,7 @@ Using `question`:
 > - No — only a PR to the main branch (`main`/`master`) (default)
 > - Yes — two PRs: one to the main branch (mandatory), one to alpha (staging branch created from origin/alpha now; commits cherry-picked at PR-creation time with conflict resolver)
 
-Store as `DUAL_PR` (boolean).
+Store as `DUAL_PR` (boolean). Autonomous → `false` without asking (gate table).
 
 After storing `DUAL_PR`, **insert** the `## Branching` section into the existing TASKS.md file, between the `## Services` and `## Phases` sections:
 
@@ -455,7 +489,25 @@ Prioritize gaps by impact: architectural decisions > behavioral requirements > e
 
 Using `question`, interview the user to resolve all identified gaps.
 
-Rules:
+**14b-auto — when `<AUTONOMOUS> = yes`.** Do not call `question` at all; the rules
+below about rounds and option counts do not apply because nothing is asked. Take
+the same gap list Step 14a produced and resolve each one through the shared
+contract's order: derivable from `TASK_DESCRIPTION` / seed / codebase docs →
+matched in `<ANSWERS_FILE>` if the caller supplied one → conservative default.
+
+- A gap resolved at level 1 is not a gap; record nothing.
+- A gap resolved at level 2 gets `SPEC_ASSUMPTIONS`: `<gap> — answered from <file>`.
+- A gap resolved at level 3 gets `SPEC_ASSUMPTIONS`: `<gap> — assumed <decision>, narrowest reading of <cited requirement>`.
+- A gap that would require deciding **what to build** rather than **how** trips the
+  abort floor — stop, do not create the task, return `STATUS: ABORTED`.
+
+Conservative means the narrowest defensible reading: no new endpoints, entities,
+screens or integrations beyond what the description states; existing conventions
+from the codebase docs over novel ones; the stricter validation over the looser.
+The Case-Coverage self-check (Step 14c) still applies in full — an autonomously
+written spec may not be happy-path-only.
+
+Rules (interactive mode):
 - **3-6 questions per round**, grouped by theme — never random
 - **Each question takes max 4 options** (hard API limit on `question`/`AskUserQuestion`). If a decision has more candidates than 4 (e.g., 7 services to route, 6 patterns to pick from), split it: ask the question across multiple rounds, group candidates into bucket options ("group A vs group B"), or use a free-text question instead of multiple-choice. **Never** stuff 5+ options into one question — the call will fail with `InputValidationError: too_big`.
 - **Themes to cover** (in rough priority order):
@@ -534,6 +586,24 @@ Skip this section entirely if all terms used here are already canonical OR if no
 - {{Term2}} — {{optional one-line context}}
 ```
 
+**`## Assumptions` (autonomous runs only).** When `<AUTONOMOUS> = yes`, append this
+section last, listing every `SPEC_ASSUMPTIONS` line accumulated across the gate
+table and 14b-auto. Omit the section entirely on an interactive run — an empty
+Assumptions heading reads as "we assumed nothing" and is noise. This section is
+the autonomous disclosure channel: a reader must be able to tell, without the
+transcript, which parts of this spec a human agreed to and which the workflow
+decided alone.
+
+```markdown
+## Assumptions
+
+> Written by an autonomous run — no human answered these. Each line is a gap the
+> interview would have asked about.
+
+- <gap> — assumed <decision>, narrowest reading of <cited requirement>
+- <gap> — answered from <answers-file>
+```
+
 If `MERGED_PREFILL` is non-empty:
 - Use the merged pre-filled sections as the starting structure for SPEC.md.
 - Replace `<!-- FILL: ... -->` placeholders with answers from the interview.
@@ -598,6 +668,12 @@ touching it carries a browser-level `[success]` criterion — the E2E guard is n
 
 If the user wants changes, make them and re-present (print the path line again after each rewrite). Loop until the user approves or explicitly stops.
 
+**Autonomous** (`<AUTONOMOUS> = yes`): do not ask. Set `status=planned` and print
+the same executive summary to the transcript followed by the `## Assumptions`
+list, so the decision is auditable without a reviewer present (gate table). There
+is no approval loop — a caller with no human cannot request changes. If the abort
+floor fired at 14b this step is never reached: nothing was created to approve.
+
 ---
 
 ## Step 15 — Post-Interview Confirmation
@@ -656,7 +732,9 @@ Using `question`:
 > - Full setup (worktree + Docker) — recommended when multiple services, Docker-heavy, or parallel tasks planned
 > - Branch only — recommended when single-file fix, non-Docker service, or quick change
 
-Store as `SETUP_MODE` ∈ {`worktree`, `branch`}.
+Store as `SETUP_MODE` ∈ {`worktree`, `branch`}. Autonomous → derive without asking
+(gate table): `worktree` when the task touches more than one service or any
+affected service has a Docker dev block, `branch` otherwise.
 
 Update `<TASK_DIR>/TASKS.md` → `## Branching` → replace `Mode: (pending ...)` with `Mode: <SETUP_MODE>`.
 

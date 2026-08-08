@@ -3,7 +3,38 @@
 > Orchestrator workflow for `/jlu-refine-task [change description]`
 > Apply a targeted change to an already-approved spec via structured agent interview, then propagate the delta into PROPOSAL.md and phase files so `/jlu-execute-task` only re-runs affected phases.
 
-> **Tool requirement**: All prompts, questions, and confirmations to the user MUST use `question`. Never output questions as plain text.
+> **Tool requirement**: All prompts, questions, and confirmations to the user MUST use `question`. Never output questions as plain text. The one exception is autonomous mode, below, where no gate asks at all.
+
+---
+
+## Autonomous mode — how every gate resolves
+
+`<AUTONOMOUS>` is a caller input, `no` unless the caller says otherwise. The
+shared contract is `{plugin-root}/jelou/references/autonomous-mode.md` — read it
+once when `<AUTONOMOUS> = yes`. This section is this workflow's **closed gate
+table**: a decision not listed here may not become a question, and may not be
+picked silently either.
+
+**In autonomous mode no gate asks.** Each resolves to its default below and
+appends one `SPEC_ASSUMPTIONS` line, which Step 5 writes into the spec's
+`## Assumptions` section — appending to whatever a previous autonomous run left,
+never rewriting it. Create the section if the spec has none.
+
+| Gate | Site | Autonomous default |
+|---|---|---|
+| SUGGEST block review | Step 0b (suggester output) | Apply no suggestion. Suggestions are optional extras; adopting one silently widens the change the caller asked for. Assumption line lists the skipped suggestions. |
+| Ambiguous target task | Step 1 — Resolve Task (2c confirmation) | Accept the single most recent matching task. If more than one matches equally, **abort** — refining the wrong spec is unrecoverable. |
+| Missing change description | Step 2 — Get Change Request (the `question` fallback) | **Abort** (`reason: no_change_description`). There is nothing to apply and no one to ask. |
+| Changed requirement maps to no phase | Phase-delta propagation, and the Edge Cases table | Assign to the **last** phase of the owning service — the change lands after everything it might depend on. Assumption line names the FR and the phase that absorbed it. Never create a new phase autonomously; that restructures the plan. |
+
+**Abort floor (shared contract).** Abort — changing nothing — when no target task
+resolves, when the requested change cannot be tied to an existing requirement, or
+when the target is ambiguous between equally-recent tasks. Return
+`STATUS: ABORTED` with the reason.
+
+**Never in autonomous mode:** rewrite a requirement the user wrote beyond the
+requested change, create a new phase, or flip the task's status out of
+`planned`/`refining` into anything the caller did not ask for.
 
 ---
 
@@ -35,6 +66,8 @@ SUGGESTIONS=$(TRACE_CURRENT_TASK="$TASK_SLUG" node "<root>/bin/trace-suggest.mjs
 
 If `SUGGESTIONS` is non-empty:
 
+Autonomous → skip this block entirely: display nothing and apply no suggestion; record the skipped ones as an assumption line (gate table). Suggestions widen the change the caller asked for.
+
 1. Display each SUGGEST block to the user (one at a time) via `question` (OpenCode) / `AskUserQuestion` (Claude Code).
 2. For each, accept `y` (approve) or `n` (decline). Approval triggers the action (e.g., setting `MODEL_CONFIG` override, or queuing a `/jlu-add-failure-pattern` call). Decline silently dismisses the suggestion.
 3. Append a JSONL record to `<WORKSPACE>/.spec-workspace/.cache/suggestion-history.jsonl` for EACH decision (approved or declined). The record shape:
@@ -59,7 +92,7 @@ Tracing is best-effort: if `bin/trace-suggest.mjs` errors out, the empty `SUGGES
 2. If no `task-slug` provided (or the argument looks like a change description rather than a slug):
    a. Read `.spec-workspace.json` to get the workspace path.
    b. List date folders in `<WORKSPACE_PATH>/specs/` sorted descending. Within the most recent date folder, pick the most recently modified task folder.
-   c. Confirm via `question`: "Found task `<task-slug>` from `<date>`. Apply changes to this one?"
+   c. Confirm via `question`: "Found task `<task-slug>` from `<date>`. Apply changes to this one?" Autonomous → accept it without asking; abort if two tasks match equally (gate table).
 
 **Error gate**: If no task can be resolved, stop: "No task found. Run `/jlu-new-task` first to create one."
 
@@ -73,7 +106,7 @@ Tracing is best-effort: if `bin/trace-suggest.mjs` errors out, the empty `SUGGES
    - If missing or empty, stop: "SPEC.md is missing or empty at `<TASK_DIR>/SPEC.md`. Run `/jlu-new-task` to create it."
 2. Determine `CHANGE_REQUEST`:
    - If the command argument looks like a change description (not a task slug), use it as `CHANGE_REQUEST` — after stripping the chain tokens per autochain-handoff.md §1: a ClickUp URL/id and `--no-autochain` are captured for the handoff step, never treated as part of the change description.
-   - Otherwise ask via `question`: "What change do you want to apply to this spec?"
+   - Otherwise ask via `question`: "What change do you want to apply to this spec?" Autonomous → abort (`reason: no_change_description`); there is nothing to apply and no one to ask.
 
 **Store**: `SPEC_BEFORE` = current SPEC.md content, `CHANGE_REQUEST`
 
@@ -133,6 +166,14 @@ Prioritize by impact: architectural implications > behavioral changes > edge cas
 ### 5b — Structured Interview
 
 Using `question`, interview the user to clarify the change's scope and constraints.
+
+**Autonomous** (`<AUTONOMOUS> = yes`): do not call `question`. Resolve each gap the
+5a analysis surfaced through the shared contract's order — derivable from
+`CHANGE_REQUEST` / SPEC.md / codebase docs, then `<ANSWERS_FILE>` if supplied,
+then the narrowest defensible default — and append one `SPEC_ASSUMPTIONS` line per
+gap resolved at that last level. A gap that would decide **what to change** rather
+than **how** trips the abort floor. Write the accumulated lines into SPEC.md's
+`## Assumptions` section in 5c.
 
 Rules:
 - **3-6 questions per round**, grouped by theme — never random
@@ -202,6 +243,11 @@ Using `question`:
 
 Loop until the user approves or explicitly stops.
 
+**Autonomous** (`<AUTONOMOUS> = yes`): do not ask for approval and do not loop —
+a caller with no human cannot request changes. Print the same diff summary to the
+transcript followed by the `## Assumptions` lines this run added, then continue.
+The assumption list IS the disclosure (gate table).
+
 ---
 
 ## Step 6 — Finalize: Version, Changelog, Propagate Delta, Report
@@ -262,7 +308,7 @@ Otherwise, propagate the delta so execute-task only re-runs affected phases:
      ```
    - If the phase status is `done`: reset to `pending` (record in `RESET_PHASES`).
    - If the phase status is `pending` or `in_progress`: leave status as-is — modification will be picked up on the next run.
-   - If the requirement maps to no phase (zero matches): log a warning and ask via `question`: "FR-<N> changed but no phase claims it. Which phase should own this change? (phase-NN | new)". Defer creating a new phase to step 4 below if the user chooses "new".
+   - If the requirement maps to no phase (zero matches): log a warning and ask via `question`: "FR-<N> changed but no phase claims it. Which phase should own this change? (phase-NN | new)". Defer creating a new phase to step 4 below if the user chooses "new". Autonomous → assign to the last phase of the owning service and never create a new phase (gate table).
 
 4. **Apply Added** — for each Added item in `DELTA`:
    - Decide placement deterministically:
@@ -361,7 +407,7 @@ follow the shared recipe in
 | Engineering principles missing | Skip silently (only loaded conditionally) |
 | Interview interrupted (timeout, abort) | Save spec changes made so far, skip 6b, report partial state |
 | User cancels mid-interview | Update spec with answers gathered so far, skip 6b, preserve partial work |
-| Changed requirement maps to no phase | Ask via `question` which phase should own it (or "new") |
+| Changed requirement maps to no phase | Ask via `question` which phase should own it (or "new"). Autonomous → last phase of the owning service, never a new phase |
 | Phase file references a requirement number not in SPEC.md | Log warning, leave phase file unmodified |
 | PROPOSAL.md exists but is malformed | Log warning, skip 6b propagation, instruct user to delete PROPOSAL.md and let execute-task regenerate |
 

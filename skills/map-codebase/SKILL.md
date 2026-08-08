@@ -47,4 +47,13 @@ If the output is `UP_TO_DATE` or `SKIPPED`, continue silently. Update-check fail
 
 Follow the workflow file you just read. Do not delegate the entire workflow to a sub-agent — execute orchestration yourself in this session. When the workflow explicitly says `task`, dispatch the named worker agent. Running orchestration inline keeps single-service `jlu-codebase-analyzer-operational` (which interviews the user via `AskUserQuestion` per Decision #30) at L2 instead of L3, while root batch mode still fans out its non-interactive mapper workers.
 
+**Autonomous mode.** Resolve `<AUTONOMOUS>` before following the workflow: it is
+`yes` when the argument contains `--autonomous`, or when `JLU_AUTONOMOUS=true` is
+set in the environment; `no` otherwise. Strip `--autonomous` (and an optional
+`--answers=<path>`, which becomes `<ANSWERS_FILE>`) from the argument before
+treating the rest as the workflow's own input. When it resolves to `yes`, follow
+the workflow's "Autonomous mode — how every gate resolves" section: no gate asks,
+each takes its documented default, and every decision is disclosed. Never infer
+autonomous mode from context — an interactive user always gets the questions.
+
 The argument is `{argument}`. The plugin root is the path resolved above. The current working directory is `{cwd}`.
