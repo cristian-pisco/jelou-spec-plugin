@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.345] — 2026-08-08
+
+### Changed
+- Autonomous mode for new-task, refine-task and map-codebase (#79)
+
 ## [0.3.344] — 2026-08-08
 
 ### Changed
