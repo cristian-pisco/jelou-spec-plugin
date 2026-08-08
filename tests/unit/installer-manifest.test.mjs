@@ -18,6 +18,7 @@ const FEATURE_BINS = [
   'bin/lib/dev-orchestrator/readiness.mjs',
   'bin/list-tasks.mjs',
   'bin/local-auth-onboarding.mjs',
+  'bin/local-stack-e2e.mjs',
   'bin/task-index.mjs',
   'bin/boot-dev-server.mjs',
   'bin/build-boot-plan.mjs',
