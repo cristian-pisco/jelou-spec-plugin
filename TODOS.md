@@ -1,15 +1,5 @@
 # TODOS
 
-## Full installer whitelist audit (Codex/OpenCode)
-
-- **Priority:** P1
-- **What:** Reconcile the ~50 `bin/*.mjs|sh` files referenced by `jelou/workflows/` + `agents/` against the ~10 the installers copy, deciding per binary: ship it, or declare the step non-portable in the runtime contract.
-- **Why:** On Codex/OpenCode, `<plugin-root>` resolves to `$CODEX_HOME`, whose `bin/` contains only the whitelist — any workflow invoking an unlisted bin fails with file-not-found on those runtimes (found during boot-certification; `derive-dev-block.mjs` had been referenced by goal 8b for weeks without ever being shipped).
-- **Pros:** Closes an entire class of silent tri-runtime breakage; the boot-certification import-graph test already provides the enforcement mechanics.
-- **Cons:** Large sweep (~45 binaries, some with deep import chains: trace-*, daily-slack-*, e2e-*); some steps may belong in a Claude-Code-only allowlist instead of being shipped.
-- **Context:** `tests/unit/installer-manifest.test.mjs` validates the shipped manifest plus import-graph closure; extending it to "every workflow-referenced bin is in the manifest or in a declared non-portable allowlist" is the end state. Start by inventorying which workflows actually run from Codex/OpenCode.
-- **Depends on / blocked by:** boot-certification merged (provides the base test).
-
 ## Migrate the prose shared-reuse boots (goal/ui-qa) onto the codified executor
 
 - **Priority:** P2
@@ -52,4 +42,7 @@
 
 ## Completed
 
-_Nothing filed yet. Completed items move here with a `**Completed:** vX.Y.Z (YYYY-MM-DD)` line._
+### Full installer whitelist audit (Codex/OpenCode)
+
+- **Completed:** v0.3.331 (2026-08-03)
+- Closed by the plugin-root/installer reachability sweep. `tests/unit/installer-manifest.test.mjs` now enforces the end state this item described: every `bin/*.mjs|sh` referenced by `jelou/`, `agents/` or `skills/` must be copied by BOTH installers or be declared in `DELIBERATELY_UNSHIPPED` with a written justification, and a second test asserts every declared exclusion is still referenced and still absent.

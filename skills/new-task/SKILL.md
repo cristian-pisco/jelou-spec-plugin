@@ -29,6 +29,7 @@ If neither resolves, stop with: "Plugin root not found. Ensure jelou-spec-plugin
 - Workflow says `task` → invoke `Agent` (subagent dispatch).
 - Agent namespace: the workflow names agents bare (`jlu-<name>`). Dispatch them prefixed with the plugin namespace — `subagent_type: "jlu:jlu-<name>"` (e.g. `jlu:jlu-deps-validator`). The plugin is the source of truth; a stale `~/.claude/agents/` copy must never shadow it. If the prefixed name isn't registered (e.g. a manual install), retry once with the bare `jlu-<name>`.
 - Never narrate questions as plain text. Never skip a prescribed question.
+- The one exception is autonomous mode (see Phase 2): with `--autonomous` or `JLU_AUTONOMOUS=true`, no gate asks — each takes its documented default from the workflow's gate table and is disclosed there. Without that flag the ban above stands in full.
 
 **Run these in parallel** (single tool-call message — do NOT serialize):
 1. `Bash`: `<plugin-root>/bin/check-update.sh 2>/dev/null || echo SKIPPED`
@@ -46,5 +47,14 @@ If the output is `UP_TO_DATE` or `SKIPPED`, continue silently. Update-check fail
 ## Phase 2 — Execute Workflow
 
 Follow the workflow file you just read. Do NOT spawn a sub-agent — execute the workflow yourself in this session. Running inline keeps the orchestrator at L2 (instead of L3 if dispatched from a subagent), which is required for `AskUserQuestion` to work throughout the interview, confirmations, and mode-selection steps.
+
+**Autonomous mode.** Resolve `<AUTONOMOUS>` before following the workflow: it is
+`yes` when the argument contains `--autonomous`, or when `JLU_AUTONOMOUS=true` is
+set in the environment; `no` otherwise. Strip `--autonomous` (and an optional
+`--answers=<path>`, which becomes `<ANSWERS_FILE>`) from the argument before
+treating the rest as the workflow's own input. When it resolves to `yes`, follow
+the workflow's "Autonomous mode — how every gate resolves" section: no gate asks,
+each takes its documented default, and every decision is disclosed. Never infer
+autonomous mode from context — an interactive user always gets the questions.
 
 The argument is `{argument}`. The plugin root is the path resolved above. The current working directory is `{cwd}`.
