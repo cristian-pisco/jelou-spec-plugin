@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   emptyStackState, addProject, addHostPid, setFrontendEnv, addBackendEnvBackup,
-  readStackState, writeStackState, clearStackState, stackStatePath, recordOwnedMutation
+  readStackState, writeStackState, clearStackState, stackStatePath, recordOwnedMutation, setLocalAuthProfile
 } from '../../bin/lib/dev-orchestrator/stack/stack-state.mjs';
 
 describe('stack-state pure helpers', () => {
@@ -84,6 +84,22 @@ describe('stack-state pure helpers', () => {
     });
 
     assert.deepEqual(state.mutationJournal[0].marker, marker);
+  });
+
+  test('stores reusable local-auth metadata and refuses secret-bearing profile state', () => {
+    const profile = {
+      workspaceId: 'workspace-1',
+      taskSlug: 'task-a',
+      company: { mode: 'existing', id: 135 },
+      user: { name: 'Local Developer', email: 'local@example.test' },
+      keyringIdentity: 'jlu-local-auth:workspace-1:task-a',
+    };
+
+    assert.deepEqual(setLocalAuthProfile(emptyStackState(), profile).localAuthProfile, profile);
+    assert.throws(
+      () => setLocalAuthProfile(emptyStackState(), { ...profile, password: 'plaintext' }),
+      /must not contain secrets/,
+    );
   });
 });
 

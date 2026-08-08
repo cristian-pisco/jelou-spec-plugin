@@ -39,11 +39,12 @@ describe('normalizeRegistry', () => {
   test('absorbs and resolves auth + frontend', () => {
     const raw = {
       services: {},
-      auth: { cookieName: 'jelou_auth', dashboardService: 'dashboard-server', verify: { 'jelou-api': '/v1/company' } },
+      auth: { cookieName: 'jelou_auth', dashboardService: 'dashboard-server', localProvisioningAdapter: '../jelou-api/tools/local-auth.mjs', verify: { 'jelou-api': '/v1/company' } },
       frontend: { path: '../jelou-apps', command: 'yarn start', port: 5175, envLocal: { NX_A: { service: 'jelou-api', suffix: '' } } }
     };
     const out = normalizeRegistry(raw, { resolve });
     assert.equal(out.auth.cookieName, 'jelou_auth');
+    assert.equal(out.auth.localProvisioningAdapter, '/ws/jelou-api/tools/local-auth.mjs');
     assert.deepEqual(out.auth.verify, [{ service: 'jelou-api', path: '/v1/company' }]);
     assert.equal(out.frontend.path, '/ws/jelou-apps');
     assert.deepEqual(out.frontend.envLocal, { NX_A: { service: 'jelou-api', suffix: '' } });

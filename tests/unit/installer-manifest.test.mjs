@@ -17,6 +17,7 @@ const FEATURE_BINS = [
   'bin/lib/boot-engine/execute-shared-reuse.mjs',
   'bin/lib/dev-orchestrator/readiness.mjs',
   'bin/list-tasks.mjs',
+  'bin/local-auth-onboarding.mjs',
   'bin/task-index.mjs',
   'bin/boot-dev-server.mjs',
   'bin/build-boot-plan.mjs',

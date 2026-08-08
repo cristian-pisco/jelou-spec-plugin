@@ -7,7 +7,17 @@ export function stackStatePath(opts) {
 }
 
 export function emptyStackState() {
-  return { projects: [], hostPids: [], frontendEnv: null, backendEnvBackups: [], portAllocations: [], environmentOverlays: [], currentRun: null, mutationJournal: [] };
+  return { projects: [], hostPids: [], frontendEnv: null, backendEnvBackups: [], portAllocations: [], environmentOverlays: [], localAuthProfile: null, currentRun: null, mutationJournal: [] };
+}
+
+function containsSecret(value) {
+  if (!value || typeof value !== 'object') return false;
+  return Object.entries(value).some(([key, child]) => /password|secret|cookie|token/i.test(key) || containsSecret(child));
+}
+
+export function setLocalAuthProfile(state, profile) {
+  if (containsSecret(profile)) throw new Error('local auth profile must not contain secrets');
+  return { ...state, localAuthProfile: structuredClone(profile) };
 }
 
 function normalizedRunMarker(marker) {

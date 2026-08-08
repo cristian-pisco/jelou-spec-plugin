@@ -39,4 +39,19 @@ describe('start-dev source selection', () => {
     assert.match(workflow, /appendLifecycleEvent[\s\S]*eventsLogPath/);
     assert.match(workflow, /policy\s*!==\s*'task-isolated'\)\s*continue/);
   });
+
+  test('runs keyring-backed local onboarding before login and journals only returned owned resources', () => {
+    const onboarding = workflow.indexOf('### Step F0');
+    const login = workflow.indexOf('### Step G');
+    assert.ok(onboarding > -1 && onboarding < login);
+    const step = workflow.slice(onboarding, login);
+    assert.match(step, /local-auth-onboarding\.mjs/);
+    assert.match(step, /--adapter-module/);
+    assert.match(step, /stdin/i);
+    assert.match(step, /--reconfigure/);
+    assert.match(step, /setLocalAuthProfile/);
+    assert.match(step, /cleanupResources/);
+    assert.match(step, /auth[\s\S]{0,200}!.*localProvisioningAdapter[\s\S]{0,200}stop/i);
+    assert.doesNotMatch(step, /--password|E2E_USER_PASSWORD|PASSWORD=/);
+  });
 });

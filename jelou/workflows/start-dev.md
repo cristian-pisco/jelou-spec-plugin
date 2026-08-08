@@ -489,6 +489,34 @@ import('{plugin-root}/bin/lib/dev-orchestrator/stack/stack-state.mjs').then((m) 
 " "{workspaceId}" "{slug}" '{"role":"vite","pid":<VITE_PID>}' "{runId}"
 ```
 
+### Step F0 — Reconcile the local authentication profile
+
+When the normalized registry has `auth`, onboarding is required before login. If `auth && !auth.localProvisioningAdapter`, stop with remediation to register the local database/bcrypt adapter; never skip into credential lookup. Read `localAuthProfile` from task stack state. A complete profile is offered for reuse; an incomplete profile requests only missing company or user fields; `--reconfigure` requests replacements for every selected field. Existing-company selection defaults to ID `135`. New-company plan choices are exactly `ENTERPRISE` and `SELF_SERVICE`.
+
+Invoke the onboarding CLI with the registered adapter module path and send one JSON request through stdin. The request contains `{ workspaceId, taskSlug, runId, target, topology, storedProfile, input }`. The password is entered through stdin and must never appear in arguments, environment variables, runtime files, generated overlays, lifecycle events, or displayed command text. Forward the invocation's `--reconfigure` option to this CLI only when selected.
+
+```bash
+node {plugin-root}/bin/local-auth-onboarding.mjs --adapter-module {registry.auth.localProvisioningAdapter} [--reconfigure]
+```
+
+Write the JSON request directly to the child process stdin without echoing or logging it. The CLI validates every onboarding field and keyring availability, proves the local database target independently, then reconciles the profile. A nonlocal target, unavailable keyring, or validation failure stops this run before Step G.
+
+Parse the sanitized JSON response. Persist `response.profile` with `setLocalAuthProfile`. For each entry in `response.cleanupResources`, call `recordOwnedMutation` using the unchanged `runIdentity`; do not infer or manufacture cleanup records from input data.
+
+```javascript
+import('{plugin-root}/bin/lib/dev-orchestrator/stack/stack-state.mjs').then((state) => {
+  const opts = { workspaceId, slug };
+  let current = state.readStackState(opts);
+  current = state.setLocalAuthProfile(current, response.profile);
+  for (const mutation of response.cleanupResources) {
+    current = state.recordOwnedMutation(current, runIdentity, mutation);
+  }
+  state.writeStackState(opts, current);
+});
+```
+
+Emit the provisioning lifecycle outcome through the existing redacted lifecycle boundary. Do not print the request, credential, hash, or unsanitized graph.
+
 ### Step G — Login for the auth cookie
 
 The `auth` block and `hostByService` come from Step A (`readUnifiedRegistry`) and Step C respectively; `resolveAuthUrls` consumes the normalized `auth.verify` array and `auth.dashboardService`'s policy-aware host.

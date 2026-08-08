@@ -17,9 +17,10 @@ function normalizeVerify(verify) {
   return Object.entries(verify).map(([service, path]) => ({ service, path }));
 }
 
-function normalizeAuth(auth) {
+function normalizeAuth(auth, resolve) {
   if (!auth) return null;
   const out = { ...auth };
+  if (auth.localProvisioningAdapter) out.localProvisioningAdapter = resolve(auth.localProvisioningAdapter);
   const verify = normalizeVerify(auth.verify);
   if (verify) out.verify = verify;
   return out;
@@ -30,7 +31,7 @@ export function normalizeRegistry(raw, { resolve }) {
   const frontend = raw.frontend ? { ...raw.frontend, path: resolve(raw.frontend.path) } : null;
   return {
     services,
-    auth: normalizeAuth(raw.auth),
+    auth: normalizeAuth(raw.auth, resolve),
     frontend,
     network: {
       composeNetworkAlias: raw.compose_network_alias || null,
