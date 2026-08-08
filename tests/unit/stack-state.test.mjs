@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   emptyStackState, addProject, addHostPid, setFrontendEnv, addBackendEnvBackup,
-  readStackState, writeStackState, clearStackState, stackStatePath
+  readStackState, writeStackState, clearStackState, stackStatePath, recordOwnedMutation
 } from '../../bin/lib/dev-orchestrator/stack/stack-state.mjs';
 
 describe('stack-state pure helpers', () => {
@@ -45,6 +45,45 @@ describe('stack-state pure helpers', () => {
     s = addBackendEnvBackup(s, { path: '/a/.env', backupPath: '/a/.env.bak2' });
     assert.equal(s.backendEnvBackups.length, 1);
     assert.equal(s.backendEnvBackups[0].backupPath, '/a/.env.bak2');
+  });
+
+  test('records owned mutations with one exact workspace task and run marker', () => {
+    const marker = { workspaceId: 'workspace-1', taskSlug: 'task-a', runId: 'run-17' };
+    let state = recordOwnedMutation(emptyStackState(), marker, { kind: 'container', resource: { projectName: 'api-task-a' } });
+    state = recordOwnedMutation(state, marker, { kind: 'overlay', resource: { path: '/runtime/api.env' } });
+
+    assert.deepEqual(state.currentRun, marker);
+    assert.deepEqual(state.mutationJournal, [
+      { marker, kind: 'container', resource: { projectName: 'api-task-a' } },
+      { marker, kind: 'overlay', resource: { path: '/runtime/api.env' } },
+    ]);
+  });
+
+  test('refuses incomplete markers and mutations from a different current run', () => {
+    const marker = { workspaceId: 'workspace-1', taskSlug: 'task-a', runId: 'run-17' };
+    const state = recordOwnedMutation(emptyStackState(), marker, { kind: 'process', resource: { pid: 41 } });
+
+    assert.throws(
+      () => recordOwnedMutation(state, { ...marker, runId: 'run-18' }, { kind: 'process', resource: { pid: 42 } }),
+      /current run marker mismatch/,
+    );
+    assert.throws(
+      () => recordOwnedMutation(emptyStackState(), { workspaceId: 'workspace-1', taskSlug: 'task-a' }, { kind: 'process', resource: { pid: 42 } }),
+      /workspaceId, taskSlug, and runId/,
+    );
+  });
+
+  test('does not let mutation payload data override the trusted run marker', () => {
+    const marker = { workspaceId: 'workspace-1', taskSlug: 'task-a', runId: 'run-17' };
+    const forged = { workspaceId: 'workspace-2', taskSlug: 'task-b', runId: 'run-18' };
+
+    const state = recordOwnedMutation(emptyStackState(), marker, {
+      marker: forged,
+      kind: 'process',
+      resource: { pid: 41 },
+    });
+
+    assert.deepEqual(state.mutationJournal[0].marker, marker);
   });
 });
 

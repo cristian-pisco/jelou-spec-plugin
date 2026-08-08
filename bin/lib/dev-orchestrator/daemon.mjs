@@ -25,7 +25,7 @@ import {
 import { compilePatterns, matchLines, Cooldown } from './patterns-matcher.mjs';
 import { probeHttp, probeTcp } from './readiness.mjs';
 import { notifyOs } from './notify.mjs';
-import { appendEvent, EVENT_TYPES } from './events.mjs';
+import { appendDaemonEvent, EVENT_TYPES, redactDiagnostics } from './events.mjs';
 
 function parseArgv(argv) {
   const out = {};
@@ -45,7 +45,7 @@ function tmuxRunner(args, opts = {}) {
 }
 
 function emit(logPath, evt) {
-  appendEvent(logPath, evt);
+  appendDaemonEvent(logPath, evt);
 }
 
 function diffLines(prev, current) {
@@ -153,13 +153,13 @@ async function tick(ctx) {
 async function main() {
   const opts = parseArgv(process.argv);
   if (!opts.workspaceId || !opts.slug || !opts.windowName || !opts.configPath) {
-    process.stderr.write('daemon: missing required argv\n');
+    process.stderr.write(redactDiagnostics('daemon: missing required argv\n'));
     process.exit(2);
   }
 
   const lockResult = acquireLock(opts);
   if (!lockResult.acquired) {
-    process.stderr.write(`daemon: lock held by pid ${lockResult.holderPid}\n`);
+    process.stderr.write(redactDiagnostics(`daemon: lock held by pid ${lockResult.holderPid}\n`));
     process.exit(0);
   }
 
@@ -192,7 +192,7 @@ async function main() {
       ctx.config = cfg;
       emit(logPath, { type: EVENT_TYPES.daemon_reload, slug: opts.slug });
     } catch (e) {
-      process.stderr.write(`daemon: SIGHUP reload failed: ${e.message}\n`);
+      process.stderr.write(redactDiagnostics(`daemon: SIGHUP reload failed: ${e.message}\n`));
     }
   });
   process.on('SIGTERM', () => requestStop('sigterm'));
@@ -203,7 +203,7 @@ async function main() {
       const r = await tick(ctx);
       if (r.stop) stop = true;
     } catch (e) {
-      process.stderr.write(`daemon: tick error: ${e.stack || e.message}\n`);
+      process.stderr.write(redactDiagnostics(`daemon: tick error: ${e.stack || e.message}\n`));
     }
     if (stop) break;
     await new Promise(resolve => {
@@ -221,6 +221,6 @@ async function main() {
 }
 
 main().catch((e) => {
-  process.stderr.write(`daemon: fatal: ${e.stack || e.message}\n`);
+  process.stderr.write(redactDiagnostics(`daemon: fatal: ${e.stack || e.message}\n`));
   process.exit(1);
 });

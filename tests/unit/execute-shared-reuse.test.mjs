@@ -644,6 +644,17 @@ describe('errorHints', () => {
     assert.deepEqual(errorHints(''), []);
     assert.deepEqual(errorHints(undefined), []);
   });
+
+  test('redacts secret assignments from returned diagnostic hints', () => {
+    const canary = 'phase04-canary-secret';
+    const hints = errorHints(`Error: login failed password=${canary}\nFatal authorization: Bearer ${canary}`);
+
+    assert.equal(hints.join('\n').includes(canary), false);
+    assert.deepEqual(hints, [
+      'Error: login failed password=[REDACTED]',
+      'Fatal authorization: Bearer [REDACTED]',
+    ]);
+  });
 });
 
 describe('verifySharedReuse — a failed readiness explains itself', () => {
@@ -684,5 +695,47 @@ describe('verifySharedReuse — a failed readiness explains itself', () => {
     assert.equal(result.cause, 'bad_ready_pattern');
     assert.deepEqual(result.error_hints, []);
     assert.equal(calls.some((c) => c.key.includes('cat ')), false);
+  });
+});
+
+describe('verifySharedReuse — lifecycle stages', () => {
+  test('reports boot and cleanup for a process created by the current run', async () => {
+    const { runner } = makeRunner([
+      { when: 'pgrep -f', results: { code: 1, stdout: '', stderr: '' } },
+      { when: 'echo $!', results: ok('4242\n') },
+    ]);
+    const lifecycle = [];
+    let probes = 0;
+
+    const result = await verifySharedReuse(npmEntry(), baseDeps(runner, {
+      probePort: async () => {
+        probes += 1;
+        return probes > 1;
+      },
+      onLifecycle: (event) => lifecycle.push(event),
+    }));
+
+    assert.equal(result.status, 'green');
+    assert.deepEqual(lifecycle.map(({ stage, outcome }) => ({ stage, outcome })), [
+      { stage: 'boot', outcome: 'started' },
+      { stage: 'boot', outcome: 'succeeded' },
+      { stage: 'cleanup', outcome: 'started' },
+      { stage: 'cleanup', outcome: 'succeeded' },
+    ]);
+  });
+
+  test('reports reuse without cleanup for an already healthy main service', async () => {
+    const { runner } = makeRunner([
+      { when: 'ps --services --status running', results: ok('app\n') },
+      { when: 'pgrep -f', results: ok() },
+    ]);
+    const lifecycle = [];
+
+    const result = await verifySharedReuse(dockerExecEntry(), baseDeps(runner, {
+      onLifecycle: (event) => lifecycle.push(event),
+    }));
+
+    assert.equal(result.status, 'green-preexisting');
+    assert.deepEqual(lifecycle, [{ stage: 'boot', outcome: 'reused' }]);
   });
 });

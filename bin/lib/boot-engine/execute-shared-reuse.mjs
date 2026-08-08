@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { probeHttp, probeTcp } from '../dev-orchestrator/readiness.mjs';
+import { LIFECYCLE_STAGES, redactDiagnostics } from '../dev-orchestrator/events.mjs';
 
 export const DEFAULT_READY_TIMEOUT_S = 30;
 const POLL_INTERVAL_MS = 500;
@@ -193,7 +194,10 @@ export function errorHints(logText, { max = HINT_LIMIT, width = HINT_WIDTH } = {
     .split('\n')
     .map((line) => line.replace(/\u001b\[[0-9;]*[A-Za-z]/g, '').trim())
     .filter((line) => line && !ENV_ASSIGNMENT_RE.test(line) && ERROR_HINT_RE.test(line));
-  return lines.slice(-max).map((line) => (line.length > width ? `${line.slice(0, width)}…` : line));
+  return lines.slice(-max).map((line) => {
+    const redacted = redactDiagnostics(line);
+    return redacted.length > width ? `${redacted.slice(0, width)}…` : redacted;
+  });
 }
 
 async function restoreToFound(entry, deps, started) {
@@ -236,14 +240,17 @@ export async function verifySharedReuse(entry, {
   sleep = defaultSleep,
   pollIntervalMs = POLL_INTERVAL_MS,
   now = Date.now,
+  onLifecycle = () => {},
 } = {}) {
   const deps = { runner, probePort, probeHttp: probeHttpFn, sleep, pollIntervalMs, now };
   const started = { containers: [], processes: [] };
 
   if (await probeAlreadyServing(entry, deps)) {
+    onLifecycle({ stage: LIFECYCLE_STAGES.boot, outcome: 'reused' });
     return { status: 'green-preexisting', cause: null, readiness_ms: 0, command_executed: false, started, teardown_clean: true, error_hints: [] };
   }
 
+  onLifecycle({ stage: LIFECYCLE_STAGES.boot, outcome: 'started' });
   let commandExecuted = false;
   let outcome;
   let teardownClean = true;
@@ -266,8 +273,12 @@ export async function verifySharedReuse(entry, {
         ? { status: 'green', cause: null, readiness_ms: readinessMs }
         : { status: 'failed', cause: readiness.cause, readiness_ms: readinessMs };
     }
+    onLifecycle({ stage: LIFECYCLE_STAGES.boot, outcome: outcome.status === 'green' ? 'succeeded' : 'failed', cause: outcome.cause });
   } finally {
+    const ownsResources = started.containers.length > 0 || started.processes.length > 0;
+    if (ownsResources) onLifecycle({ stage: LIFECYCLE_STAGES.cleanup, outcome: 'started' });
     teardownClean = await restoreToFound(entry, deps, started);
+    if (ownsResources) onLifecycle({ stage: LIFECYCLE_STAGES.cleanup, outcome: teardownClean ? 'succeeded' : 'failed' });
     if (hostLogDir) removeHostLogDir(hostLogDir);
   }
   return { ...outcome, command_executed: commandExecuted, started, teardown_clean: teardownClean, error_hints: hints };

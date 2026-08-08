@@ -35,11 +35,19 @@ If cancel, print `Cancelled.` and stop.
 
 ```bash
 node -e "
-import('{plugin-root}/bin/lib/dev-orchestrator/stop.mjs').then(({ stopDev }) => {
+Promise.all([
+  import('{plugin-root}/bin/lib/dev-orchestrator/stop.mjs'),
+  import('{plugin-root}/bin/lib/dev-orchestrator/stack/stack-state.mjs'),
+  import('{plugin-root}/bin/lib/dev-orchestrator/events.mjs'),
+  import('{plugin-root}/bin/lib/dev-orchestrator/state-daemon.mjs')
+]).then(([{ stopDev }, stackState, events, daemonState]) => {
+  const opts = { workspaceId: process.argv[1], slug: process.argv[2] };
+  const state = stackState.readStackState(opts);
   const out = stopDev({
-    workspaceId: process.argv[1],
-    slug: process.argv[2],
-    killServices: process.argv[3] === 'true'
+    ...opts,
+    runId: state.currentRun?.runId,
+    killServices: process.argv[3] === 'true',
+    onLifecycle: (event) => events.appendLifecycleEvent(daemonState.eventsLogPath(opts), event)
   });
   process.stdout.write(JSON.stringify(out));
 });
@@ -48,7 +56,7 @@ import('{plugin-root}/bin/lib/dev-orchestrator/stop.mjs').then(({ stopDev }) => 
 
 ## Step 4 — Report
 
-The Step 3 result includes `stack: { projects, killed, missing, restored }` (all arrays). Report the teardown result alongside the daemon/window status.
+The Step 3 result includes `stack: { projects, killed, missing, restored, refused }` (all arrays for an owned journal). Report the teardown result alongside the daemon/window status. If `refused` is non-empty, name every resource and reason and report that its state was preserved for manual review.
 
 Print:
 > `Stopped jlu-dev for '{slug}'. Daemon: <killed|not-running>. Window: <killed|kept>.`

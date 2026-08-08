@@ -92,6 +92,15 @@ describe('planEntryToCommands task-isolated', () => {
     assert.deepEqual(d.environmentFiles, [path]);
     assert.deepEqual(d.exec, ['exec', '--env-file', path, '-d', 'jelou-api-t1', 'sh', '-lc', 'cd /app && yarn start:dev > /tmp/jelou-api-t1.dev.log 2>&1']);
   });
+
+  test('carries the current run marker and observable execution stages', () => {
+    const runIdentity = { workspaceId: 'workspace-1', taskSlug: 'task-a', runId: 'run-17' };
+
+    const descriptor = planEntryToCommands(taskEntry(), { runIdentity });
+
+    assert.deepEqual(descriptor.ownershipMarker, runIdentity);
+    assert.deepEqual(descriptor.lifecycleStages, ['boot', 'cleanup']);
+  });
 });
 
 describe('planEntryToCommands dependency install', () => {

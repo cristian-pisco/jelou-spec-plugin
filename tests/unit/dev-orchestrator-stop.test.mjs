@@ -1,7 +1,11 @@
 // tests/unit/dev-orchestrator-stop.test.mjs
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { stopDev } from '../../bin/lib/dev-orchestrator/stop.mjs';
+
+const stopWorkflow = readFileSync(join(import.meta.dirname, '..', '..', 'jelou', 'workflows', 'stop-dev.md'), 'utf8');
 
 function fakeRunner(handlers = {}) {
   const calls = [];
@@ -68,5 +72,46 @@ describe('stopDev', () => {
     });
     assert.deepEqual(calls, [{ workspaceId: '/ws', slug: 't1' }]);
     assert.deepEqual(out.stack, stackResult);
+  });
+
+  test('passes the current run id to ownership-checked stack teardown', () => {
+    const calls = [];
+
+    stopDev({
+      workspaceId: 'workspace-1',
+      slug: 'task-a',
+      runId: 'run-17',
+      killDaemon: () => ({ killed: false }),
+      tearDownStack: (opts) => {
+        calls.push(opts);
+        return { projects: [], killed: [], missing: [], restored: [], refused: [] };
+      },
+    });
+
+    assert.deepEqual(calls, [{ workspaceId: 'workspace-1', slug: 'task-a', runId: 'run-17' }]);
+  });
+
+  test('the workflow reads and passes the persisted current run marker', () => {
+    assert.match(stopWorkflow, /readStackState/);
+    assert.match(stopWorkflow, /runId:\s*state\.currentRun\?\.runId/);
+  });
+
+  test('reports the final cleanup outcome after stack teardown', () => {
+    const lifecycle = [];
+
+    stopDev({
+      workspaceId: 'workspace-1',
+      slug: 'task-a',
+      runId: 'run-17',
+      killDaemon: () => ({ killed: false }),
+      tearDownStack: () => ({ projects: [], killed: [], missing: [], restored: [], refused: [] }),
+      onLifecycle: (event) => lifecycle.push(event),
+    });
+
+    assert.deepEqual(lifecycle, [{ stage: 'cleanup', outcome: 'succeeded', taskSlug: 'task-a' }]);
+  });
+
+  test('the workflow persists the final cleanup outcome after stop', () => {
+    assert.match(stopWorkflow, /appendLifecycleEvent[\s\S]*eventsLogPath/);
   });
 });

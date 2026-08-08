@@ -13,6 +13,7 @@ import {
 } from './tmux.mjs';
 import { daemonSpawn as realDaemonSpawn } from './daemon-spawn.mjs';
 import { effectiveDefaults } from './config.mjs';
+import { LIFECYCLE_STAGES } from './events.mjs';
 
 export function chooseLayout(n) {
   if (n <= 1) return 'single-pane';
@@ -86,10 +87,15 @@ function ensureTmuxRunning({ env, runner }) {
 export function startDev({
   config, workspaceRoot, workspaceId, slug, configPath,
   env = process.env,
-  runner, daemonSpawn = realDaemonSpawn
+  runner, daemonSpawn = realDaemonSpawn, onLifecycle = () => {}
 }) {
+  const lifecycle = (stage, outcome, details = {}) => onLifecycle({ stage, outcome, workspaceId, taskSlug: slug, ...details });
+  lifecycle(LIFECYCLE_STAGES.resolution, 'succeeded');
   const tmux = tmuxAvailable(runner);
-  if (!tmux.ok) return { status: 'tmux-missing' };
+  if (!tmux.ok) {
+    lifecycle(LIFECYCLE_STAGES.boot, 'failed', { reason: 'tmux-missing' });
+    return { status: 'tmux-missing' };
+  }
 
   ensureTmuxRunning({ env, runner });
 
@@ -97,15 +103,18 @@ export function startDev({
   const windowName = windowNameFor(slug, prefix);
   const existing = findWindow(windowName, runner);
   if (existing) {
+    lifecycle(LIFECYCLE_STAGES.boot, 'reused', { windowName });
     return { status: 'exists', windowName, session: existing.session };
   }
 
   const plan = planStart({ config, workspaceRoot, slug, windowName });
+  lifecycle(LIFECYCLE_STAGES.planning, 'succeeded', { paneCount: plan.panes.length, skipped: plan.skipped });
   // Phase 2: always operate on a session named 'jlu-dev'. If the user is
   // inside a different session, the orchestrator will create the window in
   // 'jlu-dev'. They can attach via: tmux attach -t jlu-dev.
   const session = 'jlu-dev';
 
+  lifecycle(LIFECYCLE_STAGES.boot, 'started', { windowName });
   newWindow({ session, name: windowName }, runner);
   const winTarget = `${session}:${windowName}`;
 
@@ -128,6 +137,7 @@ export function startDev({
   selectWindow({ target: winTarget }, runner);
 
   const daemon = daemonSpawn({ slug, workspaceRoot, workspaceId, windowName, configPath });
+  lifecycle(LIFECYCLE_STAGES.boot, 'succeeded', { windowName, paneCount: plan.panes.length });
 
   return {
     status: 'created',

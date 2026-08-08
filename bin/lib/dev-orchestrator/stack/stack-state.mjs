@@ -7,7 +7,29 @@ export function stackStatePath(opts) {
 }
 
 export function emptyStackState() {
-  return { projects: [], hostPids: [], frontendEnv: null, backendEnvBackups: [], portAllocations: [], environmentOverlays: [] };
+  return { projects: [], hostPids: [], frontendEnv: null, backendEnvBackups: [], portAllocations: [], environmentOverlays: [], currentRun: null, mutationJournal: [] };
+}
+
+function normalizedRunMarker(marker) {
+  const fields = ['workspaceId', 'taskSlug', 'runId'];
+  if (!marker || fields.some((field) => typeof marker[field] !== 'string' || marker[field].length === 0)) {
+    throw new Error('ownership marker requires workspaceId, taskSlug, and runId');
+  }
+  return { workspaceId: marker.workspaceId, taskSlug: marker.taskSlug, runId: marker.runId };
+}
+
+function sameRun(left, right) {
+  return left.workspaceId === right.workspaceId && left.taskSlug === right.taskSlug && left.runId === right.runId;
+}
+
+export function recordOwnedMutation(state, identity, mutation) {
+  const marker = normalizedRunMarker(identity);
+  if (state.currentRun && !sameRun(state.currentRun, marker)) throw new Error('current run marker mismatch');
+  return {
+    ...state,
+    currentRun: marker,
+    mutationJournal: [...(state.mutationJournal || []), { ...mutation, marker }],
+  };
 }
 
 export function addProject(state, project) {

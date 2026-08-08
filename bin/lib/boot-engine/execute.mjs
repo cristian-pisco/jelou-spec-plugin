@@ -1,4 +1,5 @@
 import { unmaskWiredEnv } from './env-mask.mjs';
+import { LIFECYCLE_STAGES } from '../dev-orchestrator/events.mjs';
 
 function installDescriptor(entry) {
   const install = entry.depsProvision && entry.depsProvision.install;
@@ -68,8 +69,15 @@ function sharedReuse(entry) {
   };
 }
 
-export function planEntryToCommands(entry) {
-  if (entry.policy === 'task-isolated') return taskIsolated(entry);
-  if (entry.policy === 'shared-reuse') return sharedReuse(entry);
-  throw new Error(`planEntryToCommands: unknown policy '${entry.policy}' for service '${entry.id}'`);
+export function planEntryToCommands(entry, { runIdentity } = {}) {
+  let descriptor;
+  if (entry.policy === 'task-isolated') descriptor = taskIsolated(entry);
+  else if (entry.policy === 'shared-reuse') descriptor = sharedReuse(entry);
+  else throw new Error(`planEntryToCommands: unknown policy '${entry.policy}' for service '${entry.id}'`);
+  if (!runIdentity) return descriptor;
+  return {
+    ...descriptor,
+    ownershipMarker: { ...runIdentity },
+    lifecycleStages: [LIFECYCLE_STAGES.boot, LIFECYCLE_STAGES.cleanup],
+  };
 }

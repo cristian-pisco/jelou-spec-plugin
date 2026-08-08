@@ -58,6 +58,16 @@ import('{plugin-root}/bin/lib/dev-orchestrator/source-mode.mjs').then(({ sourceM
 
 For every interactive invocation, ask the user which source mode to use. Offer `main` and `task-aware` exactly as returned. If no task is active, `task-aware` is disabled with the explanation `No active task is available`, so only `main` is selectable. Capture the selected normalized value as `{sourceMode}`.
 
+Create one run identity after the source mode is selected and retain it for the entire invocation:
+
+```bash
+node -e "
+import('node:crypto').then(({ randomUUID }) => process.stdout.write(randomUUID()));
+"
+```
+
+Capture the output as `{runId}`. Every lifecycle emitter, execution descriptor, journal write, and cleanup call in this invocation uses the same `runIdentity = { workspaceId, taskSlug: slug, runId }`.
+
 ## Step 3 — Verify tmux availability
 
 ```bash
@@ -95,18 +105,24 @@ If start, run startDev:
 node -e "
 Promise.all([
   import('{plugin-root}/bin/lib/dev-orchestrator/start.mjs'),
-  import('{plugin-root}/bin/lib/dev-orchestrator/config.mjs')
-]).then(([s, c]) => {
+  import('{plugin-root}/bin/lib/dev-orchestrator/config.mjs'),
+  import('{plugin-root}/bin/lib/dev-orchestrator/events.mjs'),
+  import('{plugin-root}/bin/lib/dev-orchestrator/state-daemon.mjs')
+]).then(([s, c, events, daemonState]) => {
   const cfg = c.readConfig(process.argv[1]);
+  const workspaceId = process.argv[4];
+  const slug = process.argv[3];
   const out = s.startDev({
     config: cfg,
     workspaceRoot: process.argv[2],
-    slug: process.argv[3],
-    env: process.env
+    workspaceId,
+    slug,
+    env: process.env,
+    onLifecycle: (event) => events.appendLifecycleEvent(daemonState.eventsLogPath({ workspaceId, slug }), event)
   });
   process.stdout.write(JSON.stringify(out));
 });
-" "{configPath}" "{root}" "{slug}"
+" "{configPath}" "{root}" "{slug}" "{workspaceId}"
 ```
 
 ## Step 6 — Report
@@ -141,13 +157,15 @@ import('{plugin-root}/bin/lib/dev-orchestrator/stack/stack-state.mjs').then((m) 
   const opts = { workspaceId: process.argv[1], slug: process.argv[2] };
   let s = m.readStackState(opts);
   const mutation = JSON.parse(process.argv[3]);
-  if (mutation.kind === 'hostPid') s = m.addHostPid(s, mutation.value);
+  const runIdentity = { workspaceId: process.argv[1], taskSlug: process.argv[2], runId: process.argv[4] };
+  if (mutation.kind === 'process') s = m.addHostPid(s, mutation.resource);
+  else if (mutation.kind === 'container') s = m.addProject(s, mutation.resource);
   else if (mutation.kind === 'frontendEnv') s = m.setFrontendEnv(s, mutation.value);
   else if (mutation.kind === 'backendEnvBackup') s = m.addBackendEnvBackup(s, mutation.value);
-  else if (mutation.kind === 'project') s = m.addProject(s, mutation.value);
+  s = m.recordOwnedMutation(s, runIdentity, mutation.cleanup);
   m.writeStackState(opts, s);
 });
-" "{workspaceId}" "{slug}" '{mutationJson}'
+" "{workspaceId}" "{slug}" '{mutationJson}' "{runId}"
 ```
 
 Steps B0 and C1 below record several mutations in one pass and use their own fuller scripts; Steps E, F, H, and the observer each record one mutation and reference this pattern with a concrete `{mutationJson}`. `{workspaceId}` is the value captured in Step 1.
@@ -180,7 +198,7 @@ Build and validate the plan with the Step B command before continuing. Report ev
 
 ### Step B0 — Back up the `.env`s of shared-reuse services that get a wiredEnv
 
-Build the plan once (Step B does this too; reuse the same JSON). A `shared-reuse` plan entry with a non-null `wiredEnv` will have its real repo `.env` rewritten to point a peer var at a worktree peer's task URL — back up each such `.env` first so `/jlu:stop-dev` can restore it. Task-isolated services write to their disposable worktree `.env`, so they are skipped. For each shared-reuse entry with `wiredEnv`, if `<entry.cwd>/.env` exists and its backup does not, copy it and record `kind:'backendEnvBackup'`:
+Build the plan once (Step B does this too; reuse the same JSON). A `shared-reuse` plan entry with a non-null `wiredEnv` will have its real repo `.env` rewritten to point a peer var at a worktree peer's task URL — back up each such `.env` first so `/jlu:stop-dev` can restore it. Task-isolated services write to their disposable worktree `.env`, so they are skipped. Journal every backup and generated overlay with the current run marker:
 
 ```bash
 node -e "
@@ -190,6 +208,7 @@ Promise.all([
 ]).then(([ss, fs]) => {
   const plan = JSON.parse(process.argv[3]);
   const opts = { workspaceId: process.argv[1], slug: process.argv[2] };
+  const runIdentity = { workspaceId: process.argv[1], taskSlug: process.argv[2], runId: process.argv[4] };
   let s = ss.readStackState(opts);
   for (const entry of plan.services) {
     if (entry.policy !== 'shared-reuse' || !entry.wiredEnv) continue;
@@ -198,11 +217,15 @@ Promise.all([
     if (fs.existsSync(path) && !fs.existsSync(backupPath)) {
       fs.copyFileSync(path, backupPath);
       s = ss.addBackendEnvBackup(s, { path, backupPath });
+      s = ss.recordOwnedMutation(s, runIdentity, { kind: 'restore', resource: { from: backupPath, to: path } });
     }
+  }
+  for (const overlay of plan.overlayFiles || []) {
+    s = ss.recordOwnedMutation(s, runIdentity, { kind: 'overlay', resource: { path: overlay.path } });
   }
   ss.writeStackState(opts, s);
 });
-" "{workspaceId}" "{slug}" '{planJson}'
+" "{workspaceId}" "{slug}" '{planJson}' "{runId}"
 ```
 
 `{planJson}` is the plan JSON from Step B.
@@ -217,7 +240,7 @@ node {plugin-root}/bin/build-boot-plan.mjs --workspace {root} --slug {slug} --so
 
 This prints `{ services: [entry], network, slug }` — capture it as `{planJson}` (also used by Steps B0, C, C1, D, and the observer). Each `entry` has a `policy` of `task-isolated` or `shared-reuse`.
 
-Then boot each entry by following the `## Plan-driven boot` contract in `jelou/references/env-lifecycle.md`: for each entry, obtain its descriptor from `planEntryToCommands` and execute it —
+Then boot each entry by following the `## Plan-driven boot` contract in `jelou/references/env-lifecycle.md`: for each entry, obtain its descriptor with `planEntryToCommands(entry, { runIdentity })` and execute it —
 
 - **task-isolated**: write `descriptor.files[]` → `docker <descriptor.up>` (idle container, image reused, no rebuild) → if `descriptor.install` non-null run it per step 4b of the boot contract (blocking, before the dev command, bounded by `install.timeoutMs`; a non-zero exit means this entry is `down` with cause `deps_install_failed` and its dev command is never exec'd) → if `descriptor.exec` non-null `docker <descriptor.exec>` → poll `descriptor.readiness` (http/port on the allocated host port; stdout_match tails `descriptor.readiness.logPath`) → register `docker <descriptor.teardown>` (ALWAYS). WARN if `descriptor.imageResolved` is false.
 - **shared-reuse**: write `descriptor.files[]` (the `wiredEnv` `.env`) if present → the existing reuse-or-reboot path (`descriptor.launcher`/`command`/`cwd`): probe the developer's container, reuse if healthy, reboot only if unhealthy/stale → poll `descriptor.readiness` (the service's normal dev port) → register `descriptor.teardown` (kill-what-started) ONLY if this run rebooted it.
@@ -283,14 +306,17 @@ node -e "
 import('{plugin-root}/bin/lib/dev-orchestrator/stack/stack-state.mjs').then((ss) => {
   const plan = JSON.parse(process.argv[3]);
   const opts = { workspaceId: process.argv[1], slug: process.argv[2] };
+  const runIdentity = { workspaceId: process.argv[1], taskSlug: process.argv[2], runId: process.argv[4] };
   let s = ss.readStackState(opts);
   for (const e of plan.services) {
     if (e.policy !== 'task-isolated') continue;
-    s = ss.addProject(s, { projectName: e.projectName, cwd: e.cwd, composeFile: e.composeFile, overrideFile: 'docker-compose.jlu.yml' });
+    const resource = { projectName: e.projectName, cwd: e.cwd, composeFile: e.composeFile, overrideFile: 'docker-compose.jlu.yml' };
+    s = ss.addProject(s, resource);
+    s = ss.recordOwnedMutation(s, runIdentity, { kind: 'container', resource });
   }
   ss.writeStackState(opts, s);
 });
-" "{workspaceId}" "{slug}" '{planJson}'
+" "{workspaceId}" "{slug}" '{planJson}' "{runId}"
 ```
 
 `{registryJson}` is `JSON.stringify(registry)` (the full normalized registry from Step A); `{planJson}` is the plan JSON from Step B.
@@ -361,11 +387,13 @@ node -e "
 import('{plugin-root}/bin/lib/dev-orchestrator/stack/stack-state.mjs').then((m) => {
   const opts = { workspaceId: process.argv[1], slug: process.argv[2] };
   let s = m.readStackState(opts);
-  const mutation = JSON.parse(process.argv[3]);
-  s = m.addHostPid(s, mutation.value);
+  const resource = JSON.parse(process.argv[3]);
+  const runIdentity = { workspaceId: process.argv[1], taskSlug: process.argv[2], runId: process.argv[4] };
+  s = m.addHostPid(s, resource);
+  s = m.recordOwnedMutation(s, runIdentity, { kind: 'process', resource });
   m.writeStackState(opts, s);
 });
-" "{workspaceId}" "{slug}" '{"kind":"hostPid","value":{"role":"observer","pid":<OBSERVER_PID>}}'
+" "{workspaceId}" "{slug}" '{"role":"observer","pid":<OBSERVER_PID>}' "{runId}"
 ```
 
 Autofix is NOT recorded as a host PID — when `--auto-fix` is set it runs as an in-session `Agent` dispatch (see below), not a detached host process, so there is no separate process for teardown to kill.
@@ -430,11 +458,13 @@ node -e "
 import('{plugin-root}/bin/lib/dev-orchestrator/stack/stack-state.mjs').then((m) => {
   const opts = { workspaceId: process.argv[1], slug: process.argv[2] };
   let s = m.readStackState(opts);
-  const mutation = JSON.parse(process.argv[3]);
-  s = m.setFrontendEnv(s, mutation.value);
+  const value = JSON.parse(process.argv[3]);
+  const runIdentity = { workspaceId: process.argv[1], taskSlug: process.argv[2], runId: process.argv[4] };
+  s = m.setFrontendEnv(s, value);
+  s = m.recordOwnedMutation(s, runIdentity, { kind: 'restore', resource: { from: value.path + '/' + value.envBackup, to: value.path + '/' + value.envFile } });
   m.writeStackState(opts, s);
 });
-" "{workspaceId}" "{slug}" '{"kind":"frontendEnv","value":{"path":"<frontend.path>","envFile":"<frontend.envFile>","envBackup":"<frontend.envBackup>"}}'
+" "{workspaceId}" "{slug}" '{"path":"<frontend.path>","envFile":"<frontend.envFile>","envBackup":"<frontend.envBackup>"}' "{runId}"
 ```
 
 `registry.frontend.path`, `registry.frontend.envFile`, and `registry.frontend.envBackup` come from the unified registry's `frontend` block (Step A).
@@ -450,11 +480,13 @@ node -e "
 import('{plugin-root}/bin/lib/dev-orchestrator/stack/stack-state.mjs').then((m) => {
   const opts = { workspaceId: process.argv[1], slug: process.argv[2] };
   let s = m.readStackState(opts);
-  const mutation = JSON.parse(process.argv[3]);
-  s = m.addHostPid(s, mutation.value);
+  const resource = JSON.parse(process.argv[3]);
+  const runIdentity = { workspaceId: process.argv[1], taskSlug: process.argv[2], runId: process.argv[4] };
+  s = m.addHostPid(s, resource);
+  s = m.recordOwnedMutation(s, runIdentity, { kind: 'process', resource });
   m.writeStackState(opts, s);
 });
-" "{workspaceId}" "{slug}" '{"kind":"hostPid","value":{"role":"vite","pid":<VITE_PID>}}'
+" "{workspaceId}" "{slug}" '{"role":"vite","pid":<VITE_PID>}' "{runId}"
 ```
 
 ### Step G — Login for the auth cookie
@@ -511,11 +543,13 @@ node -e "
 import('{plugin-root}/bin/lib/dev-orchestrator/stack/stack-state.mjs').then((m) => {
   const opts = { workspaceId: process.argv[1], slug: process.argv[2] };
   let s = m.readStackState(opts);
-  const mutation = JSON.parse(process.argv[3]);
-  s = m.addHostPid(s, mutation.value);
+  const resource = JSON.parse(process.argv[3]);
+  const runIdentity = { workspaceId: process.argv[1], taskSlug: process.argv[2], runId: process.argv[4] };
+  s = m.addHostPid(s, resource);
+  s = m.recordOwnedMutation(s, runIdentity, { kind: 'process', resource });
   m.writeStackState(opts, s);
 });
-" "{workspaceId}" "{slug}" '{"kind":"hostPid","value":{"role":"inject","pid":<INJECT_PID>}}'
+" "{workspaceId}" "{slug}" '{"role":"inject","pid":<INJECT_PID>}' "{runId}"
 ```
 
 Then, using `mcp__chrome-devtools__*`: `navigate_page` to `http://localhost:<injectPort>/`, `wait_for` the app to render, and if the page is blank reload once (Vite's cold-cache re-optimization can stall the first hit). Confirm the session is authenticated via `take_snapshot` — the URL must not be `/login` and real app content must be present — then close out with `take_screenshot`. Never print the cookie value in any tool output or report.

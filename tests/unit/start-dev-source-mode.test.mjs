@@ -30,4 +30,13 @@ describe('start-dev source selection', () => {
     assert.doesNotMatch(workflow, /Build `worktreePaths`/);
     assert.match(workflow, /source descriptor/);
   });
+
+  test('threads one run identity through lifecycle events execution descriptors and owned mutation journaling', () => {
+    assert.match(workflow, /randomUUID/);
+    assert.match(workflow, /runIdentity\s*=\s*\{\s*workspaceId[\s\S]*taskSlug:\s*slug[\s\S]*runId/);
+    assert.match(workflow, /planEntryToCommands\([^)]*\{\s*runIdentity\s*\}/);
+    assert.match(workflow, /recordOwnedMutation/);
+    assert.match(workflow, /appendLifecycleEvent[\s\S]*eventsLogPath/);
+    assert.match(workflow, /policy\s*!==\s*'task-isolated'\)\s*continue/);
+  });
 });
