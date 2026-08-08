@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.346] — 2026-08-08
+
+### Changed
+- Cache codebase docs once per task for jlu-tdd-cycle instead of re-reading them every phase (#80)
+
 ## [0.3.345] — 2026-08-08
 
 ### Changed
