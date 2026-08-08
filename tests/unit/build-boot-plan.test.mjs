@@ -119,9 +119,42 @@ describe('buildPlanForWorkspace — refuses to hand back a plan carrying an unsa
   });
 });
 
+describe('buildPlanForWorkspace — normalized source contract', () => {
+  test('reports the exact canonical source and commit for explicit main mode', () => {
+    const serviceId = 'scoped-api';
+    const sourcePath = `/repo/${serviceId}`;
+    const ws = makeWorkspace(registry([hostService(serviceId, "pkill -f '[s]coped-api.*src/index\\.ts' || true")]));
+    const plan = buildPlanForWorkspace({
+      workspaceRoot: ws,
+      slug: 't1',
+      sourceMode: 'main',
+      occupied: [],
+      pathExists: () => true,
+      inspectGit: (path) => ({
+        topLevel: path,
+        commit: 'dddddddddddddddddddddddddddddddddddddddd',
+        branch: 'main',
+        worktrees: [],
+      }),
+    });
+
+    assert.equal(plan.sourceMode, 'main');
+    assert.deepEqual(plan.services[0].source, {
+      mode: 'main',
+      taskSlug: null,
+      serviceId,
+      affected: false,
+      sourcePath,
+      commit: 'dddddddddddddddddddddddddddddddddddddddd',
+      branch: 'main',
+      ownership: 'main',
+    });
+  });
+});
+
 describe('build-boot-plan CLI', () => {
-  function run(ws) {
-    return spawnSync(process.execPath, [CLI, '--workspace', ws, '--slug', 't1'], { encoding: 'utf8' });
+  function run(ws, args = []) {
+    return spawnSync(process.execPath, [CLI, '--workspace', ws, '--slug', 't1', ...args], { encoding: 'utf8' });
   }
 
   test('exits non-zero with the cause and prints NO plan when a teardown is unsafe', () => {
@@ -135,5 +168,12 @@ describe('build-boot-plan CLI', () => {
   test('missing arguments still exit 2', () => {
     const r = spawnSync(process.execPath, [CLI], { encoding: 'utf8' });
     assert.equal(r.status, 2);
+  });
+
+  test('rejects an unsupported explicit source mode before emitting a plan', () => {
+    const r = run(makeWorkspace(registry([hostService('scoped-api', "pkill -f '[s]coped-api.*src/index\\.ts' || true")])), ['--source-mode', 'worktree']);
+    assert.notEqual(r.status, 0);
+    assert.equal(r.stdout, '');
+    assert.match(r.stderr, /unsupported source mode.*worktree.*main.*task-aware/i);
   });
 });

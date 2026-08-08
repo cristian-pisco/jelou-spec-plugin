@@ -7,6 +7,9 @@ import { readUnifiedRegistry } from './lib/registry/read.mjs';
 import { teardownSafetyCause } from './lib/registry/splice.mjs';
 import { buildBootPlan } from './lib/boot-engine/plan.mjs';
 import { parseOccupiedPorts } from './lib/dev-orchestrator/stack/ports.mjs';
+import { normalizeSourceMode } from './lib/dev-orchestrator/source-mode.mjs';
+import { resolveTaskSources } from './lib/dev-orchestrator/task-source.mjs';
+import { resolveTaskContext } from './lib/dev-orchestrator/task-context.mjs';
 
 export function unsafeTeardownEntries(plan) {
   const out = [];
@@ -24,9 +27,29 @@ function assertTeardownsAreSafe(plan) {
   throw new Error(`refusing to build a boot plan — fix these dev blocks in services.yaml first:\n${detail}`);
 }
 
-export function buildPlanForWorkspace({ workspaceRoot, slug, worktreePaths, occupied, resolveImage, readEnv }) {
+export function buildPlanForWorkspace({ workspaceRoot, slug, sourceMode, taskContext, worktreePaths, occupied, resolveImage, readEnv, inspectGit, pathExists }) {
   const registry = readUnifiedRegistry(workspaceRoot);
-  return assertTeardownsAreSafe(buildBootPlan({ registry, slug, worktreePaths, occupied, resolveImage, readEnv }));
+  if (sourceMode === undefined) {
+    return assertTeardownsAreSafe(buildBootPlan({ registry, slug, worktreePaths, occupied, resolveImage, readEnv }));
+  }
+  const normalizedMode = normalizeSourceMode(sourceMode, { hasActiveTask: Boolean(taskContext) });
+  const sources = resolveTaskSources({
+    sourceMode: normalizedMode,
+    registry,
+    taskContext,
+    inspectGit,
+    pathExists,
+  });
+  const resolvedWorktrees = Object.fromEntries(
+    sources.filter((source) => source.mode === 'worktree').map((source) => [source.serviceId, source.sourcePath]),
+  );
+  const plan = assertTeardownsAreSafe(buildBootPlan({ registry, slug, worktreePaths: resolvedWorktrees, occupied, resolveImage, readEnv }));
+  const sourceByService = new Map(sources.map((source) => [source.serviceId, source]));
+  return {
+    ...plan,
+    sourceMode: normalizedMode,
+    services: plan.services.map((service) => ({ ...service, source: sourceByService.get(service.id) })),
+  };
 }
 
 function resolveWorktreePaths(registry, slug) {
@@ -52,6 +75,35 @@ function main() {
   }
   const workspaceRoot = argv[wi + 1];
   const slug = argv[si + 1];
+  const mi = argv.indexOf('--source-mode');
+  const sourceMode = mi === -1 ? null : argv[mi + 1];
+  if (sourceMode !== null) {
+    try {
+      normalizeSourceMode(sourceMode, { hasActiveTask: slug !== '_global' });
+    } catch (error) {
+      console.error(`build-boot-plan: ${error.message}`);
+      exit(2);
+    }
+  }
+  if (sourceMode !== null) {
+    try {
+      const taskContext = sourceMode === 'task-aware'
+        ? resolveTaskContext({ workspaceRoot, cwd: process.cwd(), slug })
+        : null;
+      const plan = buildPlanForWorkspace({
+        workspaceRoot,
+        slug,
+        sourceMode,
+        taskContext,
+        occupied: dockerOccupied(),
+      });
+      stdout.write(JSON.stringify(plan, null, 2) + '\n');
+    } catch (error) {
+      console.error(`build-boot-plan: ${error.message}`);
+      exit(3);
+    }
+    return;
+  }
   const registry = readUnifiedRegistry(workspaceRoot);
   const plan = buildBootPlan({ registry, slug, worktreePaths: resolveWorktreePaths(registry, slug), occupied: dockerOccupied() });
   const unsafe = unsafeTeardownEntries(plan);

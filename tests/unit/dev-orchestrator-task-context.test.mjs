@@ -1,9 +1,9 @@
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { resolveTaskSlug, getCurrentBranch } from '../../bin/lib/dev-orchestrator/task-context.mjs';
+import { join, relative } from 'node:path';
+import { resolveTaskSlug, getCurrentBranch, resolveTaskContext } from '../../bin/lib/dev-orchestrator/task-context.mjs';
 
 function mkws() {
   const root = mkdtempSync(join(tmpdir(), 'jlu-tc-'));
@@ -89,5 +89,50 @@ describe('resolveTaskSlug — fallback', () => {
     }
     const slug = resolveTaskSlug({ workspaceRoot: root, cwd: root, branch: 'main' });
     assert.equal(slug, 'AMBIGUOUS:a,b');
+  });
+});
+
+describe('resolveTaskContext — dated shared workspace task', () => {
+  test('resolves the active worktree task through the workspace pointer and TASKS metadata', (t) => {
+    const root = mkdtempSync(join(tmpdir(), 'jlu-task-context-'));
+    t.after(() => rmSync(root, { recursive: true, force: true }));
+    const projectRoot = join(root, 'project');
+    const workspaceRoot = join(root, 'shared', '.spec-workspace');
+    const slug = 'task-source-resolution';
+    const taskRoot = join(workspaceRoot, 'specs', '08-08-2026', slug);
+    mkdirSync(join(projectRoot, '.worktrees', slug, 'sub'), { recursive: true });
+    mkdirSync(join(workspaceRoot, 'registry'), { recursive: true });
+    mkdirSync(taskRoot, { recursive: true });
+    writeFileSync(join(projectRoot, '.spec-workspace.json'), JSON.stringify({ workspace: relative(projectRoot, workspaceRoot) }));
+    writeFileSync(join(workspaceRoot, 'registry', 'registry.json'), JSON.stringify({ services: [] }));
+    writeFileSync(join(taskRoot, 'TASKS.md'), `---
+affected_services:
+  - id: api-service
+    branch: production/${slug}
+---
+
+## Status: implementing
+
+## Branching
+
+- Mode: worktree
+`);
+
+    const context = resolveTaskContext({
+      projectRoot,
+      cwd: join(projectRoot, '.worktrees', slug, 'sub'),
+      branch: `production/${slug}`,
+    });
+
+    assert.deepEqual(context, {
+      workspaceRoot,
+      registryPath: join(workspaceRoot, 'registry', 'registry.json'),
+      taskRoot,
+      tasksPath: join(taskRoot, 'TASKS.md'),
+      slug,
+      status: 'implementing',
+      mode: 'worktree',
+      affectedServices: [{ id: 'api-service', branch: `production/${slug}` }],
+    });
   });
 });

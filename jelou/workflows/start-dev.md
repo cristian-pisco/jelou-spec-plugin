@@ -44,6 +44,20 @@ import('{plugin-root}/bin/lib/dev-orchestrator/task-context.mjs').then(({ resolv
 
 If output starts with `AMBIGUOUS:`, parse the comma-separated list and use `question` (single-choice) to ask the user which task to use. Append `_global` as a "no task" option.
 
+## Step 2.5 — Select the source mode
+
+Read the allowed choices from the shared source-mode contract:
+
+```bash
+node -e "
+import('{plugin-root}/bin/lib/dev-orchestrator/source-mode.mjs').then(({ sourceModeChoices }) => {
+  process.stdout.write(JSON.stringify(sourceModeChoices({ hasActiveTask: process.argv[1] !== '_global' })));
+});
+" "{slug}"
+```
+
+For every interactive invocation, ask the user which source mode to use. Offer `main` and `task-aware` exactly as returned. If no task is active, `task-aware` is disabled with the explanation `No active task is available`, so only `main` is selectable. Capture the selected normalized value as `{sourceMode}`.
+
 ## Step 3 — Verify tmux availability
 
 ```bash
@@ -138,7 +152,7 @@ import('{plugin-root}/bin/lib/dev-orchestrator/stack/stack-state.mjs').then((m) 
 
 Steps B0 and C1 below record several mutations in one pass and use their own fuller scripts; Steps E, F, H, and the observer each record one mutation and reference this pattern with a concrete `{mutationJson}`. `{workspaceId}` is the value captured in Step 1.
 
-### Step A — Resolve the registry, task slug, and worktree paths
+### Step A — Resolve the registry, task slug, and source mode
 
 First ensure the unified registry exists and is compiled for this workspace (both idempotent — safe every run), then read it:
 
@@ -162,7 +176,7 @@ import('{plugin-root}/bin/lib/dev-orchestrator/task-context.mjs').then(({ resolv
 
 If the output starts with `AMBIGUOUS:`, prompt the user the same way as Step 2 of the generic path above.
 
-Build `worktreePaths` — a plain object mapping each registry service `id` to the absolute path of its worktree for this slug, for services that have one (`<service.path>/.worktrees/<slug>`, when that directory exists). Services with no worktree for this slug are omitted; if none have one, `worktreePaths` is `{}`. (`bin/build-boot-plan.mjs` resolves the same worktree paths internally; build this object here too for Steps B0/D that reference it directly.)
+Build and validate the plan with the Step B command before continuing. Report every selected source before any runtime mutation as a table with `serviceId`, `sourcePath`, and `commit` from each entry's source descriptor. If validation fails, stop without entering Step B0 or writing stack state.
 
 ### Step B0 — Back up the `.env`s of shared-reuse services that get a wiredEnv
 
@@ -198,7 +212,7 @@ Promise.all([
 Build the boot plan from the unified registry:
 
 ```bash
-node {plugin-root}/bin/build-boot-plan.mjs --workspace {root} --slug {slug}
+node {plugin-root}/bin/build-boot-plan.mjs --workspace {root} --slug {slug} --source-mode {sourceMode}
 ```
 
 This prints `{ services: [entry], network, slug }` — capture it as `{planJson}` (also used by Steps B0, C, C1, D, and the observer). Each `entry` has a `policy` of `task-isolated` or `shared-reuse`.
