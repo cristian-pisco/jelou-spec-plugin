@@ -5,7 +5,7 @@
 //     field gains a rejecting-payload test (the GUID-into-@IsNumber 400 shape),
 //     and flags collection fields exercised only empty.
 //  2. The workflow prose for the gate + the two false-green guards survive edits
-//     (production-like.md, test-suite.md, ui-qa-run.md).
+//     (goal.md, test-suite.md, agents/jlu-ui-qa-runner.md).
 //
 // Run: `node --test tests/unit/coverage-breadth-gate.test.mjs`
 
@@ -153,7 +153,7 @@ describe('probe-coverage-breadth — CLI', () => {
   });
 });
 
-describe('production-like.md — Phase 4.5 gate prose', () => {
+describe('goal.md — Phase 4.5 gate prose', () => {
   const wf = read('jelou/workflows/goal.md');
   test('documents the coverage-breadth + realistic-payload gate', () => {
     assert.match(wf, /Coverage-breadth \+ realistic-payload gate/i);
@@ -175,8 +175,10 @@ describe('false-green guards in the delegates', () => {
   test('test-suite.md: green is not a breadth verdict', () => {
     assert.match(read('jelou/workflows/test-suite.md'), /green != broad/);
   });
-  test('ui-qa-run.md: minimal_input_coverage guard under production-like', () => {
-    assert.match(read('jelou/workflows/ui-qa-run.md'), /minimal_input_coverage/);
+  test('jlu-ui-qa-runner.md: minimal_input_coverage guard on a thin green suite', () => {
+    const runner = read('agents/jlu-ui-qa-runner.md');
+    assert.match(runner, /minimal_input_coverage/);
+    assert.match(runner, /ui_breadth_gaps/);
   });
 });
 
@@ -187,8 +189,8 @@ describe('ship.md — breadth gate on the always-run PR path', () => {
     assert.match(wf, /--dto/);
   });
   test('the auditor is the surviving enforcement after the reviewer was retired', () => {
-    assert.match(wf, /### 2b\. Spec Compliance Review: RETIRED/);
-    assert.match(wf, /survives because it is a deterministic script/);
+    assert.match(wf, /### 2b — Coverage-breadth check/);
+    assert.match(wf, /A deterministic script/);
     assert.match(wf, /uncovered_dimensions/);
   });
 });

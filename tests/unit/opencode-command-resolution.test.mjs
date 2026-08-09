@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const COMMANDS = join(ROOT, '.opencode/commands');
 
-const PLACEHOLDERS = new Set(['jlu-daily-slack.md', 'jlu-task-clickup.md']);
+const PLACEHOLDERS = new Set(['jlu-daily-slack.md']);
 
 function commandFiles() {
   return readdirSync(COMMANDS)

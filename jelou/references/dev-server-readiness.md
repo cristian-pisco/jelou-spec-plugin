@@ -4,7 +4,7 @@
 
 ## Why this matters
 
-The orchestrator (M2 `/jlu-ui-qa-run`) waits for each service's readiness signal before booting the next one (Premise 2: selective + sequential + health-gated). A wrong signal causes one of:
+The orchestrator (M2, the E2E caller) waits for each service's readiness signal before booting the next one (Premise 2: selective + sequential + health-gated). A wrong signal causes one of:
 
 - **False ready:** the orchestrator moves on too early, the next service tries to connect, gets ECONNREFUSED, the run aborts.
 - **False not-ready:** the orchestrator times out while the service is actually fine, and `ready_timeout_s` fires.

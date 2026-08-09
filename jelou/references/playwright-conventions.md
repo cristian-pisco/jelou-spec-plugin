@@ -107,16 +107,16 @@ Why: the spec describes user-facing contract. The DB schema is implementation. W
 
 ## Trace, video, and screenshot policy
 
-- The `playwright.config.ts` `use.trace` is whatever the consumer set; `/jlu-ui-qa-run` additionally forces `--trace=retain-on-failure` at the CLI level so a trace exists on the FIRST failure (no retries are configured, so `on-first-retry` would record nothing and blind the fix-loop).
-- **Video is recorded for every run — pass or fail.** Playwright has no `--video` CLI flag, so video cannot be forced like `--trace`; instead `/jlu-ui-qa-run` exports `JLU_E2E_VIDEO` (default `on`, resolved from `~/.jlu/e2e-settings.json`, seeded from `jelou/config/e2e-settings.json` on first use and never clobbered). A consumer `playwright.config.ts` opts in by reading `process.env.JLU_E2E_VIDEO` for its `use.video` — the bootstrap scaffold does this by default; a pre-existing consumer config must add the one-line read to record video (otherwise its own `use.video` wins and passing runs are discarded). The point is to let a human watch what a *passing* test actually exercised, not only failures.
-- Videos are written as `.webm` under the run's `playwright-output/` (gitignored, local-only), listed in the run report's artifacts section, and swept by `/jlu-ui-qa-cleanup` after `retentionDays` (from the same settings file).
+- The `playwright.config.ts` `use.trace` is whatever the consumer set; the E2E caller additionally forces `--trace=retain-on-failure` at the CLI level so a trace exists on the FIRST failure (no retries are configured, so `on-first-retry` would record nothing and blind the fix-loop).
+- **Video is recorded for every run — pass or fail.** Playwright has no `--video` CLI flag, so video cannot be forced like `--trace`; instead the E2E caller exports `JLU_E2E_VIDEO` (default `on`, resolved from `~/.jlu/e2e-settings.json`, seeded from `jelou/config/e2e-settings.json` on first use and never clobbered). A consumer `playwright.config.ts` opts in by reading `process.env.JLU_E2E_VIDEO` for its `use.video` — the bootstrap scaffold does this by default; a pre-existing consumer config must add the one-line read to record video (otherwise its own `use.video` wins and passing runs are discarded). The point is to let a human watch what a *passing* test actually exercised, not only failures.
+- Videos are written as `.webm` under the run's `playwright-output/` (gitignored, local-only), listed in the run report's artifacts section, and swept after `retentionDays` (from the same settings file).
 - On failure, the trace extractor unzips the trace and emits `trace-summary.json` for the fix-loop. Tests don't need to do anything special for this.
 
 ## What the writer does NOT do
 
 - Modify `playwright.config.ts` (consumer owns it).
 - Add `data-testid` attributes to UI source code (forbidden — the implementer adds them during GREEN, only when listed in `selectors.md`).
-- Run tests autonomously (Playwright runs are user-triggered via `/jlu-ui-qa-run`, M2).
+- Run tests autonomously (Playwright runs are triggered by the E2E caller, M2).
 
 ## What the fix-loop does NOT do
 

@@ -13,7 +13,7 @@ delegates test EXECUTION to runner subagents — it never runs a suite or author
 inline:
 
 - backend services → `jlu-test-suite-runner` (host unit+integration via `/jlu-test-suite`) + `jlu-backend-e2e-runner` (a Testcontainers backend-E2E phase, dependencies only, real HTTP)
-- UI services      → `jlu-ui-qa-runner` (`/jlu-ui-qa-run --no-boot`, Playwright against the live stack); the orchestrator owns only the OTP auth gate before it
+- UI services      → `jlu-ui-qa-runner` (Playwright against the live stack, no boot of its own); the orchestrator owns only the OTP auth gate before it
 
 No seed system: reuses `dev` blocks + `data_isolation: per-run`. Testcontainers is permitted ONLY in the backend E2E path (`test/e2e/**`, `*.e2e-spec.ts`), dependencies-only, capped to `WORKERS` (see `subagent-base.md`).
 
@@ -60,8 +60,9 @@ No seed system: reuses `dev` blocks + `data_isolation: per-run`. Testcontainers 
 
 ### Phase 1 — Resolve task, classify, gate
 
-1. **Resolve slug** (identical to `ui-qa-run.md` Phase 1 step 1): from `--task=<slug>`,
-   else from the branch (`production/*` | `staging/*`); refuse if undetectable.
+1. **Resolve slug**: from `--task=<slug>`, else from the branch (`production/<slug>` |
+   `staging/<slug>`). An off-task branch refuses with "no task slug detected from branch
+   `<X>`; pass `--task=<slug>` explicitly."
 2. **Locate the workspace** (`.spec-workspace/`); refuse if missing.
 3. **Locate the task directory** via marker files (`TASKS.md` | `SPEC.md` | `PROPOSAL.md`);
    `TASK_DIR = dirname(<marker>)`; refuse if none. Flush the Phase 0 matrix to
@@ -117,8 +118,10 @@ No seed system: reuses `dev` blocks + `data_isolation: per-run`. Testcontainers 
    - `full-backend`: the affected `backend_services` (each must end up with a `dev` block —
      step 8b resolves any that are missing).
    - `fullstack`: the union of (a) each UI service's `user-flow.md` `Service Boot Order`
-     (resolved as in `ui-qa-run.md` Phase 1 step 7) and (b) affected backend services.
-     Reconcile boot-order conflicts with `ui-qa-run`'s rule (refuse on contradiction).
+     (read every `services/<UI_SERVICE_ID>/user-flow.md` under `TASK_DIR`; step 7.5 has
+     already authored any that were missing) and (b) affected backend services. Refuse on
+     contradiction: "conflicting boot order across flows: `<flow-a>` says `<X>`; `<flow-b>`
+     says `<Y>`. Reconcile in the spec." Never silently pick one.
 
 8a. **Expand the boot order with runtime dependencies (`depends_on`).** A UI service that
    authenticates against a backend depends, at request time, on services that are NOT in
@@ -199,7 +202,7 @@ No seed system: reuses `dev` blocks + `data_isolation: per-run`. Testcontainers 
       | Case | Without the flag | With `--skip-unbootable` |
       |---|---|---|
       | exit-3 or verification-failed, backend service | informative refuse (the step 8b.3 message) | auto-skip + WARN: drop it from the boot order with a one-line note; its `test-suite` still runs and surfaces its own "infra unreachable" hint |
-      | exit-3 or verification-failed, UI service | refuse (E2E is mandatory for frontend changes, per `ui-qa-run.md` step 6) | refuse all the same — the flag NEVER drops a UI service |
+      | exit-3 or verification-failed, UI service | refuse — E2E is mandatory for frontend changes, so a UI service missing a usable `dev` block is a hard error, never a skip: "UI service `<id>` is missing a `dev` block in services.yaml. Add `stack: <react\|nextjs\|vue\|angular\|svelte>` and a `dev` block (command, health_url or ready_signal, ready_timeout_s) per `jelou/references/dev-block-schema.md`, then re-run." | refuse all the same — the flag NEVER drops a UI service |
 
       `--skip-unbootable` is a dedicated flag: do NOT overload `--force`, which already means
       "skip the preflight RAM gate" and nothing else.
@@ -437,16 +440,18 @@ Never hardcode a port in the overlay: allocation shifts run to run as the eligib
     once). A block already marked with a current hash is not re-marked.
 
 10b. **UI app-mount gate — settle the UI lane's viability BEFORE Phase 3.** For each service
-    in `ui_services`, right after its readiness passes, run the `ui-qa-run.md` step 14a'
-    app-mount probe (`UI_WORKTREE=<worktree> node "<root>/bin/e2e-app-mount-probe.mjs"`,
+    in `ui_services`, right after its readiness passes, run the app-mount probe
+    (`UI_WORKTREE=<worktree> node "<root>/bin/e2e-app-mount-probe.mjs"`,
     default budget 180 s). Server readiness (`http_200`/`port_open`/Vite `Local:`) is NOT
     app readiness: on a large module graph the first browser navigation still pays the full
     dev-transform cost, and mistaking that warm-up for a crash is how a whole UI lane gets
     written off as "the app does not boot" hours later. This probe also pre-warms the module
     graph so Phase 4's suite starts against a warm server.
     - `mounted` → continue; record the mount time in `GOALS.md`'s environment notes.
-    - `not_mounted` → apply step 14a''s single self-correction (reboot via the non-force dev
-      variant when the `dev.command` forces a cold optimizer pass, re-probe full budget).
+    - `not_mounted` → apply the single self-correction, then judge: when the service's
+      `dev.command` forces a cold optimizer pass on every boot (`--force`, or an
+      `rm`/`rimraf` of `node_modules/.vite`), reboot it via its non-force variant
+      (`start`/plain `vite`) when the consumer defines one, and re-probe with the full budget.
       Still `not_mounted` → the UI lane is `BLOCKED reason=app_never_mounted` **now**: mark
       every fullstack/frontend objective's UI half UNSATISFIED with the probe evidence,
       surface it to the user immediately, and continue Phase 3 for the backend halves. Never
@@ -506,8 +511,12 @@ orchestrator narrative.
 
 ### Phase 3.75 — Auth gate (orchestrator-owned)
 
-11c. For each UI service, perform the auth gate inline per `ui-qa-run.md` steps
-    14b/14c: probe the session and, when invalid, mint a fresh one. For a **loopback
+11c. For each UI service, perform the auth gate inline per
+    `jelou/references/auth-fixtures.md` (§ "Orchestrated OTP login", § "Captcha-gated login:
+    consumer capture provider", § "Local cookie-guard session provisioning"): probe the
+    session with `bin/e2e-session-probe.mjs` and, when invalid, mint a fresh one. The
+    drivers self-load `.env`+`.env.e2e` from `UI_WORKTREE` via `bin/lib/env-files.mjs` —
+    never `source` an env file (see `jelou/references/e2e-environment.md`). For a **loopback
     `E2E_BASE_URL`** the gate self-heals **deterministically** — `bin/e2e-ensure-account.mjs`
     (guarantee the account) then `bin/e2e-login-local.mjs` (a direct API login: no browser,
     no Turnstile, no OTP), and — only when that minted cookie is valid yet the gateway still
@@ -528,31 +537,75 @@ orchestrator narrative.
     The orchestrator MUST NOT surface an `AskUserQuestion` offering to "accept the stale session / pause for
     a manual refresh / choose whether to refresh" — presenting that choice is the exact defect
     this guard forbids. `E2E_BASE_URL` and `TEST_EMAIL`/`TEST_PASSWORD` are known because the
-    14b auth drivers self-load `.env.e2e` from `UI_WORKTREE`; never claim the target is unknown and never punt the refresh
-    to the user. The ONLY user prompts the gate may raise are the four already in `ui-qa-run.md`
-    step 14b: missing `e2e-auth.yaml` (one-time OTP sender/subject), the Gmail paste fallback,
-    login-form-not-found (exit 44), and a genuinely remote captcha capture (exit 47). A green
+    auth drivers self-load `.env.e2e` from `UI_WORKTREE`; never claim the target is unknown and never punt the refresh
+    to the user. The ONLY four user prompts the gate may raise are: missing
+    `.spec-workspace/e2e-auth.yaml` (one-time OTP sender/subject, persisted so future runs
+    never re-ask), the Gmail paste fallback (no fresh OTP mail within ~90 s),
+    login-form-not-found (exit 44 — a bounded 3-round "where does the login form live"
+    retry), and a genuinely remote captcha capture (exit 47). A green
     Success Criterion that fails live only because the session is stale is closed by refreshing
     the session, not by asking the user to accept the gap.
 
+    **Captcha on a loopback target is a misconfiguration, not a capture trigger.** Exit 47
+    at `localhost`/`127.0.0.1` means the local frontend is calling a **prod/remote backend**
+    (Turnstile is enforced server-side by prod), so the consumer-capture flow is FORBIDDEN
+    there — capturing a prod session is exactly what poisons the next run with a cookie the
+    local stack cannot decrypt. Diagnose instead: the frontend's auth base URLs (e.g.
+    `NX_REACT_APP_DASHBOARD_SERVER_BASE`, `NX_REACT_APP_API_GATEWAY_BASE_URL`) must point at
+    the **local** login backend, `.env.e2e` must override them to `localhost`, and the
+    frontend must have been **booted fresh** since — a reused dev server bakes the app's
+    `.env` (prod) because the build tool inlines `NX_*`/`VITE_*` at dev-server start and
+    **never reads `.env.e2e`** (`jelou/references/e2e-environment.md`). Also confirm
+    `VITE_TURNSTILE_ENABLED=false` is in `.env.e2e`. Abort `BLOCKED` with that diagnosis.
+    Only a genuinely **remote** `E2E_BASE_URL` (or `--allow-prod-target`) reaches the
+    consumer real-Chrome capture flow, and that capture MUST target `E2E_BASE_URL` — never
+    a prod fallback.
+
 ### Phase 4 — UI execution (delegated; frontend/fullstack objectives)
 
-12. For each service in `ui_services`: first **resolve `PLAYWRIGHT_CONFIG`** exactly as
-    `ui-qa-run.md` step 7b' does — in the service's resolved worktree, a
+12. For each service in `ui_services`, dispatch `jlu-ui-qa-runner` with `<PLUGIN_ROOT>` —
+    it is the sole owner of the UI E2E execution body (Playwright run, false-green guards,
+    crash and auth-collapse detection, the bounded `jlu-ui-fix-loop`, the confirmation pass,
+    the run report). The orchestrator never runs Playwright inline.
+
+    **Resolve `PLAYWRIGHT_CONFIG` first.** In the service's resolved worktree: a
     `playwright.config.{ts,js}` at the worktree root → `PLAYWRIGHT_CONFIG` empty; one at
     `tests/e2e/` → `PLAYWRIGHT_CONFIG=tests/e2e/playwright.config.ts`. It is a **required**
-    runner input (`agents/jlu-ui-qa-runner.md`): dispatching without it leaves the run with no
-    `--config`, and a consumer whose config lives under `tests/e2e/` collects 0 tests and the
-    whole UI lane reads as vacuously green. Then dispatch `jlu-ui-qa-runner` (session already
-    provisioned in 11c) with `<PLUGIN_ROOT>`, `<WORKERS>`, `<PLAYWRIGHT_CONFIG>` and
-    `--no-boot` semantics. Parse its `STATUS:`; on
-    `NEEDS_CONTEXT`, broker via `AskUserQuestion` and re-dispatch with `USER_FEEDBACK`;
-    on `ui_breadth_gaps`, route to `jlu-ui-e2e-writer` and re-dispatch once. Record
-    PASS/FAIL, and attribute per-objective results by the `@goal:G<id>` title tags
-    (step 7.5): an objective's UI side is green iff every `@goal:G<id>`-tagged test
-    passed. Video recording is on for every run via the `JLU_E2E_VIDEO` contract the
-    runner already exports (`references/playwright-conventions.md`) — the loop and the
-    report consume those artifacts as evidence.
+    runner input: dispatching without it leaves the run with no `--config`, and a consumer
+    whose config lives under `tests/e2e/` collects 0 tests and the whole UI lane reads as
+    vacuously green.
+
+    **Runner input contract** (`agents/jlu-ui-qa-runner.md` is the canonical definition):
+
+    | Input | Value the orchestrator passes |
+    |---|---|
+    | `TASK_DIR` | `$TASK_DIR` — the runner owns only `services/<ui>/e2e/` under it |
+    | `UI_SERVICE_ID` | the service id from `ui_services` |
+    | `UI_SERVICE_WORKTREE` | the worktree resolved per `jelou/references/worktree-resolution.md` |
+    | `PLUGIN_ROOT` | plugin install root (`jelou/references/plugin-root.md`) |
+    | `WORKERS` | `${WORKERS:-1}` |
+    | `PLAYWRIGHT_CONFIG` | resolved above; empty means "root config" |
+    | `ALLOW_PROD_TARGET` / `ALLOW_TEST_EDITS` | the run's flags, both default off |
+    | `GREP` | empty on the first pass; `@goal:G<id>` when the convergence loop re-runs one objective |
+    | `USER_FEEDBACK` | only on a re-dispatch that answers a prior `NEEDS_CONTEXT` |
+
+    The session is already provisioned by 11c and the stack is already booted, so the runner
+    **never boots, never tears down, and never performs the auth gate** — dispatch carries
+    `--no-boot` semantics implicitly.
+
+    **Runner output contract.** Parse its last `STATUS:` line:
+
+    | `STATUS:` | Orchestrator response |
+    |---|---|
+    | `PASS report=<path>` | record green; attribute per-objective by `@goal:G<id>` title tags |
+    | `FAIL failures=<json> flagged=<json> ui_breadth_gaps=<json> report=<path>` | record red; non-empty `ui_breadth_gaps` → route the named dimensions to `jlu-ui-e2e-writer` (`MODE=derive-from-spec`, `--allow-test-edits`) and re-dispatch the runner ONCE to confirm RED→GREEN |
+    | `BLOCKED reason=<service_crashed\|auth_collapse\|no_tests_collected\|app_never_mounted\|minimal_input_coverage>` | surface the reason and its evidence; a UI lane blocked here is never reported as green |
+    | `NEEDS_CONTEXT missing=... tried=... looked_in=...` | **the orchestrator brokers it**: `AskUserQuestion` with those three fields, then re-dispatch the runner with `USER_FEEDBACK=<answer>`. The runner never asks the user itself |
+
+    An objective's UI side is green iff every `@goal:G<id>`-tagged test passed (step 7.5).
+    Video recording is on for every run via the `JLU_E2E_VIDEO` contract the runner exports
+    (`jelou/references/playwright-conventions.md`) — the loop and the report consume those
+    artifacts as evidence.
 
 ### Phase 4.25 — Goal convergence loop (run → fix → re-run until green or cap)
 
@@ -696,8 +749,9 @@ the top of this file), so the runners' live probes are safe to mutate.
   a GOALS.md."
 - An ambiguous objective (unknown level / unmappable service / unfalsifiable criterion) →
   Phase 0b interviews the user; never guess, never silently drop it.
-- Pre-flight gate failure → exit per the env-lifecycle contract; `--force` /
-  `--allow-shared-data` override exactly as in `ui-qa-run`.
+- Pre-flight gate failure → exit per the `jelou/references/env-lifecycle.md` contract:
+  `--force` overrides the RAM/CPU gate, `--allow-shared-data` the `data_isolation: shared`
+  refusal. Neither is implied by the other.
 - Service in the boot order with no `dev` block → step 8b derives one and persists it to
   `services.yaml` without asking; **never improvise a boot command.** Not derivable (exit 3) →
   refuse and tell the user to add the `dev` block to `.spec-workspace/registry/services.yaml`
@@ -710,7 +764,7 @@ the top of this file), so the runners' live probes are safe to mutate.
   the dev command is never exec'd, the readiness budget is never spent, and the step 8b.6
   `--skip-unbootable` table decides refuse-vs-skip. Never "install on the host and retry" — the
   lockfile install already runs where the container resolves its dependencies.
-- A delegated `test-suite` / `ui-qa-run` failure → recorded; the convergence loop owns the
+- A delegated `jlu-test-suite-runner` / `jlu-ui-qa-runner` failure → recorded; the convergence loop owns the
   retry; a red that survives the cap → overall `FAIL / NOT-CONVERGED`, teardown runs.
 - **Convergence invariant.** The loop NEVER exceeds `MAX_ITERATIONS`, never
   marks an objective green without a passing re-run of its tagged tests, and never lets a
@@ -746,7 +800,7 @@ the top of this file), so the runners' live probes are safe to mutate.
 ## See also
 
 - `jelou/references/env-lifecycle.md` — the lifecycle contract this workflow owns.
-- `jelou/workflows/test-suite.md`, `jelou/workflows/ui-qa-run.md` — the delegated skills.
+- `jelou/workflows/test-suite.md` — the delegated skill.
 - `bin/parse-goal-matrix.mjs` — the Phase 0 goal-matrix parser.
 - `bin/classify-task-scope.mjs` — the scope classifier.
 - `bin/probe-coverage-breadth.mjs` — the Phase 4.5 static breadth audit (validator-rejection + realistic-payload coverage).

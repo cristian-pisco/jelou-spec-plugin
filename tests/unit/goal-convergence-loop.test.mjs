@@ -133,24 +133,3 @@ describe('goal — skill and runtime shells', () => {
     assert.match(read('.opencode/commands/jlu-goal.md'), /jelou\/workflows\/goal\.md/);
   });
 });
-
-describe('goal — production-like deprecated alias', () => {
-  test('the skill alias prints the deprecation and delegates to goal', () => {
-    const alias = read('skills/production-like/SKILL.md');
-    assert.match(alias, /DEPRECATED/);
-    assert.match(alias, /\/jlu-goal/);
-    assert.match(alias, /jelou\/workflows\/goal\.md/);
-  });
-
-  test('the workflow alias delegates to goal.md', () => {
-    const alias = read('jelou/workflows/production-like.md');
-    assert.match(alias, /DEPRECATED/);
-    assert.match(alias, /jelou\/workflows\/goal\.md/);
-  });
-
-  test('the OpenCode command alias prints the deprecation and resolves goal.md', () => {
-    const alias = read('.opencode/commands/jlu-production-like.md');
-    assert.match(alias, /DEPRECATED|deprecated/);
-    assert.match(alias, /jelou\/workflows\/goal\.md/);
-  });
-});

@@ -92,7 +92,7 @@ Before attempting any fix:
 
 ### Phase 4 — Implementation
 
-1. **Identify a correct seam for the regression test.** A correct seam exercises the *real bug pattern* as it occurs at the call site. If the only available seam is too shallow (single-caller test when the bug needs multiple callers; unit that cannot replicate the chain that triggered the failure), a regression test there gives false confidence. **If no correct seam exists, that is itself the finding** — note it in the report's `risks` array (severity `medium` minimum) and recommend `/jlu-architecture-review` as a follow-up. Proceed with a weaker test only if explicitly approved by the orchestrator.
+1. **Identify a correct seam for the regression test.** A correct seam exercises the *real bug pattern* as it occurs at the call site. If the only available seam is too shallow (single-caller test when the bug needs multiple callers; unit that cannot replicate the chain that triggered the failure), a regression test there gives false confidence. **If no correct seam exists, that is itself the finding** — note it in the report's `risks` array (severity `medium` minimum) and recommend an architecture review as a follow-up. Proceed with a weaker test only if explicitly approved by the orchestrator.
 2. **Create a failing test that captures the bug** at the correct seam (if one does not already exist). The minimum reproduction. This is your regression guarantee.
 3. **Implement a single fix** that addresses the root cause identified in Phase 1. One change. No "while I am here" improvements. No bundled refactoring.
 4. **Verify the fix.** Original failure resolved? No other tests broken? **Re-run the Phase 0 loop against the original (un-minimised) scenario** to confirm. If all clear → Phase 5.
@@ -132,7 +132,7 @@ If the answer involves an architectural change (no good test seam, tangled calle
 
 ```yaml
 risks:
-  - description: "Bug was hard to lock down because <coupling description>. Suggest /jlu-architecture-review <service> to revisit the <area> seam."
+  - description: "Bug was hard to lock down because <coupling description>. Suggest an architecture review of <service> to revisit the <area> seam."
     severity: medium
 ```
 

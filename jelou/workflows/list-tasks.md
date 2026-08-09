@@ -7,8 +7,8 @@
 
 You are the orchestrator for the `/jlu-list-tasks` command. Your job is to print a
 table of the local tasks in the active workspace so the user can see what exists at a
-glance. This is the multi-task counterpart to `/jlu-report-task` (which drills into one
-task) and `/jlu-load-context` (which reloads one task into a session).
+glance. This is the multi-task counterpart to `/jlu-load-context` (which reloads one task
+into a session).
 
 ## Step 1 — Run the scanner
 
@@ -49,7 +49,7 @@ Print the scanner's table output directly (it is already a formatted, aligned ta
 add a one-line footer:
 
 ```
-<N> task(s). Use /jlu-report-task <slug> for detail, or /jlu-load-context <slug> to resume one.
+<N> task(s). Use /jlu-load-context <slug> to resume one.
 ```
 
 If a `--sprint <n>` filter was requested, the scanner does not filter by sprint itself —

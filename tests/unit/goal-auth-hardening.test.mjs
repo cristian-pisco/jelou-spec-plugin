@@ -19,25 +19,41 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
-const uiwf = read('jelou/workflows/ui-qa-run.md');
 const prodlike = read('jelou/workflows/goal.md');
 const env = read('jelou/references/env-lifecycle.md');
 const e2eenv = read('jelou/references/e2e-environment.md');
 const fixtures = read('jelou/references/auth-fixtures.md');
 
 describe('auth gate — captcha on a loopback target is a misconfiguration, not a capture trigger', () => {
-  test('the captcha/Turnstile branch ties a loopback target to a misconfiguration', () => {
-    assert.match(uiwf, /captcha\/Turnstile[\s\S]{0,500}loopback/i);
-    assert.match(uiwf, /loopback[\s\S]{0,400}(misconfiguration|prod\/remote backend|capture)/i);
+  test('goal 11c refuses the consumer-capture flow for a loopback exit-47', () => {
+    assert.match(prodlike, /Captcha on a loopback target is a misconfiguration, not a capture trigger/i);
+    assert.match(prodlike, /consumer-capture flow is FORBIDDEN/i);
+    assert.match(prodlike, /poisons the next run/i);
   });
 
   test('a loopback captcha diagnoses a frontend pointing at a prod/remote backend', () => {
-    assert.match(uiwf, /NX_REACT_APP/);
-    assert.match(uiwf, /(prod|remote)[\s\S]{0,60}backend|backend[\s\S]{0,60}(prod|remote)/i);
+    assert.match(prodlike, /NX_REACT_APP/);
+    assert.match(prodlike, /(prod|remote)[\s\S]{0,60}backend|backend[\s\S]{0,60}(prod|remote)/i);
   });
 
-  test('consumer prod-capture is reserved for a genuinely remote E2E_BASE_URL', () => {
-    assert.match(uiwf, /remote[\s\S]{0,80}capture|capture[\s\S]{0,80}remote/i);
+  test('the exit-47 diagnosis names the reused-frontend-bakes-prod trap', () => {
+    assert.match(prodlike, /never reads `?\.env\.e2e`?/i);
+    assert.match(prodlike, /reused dev server/i);
+    assert.match(prodlike, /\*\*booted fresh\*\*/i);
+    assert.match(prodlike, /VITE_TURNSTILE_ENABLED=false/);
+  });
+
+  test('consumer capture is reserved for a genuinely remote E2E_BASE_URL', () => {
+    assert.match(prodlike, /remote[\s\S]{0,120}capture|capture[\s\S]{0,120}remote/i);
+    assert.match(prodlike, /never\s*\n?\s*a prod fallback/i);
+  });
+
+  test('the four sanctioned prompts are enumerated in goal itself, not by reference', () => {
+    assert.match(prodlike, /ONLY four user prompts/i);
+    assert.match(prodlike, /e2e-auth\.yaml/);
+    assert.match(prodlike, /Gmail paste fallback/i);
+    assert.match(prodlike, /exit 44/);
+    assert.match(prodlike, /exit 47/);
   });
 });
 
@@ -50,22 +66,16 @@ describe('auth gate — discards a foreign/undecryptable persisted session', () 
 });
 
 describe('auth gate — an invalid session is auto-refreshed, never a discretionary "your call" menu', () => {
-  test('production-like 11c forbids the accept/pause/choose menu and mandates auto-login', () => {
+  test('goal 11c forbids the accept/pause/choose menu and mandates auto-login', () => {
     assert.match(prodlike, /discretionary auth-gate menu/i);
     assert.match(prodlike, /accept the stale session/i);
     assert.match(prodlike, /automatically/i);
     assert.match(prodlike, /bin\/e2e-login\.mjs/);
   });
 
-  test('production-like 11c never punts the refresh to the user as "your call"', () => {
+  test('goal 11c never punts the refresh to the user as "your call"', () => {
     assert.match(prodlike, /your call/i);
     assert.match(prodlike, /never punt the refresh\s+to the user/i);
-  });
-
-  test('ui-qa-run step 14b logs in automatically and bars the discretionary menu', () => {
-    assert.match(uiwf, /never present a discretionary\s*\n?\s*menu/i);
-    assert.match(uiwf, /accept the stale session/i);
-    assert.match(uiwf, /log in automatically/i);
   });
 });
 
@@ -77,7 +87,7 @@ describe('boot — a frontend bakes build-time env, so it is never reused (alway
     assert.match(env, /register it in `?BOOTED/i);
   });
 
-  test('production-like step 10 reboots a ui_services frontend fresh instead of reusing it', () => {
+  test('goal step 10 reboots a ui_services frontend fresh instead of reusing it', () => {
     assert.match(prodlike, /frontend service[\s\S]{0,80}ui_services[\s\S]{0,80}never reuse[\s\S]{0,40}reboot fresh/i);
     assert.match(prodlike, /bakes/i);
   });
@@ -89,13 +99,6 @@ describe('boot — a frontend bakes build-time env, so it is never reused (alway
     assert.match(e2eenv, /always boots a frontend fresh, never reuses one/i);
     assert.match(e2eenv, /VITE_TURNSTILE_ENABLED/);
     assert.match(e2eenv, /NX_REACT_APP_DASHBOARD_SERVER_BASE/);
-  });
-
-  test('ui-qa-run exit-47 names the reused-frontend-bakes-prod trap', () => {
-    assert.match(uiwf, /never reads `?\.env\.e2e`?/i);
-    assert.match(uiwf, /reused\*?\*? dev server/i);
-    assert.match(uiwf, /booted \*?\*?fresh/i);
-    assert.match(uiwf, /VITE_TURNSTILE_ENABLED=false/);
   });
 });
 

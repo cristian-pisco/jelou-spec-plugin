@@ -1,13 +1,13 @@
 # TODOS
 
-## Migrate the prose shared-reuse boots (goal/ui-qa) onto the codified executor
+## Migrate the prose shared-reuse boots (goal/start-dev) onto the codified executor
 
 - **Priority:** P2
-- **What:** Replace the prose shared-reuse boot steps in `env-lifecycle.md` (consumed by goal/ui-qa/start-dev) with calls into `bin/lib/boot-engine/execute-shared-reuse.mjs`, leaving ONE deterministic executor for all three consumers.
+- **What:** Replace the prose shared-reuse boot steps in `env-lifecycle.md` (consumed by goal/start-dev) with calls into `bin/lib/boot-engine/execute-shared-reuse.mjs`, leaving ONE deterministic executor for all three consumers.
 - **Why:** Boot-certification leaves two implementations of the same contract (prose + module); they will drift over time (outside-voice finding, eng review 2026-07-22). A single executor eliminates the "agent improvised the boot" bug class.
-- **Pros:** Deterministic, testable boots in goal/ui-qa; closes the boot-consolidation roadmap; boot fixes land once.
+- **Pros:** Deterministic, testable boots in goal/start-dev; closes the boot-consolidation roadmap; boot fixes land once.
 - **Cons:** Rewrites the plugin's most sensitive live-validated boot path; regression risk in reuse-or-reboot/frontend-fresh; large diff deserving its own spec-review cycle.
-- **Context:** The executor was born in the boot-certification feature with mechanics-parity tests against `env-lifecycle.md` — those tests are the bridge that prevents drift until this migration. Note the executor's verify mode replaces the reuse-or-reboot decision with probe-and-leave; the migration must add the real reuse/reboot branch (frontend fresh, env-stale) as a separate mode. Start with goal 8b/boot loop, then ui-qa-run.
+- **Context:** The executor was born in the boot-certification feature with mechanics-parity tests against `env-lifecycle.md` — those tests are the bridge that prevents drift until this migration. Note the executor's verify mode replaces the reuse-or-reboot decision with probe-and-leave; the migration must add the real reuse/reboot branch (frontend fresh, env-stale) as a separate mode. Start with goal 8b/boot loop, then start-dev.
 - **Depends on / blocked by:** boot-certification merged + live acceptance green (batch run in jelou-projects).
 
 ## Post-batch environment provisioning assistant

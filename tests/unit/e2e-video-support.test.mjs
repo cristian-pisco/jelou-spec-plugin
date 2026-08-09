@@ -5,8 +5,8 @@
 //
 // Guards the E2E video-recording contract: the seed script (idempotent, never
 // clobbers a user edit), the ~/.jlu/e2e-settings.json defaults, the SessionStart
-// auto-create hook, and the JLU_E2E_VIDEO wiring across ui-qa-run, cleanup, the
-// writer/runner agents, the update flow, and playwright-conventions.
+// auto-create hook, and the JLU_E2E_VIDEO wiring across the UI E2E runner, the
+// writer agent, the update flow, and playwright-conventions.
 
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
@@ -189,27 +189,17 @@ describe('the read path seeds on any runtime, with no hook at all', () => {
 });
 
 describe('JLU_E2E_VIDEO wiring across the harness', () => {
-  test('ui-qa-run exports JLU_E2E_VIDEO and reports .webm artifacts', () => {
-    const wf = read('jelou/workflows/ui-qa-run.md');
-    assert.match(wf, /export JLU_E2E_VIDEO=/);
-    assert.match(wf, /seed-e2e-settings\.mjs"?\s+--print-video/);
-    assert.match(wf, /\.webm/);
-    assert.match(wf, /playwright-output/);
-  });
-
-  test('ui-qa-cleanup sweeps .webm on the retention window', () => {
-    const cln = read('jelou/workflows/ui-qa-cleanup.md');
-    assert.match(cln, /--print-retention/);
-    assert.match(cln, /\.webm/);
-  });
-
   test('the bootstrap scaffold reads process.env.JLU_E2E_VIDEO', () => {
     const agent = read('agents/jlu-ui-e2e-writer.md');
     assert.match(agent, /video:\s*\(process\.env\.JLU_E2E_VIDEO/);
   });
 
-  test('the runner contract carries the video export', () => {
-    assert.match(read('agents/jlu-ui-qa-runner.md'), /JLU_E2E_VIDEO/);
+  test('the runner exports JLU_E2E_VIDEO and reports .webm artifacts', () => {
+    const runner = read('agents/jlu-ui-qa-runner.md');
+    assert.match(runner, /export JLU_E2E_VIDEO=/);
+    assert.match(runner, /seed-e2e-settings\.mjs"?\s+--print-video/);
+    assert.match(runner, /\.webm/);
+    assert.match(runner, /playwright-output/);
   });
 
   test('the update flow seeds the settings file', () => {

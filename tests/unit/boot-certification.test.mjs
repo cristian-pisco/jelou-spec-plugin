@@ -9,7 +9,6 @@ const read = (rel) => readFileSync(join(ROOT, rel), 'utf8');
 
 const mapCodebase = read('jelou/workflows/map-codebase.md');
 const goal = read('jelou/workflows/goal.md');
-const uiQaRun = read('jelou/workflows/ui-qa-run.md');
 const schema = read('jelou/references/dev-block-schema.md');
 const template = read('jelou/templates/services-yaml.md');
 
@@ -155,21 +154,6 @@ describe('goal step 8b — auto-repair without questions', () => {
   });
 });
 
-describe('ui-qa-run step 14a — mark ownership', () => {
-  test('marks only when this run owns the boot, canonical checkout only', () => {
-    assert.match(uiQaRun, /only when this run OWNS the boot/);
-    assert.match(uiQaRun, /--write-mark --workspace <workspace> --service <id> --commit/);
-    assert.match(uiQaRun, /canonical `svc\.path` \(a worktree boot never writes the mark\)/);
-    assert.match(uiQaRun, /reuse of an already-healthy service never marks/);
-  });
-
-  test('never writes under --no-boot and never derives missing blocks', () => {
-    assert.match(uiQaRun, /Under `--no-boot` this step NEVER writes/);
-    assert.match(uiQaRun, /never derives a missing\s+`dev` block/);
-    assert.match(uiQaRun, /still skipped per step 6/);
-  });
-});
-
 describe('dev-block schema — the verified mark', () => {
   test('documents the shape and each field', () => {
     assert.match(schema, /verified: \{ date, commit, block_hash \}/);
@@ -186,7 +170,7 @@ describe('dev-block schema — the verified mark', () => {
     assert.match(schema, /Step 7c \(single-service\) and the B6b batch phase/);
     assert.match(schema, /their OWN boot actually STARTED the\s+service/);
     assert.match(schema, /Worktree boots trust or\s+re-verify but NEVER write the mark/);
-    assert.match(schema, /Under `--no-boot`, `\/jlu-ui-qa-run` NEVER writes/);
+    assert.match(schema, /Under `--no-boot`, the E2E caller NEVER writes/);
     assert.match(schema, /`jlu-dev-block-verifier` subagent NEVER writes the mark/);
   });
 
@@ -203,14 +187,12 @@ describe('cross-references and conflict handling', () => {
       assert.match(wf, /verify-dev-block\.mjs/, name);
       assert.match(wf, /jlu-dev-block-verifier/, name);
     }
-    assert.match(uiQaRun, /verify-dev-block\.mjs/);
   });
 
   test('the mtime-conflict retry-once rule appears wherever persist or mark is invoked', () => {
     assert.match(mapCodebase, /mtime conflict[\s\S]{0,120}re-read the registry and retry once/);
     assert.match(mapCodebase, /re-read-and-retry-once/);
     assert.match(goal, /exit `5` = mtime conflict[\s\S]{0,120}retry once/);
-    assert.match(uiQaRun, /exit `5` = mtime conflict → re-read the registry and retry once/);
   });
 
   test('services-yaml template notes mapping-time certification and goal auto-repair', () => {

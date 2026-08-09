@@ -19,8 +19,7 @@ Inputs:
 ## Modes
 
 **interactive** (default). Every ask-path below uses `question` and waits for
-the user. This is the drop-in replacement for the personal
-`resolve-pr-comments` + `sonar-pr-review` skills.
+the user.
 
 **autonomous** (`--autonomous`). The workflow NEVER prompts. On every ask-path
 the only allowed actions are **skip, rerun, or escalate — never apply** — this
@@ -61,12 +60,10 @@ import('{plugin-root}/bin/lib/dev-orchestrator/notify.mjs').then((m) =>
 " "Escalation on PR #<n>: <one-line signal>"
 ```
 
-The OS notification is best-effort — a missing notifier module or binary never
-blocks or drops the escalation record in the report.
-
-Escalations never abort the whole run: the loop records them, skips that item,
-and continues with the remaining work. The PR is NOT declared green while any
-escalation is unresolved.
+The notification is best-effort: a missing notifier module or binary never
+blocks or drops the report's escalation record. Escalations never abort the
+run — the loop records them, skips that item, and continues with the remaining
+work. The PR is NOT declared green while any escalation is unresolved.
 
 ---
 
@@ -85,10 +82,9 @@ REPO=$(gh repo view --json name --jq '.name')
 
 **Working tree state.** If `git status --porcelain` is non-empty:
 - interactive: ask via `question` — (s)tash, (c)ommit first, or (i)nclude in
-  the final commit. Do not proceed until answered. If the PR later turns out
-  CONFLICTING and the user chose (i), stash → merge → pop; if the pop
-  conflicts, resolve with the Step 3.3 procedure (ours = merged tree, theirs =
-  stashed changes), then drop the stash entry.
+  the final commit. Do not proceed until answered. On (i) + a CONFLICTING PR:
+  stash → merge → pop; a conflicting pop resolves via 3.3 (ours = merged tree,
+  theirs = stashed changes), then drop the stash entry.
 - autonomous: escalate (`dirty-working-tree`) and stop this PR.
 
 ## Step 2 — Resolve target PR(s)
@@ -180,9 +176,8 @@ BOTH intents survive:
   `git grep -n "oldName"` for stale references beyond the conflicted hunk.
 - One side reformatted, the other changed logic → keep the logic, apply the
   formatting.
-- **Incompatible semantics** → ask-path: interactive goes to 3.4; autonomous
-  runs `git merge --abort`, escalates (`conflict-incompatible-semantics`), and
-  continues with comment processing on the unmerged branch.
+- **Incompatible semantics** → ask-path (3.4), autonomous signal
+  `conflict-incompatible-semantics`.
 
 Stage with `git add "$FILE"` only when zero markers remain.
 
@@ -205,7 +200,7 @@ regenerate (`npm install --package-lock-only`, `pnpm install --lockfile-only`,
 manager is missing locally AND the merged manifest differs from theirs, the
 theirs-lockfile is known-inconsistent and would guarantee a `npm ci`/frozen-
 lockfile red on the next CI cycle — this is an ask-path: interactive asks how
-to proceed; autonomous runs `git merge --abort` and escalates
+to proceed; autonomous aborts the merge and escalates
 (`conflict-lockfile-unregenerable`). Never commit a lockfile that no longer
 matches its manifest.
 
@@ -498,17 +493,17 @@ fix / safe / acknowledged; `change_security_hotspot_status` needs the user's
 justification verbatim — **never auto-decide, never mark SAFE without an
 explicit user justification, in any mode**.
 
-**8.6 Validate.** Detect test commands per
-`{plugin-root}/jelou/references/sonar-test-detection.md`; record the baseline
-BEFORE applying (a test failing before must not be expected to pass after).
-Unit → integration order. On unit failure: attribute, revert the offending
-cluster edit, re-run; unrelated pre-existing failures surface to the user
-(interactive) or escalate (autonomous). No tests at all → note it loudly; do
-not declare success.
+**8.6 Validate.** Detect the test commands, record the pre-apply baseline, and
+handle the no-tests case per
+`{plugin-root}/jelou/references/sonar-test-detection.md` (§Detection order,
+§Pre-check, §Edge cases). Unit → integration order. On unit failure: attribute,
+revert the offending cluster edit, re-run; unrelated pre-existing failures
+surface to the user (interactive) or escalate (autonomous).
 
-**8.7 Re-scan & closure.** Prefer a local `sonar-scanner` when available;
-otherwise `analyze_code_snippet` per modified file plus a re-query of the PR's
-issues. Closure matrix: applied clusters' issues → 0; new issues → 0;
+**8.7 Re-scan & closure.** Re-scan per that same reference's §Sonar re-scan
+(local `sonar-scanner` when available, else `analyze_code_snippet` per modified
+file plus a re-query of the PR's issues). Closure matrix: applied clusters'
+issues → 0; new issues → 0;
 `duplicated_lines_density` and touched-file `cognitive_complexity`
 non-increasing; quality gate not worse than baseline. Reconcile bounded to
 **2 iterations**: still-open applied cluster → re-enter 8.4 for it; new issues
@@ -549,10 +544,10 @@ unpushed, so nothing shared is rewritten; the Step 3 merge commit is the one
 exception and rides along in the same push.
 
 After all threads, CI fixes, and the Sonar phase — stage ONLY the files this
-run modified (track them as you edit), never `git add -A`: the Sonar phase
-may leave `.scannerwork/` at the repo root and test/lint runs emit coverage
-and cache directories, and sweeping those into an unattended commit pollutes
-the PR diff and re-triggers review bots, burning the cycle budget:
+run modified (track them as you edit), never `git add -A`: the Sonar phase may
+leave `.scannerwork/` at the repo root and test/lint runs emit coverage and
+cache directories, and sweeping those in pollutes the PR diff and re-triggers
+the review bots:
 
 ```bash
 git add <files-modified-this-run>

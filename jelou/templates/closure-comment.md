@@ -1,7 +1,7 @@
 # Closure Comment Template
 
 Template for the comment posted on the ClickUp macro task when
-`/jlu-close-task` runs.
+task closure runs.
 
 The closure comment must read like a short note a teammate would write to
 explain what shipped — not like a deploy log. ClickUp already shows author,
@@ -39,9 +39,9 @@ lists, no horizontal rules. Plain prose only.
 
 The closure comment MUST NOT contain any of the following:
 
-- **PR URLs or PR numbers.** `/jlu-task-clickup` already attaches a
+- **PR URLs or PR numbers.** The ClickUp sync already attaches a
   separate "Pull Requests" comment. Repeating PRs here is noise.
-- **Signature line** like `Task closed by /jlu:close-task at <timestamp>`.
+- **Signature line** like `Task closed at <timestamp>`.
   ClickUp's own activity log shows author and time.
 - **Test counts** (`697 tests passing`, `18/18`, etc.).
 - **Phase counts** (`All 3 phases done`).
@@ -94,7 +94,7 @@ branch?" questions noticeably faster for the support team.
 ### Bad — what we're trying to avoid
 
 ```
-Task closed by /jlu:close-task at 2026-04-29T13:59:15Z.
+Task closed at 2026-04-29T13:59:15Z.
 
 PRs merged:
 - orchestrator-service #99 — merged 2026-04-28T14:54:38Z — https://...

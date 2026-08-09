@@ -22,7 +22,7 @@ PROPOSAL.md is the bridge between "what needs to be built" (SPEC.md) and "what a
 
 **E2E is mandatory for any UI service. No deferrals.**
 
-If `affected_services` includes a UI service (`stack` ∈ {react, nextjs, vue, angular, svelte}, or a description matching `/(react|next\.?js|vue|angular|svelte|frontend|UI app)/i`), the proposal MUST include an E2E test phase that runs through `/jlu:ui-qa-run`. Do NOT emit any of the following — these are forbidden, regardless of the SPEC author's framing:
+If `affected_services` includes a UI service (`stack` ∈ {react, nextjs, vue, angular, svelte}, or a description matching `/(react|next\.?js|vue|angular|svelte|frontend|UI app)/i`), the proposal MUST include an E2E test phase that runs the Playwright UI suite. Do NOT emit any of the following — these are forbidden, regardless of the SPEC author's framing:
 
 - ❌ `E2E Tests — Not required for MVP`
 - ❌ `E2E: not required for MVP` (in TASKS.md)
@@ -225,7 +225,7 @@ Before finalizing the proposal, verify:
 - [ ] Contract boundaries are defined before any phase that crosses services.
 - [ ] Risks reference specific CONCERNS.md IDs, not vague "could be risky."
 - [ ] The phase count isn't inflated. Fewer phases with clear scope beats many micro-phases. Concretely: no two phases share the same domain entity AND the same persistence layer AND the same service — if any pair does, fuse them into one phase carrying the union of their requirements and acceptance (the sole exception is a write-side/read-side pair where the read side has pagination, filtering, sorting, projection, or a distinct authorization rule).
-- [ ] **If `affected_services` includes a UI service, the Testing Strategy lists at least one E2E flow and the phase plan includes a run of `/jlu:ui-qa-run`.** No "manual QA only" or "deferred for MVP" language anywhere in the proposal.
+- [ ] **If `affected_services` includes a UI service, the Testing Strategy lists at least one E2E flow and the phase plan includes a run of the Playwright UI suite.** No "manual QA only" or "deferred for MVP" language anywhere in the proposal.
 - [ ] **The emitted `Execution Strategy` AGREES with both signals in this very PROPOSAL.md**: `per-service-parallel` only when no `- **Dependencies**:` entry references a phase of another service AND the `Dependency Order` column contains no `after <service>` row; any disagreement or ambiguity means `sequential`.
 
 ## Rules

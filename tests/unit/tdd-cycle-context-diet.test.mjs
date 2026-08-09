@@ -98,25 +98,31 @@ describe('execute-task — the codebase docs are hoisted to a per-task cache', (
   });
 
   test('Step 7c only looks the cache up', () => {
-    const s7c = section(workflow, '### 7c. Resolve Per-Service Cached Values', '### 7c.1.');
-    assert.match(s7c, /SERVICE_DOCS = SERVICE_DOC_CACHE\[service-id\]/);
+    const s7c = section(workflow, '### 7c. Open the phase', '### 7d. TDD Cycle');
+    assert.match(s7c, /SERVICE_DOC_CACHE\[service-id\]/);
     assert.match(s7c, /never recomputes or re-reads/);
     assert.doesNotMatch(s7c, /extract-doc-sections/);
   });
 
-  test('Step 7d injects contents and never names STACK.md or ARCHITECTURE.md', () => {
-    const s7d = section(workflow, '### 7d. TDD Cycle', '### 7e');
-    assert.match(s7d, /--docs-file/);
-    assert.match(s7d, /SERVICE_DOC_CACHE\[service-id\]/);
-    assert.match(s7d, /inlined as contents, never as paths/);
-    assert.match(s7d, /no phase ever re-reads/);
-    assert.doesNotMatch(s7d, /STACK/);
-    assert.doesNotMatch(s7d, /\{CONVENTIONS,STACK,STRUCTURE,ARCHITECTURE\}/);
+  test('Step 7c injects contents and never names STACK.md or ARCHITECTURE.md', () => {
+    const s7c = section(workflow, '### 7c. Open the phase', '### 7d. TDD Cycle');
+    assert.match(s7c, /--docs-file/);
+    assert.match(s7c, /SERVICE_DOC_CACHE\[service-id\]/);
+    assert.match(s7c, /inlined as contents, never as paths/);
+    assert.match(s7c, /no phase ever re-reads/);
+    assert.doesNotMatch(s7c, /STACK/);
+    assert.doesNotMatch(s7c, /\{CONVENTIONS,STACK,STRUCTURE,ARCHITECTURE\}/);
   });
 
   test('the dispatch builder suppresses the CODEBASE_DOCS path when docs are inlined', () => {
-    const s7d = section(workflow, '### 7d. TDD Cycle', '### 7e');
-    assert.match(s7d, /suppresses the `CODEBASE_DOCS` path row/);
+    const s7c = section(workflow, '### 7c. Open the phase', '### 7d. TDD Cycle');
+    assert.match(s7c, /suppresses the `CODEBASE_DOCS` path row/);
+  });
+
+  test('Step 7d restates none of the context Step 7c already emitted', () => {
+    const s7d = section(workflow, '### 7d. TDD Cycle', '### 7e —');
+    assert.match(s7d, /Nothing above is restated here or in the dispatch/);
+    assert.doesNotMatch(s7d, /--docs-file/);
   });
 });
 

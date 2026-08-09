@@ -1,8 +1,8 @@
 // tests/unit/classify-task-scope.test.mjs
 //
 // Tests for bin/classify-task-scope.mjs — classifies a task as `fullstack` or
-// `full-backend` from its affected services. UI detection mirrors ui-qa-run.md
-// Phase 2 step 11.
+// `full-backend` from its affected services. UI detection mirrors goal.md
+// Phase 1 step 6.
 //
 // Run: `node --test tests/unit/classify-task-scope.test.mjs`
 

@@ -1,6 +1,6 @@
 # Architecture Language
 
-> Vocabulary contract for `/jlu-architecture-review`. Both `jlu-architecture-explorer` and `jlu-architecture-grill` are required to use these terms exactly. Adapted from Matt Pocock's `LANGUAGE.md`.
+> Vocabulary contract for the architecture review. Both `jlu-architecture-explorer` and `jlu-architecture-grill` are required to use these terms exactly. Adapted from Matt Pocock's `LANGUAGE.md`.
 
 ## Plugin adaptation
 

@@ -69,14 +69,6 @@ describe('summarizeMountFailure', () => {
 });
 
 describe('app-mount gate wiring', () => {
-  test('ui-qa-run.md has the 14a\' gate and the step 17 UI exception', () => {
-    const doc = read('jelou/workflows/ui-qa-run.md');
-    assert.match(doc, /14a'\. \*\*App-mount gate/);
-    assert.match(doc, /e2e-app-mount-probe\.mjs/);
-    assert.match(doc, /never judge a UI service crashed from a one-shot check/i);
-    assert.match(doc, /app_never_mounted/);
-  });
-
   test('goal.md settles the UI lane before Phase 3', () => {
     const doc = read('jelou/workflows/goal.md');
     const gate = doc.indexOf('10b. **UI app-mount gate');
@@ -90,6 +82,8 @@ describe('app-mount gate wiring', () => {
     const doc = read('agents/jlu-ui-qa-runner.md');
     assert.match(doc, /app_never_mounted/);
     assert.match(doc, /e2e-app-mount-probe\.mjs/);
+    assert.match(doc, /never judge a UI service crashed from a one-shot check/i);
+    assert.match(doc, /APP_MOUNT_TIMEOUT_S/);
   });
 
   test('dev-server-readiness.md no longer sells Vite Local: as app readiness', () => {

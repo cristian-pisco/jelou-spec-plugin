@@ -16,8 +16,6 @@ Follows the conventions established by [OpenSpec](https://github.com/Fission-AI/
 - **Strict TDD**: Red → Green → Refactor enforced per phase. Separate test-writer and implementer agents ensure discipline.
 - **Integrations**: Git worktree management and PR coordination in Phase 1; ClickUp and Slack MCP integrations in Phase 2.
 - **Ubiquitous language**: `/jlu-ubiquitous-language` discovers and curates the workspace's domain glossary across services, anchoring each term to the services where it's implemented and referenced.
-- **Architecture review**: `/jlu-architecture-review` surfaces deepening opportunities (single-service or cross-service) — refactors that turn shallow modules into deep ones — runs an interactive grilling loop on a chosen candidate, and lazily records ADRs when candidates are rejected with load-bearing reasons.
-- **Dev environment diagnose**: `/jlu-diagnose` reads recent failure events and a TMUX pane capture from your dev environment, dispatches a focused diagnoser agent to triage the failure, and proposes a structured fix (host or container) that you confirm before it runs. Failure patterns can be registered with `/jlu-add-failure-pattern` so the daemon picks them up on the next match.
 - **PR resolution**: `/jlu-resolve-pr` drives the current branch's pull request(s) to green — merge conflicts with the base branch, review threads (humans and bots like CodeRabbit), failing CI jobs, and, when the repo uses SonarQube, a gated quality phase that clusters issues by root cause. Runs interactively by default or unattended with `--autonomous`, where every judgment call escalates instead of applying.
 - **Autochain (full autonomy from interview to green PRs)**: `/jlu-new-task` and `/jlu-refine-task` create-or-bind the ClickUp task at SPEC approval (always, non-blocking); the autochain is **on by default** (no configuration required), so they hand off inline into `/jlu-execute-task`; after final QA green, execute-task ships inline and dispatches a `jlu-resolve-pr-runner` per open PR (sequentially) to drive review threads, CI, and Sonar to green. Task-green is the AND of every PR verdict, progress persists in the task's `AUTOCHAIN.json` (a dead session re-enters where it stopped), and when green the ClickUp status flips to `PENDING TO PRODUCTION`. Pass a ClickUp URL or id inline on any of the three commands to bind an existing task. Opting out: `--no-autochain` for one invocation, `JLU_AUTOCHAIN=false` for a session, or `{"autochain": false}` in `~/.jlu/settings.json` as the standing kill-switch.
 - **Tracing, evaluation & observability**: Plugin-native JSONL span store at `<WORKSPACE>/.traces/spans.jsonl` that traces every workflow/phase/agent-dispatch, evaluates the quality of what they produced, and turns the evidence into verifiable improvement suggestions — the full **TRACE → EVALUATE → ANALYZE → IMPROVE → VERIFY** loop. Captures token/cost and `pass@1`/`pass@k` task-success, scores outputs with a cross-family LLM-judge (calibrated against harvested accept/reject feedback), exports to OpenInference/OTel for Phoenix/Langfuse/Datadog, and gates prompt changes with a golden-set regression check. ULID-based, payload-capped under `PIPE_BUF` for atomic appends; `TRACE_DISABLED=1` / `EVAL_DISABLED=1` short-circuit emission and judging. See [Tracing & Observability](#tracing--observability).
@@ -105,12 +103,6 @@ Use the command palette with the `jlu-` namespace:
 
 # (Optional) Map your codebase first
 /jlu-map-codebase
-
-# Surface refactor candidates for a service (or --cross-service across all of them)
-/jlu-architecture-review <service-id>
-
-# Diagnose a failing service in your TMUX dev environment
-/jlu-diagnose <service-id>
 ```
 
 OpenCode also accepts bare `jlu-*` input (without slash). Example: `jlu-load-context` is normalized to `/jlu-load-context`.
@@ -240,23 +232,15 @@ OpenCode command definitions live in `.opencode/commands/`. All commands use the
 | `/jlu-new-task [desc] [clickup-url\|id] [--no-autochain]` | Create a new task with spec, worktrees, and affected service detection. Creates/binds the ClickUp task at SPEC approval (non-blocking); with `autochain` on, chains inline into `/jlu-execute-task` |
 | `/jlu-refine-task [change-desc] [clickup-url\|id] [--no-autochain]` | Apply a targeted change to an approved spec via structured interview. Re-syncs ClickUp (non-blocking); with `autochain` on, re-enters `/jlu-execute-task` when phases changed |
 | `/jlu-execute-task [slug] [clickup-url\|id] [--no-autochain]` | Run TDD implementation with CPU-safe defaults (sequential by default; opt-in parallelism). With `autochain` on, after final QA green it runs `/jlu-ship` inline and drives every open PR to green via `jlu-resolve-pr-runner`, resumable from `AUTOCHAIN.json` |
-| `/jlu-extend-phase` | Add scope to an in-progress task via focused mini-interview |
-| `/jlu-task-clickup` | (Phase 2) Create/update ClickUp macro task and subtasks via MCP |
-| `/jlu-report-task` | Executive summary with progress, blockers, and stale worktree detection |
 | `/jlu-list-tasks [--status <state>] [--sprint <n>]` | List every local task created by `/jlu-new-task` — table of slug, title, lifecycle state, date, sprint, and affected services |
 | `/jlu-load-context` | Load task context into a fresh session for Q&A |
 | `/jlu-council` | Convene a multi-model jury on an architecture idea — categorical `GO / GO_WITH_CONDITIONS / NO_GO` verdict with dissent preserved (Claude Code skill; OpenCode parity planned) |
-| `/jlu-ship [task-slug]` | Stage, commit, push, and create pull requests for all affected services. Before opening PRs, validates that each service installs deps cleanly and builds — in-container for docker-compose services. `/jlu-create-pr` is a deprecated alias. |
+| `/jlu-ship [task-slug]` | Stage, commit, push, and create pull requests for all affected services. Before opening PRs, validates that each service installs deps cleanly and builds — in-container for docker-compose services. |
 | `/jlu-resolve-pr [pr-url\|pr-number] [--autonomous]` | Drive the current branch's PR(s) to green: merge conflicts, review threads (CodeRabbit and other bots first-class), failing CI jobs, and a gated SonarQube phase — issues clustered by root cause, mechanical fixes auto-applied, structural refactors planned for approval, security hotspots never auto-resolved. `--autonomous` never prompts: every ask-path resolves to skip, rerun, or escalate. |
 | `/jlu-daily-slack <sprint> #channel` | Generate and post a sprint-scoped daily summary to a Slack channel |
-| `/jlu-close-task` | Close task after PR merge — updates ClickUp, cleans worktrees |
-| `/jlu-rollback-phase` | Reset service worktrees to the last known-good phase state |
-| `/jlu-diagnose [name]` | Analyze a failing dev-environment service (TMUX pane + recent events) and propose a structured fix (host or container) |
-| `/jlu-architecture-review [<service-id>] [--cross-service]` | Surface deepening opportunities (single-service or cross-service); interactive grilling loop; lazy ADRs |
-| `/jlu-goal [goal matrix]` | Run a user-supplied goal matrix to green against the full local stack — each objective (frontend/backend/fullstack) compiles to E2E suites, the dev infra boots once, and a bounded convergence loop (run → auto-fix → re-run) ends only when every objective is green, with mandatory video evidence for frontend/fullstack objectives. `/jlu-production-like` is a deprecated alias. The single QA entry point for a finished task. |
+| `/jlu-goal [goal matrix]` | Run a user-supplied goal matrix to green against the full local stack — each objective (frontend/backend/fullstack) compiles to E2E suites, the dev infra boots once, and a bounded convergence loop (run → auto-fix → re-run) ends only when every objective is green, with mandatory video evidence for frontend/fullstack objectives. The single QA entry point for a finished task. |
 | `/jlu-trace-report` | Query the workspace trace store: by-agent / by-phase / by-task / trends |
 | `/jlu-eval-report` | Consolidated evaluation scorecard: task success, cost-per-task, per-agent quality, calibration, failure taxonomy, suggestion hit-rate |
-| `/jlu-investigate "<question>" [--engine perplexity\|fusion]` | Stateful research/decision command. Runs one engine per call (default Perplexity; OpenRouter Fusion via `--engine fusion`), persists each investigation as a resumable Obsidian note (local-file fallback), resumes by topic slug. Not a debugger — use `/jlu-diagnose` for failures. |
 | `/jlu-update [--ref <ref>]` | Update the plugin to the latest version for the current runtime — pulls or bootstraps the shared `~/.jelou-spec-plugin` git cache, or uses the updater's own checkout, and reinstalls. Primary update path for Codex and OpenCode. |
 
 ### Test execution model
@@ -390,35 +374,6 @@ Step 7 (the failure-classification step) reads test files and infers component t
 { "models": { "code": "sonnet" } }
 ```
 
-### Investigate — stateful research
-
-`/jlu-investigate` runs a research engine, records the answer with its sources, and
-persists the investigation as a note you can resume later. It never invents a fact: an
-answer without sources is flagged unverified.
-
-**New investigation** (default engine: Perplexity)
-
-```bash
-/jlu-investigate "¿Conviene migrar el api-gateway de REST a gRPC?"
-```
-
-**Use Fusion** (OpenRouter multi-model deliberation)
-
-```bash
-/jlu-investigate "¿gRPC vs REST a escala?" --engine fusion
-```
-
-**Resume** — invoking the same topic appends a new round to the existing note
-
-```bash
-/jlu-investigate "¿gRPC vs REST a escala?" --engine fusion
-```
-
-Notes live in Obsidian at `Resources/Investigations/<slug>.md` (or `./investigations/<slug>.md`
-when the `obs` wrapper is unavailable). Each round records which engine ran, so comparing
-Fusion vs Perplexity happens across your corpus of notes over time. Close an investigation by
-setting `status: closed` in its frontmatter.
-
 ### Resource knobs
 
 | Env var | Default | Effect |
@@ -461,14 +416,12 @@ Custom templates can be added to `<WORKSPACE_PATH>/templates/`.
 
 ## UI QA — Spec-driven E2E Testing
 
-For tasks that touch a UI service, jelou-spec-plugin generates failing Playwright tests during the RED phase from a `user-flow.md` block in `SPEC.md`, and runs them post-deploy under a bounded auto-fix loop.
+For tasks that touch a UI service, jelou-spec-plugin generates failing Playwright tests during the RED phase from a `user-flow.md` block in `SPEC.md`. `/jlu-goal` later runs them against the live stack under a bounded auto-fix loop.
 
 | Phase | Command / Agent | What happens |
 |---|---|---|
 | **RED** (during `/jlu-execute-task`) | `jlu-ui-e2e-writer` agent | Reads `user-flow.md` blocks, emits failing Playwright tests under `.spec-workspace/specs/<task>/services/<ui-service>/e2e/`. Role-based locators by default; refuses to invent `data-testid` selectors not declared in `selectors.md`. |
 | **GREEN** (during `/jlu-execute-task`) | `jlu-implementer` (existing) | Writes UI source code to make the tests pass. |
-| **VERIFY** (post-deploy, user-triggered) | `/jlu-ui-qa-run [task-slug]` | Boots only the services in `affected_services`, runs Playwright headless (default 1 worker; guarded scale-up), dispatches `jlu-ui-fix-loop` on failure with hard bounds (3 attempts/assertion, 15-min suite circuit-breaker). |
-| **RECOVER** (after a crashed run) | `/jlu-ui-qa-cleanup` | Frees stale dev servers, containers, ports, and lock files. |
 
 Each E2E-targeted service must declare a `dev` block in `services.yaml` (launcher, command, readiness signal, RAM estimate, data isolation). See [`jelou/references/dev-block-schema.md`](./jelou/references/dev-block-schema.md). Services without a `dev` block are skipped here — though `/jlu-map-codebase` now derives and boot-certifies missing blocks at mapping time, so mapped services normally arrive with one.
 
@@ -476,7 +429,7 @@ Trace summaries (`trace-summary.json` + screenshots) are committed; raw `trace.z
 
 ## Goal — Run a Goal Matrix to Green (Full-Stack QA Orchestration)
 
-`/jlu-goal` (formerly `/jlu-production-like`, kept as a deprecated alias) runs a user-supplied **goal matrix** to green against a live, production-shaped stack in one command. Each objective declares its level — `frontend`, `backend`, or `fullstack` — and compiles into tagged E2E suites (`SPEC.md` is context for the derivation; the matrix governs the verdict). The workflow boots the dev infrastructure **once**, fans out to the right runners, then runs a bounded **convergence loop**: execute the matrix → for each red objective, delegate a fix (`jlu-implementer` for backend, the runner's `jlu-ui-fix-loop` for UI) → re-run its tagged suite — until every objective is green or `--max-iterations` (default 3) is exhausted. Then it tears everything down.
+`/jlu-goal` runs a user-supplied **goal matrix** to green against a live, production-shaped stack in one command. Each objective declares its level — `frontend`, `backend`, or `fullstack` — and compiles into tagged E2E suites (`SPEC.md` is context for the derivation; the matrix governs the verdict). The workflow boots the dev infrastructure **once**, fans out to the right runners, then runs a bounded **convergence loop**: execute the matrix → for each red objective, delegate a fix (`jlu-implementer` for backend, the runner's `jlu-ui-fix-loop` for UI) → re-run its tagged suite — until every objective is green or `--max-iterations` (default 3) is exhausted. Then it tears everything down.
 
 The orchestrator is **thin**: it owns only the goal-matrix brokering (parse, disambiguation interview, `GOALS.md` persistence, loop bookkeeping), the dev-environment lifecycle (boot once / teardown), the OTP auth gate (session-bound), brokering any runner's `NEEDS_CONTEXT` via a question, dispatch/routing, and result aggregation. All execution, authoring, and fixing is delegated to subagents — it never runs a test, writes a `.spec.ts`, or applies a fix itself.
 
@@ -494,25 +447,6 @@ The orchestrator is **thin**: it owns only the goal-matrix brokering (parse, dis
 /jlu-goal                 # resume the persisted GOALS.md (auto-detect the task from the current branch)
 /jlu-goal --task=add-oauth-flow   # explicit task slug
 ```
-
-## Architecture Review — Deepening Opportunities
-
-`/jlu-architecture-review` is a standalone exploration tool that surfaces refactor candidates in a service or across services. It does not write code; it produces refactor *briefs* that feed `/jlu-new-task` and *ADRs* that prevent the same candidate from being re-suggested on the next run.
-
-| Mode | Command | What happens |
-|---|---|---|
-| **Single service** | `/jlu-architecture-review <service-id>` | Reads the 6 codebase knowledge files, the canonical glossary (read-only), and any existing ADRs scoped to that service. Walks the source via `Explore` sub-agents. Emits up to 7 numbered candidates. |
-| **Cross-service** | `/jlu-architecture-review --cross-service [<service-id>]` | Same shape, but joins multiple services and prioritizes friction at integration points (the "Remote but owned" / Ports & Adapters case). |
-
-After the candidate list is rendered, the orchestrator hands the selected candidate to a grilling agent (Opus) that walks the design tree with the user — bounded to ~6 questions — and produces one of three outcomes per candidate:
-
-- **Survives** → refined brief appended to the report; copy-paste ready for `/jlu-new-task`.
-- **Rejected with load-bearing reason** → ADR written to `<workspace>/decisions/ADR-NNNN-<slug>.md`.
-- **Rejected casually** → one-line note in the report.
-
-Two key vocabularies stay distinct. **Architecture vocabulary** (Module, Interface, Seam, Adapter, Depth, Leverage, Locality — see [`jelou/references/architecture-language.md`](./jelou/references/architecture-language.md)) is enforced in candidate text and ADRs. **Domain vocabulary** comes from `<workspace>/glossary/UBIQUITOUS_LANGUAGE.md` (read-only); candidates name the concept (e.g. "the Order intake module"), never invented terms like "OrderHandler". If a concept isn't yet in the glossary, the candidate carries `missing_domain_term` and the final summary recommends running `/jlu-ubiquitous-language`.
-
-The skill is purely standalone — no auto-hooks into other workflows. The grilling loop is too conversational to bolt onto a batch command. Output: a transient report at `<workspace>/services/<id>/codebase/ARCHITECTURE_REVIEW.md` (overwritten on each run) and append-only ADRs at `<workspace>/decisions/`.
 
 ## Council — Multi-Model Jury for Architecture Ideas
 
@@ -566,20 +500,15 @@ Spin up a multi-service dev environment in TMUX with one command, monitor for fa
    /jlu-start-dev
    ```
    Creates a TMUX window `jlu-dev-<task-slug>` (or `jlu-dev-_global` if no task is active), splits it into one pane per service, runs each command, and spawns a background daemon that monitors pane death + log patterns + readiness probes.
-3. When a service fails, diagnose:
-   ```bash
-   /jlu-diagnose api
-   ```
-   Claude reads the recent events + a 100-line pane capture, returns a structured fix proposal (host or container) you can confirm to run.
-4. Add a service mid-session:
+3. Add a service mid-session:
    ```bash
    /jlu-add-service worker
    ```
-5. Inspect logs anytime:
+4. Inspect logs anytime:
    ```bash
    /jlu-logs api --lines 50
    ```
-6. Tear down:
+5. Tear down:
    ```bash
    /jlu-stop-dev --kill-services
    ```
@@ -593,7 +522,6 @@ Spin up a multi-service dev environment in TMUX with one command, monitor for fa
 | `/jlu-stop-dev [--kill-services]` | Stop daemon; optionally kill window |
 | `/jlu-add-service [name]` | Add a pane to a running window |
 | `/jlu-logs [name] [--lines N]` | Print recent pane output, read-only |
-| `/jlu-diagnose [name]` | Analyze a failing service and propose a fix |
 | `/jlu-add-failure-pattern <service> <pattern>` | Append a regex; daemon hot-reloads via SIGHUP |
 
 ### Docker Compose support
@@ -716,7 +644,7 @@ On `span_end` additionally: `duration_ms`, `status` (`ok` | `blocked` | `failed`
 
 **Evaluation attrs (Decision surface):** agent-dispatch spans also carry `gen_ai.usage.input_tokens` / `output_tokens` (best-effort, populated when the runtime exposes usage) and a derived `cost_usd`; phase / workflow spans carry `success` (`pass@1` | `pass@k` | `fail`, from the RED test oracle) and `attempts_to_green`. Failed/blocked spans carry a MAST-seeded `failure_mode` (`spec` | `coordination` | `verification` | `execution` | `unknown`). Quality scores live on discrete `eval` events (`event_kind: "event"`, `name: "eval"`) attached to the judged span via `parent_span_id`, carrying `quality_score`, `quality_dims`, `panel_agreement`, and `escalate`.
 
-**Feedback store:** `<WORKSPACE>/.traces/feedback.jsonl` holds `span_id`-keyed ground truth — `{ ts, span_id, signal, source, note }` where `signal` is `accept` | `reject` | `implicit_negative` | `edit`. `accept`/`reject` are harvested for free at `/jlu-close-task` from the PR outcome; `implicit_negative` is derived from `retry_count`.
+**Feedback store:** `<WORKSPACE>/.traces/feedback.jsonl` holds `span_id`-keyed ground truth — `{ ts, span_id, signal, source, note }` where `signal` is `accept` | `reject` | `implicit_negative` | `edit`. `accept`/`reject` are harvested for free at task closure from the PR outcome; `implicit_negative` is derived from `retry_count`.
 
 Identifiers are ULIDs (26-char Crockford base32, monotonic by ms-prefix). Payloads over 3500 bytes drop `outcome`/`artifacts` first, then `attrs` entirely, so every append stays under `PIPE_BUF` (4 KB) and remains atomic under concurrent writers.
 
@@ -809,7 +737,7 @@ node bin/trace-eval.mjs --task add-auth          # emits eval events with qualit
 # stay dormant until the judge is calibrated (Cohen's κ ≥ 0.4 vs your accept/reject feedback).
 ```
 
-**5. Feedback is harvested for free** — `/jlu-close-task` writes `accept` on PR merge and `reject` on close-without-merge. To record one by hand:
+**5. Feedback is harvested for free** — task closure writes `accept` on PR merge and `reject` on close-without-merge. To record one by hand:
 
 ```bash
 node bin/trace-feedback.mjs --task add-auth --signal accept --source manual
@@ -852,7 +780,7 @@ The plugin uses `.spec-workspace/` in the parent directory of your services as t
   glossary/
     UBIQUITOUS_LANGUAGE.md # Canonical domain glossary (curated by /jlu-ubiquitous-language)
   decisions/
-    ADR-NNNN-<slug>.md     # Workspace-level ADRs (created lazily by /jlu-architecture-review)
+    ADR-NNNN-<slug>.md     # Workspace-level ADRs (created lazily when a candidate is rejected)
   services/
     <service-id>/
       codebase/            # 6 knowledge files per service
@@ -882,7 +810,7 @@ Each service repo only stores a minimal `.spec-workspace.json` pointer:
 
 ### TASKS.md frontmatter
 
-`TASKS.md` carries a YAML frontmatter block as the structured source of truth for `affected_services`. Workflows that need to enumerate affected services (e.g., `/jlu-ui-qa-run`) read the frontmatter directly instead of parsing the markdown table:
+`TASKS.md` carries a YAML frontmatter block as the structured source of truth for `affected_services`. Workflows that need to enumerate affected services (e.g., `/jlu-goal`) read the frontmatter directly instead of parsing the markdown table:
 
 ```yaml
 ---
@@ -897,13 +825,13 @@ The existing `## Services` markdown body is auto-derived from frontmatter for hu
 
 ### `services.yaml` `dev` block (optional)
 
-A per-service `dev` block declares how to boot the service for E2E orchestration: launcher, command, readiness signal, RAM estimate, data isolation. Three workflows consume it: `/jlu-ui-qa-run` boots from it, `/jlu-goal` derives/persists/re-verifies it for boot-order services (step 8b, no questions asked), and `/jlu-map-codebase` derives, persists, and **boot-certifies** it at mapping time — a real boot that reaches readiness earns a `verified: { date, commit, block_hash }` mark, written only when the boot actually executed the command on the canonical checkout. Full schema and the verifier CLI contract in [`jelou/references/dev-block-schema.md`](./jelou/references/dev-block-schema.md). Services without a `dev` block remain valid; `/jlu-ui-qa-run` skips a non-UI service that lacks one with a clear message.
+A per-service `dev` block declares how to boot the service for E2E orchestration: launcher, command, readiness signal, RAM estimate, data isolation. Two workflows consume it: `/jlu-goal` derives/persists/re-verifies it for boot-order services (step 8b, no questions asked), and `/jlu-map-codebase` derives, persists, and **boot-certifies** it at mapping time — a real boot that reaches readiness earns a `verified: { date, commit, block_hash }` mark, written only when the boot actually executed the command on the canonical checkout. Full schema and the verifier CLI contract in [`jelou/references/dev-block-schema.md`](./jelou/references/dev-block-schema.md). Services without a `dev` block remain valid; a non-UI service that lacks one is skipped with a clear message.
 
 ## Configuration
 
 ### ClickUp
 
-Phase 2. ClickUp integration uses the ClickUp MCP server (no API key needed). On first run of `/jlu-task-clickup`, you'll be prompted to select a target list. Field mappings are auto-discovered and persisted in `CLICKUP_TASK.json` per task.
+Phase 2. ClickUp integration uses the ClickUp MCP server (no API key needed). On the first ClickUp sync, you'll be prompted to select a target list. Field mappings are auto-discovered and persisted in `CLICKUP_TASK.json` per task.
 
 ### Slack
 
@@ -930,9 +858,8 @@ To bypass the hook for a one-off manual run (humans only): `JLU_TEST_GUARD=off` 
 - **[Skills Manual](./manual-skills.md)** — every user-invocable skill: signature, what it does, when to use it, flags, and prerequisites
 - **[Full Specification](./docs/archive/JELOU_SPEC_PROPOSAL.md)** — Archived historical design memo: 46 design decisions, artifact schemas, and interview transcript from initial design
 - **[Architecture Diagrams](./docs/architecture.excalidraw)** — Editable diagrams (open with [excalidraw.com](https://excalidraw.com))
-- **[`dev` Block Schema](./jelou/references/dev-block-schema.md)** — `services.yaml` extension for E2E orchestration, plus the `verified` boot-certification mark and the `verify-dev-block.mjs` CLI contract (consumed by `/jlu-ui-qa-run`, `/jlu-goal`, `/jlu-map-codebase`)
+- **[`dev` Block Schema](./jelou/references/dev-block-schema.md)** — `services.yaml` extension for E2E orchestration, plus the `verified` boot-certification mark and the `verify-dev-block.mjs` CLI contract (consumed by `/jlu-goal` and `/jlu-map-codebase`)
 - **[`services.yaml` Reference](./jelou/templates/services-yaml.md)** — Field-by-field schema documentation for the service registry
-- **[Architecture Review Design](./docs/superpowers/specs/2026-04-26-architecture-review-design.md)** — Spec for `/jlu-architecture-review`: candidate discovery, grilling loop, ADR lifecycle, vocabulary contract
 - **[Architecture Language](./jelou/references/architecture-language.md)** — Vocabulary contract (Module, Interface, Seam, Adapter, Depth, Leverage, Locality) used by the architecture-review agents
 - **[Ubiquitous Language Design](./docs/superpowers/specs/2026-04-26-ubiquitous-language-design.md)** — Spec for `/jlu-ubiquitous-language`: extractor + curator split, candidates sidecar, review-then-save loop
 - **[Tracing Reference](./jelou/references/tracing.md)** — Schema, canonical span names, attrs canon, and "how to add a new span" guide for the observability layer
@@ -959,12 +886,9 @@ stateDiagram-v2
     implementing --> validating : all phases done
     validating --> ready_to_publish : final validation green
     ready_to_publish --> done : PRs merged (pending production)
-    ready_to_publish --> closed : /jlu-close-task
-    done --> closed : /jlu-close-task
+    ready_to_publish --> closed : task closure
+    done --> closed : task closure
 
-    implementing --> refining : /jlu-extend-phase (spec-level)
-    implementing --> planned : /jlu-extend-phase (implementation-level)
-    validating --> planned : /jlu-extend-phase
     validating --> implementing : /jlu-refine-task (phases reopened)
 
     state implementing {
@@ -1005,10 +929,7 @@ flowchart TB
         ship["/jlu-ship"]
         rpr["/jlu-resolve-pr"]
         goal["/jlu-goal"]
-        uiqa["/jlu-ui-qa-run"]
         ubiq["/jlu-ubiquitous-language"]
-        arch["/jlu-architecture-review"]
-        diag["/jlu-diagnose · /jlu-autofix"]
     end
 
     subgraph opus["Interview Tier — Opus"]
@@ -1077,10 +998,9 @@ flowchart TB
     shipr --> deps & build & confl & git
     rpr --> rprr
     goal --> tsr & be2e & uiqar
-    uiqa --> uiqar --> uifl
+    uiqar --> uifl
     ubiq --> gloss_x --> gloss_c --> gloss_file
-    arch --> arch_x --> grill --> review_file
-    diag --> devdiag
+    arch_x --> grill --> review_file
 
     new -. auto-chain .-> exec -. auto-chain .-> ship -. auto-chain .-> rpr
 ```

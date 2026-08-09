@@ -27,25 +27,15 @@ one `SPEC_ASSUMPTIONS` line recording what was decided and why, and continues.
 | Setup mode | Step 15b | `worktree` when the task touches more than one service or any affected service has a Docker dev block; `branch` otherwise. Assumption line states which rule fired. |
 
 **Abort floor (shared contract).** If Step 14a finds no concrete functional
-requirement derivable from `TASK_DESCRIPTION` — a want with no contract, e.g.
-"we need reports" — abort before creating anything: no TASK_DIR, no branch, no
-worktree. Return `STATUS: ABORTED` with `reason: no_derivable_requirement` and
-the specific ambiguity. This is a correct outcome; inventing the missing
-requirement is the failure.
+requirement derivable from `TASK_DESCRIPTION`, abort before creating anything: no
+TASK_DIR, no branch, no worktree. Return `STATUS: ABORTED` with
+`reason: no_derivable_requirement` and the specific ambiguity.
 
 **Never in autonomous mode:** edit a spec requirement the user wrote, flip an
 already-stored `DUAL_PR`, or waive the Case-Coverage self-check (the spec author's self-check, Step 14c). That
 floor is not a gate.
 
 ---
-
-## Interview Limits and Completion
-
-- Ask 3–6 questions per round for at most 4 rounds.
-- Every question must cite a gap from the task description, a prior answer, or a loaded codebase artifact.
-- Stop before the cap when all five SPEC sections are populated, every FR links to verifiable success criteria, and every identified decision is answered or recorded under `Constraints` as `Unresolved decision: ...`.
-- If the user says "that's enough" or "move on", stop asking and record every remaining identified decision before writing.
-- A task with no unresolved gap after round 1 may finish after that round.
 
 ## Performance Guardrails (mandatory)
 
@@ -61,13 +51,9 @@ floor is not a gate.
 
 ## Step 0 — Trace gate, then open workflow span
 
-**Resolve `TRACING_ON` exactly once, here.** See `jelou/references/tracing.md`.
+**Resolve `TRACING_ON` exactly once, here.** Read `jelou/references/tracing.md` §"Tracing is OFF by default" for the resolution table (`JLU_TRACE=1` → `true`; `TRACE_DISABLED=1` always wins as `false`; neither set → `false`) and for why the gate lives in the workflow and never inside `bin/trace-*.mjs`.
 
-- `TRACING_ON = true` **only** when the env var `JLU_TRACE=1`.
-- `TRACE_DISABLED=1` forces `TRACING_ON = false`, whatever `JLU_TRACE` says (back-compat hard kill).
-- Default, with neither set: **false**. Tracing is OFF for normal runs; the `jlu-bench` evaluation harness is what turns it on.
-
-**When `TRACING_ON = false`, emit no trace Bash call at all** — not `trace-start-span`, not `trace-end-span`, not `trace-reconcile`, not `trace-suggest`, not `trace-feedback`, not `trace-snapshot-task`. `WORKFLOW_SPAN_ID` and `WORKFLOW_TRACE_ID` stay unset and every trace-dependent step in this workflow (including "Step N — Close workflow span") is skipped outright. The cost being avoided is the Bash call itself — the process spawn plus the agent-turn roundtrip — which is paid even when the script short-circuits internally, so the gate lives here and never inside the script.
+**When `TRACING_ON = false`, emit no trace Bash call at all.** `WORKFLOW_SPAN_ID` and `WORKFLOW_TRACE_ID` stay unset and every trace-dependent step in this workflow (including "Step N — Close workflow span") is skipped outright.
 
 **When `TRACING_ON = true`**, run:
 ```bash
@@ -168,20 +154,18 @@ After service registration (or if already registered):
 1. Check if `<WORKSPACE_PATH>/templates/` directory exists.
    - If not, create it and copy built-in templates from `<PLUGIN_ROOT>/jelou/templates/spec-templates/` to `<WORKSPACE_PATH>/templates/`.
 2. Scan `<WORKSPACE_PATH>/templates/` for `.md` files.
-3. Build an initial candidate list using filename+keyword heuristics **without reading all templates**:
-   - API/endpoint/route/request/response keywords -> shortlist `rest-api.md`
-   - UI/component/frontend/screen/form/modal keywords -> shortlist `ui-component.md`
-   - Database/migration/schema/table/column keywords -> shortlist `db-migration.md`
-   - Event/consumer/async/queue/message/subscriber keywords -> shortlist `event-consumer.md`
+3. Build an initial candidate list from `TASK_DESCRIPTION` using filename+keyword heuristics **without reading all templates**:
+
+   | Keywords in `TASK_DESCRIPTION` | Template |
+   |---|---|
+   | API, endpoint, route, request, response | `rest-api.md` |
+   | UI, component, frontend, screen, form, modal | `ui-component.md` |
+   | database, migration, schema, table, column | `db-migration.md` |
+   | event, consumer, async, queue, message, subscriber | `event-consumer.md` |
+
 4. If the shortlist is non-empty, read only shortlisted template files.
 5. If the shortlist is empty, then (fallback) read each template's `## Description` section and do semantic matching.
-6. Analyze the task description (`TASK_DESCRIPTION`) against chosen template descriptions and interview hints.
-   Determine which templates are relevant based on keyword and semantic matching:
-   - API/endpoint/route/request/response keywords → rest-api template
-   - UI/component/frontend/screen/form/modal keywords → ui-component template
-   - Database/migration/schema/table/column keywords → db-migration template
-   - Event/consumer/async/queue/message/subscriber keywords → event-consumer template
-   - Custom templates: match against their `## Description` content
+6. Decide which templates are relevant: the keyword table above for the built-ins, plus semantic matching against the `## Description` content for custom templates and for anything the keywords missed. Weigh the interview hints of each candidate.
 7. If one or more templates match:
    a. Read each matching template file.
    b. Merge `## Pre-filled Sections` from all matching templates:
@@ -220,9 +204,8 @@ After service registration (or if already registered):
         this matches exactly where `/jlu-council` writes. 2-pass: shortlist filenames, read only the chosen one.
      c. If one or more pending seeds exist and none was passed explicitly, ask via `question`
         (most recent first, labelled by idea + timestamp) whether to seed from the council outcome
-        or start fresh. Autonomous → do not ask and do not consume any seed (gate
-        table): a seed changes what gets built, so only one named explicitly in the
-        command argument is read. Record the skipped seed as an assumption.
+        or start fresh. Autonomous → do not ask and consume no seed (gate table); record
+        the skipped seed as an assumption.
    - **When a council seed is selected:** read it; set `TASK_DESCRIPTION` from its refined idea;
      fold its accepted conditions, surviving trade-offs and in-scope services into the interview
      prefill/hints so the interview is short and grounded; keep its `COUNCIL_REPORT.md` pointer for
@@ -440,14 +423,7 @@ If loaded but the file doesn't exist, note it and do not block. If not loaded (n
 
 ## Step 13 — Review Loaded Context
 
-Before starting the interview, confirm you have loaded:
-- `TASK_DESCRIPTION` from Step 3
-- `CODEBASE_CONTEXT` from Step 10
-- `PRINCIPLES_CONTENT` from Step 11
-- `CONFIRMED_SERVICES` from Step 8
-- `DETECTED_TEMPLATES`, `MERGED_PREFILL`, `MERGED_HINTS` from Step 2c
-
-All of these are already in memory from previous steps. No assembly needed — proceed directly to the interview.
+Before starting the interview, confirm you hold `TASK_DESCRIPTION` (Step 3), `CONFIRMED_SERVICES` (Step 8), `CODEBASE_CONTEXT` (Step 10), `PRINCIPLES_CONTENT` (Step 11), and `DETECTED_TEMPLATES` / `MERGED_PREFILL` / `MERGED_HINTS` (Step 2c). All are already in memory — do not re-read anything. Proceed directly to the interview.
 
 ---
 
@@ -497,20 +473,16 @@ Prioritize gaps by impact: architectural decisions > behavioral requirements > e
 Using `question`, interview the user to resolve all identified gaps.
 
 **14b-auto — when `<AUTONOMOUS> = yes`.** Do not call `question` at all; the rules
-below about rounds and option counts do not apply because nothing is asked. Take
-the same gap list Step 14a produced and resolve each one through the shared
-contract's order: derivable from `TASK_DESCRIPTION` / seed / codebase docs →
-matched in `<ANSWERS_FILE>` if the caller supplied one → conservative default.
+below about rounds and option counts do not apply because nothing is asked. Take the
+same gap list Step 14a produced and resolve each one through the "Resolution order
+for open gaps" in `jelou/references/autonomous-mode.md`, which also gives the
+`SPEC_ASSUMPTIONS` disclosure line each level emits. A gap that would require
+deciding **what to build** rather than **how** trips the abort floor — stop, do not
+create the task, return `STATUS: ABORTED`.
 
-- A gap resolved at level 1 is not a gap; record nothing.
-- A gap resolved at level 2 gets `SPEC_ASSUMPTIONS`: `<gap> — answered from <file>`.
-- A gap resolved at level 3 gets `SPEC_ASSUMPTIONS`: `<gap> — assumed <decision>, narrowest reading of <cited requirement>`.
-- A gap that would require deciding **what to build** rather than **how** trips the
-  abort floor — stop, do not create the task, return `STATUS: ABORTED`.
-
-Conservative means the narrowest defensible reading: no new endpoints, entities,
-screens or integrations beyond what the description states; existing conventions
-from the codebase docs over novel ones; the stricter validation over the looser.
+Conservative, for this workflow, means: no new endpoints, entities, screens or
+integrations beyond what the description states; existing conventions from the
+codebase docs over novel ones; the stricter validation over the looser.
 
 **Store**: `INTERVIEW_ANSWERS` — one entry per gap from 14a, in the form
 `<gap> → <resolution> (level <1|2|3>)`. **Record every gap, including the ones resolved at
@@ -524,6 +496,7 @@ written spec may not be happy-path-only.
 
 Rules (interactive mode):
 - **3-6 questions per round**, grouped by theme — never random
+- **Completion condition** — stop before the round cap once all five SPEC sections are populated, every FR links to verifiable success criteria, and every identified decision is answered or recorded under `Constraints` as `Unresolved decision: ...`. A task with no unresolved gap after round 1 may finish after that round.
 - **Each question takes max 4 options** (hard API limit on `question`/`AskUserQuestion`). If a decision has more candidates than 4 (e.g., 7 services to route, 6 patterns to pick from), split it: ask the question across multiple rounds, group candidates into bucket options ("group A vs group B"), or use a free-text question instead of multiple-choice. **Never** stuff 5+ options into one question — the call will fail with `InputValidationError: too_big`.
 - **Themes to cover** (in rough priority order):
   1. Technical implementation details (how will this be built? what patterns apply?)
@@ -542,7 +515,7 @@ Rules (interactive mode):
 - **Convert qualitative answers to a verification target** — for "it should be fast", ask for a percentile, latency, load, and measurement boundary.
 - **Ask about tradeoffs** — if the user chose approach A, ask why not B. Surface implicit decisions.
 - **Maximum four rounds** — stop earlier when the completion condition above passes. At the cap, record every unanswered decision under `Constraints` before writing.
-- **Respect the user** — if the user says "that's enough" or "move on", stop the interview and write the spec with what you have.
+- **Respect the user** — if the user says "that's enough" or "move on", stop asking, record every remaining identified decision under `Constraints`, and write the spec with what you have.
 - **Term-suggestion (when `CANONICAL_TERMS` is loaded)**: If the user mentions a word that appears as an alias-to-avoid in `CANONICAL_TERMS`, reflect back the canonical term and cite the glossary. Example: if canonical has `Workflow` with alias `Process`, and the user says "track when a Process completes", reply with "Got it — tracking Workflow completion. (Using 'Workflow' per the workspace glossary; 'Process' is listed as an alias to avoid.)"
 - **Definition-anchoring (when `CANONICAL_TERMS` is loaded)**: When asking clarifying questions about a term that is in `CANONICAL_TERMS`, phrase the question in terms of the canonical definition rather than re-asking what the term means.
 
@@ -578,12 +551,8 @@ from 14b-auto instead.)
 You do not write `SPEC.md` and you do not write the story files. Dispatch
 `jlu-spec-interviewer` (model: **opus**) once and let it author both.
 
-**Why this is delegated.** A spec plus its stories is tens of thousands of generated tokens.
-Written here they stay in your context for the rest of the run and slow every later turn;
-written in the agent they cost you a receipt. The story-fusion rule that keeps a CRUD from
-becoming one phase per HTTP verb also lives in that agent — authoring inline bypasses it.
-
-Pass, in the dispatch prompt:
+Authoring inline costs you tens of thousands of generated tokens for the rest of the run and
+bypasses the agent's story-fusion rule. Pass, in the dispatch prompt:
 
 | Field | Value |
 |---|---|
@@ -699,9 +668,7 @@ Using `question`:
 > - Full setup (worktree + Docker) — recommended when multiple services, Docker-heavy, or parallel tasks planned
 > - Branch only — recommended when single-file fix, non-Docker service, or quick change
 
-Store as `SETUP_MODE` ∈ {`worktree`, `branch`}. Autonomous → derive without asking
-(gate table): `worktree` when the task touches more than one service or any
-affected service has a Docker dev block, `branch` otherwise.
+Store as `SETUP_MODE` ∈ {`worktree`, `branch`}. Autonomous → derive without asking, per the gate table.
 
 Update `<TASK_DIR>/TASKS.md` → `## Branching` → replace `Mode: (pending ...)` with `Mode: <SETUP_MODE>`.
 
@@ -757,41 +724,27 @@ In worktree mode, skip steps 4 and 5 — the main repo's HEAD and working-tree s
 
 ### Branch creation
 
-**If `SETUP_MODE = worktree`** (existing five-phase behavior):
+**If `SETUP_MODE = worktree`**:
 
-1. **Pre-flight: verify `.worktrees/` is git-ignored** in this service repo. Without this, worktree contents pollute the repo's tracked state and may be staged by accident.
+1. **Pre-flight: verify `.worktrees/` is git-ignored** in this service repo:
    ```bash
    git -C <repo> check-ignore -q .worktrees
    ```
-   If the command exits 0 (already ignored): set `GITIGNORE_FIX_NEEDED = no` and proceed.
-   If the command exits non-zero (`.worktrees/` is **not** ignored): **do NOT abort**. Set `GITIGNORE_FIX_NEEDED = yes` and proceed — the plugin auto-fixes it in step 2b below. Aborting here is what used to leave a headless run with no `production/<slug>` branch, which then made `finalize-phase.sh` abort every phase with `reason=wrong_branch`.
+   | Exit | Meaning | Action |
+   |---|---|---|
+   | 0 | already ignored | `GITIGNORE_FIX_NEEDED = no`; proceed |
+   | non-zero | not ignored | `GITIGNORE_FIX_NEEDED = yes`; proceed — **never abort here** |
 2. Create the worktree on the new branch:
    ```bash
    git worktree add .worktrees/<TASK_SLUG> -b production/<TASK_SLUG> origin/$TRUNK
    ```
    If `production/<TASK_SLUG>` already exists locally, abort this service: **"Branch `production/<TASK_SLUG>` already exists locally for `<service-id>`. Delete it or use a different slug."**
 
-   2b. **Auto-fix the `.gitignore`** — only when `GITIGNORE_FIX_NEEDED = yes`. Run this **inside the worktree**, where `production/<TASK_SLUG>` is the checked-out branch, so the commit lands on the task branch:
-   ```bash
-   cd <repo>/.worktrees/<TASK_SLUG>
-   grep -qE '^\.worktrees/?$' .gitignore 2>/dev/null || printf '.worktrees/\n' >> .gitignore
-   git add .gitignore
-   git commit -m "chore: git-ignore .worktrees/"
-   ```
-   `.gitignore` is created if absent. The `grep` guard prevents a duplicate entry when an equivalent pattern (`.worktrees` or `.worktrees/`) is already present but was not matched by `check-ignore` (for example because it lives in a not-yet-committed working copy). If after the guard there is nothing to commit, skip the commit silently.
-
-   Log exactly one line: **"Added `.worktrees/` to `<service-id>` .gitignore on `production/<TASK_SLUG>`."**
-
-   Known limitation: the commit lands on the task branch, so the service's trunk still does not ignore `.worktrees/` until that PR merges — the main checkout keeps showing it as untracked. See `jelou/references/worktree-resolution.md`.
-3. Copy untracked files from repo root to worktree:
-   ```bash
-   for file in .env .npmrc; do
-     [ -f <repo>/$file ] && cp <repo>/$file <worktree>/$file
-   done
-   ```
+   2b. **Auto-fix the `.gitignore`** — only when `GITIGNORE_FIX_NEEDED = yes`. Run the append-stage-commit procedure in `jelou/references/worktree-resolution.md` §"Precondition: `.worktrees/` Must Be Git-Ignored (auto-fixed)" **inside the worktree**, so the commit lands on `production/<TASK_SLUG>`. That section also carries the known limitation (trunk stays un-ignored until the PR merges). Log exactly one line: **"Added `.worktrees/` to `<service-id>` .gitignore on `production/<TASK_SLUG>`."**
+3. Copy the untracked files (`.env`, `.npmrc`) from the repo root to the worktree per `jelou/references/docker-conventions.md` §"Untracked File Copying" — skip silently any that do not exist.
 4. Run the Docker isolation phases per `jelou/references/docker-conventions.md`: port allocation, `docker-compose.override.yml` generation, inter-service URL wiring, and `docker compose up -d`. Wherever those phases would have referenced `spec/<TASK_SLUG>`, use `production/<TASK_SLUG>`.
 
-**If `SETUP_MODE = branch`** (new):
+**If `SETUP_MODE = branch`**:
 
 1. Create the branch (not checked out):
    ```bash
@@ -897,11 +850,16 @@ replace the `Next Step` line with
 follow the shared recipe in
 `{plugin-root}/jelou/references/autochain-handoff.md`.
 
-1. **ClickUp create-or-bind (non-blocking, recipe §1).** Inline reference
-   given → bind and follow the task-clickup workflow's UPDATE path. None →
-   read `{plugin-root}/jelou/workflows/task-clickup.md` and follow its CREATE
-   path — the task exists on the sprint board for the whole implementation,
-   not only at ship time. Update TASKS.md External Links accordingly.
+1. **ClickUp create-or-bind (non-blocking, recipe §1).** Inline reference given
+   → bind to that task and update its title and description from the spec.
+   None → CREATE path: create the macro task with the ClickUp MCP tools, so the
+   task exists on the sprint board for the whole implementation, not only at
+   ship time. Tie it to exactly one Key Result per
+   `{plugin-root}/jelou/references/okr-mapping.md` (selection table, `## OKR`
+   description block, `OKR (Tech)` option resolution) and estimate Story Points
+   per `{plugin-root}/jelou/references/story-points-estimation.md`. Update
+   TASKS.md External Links accordingly. Any ClickUp failure is a WARN, never a
+   stop.
 2. **Auto-chain handoff (recipe §2-§3).** Resolve the flag per the recipe;
    `true` → hand off inline into execute-task with the new `<TASK_SLUG>`;
    `false` or opted out → print the manual `Next Step` as today.

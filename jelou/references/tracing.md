@@ -23,7 +23,7 @@ The in-script `TRACE_DISABLED` short-circuit stays as defence-in-depth for direc
 
 ### Consequence
 
-With tracing off, normal runs produce no spans. `/jlu-trace-report`, the suggester (`bin/trace-suggest.mjs`) and the `trace-regress` golden-set gate therefore get **no data from normal runs** — their only input is what the bench harness records with `JLU_TRACE=1`. The free accept/reject ground-truth harvest at `/jlu-close-task` is likewise conditional on `TRACING_ON`, and stays best-effort: it can never fail closure.
+With tracing off, normal runs produce no spans. `/jlu-trace-report`, the suggester (`bin/trace-suggest.mjs`) and the `trace-regress` golden-set gate therefore get **no data from normal runs** — their only input is what the bench harness records with `JLU_TRACE=1`. The free accept/reject ground-truth harvest at task closure is likewise conditional on `TRACING_ON`, and stays best-effort: it can never fail closure.
 
 ## Where traces live
 
@@ -66,8 +66,6 @@ On `span_end` additionally:
 | `new_task` | task | `/jlu-new-task` (Phase 2) |
 | `refine_task` | task | `/jlu-refine-task` (Phase 2) |
 | `ship` | task | `/jlu-ship` (Phase 2) |
-| `report_task` | task | `/jlu-report-task` (Phase 2) |
-| `close_task` | task | `/jlu-close-task` (Phase 2) |
 | `phase` | task | execute-task per-phase (Phase 2) |
 | `agent_dispatch` | task | execute-task per-dispatch (Phase 2) |
 | `pane_started`, `pane_dead`, `pattern_match`, `ready` | daemon | dev-env daemon (Phase 2 migration) |
@@ -131,8 +129,8 @@ Each line:
 Undefined fields are omitted. Writes are best-effort — short-circuit on `TRACE_DISABLED=1`, stderr warning on error, never throw — via `bin/lib/trace/feedback.mjs` (`appendFeedback` / `readFeedback`) and the `bin/trace-feedback.mjs` CLI. The CLI resolves the store from `FEEDBACK_FILE`, else `feedback.jsonl` alongside `TRACE_FILE`, else `<cwd>/.traces/feedback.jsonl`.
 
 Harvest points:
-- **`accept`** — recorded at `/jlu-close-task` Step 2b when the trunk PR is confirmed `MERGED` (`--source pr_merge --note merged_clean`), keyed to the ship span_id resolved from the trace store.
-- **`reject`** — recorded at `/jlu-close-task` Step 2b when the trunk PR is found `CLOSED` but not merged (`--source pr_close --note reverted`).
+- **`accept`** — recorded at task closure when the trunk PR is confirmed `MERGED` (`--source pr_merge --note merged_clean`), keyed to the ship span_id resolved from the trace store.
+- **`reject`** — recorded at task closure when the trunk PR is found `CLOSED` but not merged (`--source pr_close --note reverted`).
 - **`implicit_negative`** — **derived on demand, never written** by any workflow: `harvestImplicitNegatives(pairs)` returns one per `agent_dispatch` pair whose `end.attrs.retry_count > 0` (`source: re_dispatch`).
 
 ## Decision surface — suggestion rules (Stage 5)

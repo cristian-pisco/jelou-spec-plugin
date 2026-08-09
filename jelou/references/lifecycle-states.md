@@ -17,7 +17,7 @@ draft -> refining -> planned -> implementing -> validating -> ready_to_publish -
 | `validating` | All phases complete, final QA validation running | All phase implementations done |
 | `ready_to_publish` | All tests green, artifacts ready, PR prepared | QA validation passed |
 | `done` | Manual closure approved, ClickUp set to PENDING TO PRODUCTION | User approves closure |
-| `closed` | PR merged, ClickUp CLOSED, task archived | `/jlu:close-task` with merged PR |
+| `closed` | PR merged, ClickUp CLOSED, task archived | Manual closure with merged PR |
 
 ## State Transition Rules
 
@@ -31,17 +31,17 @@ draft -> refining -> planned -> implementing -> validating -> ready_to_publish -
 | `implementing` | `validating` | All phases in current scope complete | Automatic (orchestrator detects completion) |
 | `validating` | `ready_to_publish` | All tests green + artifacts complete | QA agent signs off |
 | `ready_to_publish` | `done` | User confirms readiness | **Manual closure approval** |
-| `done` | `closed` | `/jlu:close-task` executed | PR in `merged` state |
+| `done` | `closed` | Manual closure executed | PR in `merged` state |
 
-### Re-entry via /jlu:extend-phase
+### Re-entry via /jlu:refine-task
 
 | From | To | Trigger | Gate |
 |------|----|---------|------|
-| `implementing` | `refining` | `/jlu:extend-phase` with major impact | Orchestrator assessment |
-| `implementing` | `planned` | `/jlu:extend-phase` with minor impact | Orchestrator assessment |
-| `validating` | `planned` | `/jlu:extend-phase` | Orchestrator assessment |
+| `implementing` | `refining` | `/jlu:refine-task` with major impact | Orchestrator assessment |
+| `implementing` | `planned` | `/jlu:refine-task` with minor impact | Orchestrator assessment |
+| `validating` | `planned` | `/jlu:refine-task` | Orchestrator assessment |
 
-When `/jlu:extend-phase` runs, existing code is preserved as baseline. New or modified phases build on top.
+When `/jlu:refine-task` runs, existing code is preserved as baseline. New or modified phases build on top.
 
 ## Exceptional States
 

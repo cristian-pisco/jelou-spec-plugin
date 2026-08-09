@@ -155,10 +155,13 @@ describe('orchestrator workflows — capped invocations stay capped', () => {
     assert.match(testSuite, /MemAvailable/);
   });
 
-  test('ui-qa-run keeps the worker default and CPU cap', () => {
-    const uiQaRun = read('jelou/workflows/ui-qa-run.md');
-    assert.match(uiQaRun, /--workers=\$\{WORKERS:-1\}/);
-    assert.match(uiQaRun, /MAX_WORKERS_BY_CPU/);
+  test('the UI E2E runner keeps the worker default on every Playwright invocation', () => {
+    const runner = read('agents/jlu-ui-qa-runner.md');
+    const invocations = runner.match(/npx playwright test[\s\S]*?\n\n/g) ?? [];
+    assert.ok(invocations.length >= 2, 'expected the suite run and the per-spec re-run');
+    for (const invocation of invocations) {
+      assert.match(invocation, /--workers=\$\{WORKERS:-1\}/);
+    }
   });
 
   test('env-lifecycle carries the canonical CPU cap and RAM gate', () => {

@@ -8,8 +8,7 @@
 // target is loopback, COOKIE_SECRET is set, and an auth cookie is present.
 //
 // SANCTIONED WRITE: runs only after a successful login; sessionId/userId/companyId come
-// solely from decrypting the real cookie; fails closed (never fabricates). See
-// jelou/workflows/ui-qa-run.md step 14c and the prohibition carve-out at :237.
+// solely from decrypting the real cookie; fails closed (never fabricates).
 //
 // Env: E2E_STORAGE_STATE, E2E_BASE_URL, COOKIE_SECRET; optional UI_WORKTREE,
 //   SESSION_SYNC_MONGO_URI (default mongodb://127.0.0.1:27017), SESSION_SYNC_DB (logsM),

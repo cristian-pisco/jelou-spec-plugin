@@ -157,9 +157,20 @@ describe('execute-task auto-chain (Step 9.5)', () => {
 
   test('clickup steps are non-blocking and the chain notifies at the end', () => {
     assert.match(executeTask, /failure is a\s*WARN, never a stop/);
-    assert.match(executeTask, /task-clickup workflow's UPDATE path inline/);
+    assert.match(executeTask, /session-level ClickUp MCP tools/);
+    assert.match(executeTask, /PENDING TO PRODUCTION/);
     assert.match(executeTask, /`jlu-pm-agent` is DEPRECATED/);
     assert.match(executeTask, /notifyOs/);
+  });
+
+  test('the chain names no deleted workflow file', () => {
+    for (const gone of ['task-clickup', 'close-task', 'ui-qa-run']) {
+      assert.doesNotMatch(
+        executeTask,
+        new RegExp(`(/jlu-${gone}\\b|${gone}\\.md)`),
+        `execute-task.md still routes to /jlu-${gone}, whose workflow file was deleted`,
+      );
+    }
   });
 
   test('PR set filters ship rows to open created/existing PRs', () => {
@@ -279,7 +290,7 @@ describe('spec-reviewer retirement', () => {
     assert.doesNotMatch(step8c, /MODE: final-qa`\b.*NEEDS_CONTEXT/s);
     assert.doesNotMatch(step8c, /Spawn `jlu-spec-reviewer`/);
     assert.doesNotMatch(ship, /Spawn `jlu-spec-reviewer` agent/);
-    assert.match(ship, /### 2b\. Spec Compliance Review: RETIRED/);
+    assert.doesNotMatch(ship, /jlu-spec-reviewer/);
   });
 
   test('ship keeps the deterministic coverage-breadth probe', () => {

@@ -58,9 +58,8 @@ exactly as Claude Code does via `CLAUDE.md`.
 
 ## Phase 1 Scope
 
-- Core workflows are in scope: map-codebase, new-task, refine-task, execute-task, extend-phase, ship (formerly create-pr — `/jlu-create-pr` is a deprecated alias), report-task, load-context, close-task, rollback-phase. `/jlu-ship` validates that each service installs deps cleanly and builds before opening PRs — in-container for docker-compose services.
+- Core workflows are in scope: map-codebase, new-task, refine-task, execute-task, ship, resolve-pr, load-context. `/jlu-ship` validates that each service installs deps cleanly and builds before opening PRs — in-container for docker-compose services.
 - External integrations are deferred to Phase 2:
-  - `jlu-task-clickup`
   - `jlu-daily-slack`
 
 If a Phase 1 run touches ClickUp/Slack integration steps, skip those steps and report that they are deferred to Phase 2.

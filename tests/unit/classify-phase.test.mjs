@@ -524,7 +524,7 @@ describe('classify-phase.sh all', () => {
   });
 });
 
-describe('execute-task derives PHASE_IS_TRIVIAL post-Green, never from the pre-dispatch 7c.1 call', () => {
+describe('execute-task derives PHASE_IS_TRIVIAL post-Green, never from the pre-dispatch call', () => {
   const workflow = readFileSync(
     join(__dirname, '..', '..', 'jelou', 'workflows', 'execute-task.md'),
     'utf8',
@@ -538,30 +538,40 @@ describe('execute-task derives PHASE_IS_TRIVIAL post-Green, never from the pre-d
     return workflow.slice(start, end);
   };
 
-  const step7c1 = section('### 7c.1.', '### 7df.');
-  const step7e = section('### 7e —', '### 7e.1');
+  const step7c = section('### 7c. Open the phase', '### 7d. TDD Cycle');
+  const step7e = section('### 7e —', '## Step 8 — Final Validation');
 
-  test('7c.1 calls classify-phase.sh all but stores no triviality', () => {
-    assert.match(step7c1, /classify-phase\.sh all/);
-    assert.doesNotMatch(step7c1, /\*\*Store\*\*:[\s\S]*PHASE_IS_TRIVIAL/);
-    assert.match(step7c1, /IGNORE THEM HERE/);
-    assert.match(step7c1, /PHASE_FRONTMATTER_OVERRIDE/);
+  test('7c classifies the mode only — never triviality', () => {
+    assert.match(step7c, /classify-phase\.sh mode/);
+    assert.doesNotMatch(step7c, /classify-phase\.sh (all|trivial)/);
+    assert.doesNotMatch(step7c, /\*\*Store\*\*:[\s\S]*PHASE_IS_TRIVIAL/);
+    assert.match(step7c, /mode=docs\|tdd/);
+    assert.match(step7c, /frontmatter_override=/);
   });
 
-  test('7e runs the trivial subcommand after Green and owns PHASE_IS_TRIVIAL', () => {
-    assert.match(step7e, /classify-phase\.sh trivial/);
+  test('7c states why the pre-dispatch pass cannot touch the diff', () => {
+    assert.match(step7c, /It never\s+touches `git diff`/);
+  });
+
+  test('7e classifies triviality after Green and owns PHASE_IS_TRIVIAL', () => {
+    assert.match(step7e, /classify-phase\.sh all/);
     assert.match(step7e, /After Green is verified/);
     assert.match(step7e, /\*\*Store\*\*: `PHASE_IS_TRIVIAL`/);
   });
 
-  test('7e reuses the frontmatter override 7c.1 already returned', () => {
-    assert.match(step7e, /CLASSIFY_FRONTMATTER_TRIVIAL="<0\|1>"/);
-    assert.match(step7e, /PHASE_FRONTMATTER_OVERRIDE = trivial/);
-    assert.match(step7e, /\*\*Do not re-derive it\*\*/);
+  test('7e states the diff-dependence that forces the ordering', () => {
+    assert.match(step7e, /This is why it runs here and not at 7c/);
+    assert.match(step7e, /trivial=true. on a clean tree/);
+    assert.match(step7e, /silently disable 8a\.3/);
   });
 
-  test('the workflow never tells the reader to skip the post-Green trivial call', () => {
-    assert.doesNotMatch(workflow, /do NOT invoke\s*`?bin\/classify-phase\.sh trivial/i);
+  test('the frontmatter override is re-derived by the script, not threaded by the orchestrator', () => {
+    assert.match(step7e, /re-derives the `mode: trivial` frontmatter override internally/);
+    assert.doesNotMatch(workflow, /CLASSIFY_FRONTMATTER_TRIVIAL/);
+  });
+
+  test('the workflow never tells the reader to skip the post-Green triviality call', () => {
+    assert.doesNotMatch(workflow, /do NOT invoke\s*`?bin\/classify-phase\.sh (trivial|all)/i);
     assert.doesNotMatch(workflow, /Known trade — the triviality result/);
   });
 });

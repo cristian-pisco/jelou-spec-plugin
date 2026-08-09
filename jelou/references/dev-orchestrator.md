@@ -29,7 +29,7 @@ Full-feature config: see `tests/fixtures/dev-orchestrator/configs/valid-full.jso
 
 - `log_failure_patterns` (string array of regexes; merged with per-service patterns).
 - `readiness_timeout_seconds` (default 30).
-- `log_capture_lines` (default 100; used by `/jlu-diagnose` and `/jlu-logs`).
+- `log_capture_lines` (default 100; used by `/jlu-logs`).
 - `poll_interval_ms` (default 2000; daemon tick).
 - `notification_cooldown_seconds` (default 60; per (service, severity) cooldown).
 - `window_prefix` (string, default ""; prepended to TMUX window name).
@@ -73,7 +73,7 @@ Writes atomically to `jlu-services.json`.
 2. Truncates `dev-events.log` (preserves inode for tailers).
 3. With `--kill-services`, kills the TMUX window.
 
-### `/jlu-diagnose [name]`
+### Diagnosis (`jlu-dev-diagnoser`)
 
 1. Reads the last 50 events for the service from `dev-events.log`.
 2. Captures the last 100 lines of the service's pane.

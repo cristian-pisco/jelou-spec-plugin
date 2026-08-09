@@ -1,7 +1,7 @@
 // tests/unit/classify-e2e-target.test.mjs
 //
 // Tests for bin/classify-e2e-target.mjs — the default-deny URL classifier used
-// by ui-qa-run.md Phase 3 step 15 to refuse production E2E targets.
+// by agents/jlu-ui-qa-runner.md step 1 to refuse production E2E targets.
 //
 // Run: `node --test tests/unit/classify-e2e-target.test.mjs`
 
