@@ -156,4 +156,31 @@ describe('registry-derived local-stack E2E configuration', () => {
     assert.equal('stackDriverPath' in config, false);
     assert.equal('adapterPath' in config, false);
   });
+
+  test('rejects when the current directory has no resolvable shared spec workspace', (t) => {
+    const root = mkdtempSync(join(tmpdir(), 'local-stack-config-'));
+    t.after(() => rmSync(root, { recursive: true, force: true }));
+    const projectRoot = join(root, 'project');
+    mkdirSync(projectRoot, { recursive: true });
+
+    assert.throws(
+      () => resolveLocalStackE2eConfig({ cwd: projectRoot, browserExecutable: join(root, 'browser') }),
+      /shared spec workspace could not be resolved from \.spec-workspace\.json/,
+    );
+  });
+
+  test('rejects when the resolved workspace has no registered stack registry', (t) => {
+    const root = mkdtempSync(join(tmpdir(), 'local-stack-config-'));
+    t.after(() => rmSync(root, { recursive: true, force: true }));
+    const projectRoot = join(root, 'project');
+    const workspaceRoot = join(root, 'shared-spec-workspace');
+    mkdirSync(projectRoot, { recursive: true });
+    mkdirSync(join(workspaceRoot, 'specs'), { recursive: true });
+    writeJson(join(projectRoot, '.spec-workspace.json'), { workspace: workspaceRoot });
+
+    assert.throws(
+      () => resolveLocalStackE2eConfig({ cwd: projectRoot, browserExecutable: join(root, 'browser') }),
+      new RegExp(`registered stack registry not found at ${join(workspaceRoot, 'registry', 'registry.json').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`),
+    );
+  });
 });

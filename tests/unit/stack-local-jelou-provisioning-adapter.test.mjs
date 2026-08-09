@@ -170,4 +170,53 @@ describe('plugin-owned local Jelou provisioning adapter', () => {
     );
     assert.equal(imported, false);
   });
+
+  test('rejects when the registered provisioning boundary path does not exist on disk', async () => {
+    await assert.rejects(
+      () => createProvisioningAdapter(onboardingRequest({
+        topology: {
+          registeredLoopbackDatabase: { host: '127.0.0.1', port: 5432, provisioningBoundaryPath: '/nonexistent/registered-boundary.mjs' },
+        },
+      }), {
+        importModule: async () => { throw new Error('importModule must not be called when the boundary path is missing'); },
+      }),
+      /registered local database provisioning boundary is unavailable/,
+    );
+  });
+
+  test('rejects when the registered boundary module does not export createLocalJelouBoundary', async (t) => {
+    const root = mkdtempSync(join(tmpdir(), 'local-jelou-adapter-'));
+    t.after(() => rmSync(root, { recursive: true, force: true }));
+    const provisioningBoundaryPath = join(root, 'registered-boundary.mjs');
+    writeFileSync(provisioningBoundaryPath, 'export const registered = true;\n');
+
+    await assert.rejects(
+      () => createProvisioningAdapter(onboardingRequest({
+        topology: {
+          registeredLoopbackDatabase: { host: '127.0.0.1', port: 5432, provisioningBoundaryPath },
+        },
+      }), {
+        importModule: async () => ({}),
+      }),
+      /registered local database boundary must export createLocalJelouBoundary/,
+    );
+  });
+
+  test('rejects when the registered boundary lacks transaction or bcrypt support', async (t) => {
+    const root = mkdtempSync(join(tmpdir(), 'local-jelou-adapter-'));
+    t.after(() => rmSync(root, { recursive: true, force: true }));
+    const provisioningBoundaryPath = join(root, 'registered-boundary.mjs');
+    writeFileSync(provisioningBoundaryPath, 'export const registered = true;\n');
+
+    await assert.rejects(
+      () => createProvisioningAdapter(onboardingRequest({
+        topology: {
+          registeredLoopbackDatabase: { host: '127.0.0.1', port: 5432, provisioningBoundaryPath },
+        },
+      }), {
+        importModule: async () => ({ createLocalJelouBoundary: async () => ({ database: {}, bcrypt: {} }) }),
+      }),
+      /registered local database boundary lacks transaction or bcrypt support/,
+    );
+  });
 });
