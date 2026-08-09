@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.353] — 2026-08-09
+
+### Fixed
+- start-dev accepted a permission-less session as a green stack (#87)
+
 ## [0.3.352] — 2026-08-09
 
 ### Fixed
