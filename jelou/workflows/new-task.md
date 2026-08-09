@@ -34,7 +34,7 @@ the specific ambiguity. This is a correct outcome; inventing the missing
 requirement is the failure.
 
 **Never in autonomous mode:** edit a spec requirement the user wrote, flip an
-already-stored `DUAL_PR`, or waive the Case-Coverage self-check (Step 14c). That
+already-stored `DUAL_PR`, or waive the Case-Coverage self-check (the spec author's self-check, Step 14c). That
 floor is not a gate.
 
 ---
@@ -357,7 +357,7 @@ Create the per-service directories in the task folder:
   phases/
 ```
 
-User-story files are NOT per-service: 14c-2 writes them to `<TASK_DIR>/stories/`, which is where `bin/validate-stories.mjs`, `jlu-proposal-agent` and `/jlu-execute-task` read them.
+User-story files are NOT per-service: the spec author (Step 14c) writes them to `<TASK_DIR>/stories/`, which is where `bin/validate-stories.mjs`, `jlu-proposal-agent` and `/jlu-execute-task` read them.
 
 Update `TASKS.md` with the confirmed affected services list.
 
@@ -511,7 +511,7 @@ matched in `<ANSWERS_FILE>` if the caller supplied one → conservative default.
 Conservative means the narrowest defensible reading: no new endpoints, entities,
 screens or integrations beyond what the description states; existing conventions
 from the codebase docs over novel ones; the stricter validation over the looser.
-The Case-Coverage self-check (Step 14c) still applies in full — an autonomously
+The Case-Coverage self-check (carried by the spec author, Step 14c) still applies in full — an autonomously
 written spec may not be happy-path-only.
 
 Rules (interactive mode):
@@ -538,124 +538,64 @@ Rules (interactive mode):
 - **Term-suggestion (when `CANONICAL_TERMS` is loaded)**: If the user mentions a word that appears as an alias-to-avoid in `CANONICAL_TERMS`, reflect back the canonical term and cite the glossary. Example: if canonical has `Workflow` with alias `Process`, and the user says "track when a Process completes", reply with "Got it — tracking Workflow completion. (Using 'Workflow' per the workspace glossary; 'Process' is listed as an alias to avoid.)"
 - **Definition-anchoring (when `CANONICAL_TERMS` is loaded)**: When asking clarifying questions about a term that is in `CANONICAL_TERMS`, phrase the question in terms of the canonical definition rather than re-asking what the term means.
 
-### 14c — Write SPEC.md
+**Case-coverage probe (mandatory — the interview is the only chance to gather this).**
+The spec author writes Success Criteria labeled
+`- SC-<n> [success|rejection|realistic|boundary] (FR-<k>): <criterion>`, and it can only
+write the non-happy-path ones from what you collected here. So for every requirement that
+validates or types input — request body fields, typed query parameters
+(pagination/filter/sort), or a field referencing another entity by id — this interview must
+come away with:
 
-After the interview is complete, write `<TASK_DIR>/SPEC.md` with these structured sections:
+- each **validation rule** on that input (required, type, format, range, uniqueness) and the
+  status code a violation returns — these become the `[rejection]` criteria, one per rule;
+- what a **production-representative** payload looks like, with cross-field references
+  populated rather than empty — this becomes the `[realistic]` criterion;
+- the **boundaries** that matter: empty collection and its populated counterpart, missing
+  optional, min/max.
 
-```markdown
-# <Task Title>
+You do not write these criteria — 14c's agent does. You are responsible for the answers
+existing in `INTERVIEW_ANSWERS`. Shipping an interview that only established the happy path
+is what produces a happy-path-only spec, and the Case-Coverage self-check downstream cannot
+invent the rules you never asked about. If the user ends the interview early, derive the
+rules from the contract already gathered and record them — early-stop does not waive this.
 
-## Problem Statement
-What problem this solves and why it matters. Include business context.
+### 14c — Dispatch the spec author
 
-## Requirements
+You do not write `SPEC.md` and you do not write the story files. Dispatch
+`jlu-spec-interviewer` (model: **opus**) once and let it author both.
 
-### Functional
-- FR-1: <requirement>
-- FR-2: <requirement>
-...
+**Why this is delegated.** A spec plus its stories is tens of thousands of generated tokens.
+Written here they stay in your context for the rest of the run and slow every later turn;
+written in the agent they cost you a receipt. The story-fusion rule that keeps a CRUD from
+becoming one phase per HTTP verb also lives in that agent — authoring inline bypasses it.
 
-### Non-Functional
-- NFR-1: <requirement> (e.g., performance, security, scalability, observability)
-...
+Pass, in the dispatch prompt:
 
-## Constraints
-Technical, business, or timeline constraints that bound the solution.
+| Field | Value |
+|---|---|
+| `TASK_DIR` | `<TASK_DIR>` (absolute) |
+| `TASK_TITLE`, `TASK_DESCRIPTION` | the original seed, verbatim |
+| `INTERVIEW_ANSWERS` | every question asked in 14b and the answer given |
+| `SPEC_ASSUMPTIONS` | every assumption accumulated across the gate table and 14b-auto (empty when `<AUTONOMOUS> = no`) |
+| `MERGED_PREFILL` | `MERGED_PREFILL`, or empty |
+| `DETECTED_TEMPLATES` | `DETECTED_TEMPLATES`, or empty |
+| `CANONICAL_TERMS` | from 14.0, or empty |
+| `AFFECTED_SERVICES` | the resolved service ids |
+| `AUTONOMOUS` | `<AUTONOMOUS>` |
 
-## Out of Scope
-Explicitly excluded from this task — things that might seem related but are NOT part of this work.
+Followed by the full content of `<PLUGIN_ROOT>/agents/jlu-spec-interviewer.md`.
 
-## Success Criteria
-How to verify the task is complete. Concrete, testable conditions. For EACH requirement that validates or types input — request body fields, typed query parameters (pagination/filter/sort), or a field that references another field/entity by id — the criteria MUST enumerate four case classes, not only the happy path. Label each criterion with its class and a back-reference to the requirement it verifies:
+**The agent returns a receipt** — `SPEC_WRITTEN`, `STORIES_WRITTEN` + paths, `COUNTS`,
+`FUSION`, `JUDGMENT_CALLS`, `UNRESOLVED`, `SUMMARY`. Hold it as `SPEC_RECEIPT` for 14d.
+It never returns the spec body; if it does, do not echo it.
 
-`- SC-<n> [success|rejection|realistic|boundary] (FR-<k>): <criterion>`
+If the agent returns `NEEDS_CONTEXT: <what>`, that is a caller defect in this workflow, not a
+user question: supply the missing field and re-dispatch once. If it returns `NEEDS_CONTEXT`
+twice, abort the task with that message rather than authoring the spec inline — falling back
+to inline authoring is what this step exists to prevent.
 
-- **[success]** — valid, type-correct input produces the expected result.
-- **[rejection]** — one criterion per validation rule (each typed/required/format/range constraint), asserting a violating payload is refused with the documented 4xx and does not mutate state.
-- **[realistic]** — at least one criterion exercises a production-representative payload that populates every cross-field reference (collections non-empty, ids pointing at real rows), not the minimal/empty shape.
-- **[boundary]** — empty collection AND its populated counterpart, missing optional, min/max.
-
-A requirement that validates input but lists only a `[success]` criterion is incomplete. Requirements with no validated/typed input and no cross-field reference keep a single `[success]` criterion.
-- SC-1 [success] (FR-1): <criterion>
-- SC-2 [rejection] (FR-1): <criterion>
-...
-
-## Terms introduced by this spec
-
-<!--
-List any non-generic domain terms used in this spec that are NOT yet in the canonical glossary at .spec-workspace/glossary/UBIQUITOUS_LANGUAGE.md.
-This section is read by /jlu-ubiquitous-language as one of the spec/conversation sources.
-Free-text bulleted list. One line per term. No definitions required.
-Skip this section entirely if all terms used here are already canonical OR if no glossary exists.
--->
-
-- {{Term1}} — {{optional one-line context}}
-- {{Term2}} — {{optional one-line context}}
-```
-
-**`## Assumptions` (autonomous runs only).** When `<AUTONOMOUS> = yes`, append this
-section last, listing every `SPEC_ASSUMPTIONS` line accumulated across the gate
-table and 14b-auto. Omit the section entirely on an interactive run — an empty
-Assumptions heading reads as "we assumed nothing" and is noise. This section is
-the autonomous disclosure channel: a reader must be able to tell, without the
-transcript, which parts of this spec a human agreed to and which the workflow
-decided alone.
-
-```markdown
-## Assumptions
-
-> Written by an autonomous run — no human answered these. Each line is a gap the
-> interview would have asked about.
-
-- <gap> — assumed <decision>, narrowest reading of <cited requirement>
-- <gap> — answered from <answers-file>
-```
-
-If `MERGED_PREFILL` is non-empty:
-- Use the merged pre-filled sections as the starting structure for SPEC.md.
-- Replace `<!-- FILL: ... -->` placeholders with answers from the interview.
-- Preserve pre-filled requirements that are still relevant; remove any that don't apply.
-- Deduplicate requirements that overlap between merged templates.
-- Add new requirements discovered during the interview.
-
-If `DETECTED_TEMPLATES` is non-empty:
-- Record the detected templates in a comment at the top of SPEC.md: `<!-- Templates: <template-1>, <template-2> -->`
-
-Rules for writing:
-- Preserve the user's original intent from the task description
-- Add precision and detail from interview answers
-- Number requirements and criteria for traceability (FR-1, NFR-1, SC-1)
-- Make every requirement concrete enough that a developer could implement it and a QA agent could verify it
-- The spec must be directly usable by the proposal-agent to generate PROPOSAL.md without ambiguity
-- If `CANONICAL_TERMS` is empty (no glossary exists), OMIT the `## Terms introduced by this spec` section entirely from `SPEC.md`.
-- If `CANONICAL_TERMS` is non-empty, populate the `## Terms introduced by this spec` section with every domain term used in `SPEC.md` that is NOT in `CANONICAL_TERMS`. Apply the same domain-specificity filter as `agents/jlu-glossary-extractor.md` — skip generic programming nouns. If no terms qualify, write the section header followed by `<!-- No new domain terms introduced. -->`.
-
-**Case-Coverage self-check (before the spec may reach `status=planned`).** For every FR that validates or types input — request body, typed query parameters, or a cross-field reference — confirm the Success Criteria include at least one `[rejection]` criterion per validation rule and at least one `[realistic]` populated-reference criterion. The early-stop escape hatches — "that's enough" / "move on" (see **Interview Limits and Completion** above, and 14b's "Respect the user" bullet) and finishing after round 1 when no gap is unresolved — do NOT waive this floor for a validated-input FR — if the user stops the interview early, write the missing `[rejection]` / `[realistic]` criteria from the validation rules you already gathered rather than shipping a happy-path-only spec. This is the spec-side expression of the case-matrix floor that `jlu-test-writer` and `jlu-tdd-cycle` enforce at the test layer.
-
-### 14c-2 — Author user-story files (decentralized specs)
-
-The SPEC.md written in 14c stays the record. In addition, decompose it into small,
-self-contained **user-story** files under `<TASK_DIR>/stories/` — one per deliverable
-behavior (a single story for a small task). These are the units the TDD agents consume
-during `/jlu-execute-task`; each carries its own acceptance so an agent needs nothing
-outside the story plus the codebase docs.
-
-For each story, write `<TASK_DIR>/stories/<NN>-<slug>.story.md` from the template at
-`<PLUGIN_ROOT>/jelou/templates/user-story.md`, where `<NN>` is a two-digit order prefix
-(`01`, `02`, …). Fill:
-- **Frontmatter**: `id` (`us-<N>`), `title`, `actor`, `services` (≥1, each must exist in
-  `<WORKSPACE_PATH>/registry/services.yaml`), `depends-on` (story ids this one needs, or `[]`),
-  `service-order` (intra-story service order when a cross-service contract exists, else `[]`),
-  and `covers` — the SPEC FR ids this story delivers (e.g. `[FR-1, FR-3]`).
-- **`## Acceptance Criteria`**: self-contained labeled bullets
-  `[success]`/`[rejection]`/`[realistic]`/`[boundary]` — do NOT reference "the SPEC". Reuse the
-  case taxonomy already written in `## Success Criteria`. Every story needs ≥1 `[success]`.
-- **`## Phase Mapping`** is optional — leave the template stub as-is.
-
-**Coverage invariant** (enforced by the Step 15 gate before `status=planned`): every FR in
-SPEC.md is covered by ≥1 story (matched by FR id in `covers`, not by prose), and no story
-covers an FR that SPEC.md does not define. If a UI service is in scope, at least one story
-touching it carries a browser-level `[success]` criterion — the E2E guard is not waived here.
+Verify `SPEC.md` and every path in `STORIES_WRITTEN` exist on disk before continuing. Do not
+read their contents.
 
 ### 14d — Present for Approval
 
@@ -667,19 +607,23 @@ touching it carries a browser-level `[success]` criterion — the E2E guard is n
    SPEC.md written: <absolute-TASK_DIR>/SPEC.md
    ```
 
-2. Then, using `question`, ask for approval. The question contains only:
-   - A brief executive summary of what the spec covers (3-5 sentences, never the spec body)
-   - A count of requirements (FR: X, NFR: Y) and success criteria (SC: Z)
-   - Any areas where you had to make judgment calls or where information was incomplete
+2. Then, using `question`, ask for approval — **autonomous runs skip this question entirely**
+   (see below). Build it **from `SPEC_RECEIPT`** (14c); you have not read the spec and must
+   not read it to write this question:
+   - `SUMMARY` — the executive summary (3-5 sentences, never the spec body)
+   - `COUNTS` — requirements (FR: X, NFR: Y) and success criteria (SC: Z)
+   - `JUDGMENT_CALLS` and `UNRESOLVED` — where the answers were thin and what the agent wrote instead
    - Ask clearly: "Do you approve this spec to move to `planned` status?"
 
-If the user wants changes, make them and re-present (print the path line again after each rewrite). Loop until the user approves or explicitly stops.
-
 **Autonomous** (`<AUTONOMOUS> = yes`): do not ask. Set `status=planned` and print
-the same executive summary to the transcript followed by the `## Assumptions`
+the receipt's `SUMMARY` to the transcript followed by the `## Assumptions`
 list, so the decision is auditable without a reviewer present (gate table). There
 is no approval loop — a caller with no human cannot request changes. If the abort
 floor fired at 14b this step is never reached: nothing was created to approve.
+
+If the user wants changes, re-dispatch `jlu-spec-interviewer` with the original inputs plus
+the requested changes appended to `INTERVIEW_ANSWERS` — do not edit the spec yourself. Print
+the path line again after each rewrite. Loop until the user approves or explicitly stops.
 
 ---
 
@@ -713,7 +657,7 @@ After the user approves (or declines) the spec:
     - **Exit 0** → every story is well-formed and every FR is covered; continue.
     - **Exit 1** → print the stderr lines verbatim (they name the offending story + field, the
       uncovered FR, or the orphan story). Do NOT transition the task to `planned`. Fix the story
-      files (re-run 14c-2, or re-interview) and re-run the gate until it passes. Skipping this
+      files (re-dispatch the spec author at 14c with the gate output appended to INTERVIEW_ANSWERS) and re-run the gate until it passes. Skipping this
       gate lets SPEC↔story drift ship silently — it is not optional.
 
 2. If the user **approved** the spec AND the Step 1c gate passed:
@@ -981,7 +925,7 @@ If `DUAL_PR = yes`: append to the report:
 | Task tracker | `.spec-workspace/specs/<dd-mm-yyyy>/<task-slug>/TASKS.md` |
 | Per-service dir | `.spec-workspace/specs/<dd-mm-yyyy>/<task-slug>/services/<service-id>/` |
 | Phase dir | `.spec-workspace/specs/<dd-mm-yyyy>/<task-slug>/services/<service-id>/phases/` |
-| User stories dir | `.spec-workspace/specs/<dd-mm-yyyy>/<task-slug>/stories/` (written by 14c-2; one `<NN>-<slug>.story.md` per story) |
+| User stories dir | `.spec-workspace/specs/<dd-mm-yyyy>/<task-slug>/stories/` (written by the spec author at Step 14c; one `<NN>-<slug>.story.md` per story) |
 | Worktree | `<service-repo>/.worktrees/<task-slug>` |
 | Branch (primary) | `production/<task-slug>` (in each affected service repo) |
 | Branch (alpha, opt-in) | `staging/<task-slug>` (created from `origin/alpha` and pushed at `/jlu-new-task` Step 15c when Dual PR = yes; commits cherry-picked at `/jlu-ship`) |

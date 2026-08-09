@@ -18,22 +18,20 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 const read = (relPath) => readFileSync(join(ROOT, relPath), 'utf8');
 
-const FILES = [
-  'jelou/workflows/new-task.md',
+const PRESENTERS = ['jelou/workflows/new-task.md'];
+
+const AUTHORS = [
   'agents/jlu-spec-interviewer.md',
   '.opencode/agents/jlu-spec-interviewer.md',
 ];
 
 describe('spec approval gate — path over content dump', () => {
-  for (const file of FILES) {
+  for (const file of PRESENTERS) {
     describe(file, () => {
       const content = read(file);
 
       test('does not instruct presenting the full SPEC.md content', () => {
-        assert.doesNotMatch(
-          content,
-          /present the complete (rewritten )?SPEC\.md/i
-        );
+        assert.doesNotMatch(content, /present the complete (rewritten )?SPEC\.md/i);
       });
 
       test('forbids printing SPEC.md content in the terminal', () => {
@@ -43,6 +41,33 @@ describe('spec approval gate — path over content dump', () => {
       test('instructs printing the spec path as absolute and clickable', () => {
         assert.match(content, /absolute path/i);
         assert.match(content, /clickable/i);
+      });
+    });
+  }
+});
+
+describe('spec author — receipt over body', () => {
+  for (const file of AUTHORS) {
+    describe(file, () => {
+      const content = read(file);
+
+      test('does not instruct presenting the full SPEC.md content', () => {
+        assert.doesNotMatch(content, /present the complete (rewritten )?SPEC\.md/i);
+      });
+
+      test('forbids returning the spec body to the orchestrator', () => {
+        assert.match(content, /[Nn]ever return the spec body/);
+      });
+
+      test('returns a receipt carrying paths and counts', () => {
+        assert.match(content, /SPEC_WRITTEN:/);
+        assert.match(content, /STORIES_WRITTEN:/);
+        assert.match(content, /COUNTS:/);
+      });
+
+      test('is not granted AskUserQuestion, since the interview stays inline', () => {
+        const frontmatter = content.slice(0, content.indexOf('---', 3));
+        assert.doesNotMatch(frontmatter, /AskUserQuestion/);
       });
     });
   }
