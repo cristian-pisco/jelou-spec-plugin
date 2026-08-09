@@ -511,6 +511,14 @@ matched in `<ANSWERS_FILE>` if the caller supplied one → conservative default.
 Conservative means the narrowest defensible reading: no new endpoints, entities,
 screens or integrations beyond what the description states; existing conventions
 from the codebase docs over novel ones; the stricter validation over the looser.
+
+**Store**: `INTERVIEW_ANSWERS` — one entry per gap from 14a, in the form
+`<gap> → <resolution> (level <1|2|3>)`. **Record every gap, including the ones resolved at
+level 1**, even though level 1 contributes no `SPEC_ASSUMPTIONS` line. `SPEC_ASSUMPTIONS` is
+the *disclosure* channel (what a human did not agree to); `INTERVIEW_ANSWERS` is the
+*authoring input* (what the spec must say). An autonomous run that hands the author an empty
+`INTERVIEW_ANSWERS` throws away every resolution 14b-auto just made and gets a spec written
+from the bare seed.
 The Case-Coverage self-check (carried by the spec author, Step 14c) still applies in full — an autonomously
 written spec may not be happy-path-only.
 
@@ -559,6 +567,12 @@ is what produces a happy-path-only spec, and the Case-Coverage self-check downst
 invent the rules you never asked about. If the user ends the interview early, derive the
 rules from the contract already gathered and record them — early-stop does not waive this.
 
+**Store**: `INTERVIEW_ANSWERS` — every question asked in this step and the answer given,
+verbatim, plus every decision the user volunteered outside a question. This is the author's
+only source of user intent beyond `TASK_DESCRIPTION`; a decision you keep in your head
+instead of storing here does not reach the spec. (Autonomous runs populate the same variable
+from 14b-auto instead.)
+
 ### 14c — Dispatch the spec author
 
 You do not write `SPEC.md` and you do not write the story files. Dispatch
@@ -574,13 +588,15 @@ Pass, in the dispatch prompt:
 | Field | Value |
 |---|---|
 | `TASK_DIR` | `<TASK_DIR>` (absolute) |
-| `TASK_TITLE`, `TASK_DESCRIPTION` | the original seed, verbatim |
-| `INTERVIEW_ANSWERS` | every question asked in 14b and the answer given |
+| `TASK_DESCRIPTION` | the original seed, verbatim |
+| `INTERVIEW_ANSWERS` | from 14b (interactive) or 14b-auto (autonomous) — never omit it |
 | `SPEC_ASSUMPTIONS` | every assumption accumulated across the gate table and 14b-auto (empty when `<AUTONOMOUS> = no`) |
-| `MERGED_PREFILL` | `MERGED_PREFILL`, or empty |
-| `DETECTED_TEMPLATES` | `DETECTED_TEMPLATES`, or empty |
+| `CODEBASE_CONTEXT` | from Step 10 |
+| `PRINCIPLES_CONTENT` | from Step 11 |
+| `CONFIRMED_SERVICES` | from Step 8 |
+| `MERGED_PREFILL` | from Step 2c, or empty |
+| `DETECTED_TEMPLATES` | from Step 2c, or empty |
 | `CANONICAL_TERMS` | from 14.0, or empty |
-| `AFFECTED_SERVICES` | the resolved service ids |
 | `AUTONOMOUS` | `<AUTONOMOUS>` |
 
 Followed by the full content of `<PLUGIN_ROOT>/agents/jlu-spec-interviewer.md`.

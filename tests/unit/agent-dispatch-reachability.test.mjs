@@ -94,3 +94,41 @@ describe('the spec author is dispatched, not inlined', () => {
     assert.match(agent, /Story fusion criterion/);
   });
 });
+
+describe('the spec author dispatch passes only variables the workflow defines', () => {
+  const wf = readFileSync(join(ROOT, 'jelou/workflows/new-task.md'), 'utf8');
+  const dispatchTable = wf.slice(
+    wf.indexOf('### 14c — Dispatch the spec author'),
+    wf.indexOf('### 14d'),
+  );
+
+  function tableVariables() {
+    return [...new Set([...dispatchTable.matchAll(/^\|\s*`([A-Z_]{4,})`/gm)].map((m) => m[1]))];
+  }
+
+  test('every variable handed to the agent is produced by an earlier step', () => {
+    const undefinedVars = tableVariables().filter((name) => {
+      const outsideTable = wf.split(dispatchTable).join('');
+      return !new RegExp(`\\b${name}\\b`).test(outsideTable);
+    });
+
+    assert.deepEqual(
+      undefinedVars,
+      [],
+      `14c hands the spec author variables no step defines: ${undefinedVars.join(', ')}. ` +
+        `A dispatch prompt naming a variable that does not exist silently loses that input.`,
+    );
+  });
+
+  test('INTERVIEW_ANSWERS is stored in both the interactive and the autonomous branch', () => {
+    const interview = wf.slice(wf.indexOf('### 14b'), wf.indexOf('### 14c'));
+    const stores = [...interview.matchAll(/\*\*Store\*\*:\s*`INTERVIEW_ANSWERS`/g)];
+
+    assert.ok(
+      stores.length >= 2,
+      'INTERVIEW_ANSWERS must be stored by 14b (interactive) and 14b-auto (autonomous); ' +
+        `found ${stores.length} store site(s). An autonomous run with no store hands the ` +
+        'author an empty set and gets a spec written from the bare seed.',
+    );
+  });
+});

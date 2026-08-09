@@ -45,13 +45,15 @@ The orchestrator hands you these in the dispatch prompt. Nothing here is optiona
 | Input | Meaning |
 |---|---|
 | `TASK_DIR` | Absolute path. You write `SPEC.md` and `stories/` under it — nowhere else. |
-| `TASK_TITLE`, `TASK_DESCRIPTION` | The original seed. Its intent is preserved verbatim. |
-| `INTERVIEW_ANSWERS` | Every question asked inline and the answer given. Your only source of user intent beyond the seed. |
+| `TASK_DESCRIPTION` | The original seed. Its intent is preserved verbatim; derive the spec title from it. |
+| `INTERVIEW_ANSWERS` | **Interactive**: every question asked and the answer given. **Autonomous**: one `<gap> → <resolution> (level N)` entry per gap the workflow resolved without asking. Either way this is your only source of intent beyond the seed. |
 | `SPEC_ASSUMPTIONS` | Gaps an autonomous run decided alone. Empty on an interactive run. |
+| `CODEBASE_CONTEXT` | Per-service codebase docs the orchestrator loaded. |
+| `PRINCIPLES_CONTENT` | Engineering principles, or empty. |
+| `CONFIRMED_SERVICES` | Service ids, each present in `registry/services.yaml`. |
 | `MERGED_PREFILL` | Pre-filled sections from detected templates, or empty. |
 | `DETECTED_TEMPLATES` | Template names, or empty. |
 | `CANONICAL_TERMS` | Glossary terms, or empty. |
-| `AFFECTED_SERVICES` | Service ids, each present in `registry/services.yaml`. |
 | `AUTONOMOUS` | `yes` / `no`. Drives the `## Assumptions` section in Step 3. |
 
 If `TASK_DIR` is missing or does not exist, write nothing and return
@@ -60,7 +62,8 @@ would pass a file the user never agreed to.
 
 If `INTERVIEW_ANSWERS` is empty and `AUTONOMOUS = no`, that is a caller defect: return
 `NEEDS_CONTEXT: interview answers missing on an interactive run`. Under `AUTONOMOUS = yes`
-an empty set is legitimate — author from the seed and record every gap in `## Assumptions`.
+an empty set is legitimate — it means 14a found no gap that needed resolving — so author
+from the seed and codebase context, and never block an unattended run on it.
 
 You do not re-run gap analysis and you do not interview. The gaps were already found and
 put to the user; your job is to render the outcome faithfully.
@@ -185,7 +188,7 @@ For each story, write `<TASK_DIR>/stories/<NN>-<slug>.story.md` from `templates/
 `covers`, not prose); no story covers an FR SPEC.md does not define. A coherence gate
 (`bin/validate-stories.mjs`) enforces this in `new-task`/`refine-task` before `status=planned`.
 
-**E2E invariant**: if any UI service is in `AFFECTED_SERVICES`, at least one story touching
+**E2E invariant**: if any UI service is in `CONFIRMED_SERVICES`, at least one story touching
 it carries a browser-level `[success]` criterion. The E2E guard is not waived here — not for
 an MVP, not because the interview was short, not because a fused story got long.
 
