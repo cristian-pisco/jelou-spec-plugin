@@ -4,7 +4,7 @@
 
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { normalizeRegistry } from '../../bin/lib/registry/normalize.mjs';
+import { normalizeRegistry, resolveProvisioningAdapter, DEFAULT_PROVISIONING_ADAPTER } from '../../bin/lib/registry/normalize.mjs';
 
 const resolve = (p) => (p.startsWith('/') ? p : '/ws/' + p.replace(/^\.\.\//, ''));
 
@@ -134,5 +134,39 @@ describe('normalizeRegistry', () => {
     const b = reg.services.find((s) => s.id === 'b');
     assert.deepEqual(a.runtimeMounts, ['config/secrets']);
     assert.deepEqual(b.runtimeMounts, []);
+  });
+});
+
+describe('resolveProvisioningAdapter', () => {
+  test('an unauthenticated registry needs no adapter at all', () => {
+    const decision = resolveProvisioningAdapter(normalizeRegistry({ services: {} }, { resolve }));
+
+    assert.deepEqual(decision, { required: false, adapter: null, ok: true, reason: null });
+  });
+
+  test('a normalized registry always resolves, even when the raw one omitted the adapter', () => {
+    const decision = resolveProvisioningAdapter(normalizeRegistry({ services: {}, auth: { cookieName: 'jelou_auth' } }, { resolve }));
+
+    assert.deepEqual(decision, { required: true, adapter: DEFAULT_PROVISIONING_ADAPTER, ok: true, reason: null });
+  });
+
+  test('a declared adapter survives normalization and is the one handed back', () => {
+    const decision = resolveProvisioningAdapter(normalizeRegistry({
+      services: {},
+      auth: { cookieName: 'jelou_auth', localProvisioningAdapter: '../jelou-api/tools/local-auth.mjs' }
+    }, { resolve }));
+
+    assert.equal(decision.adapter, '/ws/jelou-api/tools/local-auth.mjs');
+    assert.equal(decision.ok, true);
+  });
+
+  test('a raw registry reaching this check fails and names the unnormalized caller as the bug', () => {
+    const decision = resolveProvisioningAdapter({ services: [], auth: { cookieName: 'jelou_auth' } });
+
+    assert.equal(decision.ok, false);
+    assert.equal(decision.required, true);
+    assert.equal(decision.adapter, null);
+    assert.match(decision.reason, /normalizeRegistry/);
+    assert.match(decision.reason, /raw registry instead of the normalized one/);
   });
 });

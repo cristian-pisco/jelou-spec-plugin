@@ -51,14 +51,25 @@ describe('start-dev source selection', () => {
     assert.match(step, /--reconfigure/);
     assert.match(step, /setLocalAuthProfile/);
     assert.match(step, /cleanupResources/);
-    assert.match(step, /auth[\s\S]{0,200}!.*localProvisioningAdapter[\s\S]{0,200}stop/i);
     assert.doesNotMatch(step, /--password|E2E_USER_PASSWORD|PASSWORD=/);
+  });
+
+  test('decides the provisioning adapter from the normalized registry instead of restating the condition', () => {
+    const onboarding = workflow.indexOf('### Step F0');
+    const step = workflow.slice(onboarding, workflow.indexOf('### Step G'));
+
+    assert.match(step, /resolveProvisioningAdapter/);
+    assert.match(step, /normalized/i);
+    assert.match(step, /never the raw `services\.yaml`/);
+    assert.match(step, /`ok: false` → \*\*stop\*\*/);
+    assert.match(step, /never skip into credential lookup/);
+    assert.match(step, /do NOT tell the user to register an adapter that is already/);
   });
 
   test('establishes the protected jelou-apps session through task cookie state and the keyring profile', () => {
     const login = workflow.indexOf('### Step G');
-    const notes = workflow.indexOf('### Notes — frontend + auth');
-    const step = workflow.slice(login, notes);
+    const handoff = workflow.indexOf('### Step I.5');
+    const step = workflow.slice(login, handoff);
 
     assert.match(step, /establishAuthenticatedSession/);
     assert.match(step, /createOsKeyring/);
@@ -68,5 +79,31 @@ describe('start-dev source selection', () => {
     assert.match(step, /appendLifecycleEvent/);
     assert.match(step, /exactly one keyring-backed login/i);
     assert.doesNotMatch(step, /E2E_PASSWORD|E2E_USER_PASSWORD|JLU_INJECT_COOKIE|renderInjectPage|credentials\.envFile/);
+  });
+
+  test('the session handoff transfers a verified cookie and can never mint one', () => {
+    const handoff = workflow.indexOf('### Step I.5');
+    const notes = workflow.indexOf('### Notes — frontend + auth');
+    assert.ok(handoff > 0, 'Step I.5 must exist — without it the run ends with no session in any browser');
+    const step = workflow.slice(handoff, notes);
+
+    assert.match(step, /planBrowserHandoff/);
+    assert.match(step, /readAuthCookie/);
+    assert.match(step, /handoffSucceeded/);
+    assert.match(step, /mcp__chrome-devtools__new_page/);
+    assert.doesNotMatch(step, /E2E_PASSWORD|E2E_USER_PASSWORD|credentials\.envFile/);
+  });
+
+  test('the handoff entry URL is localhost, never the loopback literal', () => {
+    const handoff = workflow.indexOf('### Step I.5');
+    const notes = workflow.indexOf('### Notes — frontend + auth');
+    const step = workflow.slice(handoff, notes);
+    assert.match(step, /not `127\.0\.0\.1`/);
+  });
+
+  test('the browser boundary still bans the injector for establishing a session', () => {
+    const notes = workflow.slice(workflow.indexOf('### Notes — frontend + auth'));
+    assert.match(notes, /Do not substitute an HTML cookie injector/);
+    assert.match(notes, /establishing or verifying the session/);
   });
 });
