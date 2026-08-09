@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.359] — 2026-08-09
+
+### Changed
+- Retire 13 unused workflows and collapse the execute-task phase loop to two script calls (#93)
+
 ## [0.3.358] — 2026-08-09
 
 ### Fixed
