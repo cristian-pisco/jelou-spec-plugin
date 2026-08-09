@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.347] — 2026-08-09
+
+### Added
+- task-aware worktree boot and local authentication for jlu-start-dev (#81)
+
 ## [0.3.346] — 2026-08-08
 
 ### Changed
