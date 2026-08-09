@@ -6,10 +6,10 @@
 // lazily at /jlu-ship. It now creates BOTH branches at /jlu-new-task time
 // (production/<slug> from trunk, staging/<slug> from origin/alpha + pushed) and
 // /jlu-ship reuses the pre-created staging branch (rebuilding only when
-// origin/alpha moved). These assertions pin the agreement across the reference,
-// and every workflow that documents the behavior — so a
-// future edit to one document cannot silently re-introduce the old "synthesized
-// on-demand, never created at task creation" model in another.
+// origin/alpha moved). These assertions pin the agreement across the reference
+// and every workflow that documents the behavior — so a future edit to one
+// document cannot silently re-introduce the old "synthesized on-demand, never
+// created at task creation" model in another.
 //
 // Run: `node --test tests/unit/dual-branch-eager-creation.test.mjs`
 

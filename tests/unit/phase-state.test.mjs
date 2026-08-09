@@ -1,11 +1,3 @@
-// tests/unit/phase-state.test.mjs
-//
-// Tests for bin/phase-state.mjs — the single per-phase-boundary writer that
-// replaces execute-task.md's five Edit calls (Steps 7b, 7i, 7l) and the two
-// phase-span Bash calls (7a.0, 7z).
-//
-// Run: `node --test tests/unit/phase-state.test.mjs`
-
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { spawnSync } from 'node:child_process';

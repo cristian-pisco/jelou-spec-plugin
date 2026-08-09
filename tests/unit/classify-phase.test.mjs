@@ -381,9 +381,6 @@ describe('classify-phase.sh compilable', () => {
   });
 });
 
-// ===========================================================================
-// all subcommand (Step 7c.1 — mode + trivial in one invocation)
-// ===========================================================================
 describe('classify-phase.sh all', () => {
   function writePhase(dir, contents) {
     const path = join(dir, 'phase.md');
@@ -527,16 +524,7 @@ describe('classify-phase.sh all', () => {
   });
 });
 
-// ===========================================================================
-// execute-task per-phase wiring — regression guard
-//
-// PHASE_IS_TRIVIAL must come from a POST-GREEN invocation (Step 7e), never from
-// the pre-dispatch Step 7c.1 call. The triviality classifier is a size gate over
-// `git diff HEAD`; run before the tdd-cycle writes anything it reports
-// trivial=true on a clean tree, which silently disables Step 8a.3's refactor
-// pass (8a.3 skips a service when every one of its phases was trivial).
-// ===========================================================================
-describe('execute-task derives PHASE_IS_TRIVIAL post-Green', () => {
+describe('execute-task derives PHASE_IS_TRIVIAL post-Green, never from the pre-dispatch 7c.1 call', () => {
   const workflow = readFileSync(
     join(__dirname, '..', '..', 'jelou', 'workflows', 'execute-task.md'),
     'utf8',

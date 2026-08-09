@@ -5,18 +5,10 @@
 # Invoked with a subcommand as the first positional arg:
 #   classify-phase.sh mode         (Step 7c.1: docs | tdd)
 #   classify-phase.sh trivial      (Step 7e: trivial yes/no, with safety override)
-#   classify-phase.sh all          (mode + trivial in one invocation)
 #   classify-phase.sh compilable   (Step 8a.5:  compilable source file present yes/no)
 #
 # Output (stdout, key=value lines) is subcommand-specific. See each subcommand
-# for the full schema. `all` emits both key sets, renaming `reason` to
-# `mode_reason` and `trivial_reason`, and derives CLASSIFY_FRONTMATTER_TRIVIAL
-# from its own mode pass.
-#
-# Contract: the TRIVIAL keys are a size gate over `git diff HEAD`, so they are
-# only meaningful when CLASSIFY_SOURCE_PATH already carries the phase's diff.
-# On a clean tree they report trivial=true. execute-task reads only the mode
-# keys from `all` at Step 7c.1 and calls `trivial` at Step 7e, post-Green.
+# for the full schema.
 #
 # Exit codes:
 #   0 — classification produced a definitive result
