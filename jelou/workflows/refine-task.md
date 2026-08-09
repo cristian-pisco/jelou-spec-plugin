@@ -335,7 +335,7 @@ Otherwise, propagate the delta so execute-task only re-runs affected phases:
    - Record in `EXTENDED_PHASES` or `ADDED_PHASES`.
 
 5. **Apply Removed** — for each Removed item in `DELTA`:
-   - Look up its phase. Append a `## Removed (added <date>)` note documenting the removal. Do NOT delete the original immutable line — Decision #15 (preserve baseline).
+   - Look up its phase. Append a `## Removed (added <date>)` note documenting the removal. Do NOT delete the original immutable line — preserve the baseline.
    - Phase status is unchanged.
 
 6. **Update PROPOSAL.md**:

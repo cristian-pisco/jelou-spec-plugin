@@ -59,7 +59,7 @@
 | `in_progress` | Agent is actively working (interim update) | Continue monitoring |
 | `success` | Agent completed its delegation successfully | Proceed to next step in the workflow |
 | `blocked` | Agent cannot continue without external input | Escalate: resolve blocker or involve user |
-| `failed` | Agent encountered an unrecoverable error | Apply Decision #1: kill agent, spawn fresh agent with failure summary |
+| `failed` | Agent encountered an unrecoverable error | Kill agent, spawn fresh agent with failure summary |
 
 ## Examples
 

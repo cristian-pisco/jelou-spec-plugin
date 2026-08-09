@@ -1,6 +1,6 @@
 # Lifecycle States Reference
 
-> This document defines the state machine for task lifecycle management in the Jelou Spec Plugin. All state is file-based (Decision #32) — persisted in TASKS.md and phase files.
+> This document defines the state machine for task lifecycle management in the Jelou Spec Plugin. All state is file-based — persisted in TASKS.md and phase files.
 
 ## Main Task States
 
@@ -41,7 +41,7 @@ draft -> refining -> planned -> implementing -> validating -> ready_to_publish -
 | `implementing` | `planned` | `/jlu:extend-phase` with minor impact | Orchestrator assessment |
 | `validating` | `planned` | `/jlu:extend-phase` | Orchestrator assessment |
 
-When `/jlu:extend-phase` runs (Decision #24), existing code is preserved as baseline (Decision #15). New or modified phases build on top.
+When `/jlu:extend-phase` runs, existing code is preserved as baseline. New or modified phases build on top.
 
 ## Exceptional States
 
@@ -55,7 +55,7 @@ When `/jlu:extend-phase` runs (Decision #24), existing code is preserved as base
 
 - `blocked` and `awaiting_user` are overlays on the operational state. When the block is resolved, the task returns to the state it was in before the block.
 - Retries are recorded in the Timeline section of TASKS.md, not as separate states.
-- An agent failure (Decision #1) triggers a fresh agent spawn with the failure summary, not a state transition.
+- An agent failure triggers a fresh agent spawn with the failure summary, not a state transition.
 
 ## Per-Service Sub-States
 
@@ -72,9 +72,9 @@ Each service within a multi-service task tracks its own lightweight sub-state:
 
 - The main task state is the aggregate of all service sub-states.
 - The main task can only transition to `validating` when **all** services reach `done` (or are explicitly excluded).
-- Services execute in dependency order as defined in PROPOSAL.md (Decision #9): parallel where independent, sequential where one depends on another.
+- Services execute in dependency order as defined in PROPOSAL.md: parallel where independent, sequential where one depends on another.
 
-## Session Recovery (Decision #35)
+## Session Recovery
 
 If a session ends mid-execution, TASKS.md preserves the exact state. When `/jlu:execute-task` is re-invoked, the orchestrator presents the current state and offers:
 
@@ -82,14 +82,14 @@ If a session ends mid-execution, TASKS.md preserves the exact state. When `/jlu:
 2. **Re-validate** — Re-run tests on completed phases, then resume.
 3. **Start over** — Reset all phases to pending and begin from scratch.
 
-## Execution Modes (Decision #29)
+## Execution Modes
 
 | Mode | Behavior |
 |------|----------|
 | **Autonomous** (default) | Phases run automatically after `planned -> implementing` approval. User interrupted only on failures, blocks, or approval-required transitions. |
 | **Step-by-step** | Orchestrator pauses before each phase and waits for user approval to continue. |
 
-## Approval UX (Decision #25)
+## Approval UX
 
 At every approval gate, the orchestrator presents:
 

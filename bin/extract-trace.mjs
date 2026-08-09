@@ -10,8 +10,8 @@
 //   0-trace.stacks) and reading the relevant event JSON. The summary captures:
 //   selector, expected, actual, screenshot path, network log delta, console errors.
 //
-// IMPORTANT: Pre-M3 spike (per /plan-eng-review decision 14) verified this format
-// on Playwright @1.49 (the version pinned by Jelou frontends as of 2026-04-25). If
+// IMPORTANT: this format was verified against Playwright @1.49 (the version
+// pinned by Jelou frontends as of 2026-04-25). If
 // you upgrade Playwright, re-run the spike: read the first 5 lines of trace.trace
 // from a known-failing trace and confirm the JSON shapes still match the schemas
 // in this file. If they don't, switch to the @playwright/test reporter API path

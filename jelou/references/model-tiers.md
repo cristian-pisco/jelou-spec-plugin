@@ -1,6 +1,6 @@
 # Model Assignment Policy
 
-> Three-tier model policy for agent assignments (Decision #28). This document defines which Claude model tier each agent role uses by default, and the rules for escalation and override.
+> Three-tier model policy for agent assignments. This document defines which Claude model tier each agent role uses by default, and the rules for escalation and override.
 
 ## Default Assignments by Role
 
@@ -79,7 +79,7 @@ Orchestrator workflows that spawn agents MUST check for model overrides before s
 
 ## Cost Implications
 
-No budget tracking is implemented in v1 (Decision #28). The tier policy is the primary cost control mechanism:
+No budget tracking is implemented in v1. The tier policy is the primary cost control mechanism:
 
 - Opus is reserved for roles where reasoning quality directly impacts all downstream work.
 - Sonnet handles the bulk of implementation work.

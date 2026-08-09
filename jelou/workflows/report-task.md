@@ -54,7 +54,7 @@ WORKFLOW_TRACE_ID=$(echo "$WF_OUT" | jq -r '.trace_id // ""')
 
 1. Scan service repos for `/.worktrees/` directories.
 2. Cross-reference with task states — worktrees for tasks in `done` or `closed` state are stale.
-3. If stale worktrees are found, include a cleanup prompt in the report (Decision #17).
+3. If stale worktrees are found, include a cleanup prompt in the report.
 
 ### Stale Temp Staging Worktrees
 
@@ -89,7 +89,7 @@ If either is present, report it as a candidate for cleanup (not auto-removed). T
 
 ## Step 6 — Present Dashboard Summary
 
-Present an executive summary in dashboard style (default verbosity — Decision #12):
+Present an executive summary in dashboard style (default verbosity):
 
 ```
 ## Task: <task-title>

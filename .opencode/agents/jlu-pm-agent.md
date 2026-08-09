@@ -128,7 +128,7 @@ After sync, persist:
 }
 ```
 
-## Field Inference (Decision #26)
+## Field Inference
 
 Automatically infer these fields from spec + codebase signals:
 

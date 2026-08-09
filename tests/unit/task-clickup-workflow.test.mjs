@@ -54,9 +54,28 @@ describe('task-clickup workflow — Step 5 macro task + OKR injection', () => {
     assert.match(wf, /OKR block from Step 4a/);
   });
 
-  test('5b passes points in the create call', () => {
+  test('5b create call resolves assignees and passes a flat ID-string array', () => {
     assert.match(wf, /5b\.\s+Create/);
-    assert.match(wf, /clickup_create_task[\s\S]{0,600}points:/);
+    assert.match(wf, /clickup_resolve_assignees\(assignees:/);
+    assert.match(
+      wf,
+      /clickup_create_task\([\s\S]{0,600}assignees: \["<user-id-str>"\]/
+    );
+  });
+
+  test('5b create call passes custom_fields and a priority enum, not 1-4', () => {
+    assert.match(
+      wf,
+      /clickup_create_task\([\s\S]{0,700}priority: "<urgent\|high\|normal\|low>"/
+    );
+    assert.match(wf, /clickup_create_task\([\s\S]{0,900}custom_fields:/);
+    assert.doesNotMatch(wf, /priority: <1-4>/);
+  });
+
+  test('no ClickUp call ever passes points — not an MCP parameter', () => {
+    assert.doesNotMatch(wf, /^\s*points:/m);
+    assert.match(wf, /Never pass `points`/);
+    assert.match(wf, /Sprint Points \/ Story Points are NOT writable/);
   });
 
   test('5d verifies dates and Cliente landed', () => {
@@ -179,22 +198,36 @@ describe('task-clickup workflow — task dates + required Cliente', () => {
   test('Step 4e defines built-in start_date/due_date derivation', () => {
     assert.match(wf, /Step 4e — Task dates/);
     assert.match(wf, /start_date`\*\* = today/);
-    assert.match(wf, /due_date`\*\* = end of the destination sprint/);
-    assert.match(wf, /date -d 'today 00:00' \+%s%3N/);
+    assert.match(wf, /due_date`\*\* = last day of the destination sprint/);
+    assert.match(wf, /date -d 'today 00:00' \+%F/);
+    assert.doesNotMatch(wf, /\+%s%3N/);
   });
 
   test('Step 4e keeps built-in dates distinct from human-curated custom fields', () => {
-    assert.match(wf, /distinct from the human-curated custom date\s+fields/);
+    assert.match(wf, /distinct from the\s+human-curated custom date fields/);
   });
 
-  test('create + update calls pass start_date and due_date', () => {
-    assert.match(wf, /clickup_create_task[\s\S]{0,500}start_date:[\s\S]{0,120}due_date:/);
-    assert.match(wf, /clickup_update_task[\s\S]{0,500}start_date:[\s\S]{0,120}due_date:/);
+  test('create + update calls pass start_date and due_date as YYYY-MM-DD strings', () => {
+    assert.match(
+      wf,
+      /clickup_create_task\([\s\S]{0,600}start_date: "<YYYY-MM-DD[\s\S]{0,120}due_date: "<YYYY-MM-DD/
+    );
+    assert.match(
+      wf,
+      /clickup_update_task\([\s\S]{0,600}start_date: "<YYYY-MM-DD[\s\S]{0,140}due_date: "<YYYY-MM-DD/
+    );
   });
 
-  test('Step 8 persists start_date_ms and due_date_ms', () => {
+  test('dates are never sent as epoch ms and never carry *_date_time booleans', () => {
+    assert.doesNotMatch(wf, /^\s*(start|due)_date_time: /m);
+    assert.doesNotMatch(wf, /(start|due)_date: <ms-from-step-4e>/);
+    assert.match(wf, /They are \*\*NOT\*\* Unix\s+milliseconds/);
+  });
+
+  test('Step 7 persists start_date_ms/due_date_ms and explains reads come back as ms', () => {
     assert.match(wf, /"start_date_ms":\s*"<milliseconds>"/);
     assert.match(wf, /"due_date_ms":\s*"<milliseconds>"/);
+    assert.match(wf, /`clickup_get_task` returns `start_date` \/\s+`due_date` as epoch-millisecond strings/);
   });
 
   test('Rules mark start_date/due_date and Cliente as REQUIRED', () => {
@@ -204,6 +237,56 @@ describe('task-clickup workflow — task dates + required Cliente', () => {
 
   test('Step 3 mapping table marks Cliente as required (not opt-in)', () => {
     assert.match(wf, /Client \| Cliente \| drop_down \| yes \|/);
+  });
+});
+
+describe('task-clickup workflow — MCP tool contract (not the REST API)', () => {
+  const wf = read('jelou/workflows/task-clickup.md');
+
+  test('5e declares custom_fields values are strings and warns off the REST shapes', () => {
+    assert.match(wf, /5e\.\s+Custom-field value encodings \(MCP tool contract\)/);
+    assert.match(wf, /`custom_fields\[\]\.value` property is declared as\s+`type: "string"`/);
+    assert.match(wf, /"fix" this table back to the REST shapes/);
+    assert.match(wf, /which is NOT the raw\s+>?\s*REST API's/);
+  });
+
+  test('5e table documents the per-type string encodings', () => {
+    assert.match(wf, /the number \*\*as a string\*\*/);
+    assert.match(wf, /`'true'` \/ `'false'`/);
+    assert.match(wf, /JSON \*\*array string\*\* of option UUIDs/);
+    assert.match(wf, /JSON \*\*object string\*\* with add\/rem arrays/);
+    assert.match(wf, /`progress` \| JSON object string with `current`/);
+  });
+
+  test('5e no longer documents native JSON custom-field values', () => {
+    assert.doesNotMatch(wf, /\| `checkbox` \| boolean \|/);
+    assert.doesNotMatch(wf, /\| `labels` \| array of strings/);
+    assert.doesNotMatch(wf, /"value": \{ "add": \["<user-id-str>"\], "rem": \[\] \}/);
+  });
+
+  test('5e example payload encodes every value as a string', () => {
+    assert.match(wf, /"value": "\[\\"<team-label-uuid>\\"\]"/);
+    assert.match(wf, /"value": "\{\\"add\\":\[\\"<user-id-str>\\"\],\\"rem\\":\[\]\}"/);
+    assert.match(wf, /"value": "<sprint-number-as-string>"/);
+  });
+
+  test('update uses the same flat assignees array as create, not {add, rem}', () => {
+    assert.match(
+      wf,
+      /clickup_update_task\([\s\S]{0,700}assignees: \["<user-id-str>"\],\s+# flat array, same as Create/
+    );
+    assert.doesNotMatch(wf, /assignees: \{ "add":/);
+    assert.match(wf, /Update takes the same shapes as Create on this MCP server/);
+  });
+
+  test('Step 3 discovers custom fields via clickup_get_custom_fields, not clickup_get_list', () => {
+    assert.match(wf, /Use `clickup_get_custom_fields` with `list_id:/);
+    assert.match(wf, /it does \*\*not\*\* return custom field definitions/);
+  });
+
+  test('Rules pin the MCP schema as the authority over the REST docs', () => {
+    assert.match(wf, /Payload shapes follow the MCP tool schemas, not the ClickUp REST docs/);
+    assert.match(wf, /If a ClickUp REST doc disagrees, the tool schema wins/);
   });
 });
 

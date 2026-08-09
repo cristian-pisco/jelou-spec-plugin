@@ -326,7 +326,7 @@ Note: The `## Branching` section is NOT written here. It is appended to TASKS.md
    - Cross-reference with known integrations from INTEGRATIONS.md.
    - Cross-reference with services registered in `services.yaml`.
 4. Build a proposed list of affected services (always including the primary `SERVICE_ID`).
-5. Check for references to services NOT in the registry (Decision #39):
+5. Check for references to services NOT in the registry:
    - If found, warn: "The task references `<name>` which is not registered in `services.yaml`. Would you like to register it?"
 
 **Store**: `PROPOSED_SERVICES` = list of affected service IDs
