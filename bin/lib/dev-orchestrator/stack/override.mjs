@@ -1,5 +1,14 @@
+import { createHash } from 'node:crypto';
+
+const DNS_LABEL_MAX = 63;
+const DIGEST_LENGTH = 8;
+
 export function projectName(serviceName, slug) {
-  return `${serviceName}-${slug}`;
+  const full = `${serviceName}-${slug}`;
+  if (full.length <= DNS_LABEL_MAX) return full;
+  const digest = createHash('sha256').update(full).digest('hex').slice(0, DIGEST_LENGTH);
+  const head = full.slice(0, DNS_LABEL_MAX - DIGEST_LENGTH - 1).replace(/-+$/, '');
+  return `${head}-${digest}`;
 }
 
 export function renderOverride({ service, slug, allocations, networkAlias, image, nodeModulesMount = null, runtimeMounts = [], depsVolume = null }) {

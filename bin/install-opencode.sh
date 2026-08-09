@@ -143,6 +143,7 @@ cp "$PLUGIN_DIR/bin/lib/registry/id-divergence.mjs" "$TARGET_DIR/bin/lib/registr
 cp "$PLUGIN_DIR/bin/lib/boot-engine/execute-shared-reuse.mjs" "$TARGET_DIR/bin/lib/boot-engine/"
 cp "$PLUGIN_DIR/bin/lib/boot-engine/env-mask.mjs" "$TARGET_DIR/bin/lib/boot-engine/"
 cp "$PLUGIN_DIR/bin/lib/boot-engine/deps-provision.mjs" "$TARGET_DIR/bin/lib/boot-engine/"
+cp "$PLUGIN_DIR/bin/lib/boot-engine/launcher.mjs" "$TARGET_DIR/bin/lib/boot-engine/"
 cp "$PLUGIN_DIR/bin/lib/boot-engine/plan.mjs" "$TARGET_DIR/bin/lib/boot-engine/"
 cp "$PLUGIN_DIR/bin/lib/task-index/extract.mjs" "$TARGET_DIR/bin/lib/task-index/"
 cp "$PLUGIN_DIR/bin/lib/task-index/scan.mjs" "$TARGET_DIR/bin/lib/task-index/"

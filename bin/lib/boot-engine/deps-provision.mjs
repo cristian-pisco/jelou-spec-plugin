@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync, existsSync } from 'node:fs';
 import { LOCKFILES, frozenInstallCommand } from '../registry/package-manager.mjs';
+import { isContainerLauncher, startsDevOnUp } from './launcher.mjs';
 
 export const DEPS_MARKER = '.jlu-lock-hash';
 export const INSTALL_TIMEOUT_MS = 900000;
@@ -97,8 +98,8 @@ function installStep({ cwd, runsIn, lock, serviceId, slug }) {
   };
 }
 
-function provision({ source, lock, mountTarget, volumeName = null, satisfied, install = null, adopted = false, missing = null }) {
-  return { source, lockFile: lock.file, lockHash: lock.hash, volumeName, mountTarget, satisfied, adopted, missing, install };
+function provision({ source, lock, mountTarget, volumeName = null, satisfied, install = null, adopted = false, missing = null, unverified = false }) {
+  return { source, lockFile: lock.file, lockHash: lock.hash, volumeName, mountTarget, satisfied, adopted, missing, install, unverified };
 }
 
 export function resolveDepsProvision({
@@ -115,7 +116,7 @@ export function resolveDepsProvision({
   const lock = detectLockfile(worktreeDir, fs);
   if (!lock) return null;
 
-  if (launcher !== 'docker-exec') {
+  if (!isContainerLauncher(launcher)) {
     const state = hostInstallState({ dir: worktreeDir, lockHash: lock.hash, fs });
     return provision({
       source: 'worktree',
@@ -131,6 +132,10 @@ export function resolveDepsProvision({
   const codeTarget = codeMountTarget(mounts, [worktreeDir, canonicalPath]) || DEFAULT_CODE_TARGET;
   const mountTarget = `${codeTarget}/node_modules`;
   const containerInstall = () => installStep({ cwd: codeTarget, runsIn: 'container', lock, serviceId, slug });
+
+  if (shadowingDepsMount(mounts, codeTarget) && startsDevOnUp(launcher)) {
+    return provision({ source: 'image', lock, mountTarget, satisfied: true, unverified: true });
+  }
 
   if (shadowingDepsMount(mounts, codeTarget)) {
     return provision({
