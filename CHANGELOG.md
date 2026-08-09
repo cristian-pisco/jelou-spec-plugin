@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.357] — 2026-08-09
+
+### Fixed
+- unblock three execute-task pipeline frictions found by the bench (#91)
+
 ## [0.3.356] — 2026-08-09
 
 ### Fixed
