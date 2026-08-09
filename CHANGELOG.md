@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.354] — 2026-08-09
+
+### Changed
+- Delegate spec authoring so the story-fusion rule actually runs (#88)
+
 ## [0.3.353] — 2026-08-09
 
 ### Fixed
