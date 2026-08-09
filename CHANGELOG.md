@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.350] — 2026-08-09
+
+### Internal
+- cut the per-phase turn count and make telemetry opt-in (#84)
+
 ## [0.3.349] — 2026-08-09
 
 ### Fixed
