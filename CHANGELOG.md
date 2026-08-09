@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.352] — 2026-08-09
+
+### Fixed
+- workspace resolution silently returned the git repo as the workspace root (#86)
+
 ## [0.3.351] — 2026-08-09
 
 ### Fixed
