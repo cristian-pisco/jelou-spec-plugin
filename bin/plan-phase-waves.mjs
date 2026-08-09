@@ -39,13 +39,19 @@ function resolveCap(limit, env) {
   return applyEnvCeiling(machineAutoCap(limit), env);
 }
 
+function phaseIdOf(value) {
+  const stem = value.replace(/\.md$/, '');
+  const m = stem.match(/^(\d+[a-z]?)-/);
+  return m ? m[1] : stem;
+}
+
 function parseNeeds(content) {
   const m = content.match(/^\*\*Needs:\*\*[ \t]*(.*?)[ \t]*$/m);
   if (m === null) return null;
   const raw = m[1].trim();
   if (raw === '') return null;
   if (raw.toLowerCase() === 'none') return [];
-  return raw.split(',').map((s) => s.trim()).filter(Boolean);
+  return raw.split(',').map((s) => phaseIdOf(s.trim())).filter(Boolean);
 }
 
 function computeLevels(serviceId, items) {
@@ -187,11 +193,8 @@ for (const serviceId of readdirSync(servicesDir).sort()) {
   if (phaseFiles.length === 0) continue;
 
   lanes[serviceId] = phaseFiles.map(filename => {
-    const stem = filename.replace(/\.md$/, '');
-    const m = stem.match(/^(\d+[a-z]?)-/);
-    const phase = m ? m[1] : stem;
     return {
-      phase,
+      phase: phaseIdOf(filename),
       phase_file: resolve(phasesDir, filename),
     };
   });

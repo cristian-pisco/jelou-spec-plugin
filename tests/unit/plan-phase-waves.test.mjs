@@ -296,6 +296,19 @@ describe('intra-service needs', () => {
     }
   });
 
+  test('a **Needs:** given as a phase filename stem resolves to its id', () => {
+    const dir = mkTaskDirWithNeeds({
+      'svc-a': { '01-base': 'none', '02-x': '01-base', '03-y': '02-x.md' },
+    });
+    try {
+      const r = runScript([`--task-dir=${dir}`, '--strategy=sequential', '--phase-parallelism=2']);
+      assert.equal(r.code, 0, `expected ok, got: ${r.stderr}`);
+      assert.deepEqual(r.parsed.waves.map((w) => w[0].phase), ['01', '02', '03']);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test('no **Needs:** lines → identical to today (backward compat)', () => {
     const dir = mkTaskDir({ 'svc-a': ['01-a', '02-a', '03-a'] });
     try {

@@ -839,7 +839,18 @@ blocked), spawn a fresh `jlu-tdd-cycle` with accumulated failure context; retry 
 times total; pause and notify the user after the 5th (see Escalation Format).
 
 **Post-Green lint/format**: invoke `bin/format-changed-files.sh` over the union of the
-report's `Files Modified` + `Tests Written`. Handle by status: `status=ok` with
+report's `Files Modified` + `Tests Written`:
+
+```bash
+FORMAT_SOURCE_PATH="<SERVICE_SOURCE_PATH>" \
+FORMAT_CHANGED_FILES="$(printf '%s\n' <files-modified-1> <tests-written-1> ...)" \
+FORMAT_CONVENTIONS="<CODEBASE_DIR>/CONVENTIONS.md" \
+<plugin-root>/bin/format-changed-files.sh
+```
+
+`FORMAT_SOURCE_PATH` and `FORMAT_CHANGED_FILES` are required — the script exits 1 without
+them. `FORMAT_CONVENTIONS` is optional; pass it when the service has a codebase-docs dir so
+an explicit Format/Lint command there wins over the detection chain. Handle by status: `status=ok` with
 `changed_by_format=0` → the formatter touched nothing, so Green cannot have moved; log
 `Format changed 0 files — Green re-run skipped.` and continue. `status=ok` with
 `changed_by_format>0` → re-run the phase test files to confirm Green held. `status=skip`
