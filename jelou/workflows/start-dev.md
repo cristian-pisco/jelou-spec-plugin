@@ -2,24 +2,30 @@
 
 > Purpose: Launch all registered services in a TMUX window dedicated to the active task slug.
 
-> **Deprecated:** the default tmux path (Steps 1–6 below) is deprecated in favor of the plan-driven `--jelou-stack` boot (see "Task-aware Jelou-stack boot" below), which reuses the developer's docker containers and wires task worktrees. The tmux path still works and `jlu-services.json` is untouched, but new work should pass `--jelou-stack`.
+> **Deprecated:** the tmux path (Steps 1–6 below) is deprecated in favor of the plan-driven `--jelou-stack` boot (see "Task-aware Jelou-stack boot" below), which reuses the developer's docker containers and wires task worktrees. The tmux path runs ONLY in a workspace whose root holds a `jlu-services.json`; a workspace on the unified registry has no such file and MUST use `--jelou-stack`. Step 0 routes this for you — never offer the tmux path to a registry-based workspace.
 
 Inputs:
 - `cwd`: the user's current working directory.
 
-## Step 1 — Resolve workspace and config
+## Step 0 — Route to the boot path
 
 ```bash
 node -e "
-import('{plugin-root}/bin/lib/dev-orchestrator/workspace.mjs').then(({ resolveWorkspace }) => {
-  process.stdout.write(JSON.stringify(resolveWorkspace(process.argv[1])));
+import('{plugin-root}/bin/lib/dev-orchestrator/workspace.mjs').then(({ resolveWorkspace, bootPathFor }) => {
+  const ws = resolveWorkspace(process.argv[1]);
+  process.stdout.write(JSON.stringify({ ...ws, bootPath: bootPathFor(ws) }));
 }).catch(e => { console.error(e.message); process.exit(2); });
 " "{cwd}"
 ```
 
-Capture `{ root, configPath, workspaceId }`. If `NO_WORKSPACE`, surface:
+If the script exits non-zero, surface its message verbatim and stop — do NOT guess a root and do NOT offer either boot path.
 
-> `No workspace root. Run /jlu:register-service first to create jlu-services.json.`
+Capture `{ root, configPath, workspaceId, bootPath }`. This is the ONLY workspace resolution in this workflow; every later step reuses these values. Then route on `bootPath`:
+
+- `jelou-stack` → skip Steps 1–6 entirely and go straight to "Task-aware Jelou-stack boot" below. This is not a question for the user; the workspace has no `jlu-services.json`, so the tmux path cannot run at all.
+- `tmux` → continue with Step 1. If the user passed `--jelou-stack` explicitly, honor that and jump to the Jelou-stack section instead.
+
+## Step 1 — Read the tmux-path config
 
 ```bash
 node -e "
@@ -168,7 +174,7 @@ import('{plugin-root}/bin/lib/dev-orchestrator/stack/stack-state.mjs').then((m) 
 " "{workspaceId}" "{slug}" '{mutationJson}' "{runId}"
 ```
 
-Steps B0 and C1 below record several mutations in one pass and use their own fuller scripts; Steps E, F, H, and the observer each record one mutation and reference this pattern with a concrete `{mutationJson}`. `{workspaceId}` is the value captured in Step 1.
+Steps B0 and C1 below record several mutations in one pass and use their own fuller scripts; Steps E, F, H, and the observer each record one mutation and reference this pattern with a concrete `{mutationJson}`. `{workspaceId}` is the value captured in Step 0.
 
 ### Step A — Resolve the registry, task slug, and source mode
 
