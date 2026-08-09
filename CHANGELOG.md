@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.349] — 2026-08-09
+
+### Fixed
+- start-dev ignored self-starting docker launchers and frontend worktrees (#83)
+
 ## [0.3.348] — 2026-08-09
 
 ### Internal
