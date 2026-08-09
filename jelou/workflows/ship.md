@@ -216,23 +216,15 @@ Read and cache task artifacts in one pass (single parallel tool-call message whe
 
 ### 2b. Spec Compliance Review: RETIRED (only the coverage-breadth probe survives)
 
-This step used to spawn `jlu-spec-reviewer` in `MODE: compliance` to diff the task
-branch against `SPEC.md` + `PROPOSAL.md` and return a requirements-coverage table
-(COVERED / PARTIALLY_COVERED / UNTESTED / MISSING) plus scope-creep detection, which
-was then rendered verbatim in every PR body. It is **retired**: the agent is deleted
-from the plugin and no compliance report is produced or published.
+**Retired**: the `jlu-spec-reviewer` agent is deleted from the plugin and no
+compliance report is produced or published. Measured, not assumed: it cost **~112 s
+and ~6 261 output tokens per dispatch**, ran twice per task, and could not stop
+anything — the gate defaulted to "proceed with a caveat" in autonomous mode, which is
+how the chain actually runs.
 
-Why it was retired — measured, not assumed. The agent cost **~112 s and ~6 261
-output tokens per dispatch** and ran twice per task (here, and again at
-execute-task Step 8c in `final-qa` mode). Both dispatches were static re-reads of a
-diff, and neither could stop anything: the decision gate below already defaulted to
-"proceed with a caveat" in autonomous mode, which is how the chain actually runs.
-
-**Nothing inherits the requirements-coverage table or the scope-creep check.** A PR
-no longer carries a per-FR/NFR/SC coverage statement, and a file changed outside
-everything `SPEC.md` and `PROPOSAL.md` mention is no longer flagged. `SPEC.md`
-itself is still the contract, and `/jlu-goal` still proves behaviour against a real
-stack — but nothing maps the diff back to numbered requirements.
+**Nothing inherits the requirements-coverage table or the scope-creep check.**
+`SPEC.md` is still the contract and `/jlu-goal` still proves behaviour against a real
+stack, but nothing maps the diff back to numbered requirements.
 
 **2b.1 — Coverage-breadth check (static, scoped to changed DTOs — always runs,
 advisory).** This survives because it is a deterministic script, not the agent. It

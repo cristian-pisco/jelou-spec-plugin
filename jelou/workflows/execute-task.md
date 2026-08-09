@@ -895,25 +895,14 @@ Log to terminal:
 
 ### 7e.1 — Per-phase QA: RETIRED (nothing consumes it)
 
-No QA dispatch happens inside the phase loop, and no `DEFERRED_QA_PHASES`
-accumulator is built any more. The accumulator existed for exactly one consumer —
-the Step 8c final static gate — and that gate is retired (see Step 8c for the
-measured reason and the full list of what is now unenforced).
-
-Concretely, the phase loop no longer collects each phase's `files_modified`,
-`test_rewrites`, or `tdd_flags` for later review. The tdd-cycle report still
-writes its `Test Objections` and `Deviations from Expected Approach` sections to
-disk for audit, but nothing reads them back: a phase that flagged its own doubt
-now carries that doubt into the PR unreviewed.
+No QA dispatch happens inside the phase loop. Its only consumer was the Step 8c
+static gate, which is itself retired — a phase that flags its own doubt now carries
+that doubt into the PR unreviewed.
 
 ### 7i. Update TASKS.md: FOLDED INTO 7l
 
-Nothing happens here. This step used to `Edit` TASKS.md for status + test counts +
-artifacts + deviations, and Step 7l then `Edit`ed the same two files again for the
-commit SHA and completion timestamp — five `Edit` calls per phase against two
-files, all of them after the tdd-cycle returned. They are now **one**
-`bin/phase-state.mjs --event=end` call in Step 7l, which runs after Step 7j so the
-commit SHA is available in the same write. Do not edit TASKS.md here.
+Nothing happens here. Step 7l's single `bin/phase-state.mjs --event=end` call owns
+every per-phase write. Do not edit TASKS.md here.
 
 ### 7j. Git Commit (batched via finalize-phase.sh)
 
@@ -1206,52 +1195,30 @@ AFFECTED_TESTS_RESULT = {
 
 ### 8c. Comprehensive QA (static only): RETIRED (no owner — read the trade below)
 
-This step used to be the single static quality gate for the whole task: one
-`jlu-spec-reviewer` dispatch in `MODE: final-qa` that read the authoritative
-per-service diff and returned coverage, coverage-breadth, code-smell,
-over-engineering, security, performance, convention, cross-service-contract and
-test-rewrite findings, split into blocking (fixed in-session by `jlu-implementer`)
-and advisory (published as `SHIP_CAVEATS`). It is **retired**: `execute-task` no
-longer dispatches any QA agent, and `jlu-spec-reviewer` is deleted from the plugin.
+**Retired**: `execute-task` dispatches no QA agent, and `jlu-spec-reviewer` is
+deleted from the plugin. Measured, not assumed: the agent cost **~112 s and ~6 261
+output tokens per dispatch** and ran twice per task, statically re-reading a diff the
+pipeline already validates by execution — and it could only annotate a build, never
+fail one.
 
-Why it was retired — measured, not assumed. The agent cost **~112 s and ~6 261
-output tokens per dispatch**, and it ran twice per task (here in `final-qa` mode,
-and again at ship Step 2b in `compliance` mode). That is pure static re-reading of
-a diff the pipeline has already validated by execution: Step 8b runs the affected
-tests, `/jlu-test-suite` runs the full suite on demand, and `/jlu-goal` runs the
-real E2E suites against a booted stack. The gate could not fail a build, only
-annotate one.
-
-**Nothing inherits the gate.** This is the honest statement of the trade, not a
-hand-off. What survives is only what already existed independently of the agent:
-
-- **Affected-test execution** — Step 8b, unchanged. It was never the reviewer's.
-- **Coverage breadth** — `bin/probe-coverage-breadth.mjs`, a deterministic script,
-  still runs at ship Step 2b.6b (always, advisory, scoped to changed
-  `*.dto.*`/`*.schema.*` files) and inside `/jlu-goal` Phase 4.5 via
-  `jlu-test-suite-runner`. The unconditional whole-task FAIL on a validated field
-  with no rejecting test is gone; what remains is a heuristic probe that warns.
-- **The Testcontainers/Docker tier ban** — still stated in
-  `jelou/references/tdd-cycle.md` and still in the self-checklists of the agents
-  that author tests (`jlu-tdd-cycle`, `jlu-test-writer`). There is no longer an
-  independent verifier that the authors obeyed it.
-- **The no-comments rule** — still inherited by every code-authoring agent from
-  `jelou/references/subagent-base.md`. No agent re-reads the diff to catch a
-  comment that slipped through.
+**Nothing inherits the gate.** What survives existed independently of the agent:
+**Affected-test execution** — Step 8b, unchanged; coverage breadth via the
+deterministic `bin/probe-coverage-breadth.mjs` at ship Step 2b.6b and in `/jlu-goal`
+Phase 4.5 (the unconditional whole-task FAIL on a validated field with no rejecting
+test is gone); the Testcontainers/Docker tier ban, now self-enforced by the agents
+that author tests; and **The no-comments rule**, inherited from
+`jelou/references/subagent-base.md` — No agent re-reads the diff to catch a
+comment that slipped through.
 
 Unenforced from here on, with no replacement anywhere in the pipeline: code-smell
 and over-engineering review, security review of new endpoints, N+1 and unbounded
-query review, CONVENTIONS.md compliance on the diff, cross-service contract
-matching, the audit that every tdd-cycle test rewrite carried a valid spec quote,
-priority scrutiny of the tdd-cycle's own `Test Objections` / `Deviations` flags,
+query review, CONVENTIONS.md compliance, cross-service contract matching, the
+spec-quote audit of test rewrites, the tdd-cycle's own objection/deviation flags,
 the 100-line function cap, and artifact completeness.
 
 `SHIP_CAVEATS` is unaffected as a mechanism — Steps 8e and 8g still append to it,
-and ship still renders it in the PR body under `### Not verified by this PR`. It
-simply no longer receives QA-derived rows, because nothing produces them.
-
-The `AFFECTED_TESTS_RESULT` map from Step 8b is still logged for the run summary;
-it just has no downstream consumer that re-reads it. Continue to Step 8d.
+and ship still renders it under `### Not verified by this PR`; it simply receives no
+QA-derived rows. Continue to Step 8d.
 
 ### 8d. Post-Validation Cleanup
 
@@ -1316,22 +1283,11 @@ NOT run Playwright (that happens post-deploy under `/jlu-goal` /
 
 ### Step 8f — Backend E2E authoring: RETIRED (owned by `/jlu-goal` Phase 3.5)
 
-This step used to author the backend E2E suite here, shift-left, so a backend change
-would carry its controller-level suite into the PR. It is **retired**: `execute-task`
-no longer dispatches `jlu-test-writer` for backend E2E, and no longer authors
-`test/e2e/**`.
-
-Why it was retired — measured, not assumed. Backend E2E authoring was the single most
-expensive dispatch in a mono-service run (290 s of a 1 940 s Step 7+8, ~15%) and
-`execute-task` **never runs** what it produced: execution has always belonged to
-`/jlu-goal` Phase 3.5. Paying the authoring cost on the critical path of the stage that
-cannot verify the artifact is the wrong stage for the work.
-
-Nothing is lost. `/jlu-goal` Phase 3.5 already treats a missing suite as
-**mandatory, not discretionary** authoring: a `NO_E2E_SUITE` verdict routes to
-`jlu-test-writer` with the `jelou/references/backend-e2e-authoring.md` doctrine, and the
-phase is non-bypassable. The suite is now authored by the stage that immediately runs it,
-which is also the only stage that can prove it green.
+**Retired**: `execute-task` no longer dispatches `jlu-test-writer` for backend E2E and
+no longer authors `test/e2e/**`. Measured, not assumed: it was the most expensive
+dispatch in a mono-service run (290 s of a 1 940 s Step 7+8, ~15%) for an artifact this
+stage never runs. `/jlu-goal` Phase 3.5 owns it, treats a missing suite as **mandatory,
+not discretionary** authoring, and is the only stage that can prove it green.
 
 The trade this makes explicit: a PR opened without ever running `/jlu-goal` does not
 carry a backend E2E suite. Frontend parity is unaffected — **Step 8e (UI E2E) stays**,
@@ -1702,7 +1658,7 @@ Awaiting your input to proceed.
 | #7 | PROPOSAL.md bridges SPEC.md and implementation |
 | #9 | Dependency-driven multi-service execution order |
 | #10 | User stories auto-generated from spec in hybrid format |
-| #13 | **Retired**: per-phase QA was consolidated into one final static gate (Step 8c), and that gate is now retired too — no static QA agent runs in this workflow |
+| #13 | **Retired**: no static QA agent runs in this workflow (see Step 8c) |
 | #19 | Phase files: immutable requirements + mutable execution |
 | #21 | Two-pass proposal: global strategy + per-service detail |
 | #29 | **Superseded**: always autonomous, execution mode selection removed |
