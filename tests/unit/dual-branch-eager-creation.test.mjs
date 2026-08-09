@@ -7,7 +7,7 @@
 // (production/<slug> from trunk, staging/<slug> from origin/alpha + pushed) and
 // /jlu-ship reuses the pre-created staging branch (rebuilding only when
 // origin/alpha moved). These assertions pin the agreement across the reference,
-// the agent definition, and every workflow that documents the behavior — so a
+// and every workflow that documents the behavior — so a
 // future edit to one document cannot silently re-introduce the old "synthesized
 // on-demand, never created at task creation" model in another.
 //
@@ -160,16 +160,14 @@ describe('README: dual-PR section reflects eager creation', () => {
   });
 });
 
-describe('jlu-tasks-agent: TASKS.md template reflects eager creation', () => {
-  const src = read('agents/jlu-tasks-agent.md');
-  const mirror = read('.opencode/agents/jlu-tasks-agent.md');
+describe('new-task: TASKS.md template reflects eager creation', () => {
+  const src = read('jelou/workflows/new-task.md');
 
   test('secondary-branch template is not described as synthesized at ship', () => {
     assert.doesNotMatch(src, /synthesized at first \/jlu-ship/);
-    assert.doesNotMatch(mirror, /synthesized at first \/jlu-ship/);
   });
 
   test('secondary branch template says created at new-task', () => {
-    assert.match(src, /created from origin\/alpha and pushed at \/jlu-new-task Step 15c/);
+    assert.match(src, /created from origin\/alpha and pushed at Step 15c/);
   });
 });

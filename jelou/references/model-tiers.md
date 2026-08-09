@@ -18,7 +18,6 @@
 | **research agents** (codebase-analyzer-structural, codebase-analyzer-operational) | Analyze codebases, produce structured knowledge documents. Two consolidated agents replace the original six. |
 | **proposal-agent** | Translates spec into execution-ready plan with phases, dependencies, risks. Structured document generation from clear inputs. |
 | **code agents** (test-writer, implementer) | Write tests and implementation code. Need strong coding ability with awareness of conventions and patterns. |
-| **tasks-agent** | Manages TASKS.md updates, tracks progress, handles execution state. Needs accuracy in structured updates. |
 | **build-validator** | Compiles each affected service once at final validation and auto-fixes build errors. Needs to read compiler output and patch real code. |
 
 ### Tier 3: Haiku — Lightweight Operational Roles
@@ -68,7 +67,7 @@ Users can override model assignments by adding a `models` section to `.spec-work
 | `research` | sonnet | codebase-analyzer-structural, codebase-analyzer-operational |
 | `proposal` | sonnet | proposal-agent |
 | `code` | sonnet | test-writer, implementer, build-validator |
-| `operational` | haiku | git-agent, tasks-agent |
+| `operational` | haiku | git-agent |
 
 ### Resolution Order
 
