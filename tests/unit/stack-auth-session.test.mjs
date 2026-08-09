@@ -169,6 +169,79 @@ describe('protected local session verification', () => {
   });
 });
 
+describe('authorized local session verification', () => {
+  const identityUrl = 'http://localhost:18484/api/v1/auth/me';
+  const verifyUrls = ['http://localhost:18383/v1/company', identityUrl];
+
+  const requestReturning = (permissions) => async (url) => ({
+    status: 200,
+    json: async () => (url === identityUrl ? { data: { User: { permissions } } } : {}),
+  });
+
+  test('accepts a session whose identity endpoint carries at least one permission', async () => {
+    const result = await verifyProtectedSession({
+      cookie,
+      verifyUrls,
+      identityUrl,
+      appUrl: 'http://localhost:15175/',
+      protectedPath: '/home',
+    }, {
+      request: requestReturning(['brain:view_brain']),
+      createBrowserContext: async () => ({
+        async addCookies() {},
+        async newPage() {
+          return { async goto() {}, url: () => 'http://localhost:15175/home' };
+        },
+        async close() {},
+      }),
+    });
+
+    assert.equal(result.status, 'valid');
+    assert.equal(result.permissionCount, 1);
+  });
+
+  test('refuses a permission-less session before opening the browser', async () => {
+    const result = await verifyProtectedSession({
+      cookie,
+      verifyUrls,
+      identityUrl,
+      appUrl: 'http://localhost:15175/',
+      protectedPath: '/home',
+    }, {
+      request: requestReturning([]),
+      createBrowserContext: async () => {
+        throw new Error('a permission-less session must not be injected');
+      },
+    });
+
+    assert.deepEqual(result, {
+      status: 'invalid',
+      reason: 'no-permissions',
+      apiStatuses: [200, 200],
+      finalUrl: null,
+      permissionCount: 0,
+    });
+  });
+
+  test('refuses a session whose identity payload exposes no permission set', async () => {
+    const result = await verifyProtectedSession({
+      cookie,
+      verifyUrls,
+      identityUrl,
+      appUrl: 'http://localhost:15175/',
+      protectedPath: '/home',
+    }, {
+      request: async () => ({ status: 200, json: async () => ({ data: {} }) }),
+      createBrowserContext: async () => {
+        throw new Error('an unreadable identity payload must not be injected');
+      },
+    });
+
+    assert.equal(result.status, 'invalid');
+    assert.equal(result.reason, 'identity-unreadable');
+  });
+});
+
 describe('authenticated local session lifecycle', () => {
   test('reuses a valid stored cookie without keyring or dashboard login', async (t) => {
     const baseDir = mkdtempSync(join(tmpdir(), 'jlu-auth-session-'));
@@ -516,6 +589,48 @@ describe('authenticated local session lifecycle', () => {
       { stage: 'login', outcome: 'failed', reason: 'rejected' },
     ]);
     assert.doesNotMatch(JSON.stringify(events), /phase06-password-canary/);
+  });
+
+  test('fails a permission-less account by name without spending a keyring login', async (t) => {
+    const baseDir = mkdtempSync(join(tmpdir(), 'jlu-auth-session-'));
+    t.after(() => rmSync(baseDir, { recursive: true, force: true }));
+    const stateOptions = { workspaceId: 'workspace-a', slug: 'task-a', baseDir };
+    writeAuthCookie(stateOptions, cookie);
+    const identityUrl = 'http://localhost:18484/api/v1/auth/me';
+    const events = [];
+
+    await assert.rejects(
+      () => establishAuthenticatedSession({
+        stateOptions,
+        profile: { user: { email: 'expected@example.test' }, keyringIdentity: 'jlu-local-auth:workspace-a:task-a' },
+        login: {
+          loginUrl: 'http://localhost:18484/api/v1/auth/login',
+          verifyMfaUrl: 'http://localhost:18484/api/v1/auth/login/verify_mfa',
+          cookieName: 'jelou_auth',
+        },
+        verifyUrls: [identityUrl],
+        identityUrl,
+        appUrl: 'http://localhost:15175/',
+        protectedPath: '/home',
+      }, {
+        keyring: { read: () => { throw new Error('a permission-less account must not spend a login'); } },
+        postJson: async () => { throw new Error('a permission-less account must not spend a login'); },
+        readOtp: async () => null,
+        request: async () => ({ status: 200, json: async () => ({ data: { User: { permissions: [] } } }) }),
+        createBrowserContext: async () => { throw new Error('a permission-less session must not be injected'); },
+        onLifecycle: (event) => events.push(event),
+      }),
+      (error) => {
+        assert.match(error.message, /expected@example\.test/);
+        assert.match(error.message, /no permissions/i);
+        assert.doesNotMatch(error.message, /--reconfigure/);
+        return true;
+      },
+    );
+
+    assert.deepEqual(events, [
+      { stage: 'authorization', outcome: 'failed', reason: 'no-permissions' },
+    ]);
   });
 
   test('emits a failed browser lifecycle outcome for a rejected fresh session', async (t) => {
