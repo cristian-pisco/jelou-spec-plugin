@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.355] — 2026-08-09
+
+### Changed
+- Read the package manager from the registry instead of letting the model infer it (#89)
+
 ## [0.3.354] — 2026-08-09
 
 ### Changed
