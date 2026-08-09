@@ -25,7 +25,36 @@
 
 ## Step 0.5 — Trace bootstrap
 
-> **Tracing tolerance**: Every `trace-start-span.mjs` invocation captures stdout JSON. When `TRACE_DISABLED=1` (env var or `.spec-workspace.json: tracing.enabled: false`), every span_id is an empty string. Downstream `trace-end-span.mjs` calls and `jq` lookups must tolerate empty values without failing the workflow.
+> ## TRACING IS OFF BY DEFAULT — resolve `TRACING_ON` here, once, and nowhere else
+>
+> `TRACING_ON` is **TRUE only when the env var `JLU_TRACE=1`**. Unset, `0`, or any
+> other value is FALSE. `TRACE_DISABLED=1` forces FALSE whatever `JLU_TRACE` says
+> (back-compat hard kill). There is no third state and no per-step re-derivation.
+>
+> **When `TRACING_ON` is false, this workflow emits ZERO trace Bash calls.** Not
+> the orphan sweep, not the suggester, not the workflow span (Step 0.5 §2), not
+> the phase spans (7a.0 / 7z — now folded into `bin/phase-state.mjs`, which only
+> touches the trace layer when it is handed span flags), not the agent-dispatch
+> wrapper (Step 7), not the affected-tests spans (8b.4), not the Step N close.
+> Every `*_SPAN_ID` and `*_TRACE_ID` variable stays unset/empty and every step
+> that depends on one is **skipped outright** — no call, no `jq`, no no-op.
+>
+> **Why the gate moved here.** `TRACE_DISABLED=1` short-circuited *inside* each
+> script, so the Bash call was still dispatched and still cost its ~15 s of turn
+> wall-clock. Skipping the script was never the saving; skipping the *call* is.
+>
+> **Consequence, stated honestly.** With tracing off, `/jlu-trace-report`, the
+> suggester (`bin/trace-suggest.mjs`) and the Stage-4 golden-set regression gate
+> (`trace-regress`, a repo-local dev script) receive **no data from normal runs**. Telemetry is a
+> bench instrument now: re-run with `JLU_TRACE=1` when you want a trace.
+>
+> **Tracing tolerance (only when `TRACING_ON` is true)**: every
+> `trace-start-span.mjs` invocation captures stdout JSON; downstream
+> `trace-end-span.mjs` calls and `jq` lookups must tolerate empty values without
+> failing the workflow.
+
+**Steps 0.5 §1, §2 and 0.5b below run ONLY when `TRACING_ON` is true. When it is
+false, do none of them — go straight to Step 1.**
 
 1. **Sweep orphans from any prior interrupted run** (idempotent — safe when the store is empty):
    ```bash
@@ -44,6 +73,9 @@
    Store `WORKFLOW_SPAN_ID` and `WORKFLOW_TRACE_ID` for the duration of the workflow. Empty strings are valid when `TRACE_DISABLED=1`.
 
 ### Step 0.5b — Surface suggestions from prior runs (non-blocking)
+
+**Guard: skip this entire sub-step when `TRACING_ON` is false — it shells out, so
+it is a trace Bash call like any other.**
 
 Once `$TASK_SLUG` is resolved (Step 1), run the suggester scoped to the current task. It scans recent trace history and emits one SUGGEST block per active rule that fires (bump model tier, extend failure patterns, suggest parallelization, immediate flag on blocked/failed spans of THIS task). The 7-day cooldown is honored automatically.
 
@@ -131,7 +163,7 @@ No file is read here. Everything this step gates on came from `TASK_JSON` in Ste
 4. When spawning agents in subsequent steps, resolve the model:
    - For proposal-agent: use `MODEL_CONFIG.proposal` or default `"sonnet"`
    - For test-writer, implementer, build-validator: use `MODEL_CONFIG.code` or default `"sonnet"`
-   - For git-agent, tasks-agent: use `MODEL_CONFIG.operational` or default `"haiku"`
+   - For git-agent: use `MODEL_CONFIG.operational` or default `"haiku"`
 
 ---
 
@@ -214,8 +246,8 @@ Resolve the autochain flag per §2 of
   it carries a `ready_to_publish` task into the chain on the *first* ship, not
   only on post-ship re-entry.
 - Resolved not `true` → the chain is opt-out for this task; print the Step 9
-  `Next Steps` block (run `/jlu-ship`, then `/jlu-close-task` after merge) and
-  stop.
+  chain-off block (the `## <TASK_SLUG>` heading plus
+  `- Run /jlu-ship to open the pull request.`) and stop.
 
 Otherwise, read the mid-execution state off `PHASE_STATE` (Step 1) — do NOT re-read
 `TASKS.md`. A resume is `CURRENT_STATUS == implementing` AND `PHASE_STATE` holds at
@@ -569,7 +601,13 @@ Then, at the start of each wave:
 
 ### Step 7 — Agent dispatch wrapper (referenced by every subagent dispatch below)
 
-Each subagent dispatch in this Step (test-writer, implementer, tdd-cycle, build-validator) is wrapped in a span pair. Apply this pattern around every dispatch:
+**Guard: this whole wrapper exists only when `TRACING_ON` (Step 0.5) is true.**
+When it is false, dispatch the agent bare — emit no `trace-start-span.mjs` call,
+no `trace-end-span.mjs` call, and do not extract the measurement fields below for
+a span that will not exist. That is two Bash calls saved per dispatch, which is
+the whole point of the Step 0.5 gate.
+
+When `TRACING_ON` is true, each subagent dispatch in this Step (test-writer, implementer, tdd-cycle, build-validator) is wrapped in a span pair. Apply this pattern around every dispatch:
 
 **Before the dispatch:**
 ```bash
@@ -612,7 +650,7 @@ node "<root>/bin/trace-end-span.mjs" \
 
 Empty `DISPATCH_SPAN_ID` (when `TRACE_DISABLED=1`) makes the close a no-op.
 
-This wrapper applies to every `task` (OpenCode) / `Agent` (Claude Code) dispatch in the steps below. Do not skip the wrapper for any dispatch.
+When `TRACING_ON` is true this wrapper applies to every `task` (OpenCode) / `Agent` (Claude Code) dispatch in the steps below — do not skip it for any dispatch. When `TRACING_ON` is false it applies to none of them.
 
 ### 7a. Report Persistence Discipline (context-saturation guard)
 
@@ -647,24 +685,39 @@ For every sub-agent dispatched within this Step 7 loop (`jlu-test-writer`, `jlu-
 
 **Why this matters.** Each agent report is 500-2000 tokens. A 10-phase task with 4 agents per phase accumulates 20-80k tokens of report prose in orchestrator context — enough to push past the working window on Opus and force compaction mid-task. The persist-and-digest pattern caps the orchestrator's per-phase working-memory increment at ~200 tokens (structured digest) instead of ~5000 tokens (full report bundle).
 
-### 7a.0 — Open phase span
+### 7a.0 — Open phase span: FOLDED INTO 7b
 
-Run:
+The phase span is no longer its own Bash call. `bin/phase-state.mjs --event=start`
+opens it in-process (it imports `bin/lib/trace/emitter.mjs` directly — no extra
+process is spawned) and prints `span_id=` / `trace_id=`. See 7b.
+
+### 7b. Start the phase (one call: state writes + phase span)
+
+The three writes this step used to make — phase file `Status: in_progress`,
+TASKS.md phase status, TASKS.md start timestamp — plus 7a.0's span are ONE
+deterministic call. The orchestrator never hand-edits TASKS.md or a phase file
+for bookkeeping again; `bin/phase-state.mjs` owns both files and is unit-tested.
+
 ```bash
-PH_OUT=$(node "<root>/bin/trace-start-span.mjs" \
-  --name phase --scope task \
-  --task "$TASK_SLUG" --service "$SERVICE_ID" --phase "$PHASE_NUM" \
-  --parent "$WORKFLOW_SPAN_ID" --trace "$WORKFLOW_TRACE_ID")
-PHASE_SPAN_ID=$(echo "$PH_OUT" | jq -r '.span_id // ""')
+node <plugin-root>/bin/phase-state.mjs --event=start \
+  --task-dir="<TASK_DIR>" --service="<service-id>" --phase="<NN>" \
+  --phase-file="<PHASE_FILE>" --phase-title="<Phase Name>" \
+  [--span-parent="$WORKFLOW_SPAN_ID" --span-trace="$WORKFLOW_TRACE_ID" --task-slug="$TASK_SLUG"]
 ```
 
-Empty span_id (when `TRACE_DISABLED=1`) is tolerated.
+**The three `--span-*` / `--task-slug` flags are passed ONLY when `TRACING_ON`
+(Step 0.5) is true.** Without them the script never loads the trace layer at all.
 
-### 7b. Update Phase Status
+**Output (key=value on stdout)**: `status=ok`, `event=start`, `phase=<NN>`,
+`phase_status=in_progress`, `started_at=<ISO>`, `grammar=table|headers|table+headers`,
+`tasks_md=`, `phase_file=`, plus `span_id=` / `trace_id=` when the span flags were
+passed. Store `PHASE_SPAN_ID` = `span_id` (it feeds the Step 7 dispatch wrapper and
+7l's close). `status=abort` + `reason=<task_dir_missing|tasks_md_missing|phase_file_missing|missing_service|invalid_event>`
+exits non-zero and is an orchestrator bug — fix the arguments, never fall back to
+hand-editing the files.
 
-1. Update the phase file status to `in_progress`.
-2. Update TASKS.md with phase start timestamp.
-3. Output milestone to terminal: "Starting Phase <NN>: <Phase Name> for <service-id>"
+Then output the milestone to terminal (free — the orchestrator prints it, it costs
+no tool call): `Starting Phase <NN>: <Phase Name> for <service-id>`
 
 ### 7c. Resolve Per-Service Cached Values (lookup only)
 
@@ -677,24 +730,39 @@ Tests, build, lint, and format all run on the host runtime against this path —
 
 ### 7c.1. Phase Mode Classification
 
-Determine whether this phase runs in **docs** mode (no TDD — direct commit of documentation edits) or **tdd** mode (the single `jlu-tdd-cycle` agent authors RED→GREEN per FR). The choice is delegated to `bin/classify-phase.sh mode` — the orchestrator no longer counts FR/NFR bullets inline or runs awk against frontmatter.
+Determine whether this phase runs in **docs** mode (no TDD — direct commit of documentation edits) or **tdd** mode (the single `jlu-tdd-cycle` agent authors RED→GREEN per FR). The choice is delegated to `bin/classify-phase.sh all`; the orchestrator never counts FR/NFR bullets inline and never runs awk against frontmatter.
 
 **Invocation**:
 
 ```bash
 CLASSIFY_PHASE_FILE="<PHASE_FILE>" \
+CLASSIFY_SOURCE_PATH="<SERVICE_SOURCE_PATH>" \
 CLASSIFY_SERVICES_IN_PHASE="<K>" \
-<plugin-root>/bin/classify-phase.sh mode
+<plugin-root>/bin/classify-phase.sh all
 ```
 
-**Output (key=value)**:
+`CLASSIFY_FRONTMATTER_TRIVIAL` is **not** passed: `all` derives it internally from
+its own mode pass. Setting the env var by hand here is an orchestrator bug; `all`
+ignores it.
+
+**Authoritative output here (key=value)** — these four are file-derived, so they
+are correct before the phase has a diff:
 
 - `mode=docs|tdd`
 - `fr_nfr_count=<N>`
 - `frontmatter_override=docs|vertical|horizontal|trivial|none`
-- `docs_validation=passed|failed|n/a`
-- `docs_rejection_reason=<verb>` (only when override was `docs` and validation failed)
-- `reason=frontmatter_override_validated|docs_override_rejected|legacy_mode_override|default`
+- `docs_validation=passed|failed|n/a` / `docs_rejection_reason=<verb>` (the latter only when override was `docs` and validation failed)
+- `mode_reason=frontmatter_override_validated|docs_override_rejected|legacy_mode_override|default`
+
+**`all` also emits `trivial=`, `lines_changed=`, `files_changed=`,
+`has_*`, `trivial_reason=` and `downgrade_reason=` — IGNORE THEM HERE.** They are
+a size gate over `git diff HEAD`, and at 7c.1 the tdd-cycle has not written
+anything yet: on a clean tree the phase would classify `trivial=true` every time,
+which would silently disable Step 8a.3's refactor pass for essentially every task
+(8a.3 skips a service when *all* its phases were classified trivial). Triviality
+is decided at **Step 7e, post-Green**, against the real diff. What 7c.1 hands
+forward instead is `frontmatter_override`, which is exactly the input 7e needs and
+cannot derive itself — that chaining is why the two classifiers share one script.
 
 The script enforces:
 
@@ -708,7 +776,7 @@ Log to terminal:
 - `Phase <NN> mode: docs (<N> doc requirements, <K> service(s)) — skipping TDD pipeline, going to commit-only path.`
 - `Phase <NN> mode: tdd (<N> FR/NFR, <K> service(s)) — dispatching jlu-tdd-cycle.`
 
-**Store**: `PHASE_MODE`, `FR_NFR_COUNT`.
+**Store**: `PHASE_MODE` (from `mode`), `FR_NFR_COUNT`, `PHASE_FRONTMATTER_OVERRIDE` (from `frontmatter_override` — Step 7e consumes it).
 
 ### 7df. Docs Path (docs mode only)
 
@@ -777,9 +845,18 @@ report's `Files Modified` + `Tests Written`. Handle by status: `status=ok` with
 `changed_by_format>0` → re-run the phase test files to confirm Green held. `status=skip`
 → continue. `status=failed` → surface the stderr and continue.
 
-### 7e — Phase Triviality Classification
+### 7e — Phase Triviality Classification (post-Green)
 
-After Green is verified, classify the phase to feed the task-level refactor aggregation (Step 8a.3). Delegated to `bin/classify-phase.sh trivial` — the orchestrator no longer runs `git diff --shortstat` + grep loops inline.
+After Green is verified, classify the phase to feed the task-level refactor
+aggregation (Step 8a.3). Delegated to `bin/classify-phase.sh trivial` — the
+orchestrator never runs `git diff --shortstat` + grep loops inline.
+
+**This call runs here, not at 7c.1, and that is load-bearing.** The classifier is
+a size gate over the phase's diff, which only exists once the tdd-cycle has
+written the code. Classifying pre-dispatch would return `trivial=true` on a clean
+tree for every single-service phase and silently disable 8a.3's refactor pass for
+essentially every task. One extra Bash call is the correct price for a gate that
+can still fire.
 
 **Invocation**:
 
@@ -790,7 +867,10 @@ CLASSIFY_FRONTMATTER_TRIVIAL="<0|1>" \
 <plugin-root>/bin/classify-phase.sh trivial
 ```
 
-Set `CLASSIFY_FRONTMATTER_TRIVIAL=1` when the Step 7c.1 result returned `frontmatter_override=trivial`. Otherwise pass `0`.
+`CLASSIFY_FRONTMATTER_TRIVIAL` is `1` when Step 7c.1 stored
+`PHASE_FRONTMATTER_OVERRIDE = trivial`, else `0`. **Do not re-derive it** — 7c.1
+already read the phase file, and reusing its answer is what the merged `all`
+subcommand bought.
 
 **Output (key=value)**:
 
@@ -798,12 +878,12 @@ Set `CLASSIFY_FRONTMATTER_TRIVIAL=1` when the Step 7c.1 result returned `frontma
 - `lines_changed=<N>`, `files_changed=<N>`
 - `has_lockfile`, `has_migration`, `has_dts`, `has_tsconfig`
 - `reason=size_gate|frontmatter_override|frontmatter_override_downgraded`
-- `downgrade_reason=<list>` (only when frontmatter override was downgraded)
+- `downgrade_reason=<list>` (only when the frontmatter override was downgraded)
 
 The script enforces:
 
 - **Default classifier**: `trivial=true` only when `lines ≤ 20 AND files ≤ 3 AND no lockfile/migration/d.ts/tsconfig AND services_in_phase == 1`.
-- **Frontmatter override** (`mode: trivial`): accepted unless safety bounds exceeded (`lines > 50` OR any of lockfile/migration/d.ts). On exceedance, the script returns `trivial=false` + `reason=frontmatter_override_downgraded` so the orchestrator falls back to the full pipeline.
+- **Frontmatter override** (`mode: trivial`): accepted unless safety bounds exceeded (`lines > 50` OR any of lockfile/migration/d.ts). On exceedance the script returns `trivial=false` + `reason=frontmatter_override_downgraded`, so the orchestrator falls back to the full pipeline.
 
 Log to terminal:
 
@@ -811,30 +891,18 @@ Log to terminal:
 - If not trivial: `Phase <NN> non-trivial.`
 - If a frontmatter override was downgraded: `Phase <NN> trivial override rejected — <downgrade_reason>.`
 
-**Store**: `PHASE_IS_TRIVIAL` (from `trivial` field).
+**Store**: `PHASE_IS_TRIVIAL` (from `trivial`).
 
 ### 7e.1 — Per-phase QA: RETIRED (nothing consumes it)
 
-No QA dispatch happens inside the phase loop, and no `DEFERRED_QA_PHASES`
-accumulator is built any more. The accumulator existed for exactly one consumer —
-the Step 8c final static gate — and that gate is retired (see Step 8c for the
-measured reason and the full list of what is now unenforced).
+No QA dispatch happens inside the phase loop. Its only consumer was the Step 8c
+static gate, which is itself retired — a phase that flags its own doubt now carries
+that doubt into the PR unreviewed.
 
-Concretely, the phase loop no longer collects each phase's `files_modified`,
-`test_rewrites`, or `tdd_flags` for later review. The tdd-cycle report still
-writes its `Test Objections` and `Deviations from Expected Approach` sections to
-disk for audit, but nothing reads them back: a phase that flagged its own doubt
-now carries that doubt into the PR unreviewed.
+### 7i. Update TASKS.md: FOLDED INTO 7l
 
-### 7i. Update TASKS.md (inline)
-
-The orchestrator edits TASKS.md directly via `Edit` — no agent dispatch needed for string substitution.
-
-1. Locate the phase entry in `<TASK_DIR>/TASKS.md`.
-2. Update via `Edit`:
-   - Status: `pending` → `done`
-   - Add: test pass/fail counts (from the Green verification step), artifacts list (file paths from the tdd-cycle agent's report), and any deviations it noted.
-3. The commit SHA is appended in Step 7l after the inline commit in Step 7j; do not record it here.
+Nothing happens here. Step 7l's single `bin/phase-state.mjs --event=end` call owns
+every per-phase write. Do not edit TASKS.md here.
 
 ### 7j. Git Commit (batched via finalize-phase.sh)
 
@@ -881,44 +949,56 @@ The script writes `key=value` lines to stdout. Parse them:
 - `git branch -D`
 - `git commit --no-verify`
 
-### 7l. Complete Phase
+### 7l. Complete Phase (one call: state writes + phase span close)
 
-1. Update phase file status to `done`.
-2. Output milestone to terminal: "Phase <NN> complete. Tests: <pass-count>/<total-count> passing."
-3. Record the phase's commit SHA in TASKS.md. The SHA was already returned by `finalize-phase.sh` in Step 7j (`commit_sha=<sha>` line); reuse it — do NOT run `git rev-parse` again, that's a duplicate Bash dispatch for data you already have.
+Everything 7i and the old 7l wrote — phase file `Status: done`, TASKS.md status,
+test counts, artifacts, deviations, commit SHA, completion timestamp — plus 7z's
+span close is ONE call:
 
-   If Step 7j returned `status=abort` with `reason=no_changes` for this phase, write `Commit: (no diff)` instead of an SHA.
-
-   Update the phase entry in TASKS.md:
-   ```markdown
-   ### Phase <NN>: <Phase Name>
-   - Status: done
-   - Commit: <sha>
-   - Completed: <ISO datetime>
-   ```
-4. **No container cleanup.** The TDD pipeline never starts or manages containers, so there's nothing to prune.
-
-### 7z — Close phase span
-
-Determine `$PHASE_OUTCOME`:
-- `ok` — phase reached green tests + commit
-- `blocked` — three-strike rule fired
-- `failed` — phase aborted (non-recoverable)
-
-Determine `$PHASE_SUCCESS` — the correctness signal from the RED test oracle, independent of `$PHASE_OUTCOME` (`ok` means "did not crash", not "was correct first try"):
-- `pass@1` — tests went green on the tdd-cycle agent's first attempt (`$AGENT_RETRIES == 0`)
-- `pass@k` — green only after retries (`$AGENT_RETRIES > 0`)
-- `fail` — the phase never reached green (`blocked`/`failed`)
-
-Set `$PHASE_ATTEMPTS` to the tdd-cycle agent's attempt count (`$AGENT_RETRIES + 1`). Both are absent for `docs`-mode phases with no test oracle.
-
-Run:
 ```bash
-node "<root>/bin/trace-end-span.mjs" \
-  --span "$PHASE_SPAN_ID" --status "$PHASE_OUTCOME" \
-  ${PHASE_SUCCESS:+--success "$PHASE_SUCCESS"} \
-  ${PHASE_ATTEMPTS:+--attempts "$PHASE_ATTEMPTS"}
+node <plugin-root>/bin/phase-state.mjs --event=end \
+  --task-dir="<TASK_DIR>" --service="<service-id>" --phase="<NN>" \
+  --phase-file="<PHASE_FILE>" --phase-title="<Phase Name>" \
+  --status="<done|blocked|failed>" \
+  --tests-passed="<pass-count>" --tests-total="<total-count>" \
+  --artifacts="<comma-separated file paths from the tdd-cycle report>" \
+  [--deviations="<one line, as the agent reported it>"] \
+  <--commit-sha="<sha from Step 7j>" | --no-diff> \
+  [--span="$PHASE_SPAN_ID" --span-status="$PHASE_OUTCOME" \
+   --span-success="$PHASE_SUCCESS" --span-attempts="$PHASE_ATTEMPTS"]
 ```
+
+**Commit argument — exactly one of the two:** `--commit-sha=<sha>` with the value
+Step 7j's `finalize-phase.sh` already returned (`commit_sha=` line) — do NOT run
+`git rev-parse` again, that is a duplicate Bash dispatch for data you already
+have — or `--no-diff` when Step 7j returned `status=abort` with
+`reason=no_changes`, which writes `Commit: (no diff)`. Passing both aborts with
+`reason=conflicting_commit_inputs`.
+
+**The `--span-*` flags are passed ONLY when `TRACING_ON` (Step 0.5) is true**, with
+`$PHASE_SPAN_ID` from 7b. Without them the script never loads the trace layer.
+Determine the span values exactly as the retired 7z did:
+
+- `$PHASE_OUTCOME`: `ok` (green tests + commit), `blocked` (three-strike rule fired), `failed` (phase aborted, non-recoverable).
+- `$PHASE_SUCCESS` — the correctness signal from the RED test oracle, independent of `$PHASE_OUTCOME` (`ok` means "did not crash", not "was correct first try"): `pass@1` when the tdd-cycle agent went green on its first attempt (`$AGENT_RETRIES == 0`), `pass@k` when green only after retries, `fail` when the phase never reached green.
+- `$PHASE_ATTEMPTS` = `$AGENT_RETRIES + 1`. Both `$PHASE_SUCCESS` and `$PHASE_ATTEMPTS` are absent for `docs`-mode phases, which have no test oracle.
+
+**Output (key=value)**: `status=ok`, `event=end`, `phase=<NN>`, `phase_status=<status>`,
+`completed_at=<ISO>`, `grammar=`, `commit=<sha|(no diff)>`, `tasks_md=`, `phase_file=`,
+plus `span_closed=true` when the span flags were passed. An abort exits non-zero with
+the same `reason=` vocabulary as 7b; it is an orchestrator bug, not a phase failure.
+
+Then output the milestone to terminal (free, no tool call):
+`Phase <NN> complete. Tests: <pass-count>/<total-count> passing.`
+
+**No container cleanup.** The TDD pipeline never starts or manages containers, so there's nothing to prune.
+
+### 7z — Close phase span: FOLDED INTO 7l
+
+The phase span closes in-process inside `phase-state.mjs --event=end` (it imports
+`bin/lib/trace/emitter.mjs` and reads the matching start from the trace file, the
+same contract `bin/trace-end-span.mjs` implements). No separate Bash call — and
+none at all when `TRACING_ON` is false.
 
 ---
 
@@ -1083,7 +1163,7 @@ The resolver exists because the hardcoded `npx jest --findRelatedTests src/…` 
 
 1. Use the cached `TASK_FANOUT_CAP` (computed at Step 4c, referenced in Step 6.4) to decide cross-service fan-out: when `> 1`, run up to that many services concurrently (each resolved with `--workers=1` per 8b.2); when `= 1`, run sequentially per service.
 2. Per service whose `strategy` is not `full-suite`, run `PLAN.command` on the host runtime. Stream stdout for dev visibility.
-3. **Wrap each service's run in the Step 7 span wrapper** so Step 7+8 wall-clock is measurable from the spans: open with `--name affected_tests --scope task --task "$TASK_SLUG" --service "$SERVICE_ID" --phase-parallelism "$TASK_FANOUT_CAP" --parent "$WORKFLOW_SPAN_ID" --trace "$WORKFLOW_TRACE_ID"` (no `--agent`, no wave flags — this is an orchestrator Bash run, not an agent dispatch), and close with `trace-end-span.mjs` passing `--status ok` on exit 0, `--status failed` otherwise. Empty span ids under `TRACE_DISABLED=1` are tolerated as everywhere else.
+3. **Only when `TRACING_ON` (Step 0.5) is true**, wrap each service's run in the Step 7 span wrapper so Step 7+8 wall-clock is measurable from the spans (when it is false, emit neither call): open with `--name affected_tests --scope task --task "$TASK_SLUG" --service "$SERVICE_ID" --phase-parallelism "$TASK_FANOUT_CAP" --parent "$WORKFLOW_SPAN_ID" --trace "$WORKFLOW_TRACE_ID"` (no `--agent`, no wave flags — this is an orchestrator Bash run, not an agent dispatch), and close with `trace-end-span.mjs` passing `--status ok` on exit 0, `--status failed` otherwise. Empty span ids under `TRACE_DISABLED=1` are tolerated as everywhere else.
 4. Capture the runner's exit code as `AFFECTED_TESTS_RESULT[service-id]`.
 
 #### 8b.5 — Handle failures
@@ -1093,7 +1173,7 @@ If any service's affected tests failed:
 - Build an `--agent=implementer --service=<service-id> --plugin-root=<PLUGIN_ROOT>` prompt per §2c with that notes file and dispatch `jlu-implementer` (model: **MODEL_CONFIG.code**, default sonnet). Retry up to 5 times.
 - If still failing after 5 attempts: pause and notify user.
 
-Every service the 8b.2 routing table skipped (`strategy = full-suite`) already carries its `SKIPPED` status, its `skip_reason` and its `SHIP_CAVEATS` line; surface `Run /jlu-test-suite from <service-path> before /jlu-ship to confirm no regressions.` in the Step 9 summary.
+Every service the 8b.2 routing table skipped (`strategy = full-suite`) already carries its `SKIPPED` status, its `skip_reason` and its `SHIP_CAVEATS` line. `SHIP_CAVEATS` is the only surface for it — Step 9's summary block is retired, and ship renders every caveat in the PR body under `### Not verified by this PR`. Log `Run /jlu-test-suite from <service-path> before /jlu-ship to confirm no regressions.` to the terminal when it happens; do not hold it for a final report.
 
 #### 8b.6 — Record the affected-tests results
 
@@ -1115,52 +1195,30 @@ AFFECTED_TESTS_RESULT = {
 
 ### 8c. Comprehensive QA (static only): RETIRED (no owner — read the trade below)
 
-This step used to be the single static quality gate for the whole task: one
-`jlu-spec-reviewer` dispatch in `MODE: final-qa` that read the authoritative
-per-service diff and returned coverage, coverage-breadth, code-smell,
-over-engineering, security, performance, convention, cross-service-contract and
-test-rewrite findings, split into blocking (fixed in-session by `jlu-implementer`)
-and advisory (published as `SHIP_CAVEATS`). It is **retired**: `execute-task` no
-longer dispatches any QA agent, and `jlu-spec-reviewer` is deleted from the plugin.
+**Retired**: `execute-task` dispatches no QA agent, and `jlu-spec-reviewer` is
+deleted from the plugin. Measured, not assumed: the agent cost **~112 s and ~6 261
+output tokens per dispatch** and ran twice per task, statically re-reading a diff the
+pipeline already validates by execution — and it could only annotate a build, never
+fail one.
 
-Why it was retired — measured, not assumed. The agent cost **~112 s and ~6 261
-output tokens per dispatch**, and it ran twice per task (here in `final-qa` mode,
-and again at ship Step 2b in `compliance` mode). That is pure static re-reading of
-a diff the pipeline has already validated by execution: Step 8b runs the affected
-tests, `/jlu-test-suite` runs the full suite on demand, and `/jlu-goal` runs the
-real E2E suites against a booted stack. The gate could not fail a build, only
-annotate one.
-
-**Nothing inherits the gate.** This is the honest statement of the trade, not a
-hand-off. What survives is only what already existed independently of the agent:
-
-- **Affected-test execution** — Step 8b, unchanged. It was never the reviewer's.
-- **Coverage breadth** — `bin/probe-coverage-breadth.mjs`, a deterministic script,
-  still runs at ship Step 2b.6b (always, advisory, scoped to changed
-  `*.dto.*`/`*.schema.*` files) and inside `/jlu-goal` Phase 4.5 via
-  `jlu-test-suite-runner`. The unconditional whole-task FAIL on a validated field
-  with no rejecting test is gone; what remains is a heuristic probe that warns.
-- **The Testcontainers/Docker tier ban** — still stated in
-  `jelou/references/tdd-cycle.md` and still in the self-checklists of the agents
-  that author tests (`jlu-tdd-cycle`, `jlu-test-writer`). There is no longer an
-  independent verifier that the authors obeyed it.
-- **The no-comments rule** — still inherited by every code-authoring agent from
-  `jelou/references/subagent-base.md`. No agent re-reads the diff to catch a
-  comment that slipped through.
+**Nothing inherits the gate.** What survives existed independently of the agent:
+**Affected-test execution** — Step 8b, unchanged; coverage breadth via the
+deterministic `bin/probe-coverage-breadth.mjs` at ship Step 2b.6b and in `/jlu-goal`
+Phase 4.5 (the unconditional whole-task FAIL on a validated field with no rejecting
+test is gone); the Testcontainers/Docker tier ban, now self-enforced by the agents
+that author tests; and **The no-comments rule**, inherited from
+`jelou/references/subagent-base.md` — No agent re-reads the diff to catch a
+comment that slipped through.
 
 Unenforced from here on, with no replacement anywhere in the pipeline: code-smell
 and over-engineering review, security review of new endpoints, N+1 and unbounded
-query review, CONVENTIONS.md compliance on the diff, cross-service contract
-matching, the audit that every tdd-cycle test rewrite carried a valid spec quote,
-priority scrutiny of the tdd-cycle's own `Test Objections` / `Deviations` flags,
+query review, CONVENTIONS.md compliance, cross-service contract matching, the
+spec-quote audit of test rewrites, the tdd-cycle's own objection/deviation flags,
 the 100-line function cap, and artifact completeness.
 
 `SHIP_CAVEATS` is unaffected as a mechanism — Steps 8e and 8g still append to it,
-and ship still renders it in the PR body under `### Not verified by this PR`. It
-simply no longer receives QA-derived rows, because nothing produces them.
-
-The `AFFECTED_TESTS_RESULT` map from Step 8b is still logged for the run summary;
-it just has no downstream consumer that re-reads it. Continue to Step 8d.
+and ship still renders it under `### Not verified by this PR`; it simply receives no
+QA-derived rows. Continue to Step 8d.
 
 ### 8d. Post-Validation Cleanup
 
@@ -1225,22 +1283,11 @@ NOT run Playwright (that happens post-deploy under `/jlu-goal` /
 
 ### Step 8f — Backend E2E authoring: RETIRED (owned by `/jlu-goal` Phase 3.5)
 
-This step used to author the backend E2E suite here, shift-left, so a backend change
-would carry its controller-level suite into the PR. It is **retired**: `execute-task`
-no longer dispatches `jlu-test-writer` for backend E2E, and no longer authors
-`test/e2e/**`.
-
-Why it was retired — measured, not assumed. Backend E2E authoring was the single most
-expensive dispatch in a mono-service run (290 s of a 1 940 s Step 7+8, ~15%) and
-`execute-task` **never runs** what it produced: execution has always belonged to
-`/jlu-goal` Phase 3.5. Paying the authoring cost on the critical path of the stage that
-cannot verify the artifact is the wrong stage for the work.
-
-Nothing is lost. `/jlu-goal` Phase 3.5 already treats a missing suite as
-**mandatory, not discretionary** authoring: a `NO_E2E_SUITE` verdict routes to
-`jlu-test-writer` with the `jelou/references/backend-e2e-authoring.md` doctrine, and the
-phase is non-bypassable. The suite is now authored by the stage that immediately runs it,
-which is also the only stage that can prove it green.
+**Retired**: `execute-task` no longer dispatches `jlu-test-writer` for backend E2E and
+no longer authors `test/e2e/**`. Measured, not assumed: it was the most expensive
+dispatch in a mono-service run (290 s of a 1 940 s Step 7+8, ~15%) for an artifact this
+stage never runs. `/jlu-goal` Phase 3.5 owns it, treats a missing suite as **mandatory,
+not discretionary** authoring, and is the only stage that can prove it green.
 
 The trade this makes explicit: a PR opened without ever running `/jlu-goal` does not
 carry a backend E2E suite. Frontend parity is unaffected — **Step 8e (UI E2E) stays**,
@@ -1287,44 +1334,30 @@ If all validation passes:
    - Status: `validating` → `ready_to_publish`
    - Add completion timestamp
    - Record final test counts
-2. Print the final summary directly to terminal — no agent dispatch (orchestrator already has every field from prior steps). Format:
-
-   ```
-   ## Execution Complete — <TASK_SLUG>
-
-   Status: ready_to_publish · <N> phase(s) · <C> commit(s) on production/<TASK_SLUG>
-
-   ### Phases
-   | NN | Name | Service | Tests | Commit |
-   |----|------|---------|-------|--------|
-   | 01 | <name> | <service-id> | <pass>/<total> | <sha> |
-   | ...
-
-   ### Verification
-   - Tier 1 tests: <count> passing
-   - Tier 2 tests: <count> passing (or "none — no deferred requirements")
-   - Build: <pass | skipped (all phases trivial) | n/a>
-   - QA findings: <count>
-
-   ### Files Changed
-   <total: +<insertions> / -<deletions> across <N> files>
-
-   ### Next Steps
-   <one of the two blocks below — never both>
-   ```
+2. **Print nothing here when the chain is on.** The old `Execution Complete`
+   report block — its phases table, its verification list, its files-changed
+   totals and its next-steps list — is **deleted**. It restated state that already
+   lives in TASKS.md and the phase files, and on the normal (chain-on) path the
+   user then received a second large report from Step 9.5e immediately after:
+   ~40 lines to convey two URLs. The final output of this workflow is the PR list
+   at 9.5e and nothing else.
 
    Resolve the autochain flag NOW (§2 of
    `{plugin-root}/jelou/references/autochain-handoff.md`; Step 9.5 reuses this
-   same resolved value) and pick the `Next Steps` block from it:
+   same resolved value):
 
-   - **Chain on** (`true`) → print exactly
-     `Auto-chain engaged — shipping and driving PRs to green (Step 9.5).`
-     then continue into Step 9.5. Do **not** print a `/jlu-ship` line: that
-     line is the manual fallback, and printing it while the chain is on is
-     what turns an autonomous run into a question the user has to answer.
-   - **Chain off** → print the manual block:
-     `- Run /jlu-ship to open the pull request.` and
-     `- After merge, run /jlu-close-task.`
+   - **Chain on** (`true`) → print **NOTHING** and fall through to Step 9.5, which
+     owns the entire final output. Do not print a status line, a phases table, or
+     a `/jlu-ship` line: that line is the manual fallback, and printing it while
+     the chain is on is what turns an autonomous run into a question the user has
+     to answer.
+   - **Chain off** → no PR will exist, so print exactly these two lines and stop:
+
+     ```
+     ## <TASK_SLUG>
+
+     - Run /jlu-ship to open the pull request.
+     ```
 
 ---
 
@@ -1338,7 +1371,7 @@ lands in Step 10 instead, so a PR is only ever opened on a green gate.
 `{plugin-root}/jelou/references/autochain-handoff.md` (precedence:
 `--no-autochain` argument > `JLU_AUTOCHAIN` env >
 `node {plugin-root}/bin/jlu-settings.mjs get autochain`). If the resolved
-value is not `true`, stop here — the manual `Next Steps` from Step 9 stand.
+value is not `true`, stop here — Step 9's two-line chain-off block stands.
 
 **Resolved `true` is the user's standing authorization to ship.** It covers
 the outward-facing act — pushing branches, opening PRs — for this entire
@@ -1477,34 +1510,48 @@ WARN-and-skip (recipe §1) — any ClickUp failure is a WARN and the chain
 result never depends on it. Skip silently when `CLICKUP_TASK.json` does not
 exist.
 
-**9.5e — Final report.** Print:
+**9.5e — Final report.** This is the workflow's ONLY output on the chain-on path
+(Step 9 prints nothing). It is the PR list, and — conditionally — the two things
+that cannot be recovered from a URL. Print:
 
 ```
-## Auto-chain Complete — <TASK_SLUG>
+## <TASK_SLUG>
 
-Task-green: YES | NO
-| PR | Service | Verdict | Cycles | Escalations |
-|----|---------|---------|--------|-------------|
-| <url> | <service-id> | GREEN | 1/2 | 0 |
-| <url> | <service-id> (staging) | NOT_GREEN | 2/2 | 2 |
-| — | <service-id> | BLOCKED at ship (<reason>) | — | — |
-
-ClickUp: <updated | WARN <reason> | not linked>
-
-### Autonomous gate decisions (from SHIP_CAVEATS)
-- <what ship decided at a gate, and why>
-(or "none — no gate fired")
-
-### Escalations (verbatim from runners)
-- <signal> — <one line> — resume: /jlu-resolve-pr <pr-url>
-- <service-id> blocked at ship: <reason> — resume: fix, then /jlu-execute-task <task-slug>
-(or "none")
-
-### Next Steps
-- Task-green: after review/approval merge the PR(s), then run /jlu-close-task.
-- Not green: resolve each escalation (resume commands above), or re-run
-  /jlu-resolve-pr interactively in the affected checkout.
+- <pr-url> · <service-id> · <GREEN | NOT_GREEN>
+- <pr-url> · <service-id> (staging) · <GREEN | NOT_GREEN>
+- — · <service-id> · BLOCKED (<reason>)
 ```
+
+One bullet per PR, in ship's row order; a service ship blocked has no URL, so its
+bullet opens with `—` and carries `BLOCKED (<reason>)`. Rows with
+`Action ∈ {skipped, n/a}` get no bullet at all — nothing was shipped for them.
+Print no heading other than the task slug, no task-green line (it is the AND of
+the bullets and visible in them), no cycles column, and no `### Next Steps`.
+
+**Conditional sections — print each ONLY when it has content, and print nothing
+at all when it does not (no "none" line, no empty heading):**
+
+- **Escalations.** When at least one runner escalated, or at least one service is
+  `BLOCKED`, print an `### Escalations` section with one line each, keeping the
+  runner's signal **verbatim** and its `resume:` command:
+
+  ```
+  ### Escalations
+  - <signal> — <one line> — resume: /jlu-resolve-pr <pr-url>
+  - <service-id> blocked at ship: <reason> — resume: fix, then /jlu-execute-task <task-slug>
+  ```
+
+  Zero escalations and zero blocked services → the section does not appear.
+
+- **Autonomous gate decisions (SHIP_CAVEATS).** Same rule: print
+  `### Autonomous gate decisions (from SHIP_CAVEATS)` with one line per decision
+  only when a gate actually fired. No gate fired → nothing is printed. The caveats
+  are already rendered in each PR body under `### Not verified by this PR`; this
+  section is the terminal echo, not their storage.
+
+- **ClickUp.** Print a `ClickUp: WARN <reason>` line only on a WARN or failure at
+  9.5d. On success, and when `CLICKUP_TASK.json` does not exist, print nothing —
+  a silent success needs no line.
 
 Fire one OS notification (best-effort, never blocking) summarizing the
 aggregate:
@@ -1611,7 +1658,7 @@ Awaiting your input to proceed.
 | #7 | PROPOSAL.md bridges SPEC.md and implementation |
 | #9 | Dependency-driven multi-service execution order |
 | #10 | User stories auto-generated from spec in hybrid format |
-| #13 | **Retired**: per-phase QA was consolidated into one final static gate (Step 8c), and that gate is now retired too — no static QA agent runs in this workflow |
+| #13 | **Retired**: no static QA agent runs in this workflow (see Step 8c) |
 | #19 | Phase files: immutable requirements + mutable execution |
 | #21 | Two-pass proposal: global strategy + per-service detail |
 | #29 | **Superseded**: always autonomous, execution mode selection removed |
@@ -1623,6 +1670,10 @@ Awaiting your input to proceed.
 ---
 
 ## Step N — Close workflow span
+
+**Guard: skip this entire step when `TRACING_ON` (Step 0.5) is false.** No span was
+opened, so there is nothing to close and no Bash call to emit. `$WORKFLOW_OUTCOME`
+is still determined — Step 9.5e references it — it just is not published anywhere.
 
 Determine `$WORKFLOW_OUTCOME`:
 - `ok` — all phases done, QA green, ready for `/jlu-ship` (or, when the

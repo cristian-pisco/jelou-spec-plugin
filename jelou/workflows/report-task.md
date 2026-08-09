@@ -7,11 +7,17 @@
 
 You are the orchestrator for the `/jlu-report-task` command.
 
-## Step 0 — Open workflow span
+## Step 0 — Trace gate, then open workflow span
 
-> **Tracing tolerance**: When `TRACE_DISABLED=1`, captured ids are empty strings — the workflow continues regardless.
+**Resolve `TRACING_ON` exactly once, here.** See `jelou/references/tracing.md`.
 
-Run:
+- `TRACING_ON = true` **only** when the env var `JLU_TRACE=1`.
+- `TRACE_DISABLED=1` forces `TRACING_ON = false`, whatever `JLU_TRACE` says (back-compat hard kill).
+- Default, with neither set: **false**. Tracing is OFF for normal runs; the `jlu-bench` evaluation harness is what turns it on.
+
+**When `TRACING_ON = false`, emit no trace Bash call at all** — not `trace-start-span`, not `trace-end-span`. `WORKFLOW_SPAN_ID` and `WORKFLOW_TRACE_ID` stay unset and "Step N — Close workflow span" is skipped outright. The cost being avoided is the Bash call itself — the process spawn plus the agent-turn roundtrip — which is paid even when the script short-circuits internally, so the gate lives here and never inside the script.
+
+**When `TRACING_ON = true`**, run:
 ```bash
 WF_OUT=$(node "<root>/bin/trace-start-span.mjs" \
   --name report_task --scope task --task "$TASK_SLUG")
@@ -109,6 +115,8 @@ If the user requests detailed mode, include code highlights, test results, and a
 ---
 
 ## Step N — Close workflow span
+
+Skip this entire step when `TRACING_ON = false` (Step 0).
 
 Determine `$WORKFLOW_OUTCOME`:
 - `ok` — report generated

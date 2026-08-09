@@ -3,6 +3,28 @@
 > Reference for the plugin-native tracing system introduced in Phase 1.
 > See `docs/superpowers/specs/2026-05-23-tracing-observability-design.md` for the full design.
 
+## Tracing is OFF by default
+
+Tracing is **off unless `JLU_TRACE=1`** is set in the environment. The `jlu-bench` evaluation harness sets it; normal user-facing runs do not.
+
+Each instrumented workflow resolves a single flag, `TRACING_ON`, exactly once at its trace-bootstrap step (Step 0):
+
+| Environment | `TRACING_ON` |
+|---|---|
+| `JLU_TRACE=1` | `true` |
+| `JLU_TRACE=1` **and** `TRACE_DISABLED=1` | `false` — `TRACE_DISABLED` is a back-compat hard kill and always wins |
+| neither set | `false` (default) |
+
+### Why the gate is in the workflow and not in the scripts
+
+`TRACE_DISABLED=1` short-circuits *inside* `bin/trace-*.mjs`. That saves nothing that matters: the workflow still emits the Bash call, so the process spawn and the agent-turn roundtrip (~15s each) are paid in full before the script decides to do nothing. **The call itself is the cost.** So the gate lives in the workflow: when `TRACING_ON = false`, no trace Bash call is emitted at all — no `trace-start-span`, no `trace-end-span`, no `trace-reconcile`, no `trace-suggest`, no `trace-feedback`, no `trace-snapshot-task`. Span ids stay unset and every dependent step is skipped outright, rather than being called and then tolerated.
+
+The in-script `TRACE_DISABLED` short-circuit stays as defence-in-depth for direct CLI use; it is not the mechanism the workflows rely on.
+
+### Consequence
+
+With tracing off, normal runs produce no spans. `/jlu-trace-report`, the suggester (`bin/trace-suggest.mjs`) and the `trace-regress` golden-set gate therefore get **no data from normal runs** — their only input is what the bench harness records with `JLU_TRACE=1`. The free accept/reject ground-truth harvest at `/jlu-close-task` is likewise conditional on `TRACING_ON`, and stays best-effort: it can never fail closure.
+
 ## Where traces live
 
 - **Per-workspace store**: `<WORKSPACE>/.traces/spans.jsonl`
@@ -190,7 +212,7 @@ interactive approval lives only in `refine-task` and the on-demand
 
 All three honor:
 - `TRACE_FILE` (path override; defaults to `<cwd>/.traces/spans.jsonl`)
-- `TRACE_DISABLED=1` (no-op short-circuit)
+- `TRACE_DISABLED=1` (no-op short-circuit — defence-in-depth for direct CLI use; workflows gate on `TRACING_ON` before emitting the call, see "Tracing is OFF by default")
 
 The reconciler additionally honors `TRACE_RECONCILE_AFTER_MS` (default `1800000` = 30 min).
 
@@ -199,5 +221,6 @@ The reconciler additionally honors `TRACE_RECONCILE_AFTER_MS` (default `1800000`
 The tracing system is **best-effort instrumentation, never a failure axis.** If the
 store is unwritable, the emitter writes a warning to stderr and continues. If a
 span is interrupted (process killed, ctrl-C), the reconciler closes it on the next
-workflow run. Workflows that consume `bin/trace-start-span.mjs` output must tolerate
-empty `span_id` (e.g., when `TRACE_DISABLED=1`).
+traced workflow run. Workflows only consume `bin/trace-start-span.mjs` output under
+`TRACING_ON = true`, so a real `span_id` is expected there; with `TRACING_ON = false`
+the call is never made and the span id simply does not exist.

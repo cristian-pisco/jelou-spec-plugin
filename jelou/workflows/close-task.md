@@ -7,11 +7,17 @@
 
 ---
 
-## Step 0 — Open workflow span
+## Step 0 — Trace gate, then open workflow span
 
-> **Tracing tolerance**: When `TRACE_DISABLED=1`, captured ids are empty strings — the workflow continues regardless.
+**Resolve `TRACING_ON` exactly once, here.** See `jelou/references/tracing.md`.
 
-Run:
+- `TRACING_ON = true` **only** when the env var `JLU_TRACE=1`.
+- `TRACE_DISABLED=1` forces `TRACING_ON = false`, whatever `JLU_TRACE` says (back-compat hard kill).
+- Default, with neither set: **false**. Tracing is OFF for normal runs; the `jlu-bench` evaluation harness is what turns it on.
+
+**When `TRACING_ON = false`, emit no trace Bash call at all** — not `trace-start-span`, not `trace-feedback` (Step 2b), not `trace-snapshot-task` (Step 3.5), not `trace-end-span`. `WORKFLOW_SPAN_ID` and `WORKFLOW_TRACE_ID` stay unset and every trace-dependent step is skipped outright. The cost being avoided is the Bash call itself — the process spawn plus the agent-turn roundtrip — which is paid even when the script short-circuits internally, so the gate lives here and never inside the script.
+
+**When `TRACING_ON = true`**, run:
 ```bash
 WF_OUT=$(node "<root>/bin/trace-start-span.mjs" \
   --name close_task --scope task --task "$TASK_SLUG")
@@ -67,11 +73,11 @@ WORKFLOW_TRACE_ID=$(echo "$WF_OUT" | jq -r '.trace_id // ""')
 For each affected service:
 
 3. **Trunk PR** (required): `gh pr view <trunk-pr-url> --json state,mergedAt`. Must be in `MERGED` state.
-   - When `MERGED`: proceed, and record the free accept ground-truth signal keyed by the ship span_id. This is the zero-cost accept/reject harvest that feeds the eval layer (Stage 2). Best-effort — tolerate empty output / `TRACE_DISABLED` (the CLI never fails closure):
+   - When `MERGED`: proceed. **Only when `TRACING_ON = true` (Step 0)**, also record the free accept ground-truth signal keyed by the ship span_id — the zero-cost accept/reject harvest that feeds the eval layer (Stage 2). With `TRACING_ON = false` this call is not emitted at all and closure proceeds unchanged. It stays best-effort: a non-zero exit or empty output never fails closure.
      ```bash
      node "<root>/bin/trace-feedback.mjs" --task "$TASK_SLUG" --signal accept --source pr_merge --note merged_clean
      ```
-   - When `CLOSED` but not merged: record the reject signal (same best-effort tolerance — this is the other half of the free ground-truth harvest), then present the same options as today (check different URL / skip PR check / abort):
+   - When `CLOSED` but not merged: **only when `TRACING_ON = true`**, record the reject signal (same best-effort rule — the other half of the free ground-truth harvest); then, regardless of `TRACING_ON`, present the same options as today (check different URL / skip PR check / abort):
      ```bash
      node "<root>/bin/trace-feedback.mjs" --task "$TASK_SLUG" --signal reject --source pr_close --note reverted
      ```
@@ -221,6 +227,8 @@ For each affected service:
 
 Persist every span tagged with this task's `task_slug` to `<TASK_DIR>/_traces/snapshot.jsonl`. This preserves the task's full trace history even after workspace `spans.jsonl` rotates.
 
+Skip this entire step when `TRACING_ON = false` (Step 0) — with tracing off there are no spans to snapshot, so the call is never emitted.
+
 Best-effort — closure proceeds whether or not this succeeds:
 
 ```bash
@@ -295,6 +303,8 @@ Present the final summary:
 ---
 
 ## Step N — Close workflow span
+
+Skip this entire step when `TRACING_ON = false` (Step 0).
 
 Determine `$WORKFLOW_OUTCOME`:
 - `ok` — closure complete (ClickUp + Slack updated, task status moved)

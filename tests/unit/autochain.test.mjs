@@ -84,10 +84,36 @@ describe('execute-task auto-chain (Step 9.5)', () => {
     assert.match(step95, /SHIP_CAVEATS/);
   });
 
-  test('Step 9 prints the manual /jlu-ship line only when the chain is off', () => {
+  test('Step 9 prints nothing when the chain is on, the manual line only when it is off', () => {
     assert.match(step9, /\*\*Chain on\*\* \(`true`\)/);
+    assert.match(step9, /print \*\*NOTHING\*\*/);
     assert.match(step9, /\*\*Chain off\*\*/);
-    assert.match(step9, /Do \*\*not\*\* print a `\/jlu-ship` line/);
+    assert.match(step9, /- Run \/jlu-ship to open the pull request\./);
+    assert.match(step9, /Do not print a status line, a phases table, or\s*a `\/jlu-ship` line/);
+  });
+
+  test('Step 9 no longer prints the Execution Complete report block', () => {
+    assert.doesNotMatch(step9, /## Execution Complete/);
+    assert.doesNotMatch(step9, /### Verification/);
+    assert.doesNotMatch(step9, /### Files Changed/);
+    assert.doesNotMatch(step9, /### Next Steps/);
+    assert.doesNotMatch(step9, /Tier 1 tests:/);
+  });
+
+  test('Step 9.5e collapses the final report to one bullet per PR', () => {
+    assert.doesNotMatch(step95, /## Auto-chain Complete/);
+    assert.doesNotMatch(step95, /\| PR \| Service \| Verdict \| Cycles \| Escalations \|/);
+    assert.match(step95, /- <pr-url> · <service-id> · <GREEN \| NOT_GREEN>/);
+    assert.match(step95, /- — · <service-id> · BLOCKED \(<reason>\)/);
+  });
+
+  test('Step 9.5e keeps escalations, gate decisions and ClickUp conditional', () => {
+    assert.match(step95, /### Escalations/);
+    assert.match(step95, /resume: \/jlu-resolve-pr <pr-url>/);
+    assert.match(step95, /resume: fix, then \/jlu-execute-task <task-slug>/);
+    assert.match(step95, /print each ONLY when it has content/);
+    assert.match(step95, /no "none" line/);
+    assert.match(step95, /`ClickUp: WARN <reason>` line only on a WARN or failure/);
   });
 
   test('flag resolution goes through jlu-settings with per-invocation opt-out', () => {

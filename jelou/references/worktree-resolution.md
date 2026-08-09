@@ -2,11 +2,22 @@
 
 > Resolves the correct source path (worktree or main repo) for each affected service in a task. Used by any workflow or skill that needs to read or modify service code in the context of a task.
 
-## Precondition: `.worktrees/` Must Be Git-Ignored
+## Precondition: `.worktrees/` Must Be Git-Ignored (auto-fixed)
 
-Before any `git worktree add` runs (in `/jlu-new-task` and downstream), the service repo's `.worktrees/` directory must be present in the repo's `.gitignore`. The new-task workflow enforces this with a `git check-ignore -q .worktrees` pre-flight and aborts setup if the directory is tracked. The plugin does **not** auto-modify the service repo's `.gitignore` — modifying a service's tracked configuration without explicit user consent is out of scope.
+Before any `git worktree add` runs (in `/jlu-new-task` and downstream), the service repo's `.worktrees/` directory must be ignored, or worktree contents pollute the repo's tracked state and may be staged by accident.
 
-If you encounter the abort, add `.worktrees/` to the service's `.gitignore`, commit, and re-run `/jlu-new-task`.
+`/jlu-new-task` still runs the `git check-ignore -q .worktrees` pre-flight in **worktree mode only** (branch mode creates no worktree, so the gate does not apply). It is no longer an abort:
+
+1. Exit 0 → already ignored, nothing to do.
+2. Non-zero → the workflow records that a fix is needed and **continues**.
+3. The worktree is created as usual: `git worktree add .worktrees/<TASK_SLUG> -b production/<TASK_SLUG> origin/$TRUNK`.
+4. Then, **inside the worktree** (where `production/<TASK_SLUG>` is checked out), `.worktrees/` is appended to `.gitignore` (the file is created if absent, and an already-present equivalent pattern is not duplicated), staged, and committed as `chore: git-ignore .worktrees/`.
+
+This reversal exists because the old abort was fatal in headless/autonomous runs: the service ended up with no `production/<slug>` branch, and `finalize-phase.sh` then aborted every phase with `reason=wrong_branch` with nobody to escalate to.
+
+### Known limitation
+
+The fix commit lands on the **task branch**, not on trunk. Until that PR merges, the service's trunk still does not ignore `.worktrees/`, so the main checkout keeps showing `.worktrees/` as untracked. This is the accepted trade-off of not writing to a service's trunk. The scope-check in `finalize-phase.sh` runs inside the worktree with the task branch checked out, so it is unaffected.
 
 ## Resolution Algorithm
 

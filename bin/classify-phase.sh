@@ -21,7 +21,7 @@ set -euo pipefail
 
 SUBCOMMAND="${1:-}"
 if [[ -z "$SUBCOMMAND" ]]; then
-  echo "ERROR: subcommand required (mode|trivial|compilable)" >&2
+  echo "ERROR: subcommand required (mode|trivial|all|compilable)" >&2
   exit 1
 fi
 
@@ -62,7 +62,7 @@ DOC_FILE_PATTERNS=(
 # ===========================================================================
 # Subcommand: mode
 # ===========================================================================
-classify_mode() {
+compute_mode() {
   : "${CLASSIFY_PHASE_FILE:?CLASSIFY_PHASE_FILE required (path to phase markdown)}"
   : "${CLASSIFY_SERVICES_IN_PHASE:?CLASSIFY_SERVICES_IN_PHASE required (integer)}"
 
@@ -106,19 +106,22 @@ classify_mode() {
 
   if [[ "$OVERRIDE" == "docs" ]] && [[ "$DOCS_VALIDATION" == "passed" ]]; then
     MODE="docs"
-    REASON="frontmatter_override_validated"
+    MODE_REASON="frontmatter_override_validated"
   elif [[ "$OVERRIDE" == "docs" ]]; then
     MODE="tdd"
-    REASON="docs_override_rejected"
+    MODE_REASON="docs_override_rejected"
   elif [[ "$OVERRIDE" == "vertical" ]] || [[ "$OVERRIDE" == "horizontal" ]]; then
     MODE="tdd"
-    REASON="legacy_mode_override"
+    MODE_REASON="legacy_mode_override"
     echo "note: legacy Mode: $OVERRIDE treated as tdd (vertical/horizontal retired)" >&2
   else
     MODE="tdd"
-    REASON="default"
+    MODE_REASON="default"
   fi
+}
 
+emit_mode() {
+  local reason_key="$1"
   echo "mode=$MODE"
   echo "fr_nfr_count=$FR_NFR_COUNT"
   echo "frontmatter_override=${OVERRIDE:-none}"
@@ -126,13 +129,18 @@ classify_mode() {
   if [[ -n "$DOCS_REJECTION_REASON" ]]; then
     echo "docs_rejection_reason=$DOCS_REJECTION_REASON"
   fi
-  echo "reason=$REASON"
+  echo "$reason_key=$MODE_REASON"
+}
+
+classify_mode() {
+  compute_mode
+  emit_mode reason
 }
 
 # ===========================================================================
 # Subcommand: trivial
 # ===========================================================================
-classify_trivial() {
+compute_trivial() {
   : "${CLASSIFY_SOURCE_PATH:?CLASSIFY_SOURCE_PATH required (path to service worktree/repo)}"
   : "${CLASSIFY_SERVICES_IN_PHASE:?CLASSIFY_SERVICES_IN_PHASE required (integer)}"
 
@@ -168,21 +176,20 @@ classify_trivial() {
     esac
   done <<< "$DIFF_FILES"
 
-  FRONTMATTER_TRIVIAL="${CLASSIFY_FRONTMATTER_TRIVIAL:-0}"
   TRIVIAL="false"
-  REASON=""
+  TRIVIAL_REASON=""
   DOWNGRADE=""
 
   if [[ "$FRONTMATTER_TRIVIAL" == "1" ]]; then
     # Frontmatter override: trivial unless safety bounds exceeded.
     if [[ "$LINES_CHANGED" -gt 50 ]] || [[ "$HAS_LOCKFILE" == "true" ]] || [[ "$HAS_MIGRATION" == "true" ]] || [[ "$HAS_DTS" == "true" ]]; then
       TRIVIAL="false"
-      REASON="frontmatter_override_downgraded"
+      TRIVIAL_REASON="frontmatter_override_downgraded"
       DOWNGRADE="$([[ "$LINES_CHANGED" -gt 50 ]] && echo "lines_over_50 " || true)$([[ "$HAS_LOCKFILE" == "true" ]] && echo "lockfile " || true)$([[ "$HAS_MIGRATION" == "true" ]] && echo "migration " || true)$([[ "$HAS_DTS" == "true" ]] && echo "dts" || true)"
       DOWNGRADE="$(echo "$DOWNGRADE" | xargs)"
     else
       TRIVIAL="true"
-      REASON="frontmatter_override"
+      TRIVIAL_REASON="frontmatter_override"
     fi
   else
     # Default classifier: ≤20 LOC AND ≤3 files AND no risky files AND single service.
@@ -191,13 +198,16 @@ classify_trivial() {
        [[ "$HAS_DTS" == "false" ]] && [[ "$HAS_TSCONFIG" == "false" ]] && \
        [[ "$CLASSIFY_SERVICES_IN_PHASE" -eq 1 ]]; then
       TRIVIAL="true"
-      REASON="size_gate"
+      TRIVIAL_REASON="size_gate"
     else
       TRIVIAL="false"
-      REASON="size_gate"
+      TRIVIAL_REASON="size_gate"
     fi
   fi
+}
 
+emit_trivial() {
+  local reason_key="$1"
   echo "trivial=$TRIVIAL"
   echo "lines_changed=$LINES_CHANGED"
   echo "files_changed=$FILES_CHANGED"
@@ -205,10 +215,28 @@ classify_trivial() {
   echo "has_migration=$HAS_MIGRATION"
   echo "has_dts=$HAS_DTS"
   echo "has_tsconfig=$HAS_TSCONFIG"
-  echo "reason=$REASON"
+  echo "$reason_key=$TRIVIAL_REASON"
   if [[ -n "$DOWNGRADE" ]]; then
     echo "downgrade_reason=$DOWNGRADE"
   fi
+}
+
+classify_trivial() {
+  FRONTMATTER_TRIVIAL="${CLASSIFY_FRONTMATTER_TRIVIAL:-0}"
+  compute_trivial
+  emit_trivial reason
+}
+
+classify_all() {
+  compute_mode
+  if [[ "$OVERRIDE" == "trivial" ]]; then
+    FRONTMATTER_TRIVIAL="1"
+  else
+    FRONTMATTER_TRIVIAL="0"
+  fi
+  compute_trivial
+  emit_mode mode_reason
+  emit_trivial trivial_reason
 }
 
 # ===========================================================================
@@ -290,9 +318,10 @@ classify_compilable() {
 case "$SUBCOMMAND" in
   mode)        classify_mode ;;
   trivial)     classify_trivial ;;
+  all)         classify_all ;;
   compilable)  classify_compilable ;;
   *)
-    echo "ERROR: unknown subcommand: $SUBCOMMAND (expected mode|trivial|compilable)" >&2
+    echo "ERROR: unknown subcommand: $SUBCOMMAND (expected mode|trivial|all|compilable)" >&2
     exit 1
     ;;
 esac

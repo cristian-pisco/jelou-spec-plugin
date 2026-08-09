@@ -12,7 +12,9 @@ PROPOSAL.md is the bridge between "what needs to be built" (SPEC.md) and "what a
 ## Behavioral Guardrails
 
 **Small phases. Clear boundaries. No speculation.**
-- Each phase must be independently testable via one TDD cycle. If you can't describe it in 2-3 sentences, split it.
+- Each phase must be independently testable via one TDD cycle. If you can't describe it in 2-3 sentences, split it — **unless the shared-substrate tiebreaker below says otherwise, which outranks this heuristic.**
+- **Shared-substrate tiebreaker (outranks the split heuristic).** Before splitting, ask three questions about the two candidate phases: same domain entity (same aggregate root / primary table or collection)? same persistence layer (same repository / datastore)? same service? If all three are **yes**, do NOT split — emit ONE phase carrying the union of the requirements and acceptance criteria. "Each verb is describable in 2-3 sentences" is never a reason to split, because it is trivially true of every endpoint; the tiebreaker settles the tie. A 5-endpoint CRUD over one entity in one service is ONE phase (at most two: write-side and read-side, and only when the read side has pagination, filtering, sorting, projection, or a distinct authorization rule). If any answer is **no**, split as usual.
+- This tiebreaker applies (a) when you are deriving phases from a single story that itself covers several operations, and (b) in the SPEC.md fallback path when no stories exist. It NEVER overrides authored stories: one authored story is still at least one phase, and a story spanning multiple services still splits into one phase per service. You fuse *within* a story or *within* the fallback derivation — you never merge two authored stories into one phase, and you never drop an acceptance criterion while fusing (the fused phase carries the union).
 - Don't create dependency chains that could be avoided. Parallel-safe phases ship faster.
 - Be specific about which files and modules are affected — vague proposals produce vague implementations.
 - Don't pad with phases that the spec doesn't require. YAGNI applies to planning too.
@@ -221,7 +223,7 @@ Before finalizing the proposal, verify:
 - [ ] Each phase is small enough for one TDD cycle — can be Red -> Green -> Refactor in a single agent run.
 - [ ] Contract boundaries are defined before any phase that crosses services.
 - [ ] Risks reference specific CONCERNS.md IDs, not vague "could be risky."
-- [ ] The phase count isn't inflated. Fewer phases with clear scope beats many micro-phases.
+- [ ] The phase count isn't inflated. Fewer phases with clear scope beats many micro-phases. Concretely: no two phases share the same domain entity AND the same persistence layer AND the same service — if any pair does, fuse them into one phase carrying the union of their requirements and acceptance (the sole exception is a write-side/read-side pair where the read side has pagination, filtering, sorting, projection, or a distinct authorization rule).
 - [ ] **If `affected_services` includes a UI service, the Testing Strategy lists at least one E2E flow and the phase plan includes a run of `/jlu:ui-qa-run`.** No "manual QA only" or "deferred for MVP" language anywhere in the proposal.
 - [ ] **The emitted `Execution Strategy` AGREES with both signals in this very PROPOSAL.md**: `per-service-parallel` only when no `- **Dependencies**:` entry references a phase of another service AND the `Dependency Order` column contains no `after <service>` row; any disagreement or ambiguity means `sequential`.
 
@@ -229,7 +231,7 @@ Before finalizing the proposal, verify:
 
 - Every phase must be traceable to SPEC.md requirements (FR-*, NFR-*).
 - Phases must be ordered by dependency — never require something from a later phase.
-- Each phase must be small enough for one TDD cycle. If a phase seems too large, split it.
+- Each phase must be small enough for one TDD cycle. If a phase seems too large, split it — subject to the shared-substrate tiebreaker, which forbids splitting phases that share entity + persistence layer + service.
 - Reference CONCERNS.md items by ID when they affect the plan.
 - Follow the engineering principles precedence: Security > Simplicity > Readability > TDD > Repo conventions.
 - Do NOT write implementation code. You write the plan — code agents execute it.

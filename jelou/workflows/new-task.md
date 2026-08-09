@@ -59,11 +59,17 @@ floor is not a gate.
 
 ---
 
-## Step 0 — Open workflow span
+## Step 0 — Trace gate, then open workflow span
 
-> **Tracing tolerance**: When `TRACE_DISABLED=1`, the captured ids are empty strings — the workflow continues regardless.
+**Resolve `TRACING_ON` exactly once, here.** See `jelou/references/tracing.md`.
 
-Run:
+- `TRACING_ON = true` **only** when the env var `JLU_TRACE=1`.
+- `TRACE_DISABLED=1` forces `TRACING_ON = false`, whatever `JLU_TRACE` says (back-compat hard kill).
+- Default, with neither set: **false**. Tracing is OFF for normal runs; the `jlu-bench` evaluation harness is what turns it on.
+
+**When `TRACING_ON = false`, emit no trace Bash call at all** — not `trace-start-span`, not `trace-end-span`, not `trace-reconcile`, not `trace-suggest`, not `trace-feedback`, not `trace-snapshot-task`. `WORKFLOW_SPAN_ID` and `WORKFLOW_TRACE_ID` stay unset and every trace-dependent step in this workflow (including "Step N — Close workflow span") is skipped outright. The cost being avoided is the Bash call itself — the process spawn plus the agent-turn roundtrip — which is paid even when the script short-circuits internally, so the gate lives here and never inside the script.
+
+**When `TRACING_ON = true`**, run:
 ```bash
 WF_OUT=$(node "<root>/bin/trace-start-span.mjs" \
   --name new_task --scope task)
@@ -796,13 +802,26 @@ In worktree mode, skip steps 4 and 5 — the main repo's HEAD and working-tree s
    ```bash
    git -C <repo> check-ignore -q .worktrees
    ```
-   If the command exits non-zero (`.worktrees/` is **not** ignored): abort this service and escalate to the user with: **"Service `<service-id>` does not git-ignore `.worktrees/`. Add `.worktrees/` to the service's `.gitignore` and commit it before re-running `/jlu-new-task`. The plugin will not auto-modify the service repo's `.gitignore`."**
-   If the command exits 0 (already ignored): proceed.
+   If the command exits 0 (already ignored): set `GITIGNORE_FIX_NEEDED = no` and proceed.
+   If the command exits non-zero (`.worktrees/` is **not** ignored): **do NOT abort**. Set `GITIGNORE_FIX_NEEDED = yes` and proceed — the plugin auto-fixes it in step 2b below. Aborting here is what used to leave a headless run with no `production/<slug>` branch, which then made `finalize-phase.sh` abort every phase with `reason=wrong_branch`.
 2. Create the worktree on the new branch:
    ```bash
    git worktree add .worktrees/<TASK_SLUG> -b production/<TASK_SLUG> origin/$TRUNK
    ```
    If `production/<TASK_SLUG>` already exists locally, abort this service: **"Branch `production/<TASK_SLUG>` already exists locally for `<service-id>`. Delete it or use a different slug."**
+
+   2b. **Auto-fix the `.gitignore`** — only when `GITIGNORE_FIX_NEEDED = yes`. Run this **inside the worktree**, where `production/<TASK_SLUG>` is the checked-out branch, so the commit lands on the task branch:
+   ```bash
+   cd <repo>/.worktrees/<TASK_SLUG>
+   grep -qE '^\.worktrees/?$' .gitignore 2>/dev/null || printf '.worktrees/\n' >> .gitignore
+   git add .gitignore
+   git commit -m "chore: git-ignore .worktrees/"
+   ```
+   `.gitignore` is created if absent. The `grep` guard prevents a duplicate entry when an equivalent pattern (`.worktrees` or `.worktrees/`) is already present but was not matched by `check-ignore` (for example because it lives in a not-yet-committed working copy). If after the guard there is nothing to commit, skip the commit silently.
+
+   Log exactly one line: **"Added `.worktrees/` to `<service-id>` .gitignore on `production/<TASK_SLUG>`."**
+
+   Known limitation: the commit lands on the task branch, so the service's trunk still does not ignore `.worktrees/` until that PR merges — the main checkout keeps showing it as untracked. See `jelou/references/worktree-resolution.md`.
 3. Copy untracked files from repo root to worktree:
    ```bash
    for file in .env .npmrc; do
@@ -971,6 +990,8 @@ If `DUAL_PR = yes`: append to the report:
 
 ## Step N — Close workflow span
 
+Skip this entire step when `TRACING_ON = false` (Step 0).
+
 Determine `$WORKFLOW_OUTCOME`:
 - `ok` — the spec reached `planned` state
 - `blocked` — interview aborted (user halted, or required input missing)
@@ -983,4 +1004,4 @@ node "<root>/bin/trace-end-span.mjs" \
   ${TASK_SLUG:+--outcome "task=$TASK_SLUG"}
 ```
 
-Empty `$WORKFLOW_SPAN_ID` (when `TRACE_DISABLED=1`) makes this a no-op.
+This step runs only under `TRACING_ON = true`, so `$WORKFLOW_SPAN_ID` is always a real id here.

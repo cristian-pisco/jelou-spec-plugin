@@ -7,9 +7,17 @@
 
 ---
 
-## Step 0 — Trace bootstrap
+## Step 0 — Trace gate + trace bootstrap
 
-> **Tracing tolerance**: When `TRACE_DISABLED=1`, every span_id is an empty string and downstream calls become no-ops.
+**Resolve `TRACING_ON` exactly once, here.** See `jelou/references/tracing.md`.
+
+- `TRACING_ON = true` **only** when the env var `JLU_TRACE=1`.
+- `TRACE_DISABLED=1` forces `TRACING_ON = false`, whatever `JLU_TRACE` says (back-compat hard kill).
+- Default, with neither set: **false**. Tracing is OFF for normal runs; the `jlu-bench` evaluation harness is what turns it on.
+
+**When `TRACING_ON = false`, emit no trace Bash call at all** — not `trace-reconcile`, not `trace-start-span`, not `trace-suggest`, not `trace-end-span`. Skip the rest of Step 0, skip Step 0b entirely (it shells out), leave `WORKFLOW_SPAN_ID` / `WORKFLOW_TRACE_ID` unset, and skip "Step N — Close workflow span". The cost being avoided is the Bash call itself — the process spawn plus the agent-turn roundtrip — which is paid even when the script short-circuits internally, so the gate lives here and never inside the script.
+
+**When `TRACING_ON = true`**, proceed with the rest of this step exactly as written:
 
 1. **Sweep orphans from any prior interrupted run** (idempotent):
    ```bash
@@ -25,6 +33,8 @@
    ```
 
 ### Step 0b — Surface suggestions from prior runs (non-blocking)
+
+Skip this entire step when `TRACING_ON = false` (Step 0) — it shells out, so it is never emitted with tracing off.
 
 Run the suggester scoped to the current task. It scans recent trace history and emits one SUGGEST block per active rule that fires (bump model tier, extend failure patterns, suggest parallelization, immediate flag on blocked/failed spans of THIS task). The 7-day cooldown is honored automatically.
 
@@ -206,23 +216,15 @@ Read and cache task artifacts in one pass (single parallel tool-call message whe
 
 ### 2b. Spec Compliance Review: RETIRED (only the coverage-breadth probe survives)
 
-This step used to spawn `jlu-spec-reviewer` in `MODE: compliance` to diff the task
-branch against `SPEC.md` + `PROPOSAL.md` and return a requirements-coverage table
-(COVERED / PARTIALLY_COVERED / UNTESTED / MISSING) plus scope-creep detection, which
-was then rendered verbatim in every PR body. It is **retired**: the agent is deleted
-from the plugin and no compliance report is produced or published.
+**Retired**: the `jlu-spec-reviewer` agent is deleted from the plugin and no
+compliance report is produced or published. Measured, not assumed: it cost **~112 s
+and ~6 261 output tokens per dispatch**, ran twice per task, and could not stop
+anything — the gate defaulted to "proceed with a caveat" in autonomous mode, which is
+how the chain actually runs.
 
-Why it was retired — measured, not assumed. The agent cost **~112 s and ~6 261
-output tokens per dispatch** and ran twice per task (here, and again at
-execute-task Step 8c in `final-qa` mode). Both dispatches were static re-reads of a
-diff, and neither could stop anything: the decision gate below already defaulted to
-"proceed with a caveat" in autonomous mode, which is how the chain actually runs.
-
-**Nothing inherits the requirements-coverage table or the scope-creep check.** A PR
-no longer carries a per-FR/NFR/SC coverage statement, and a file changed outside
-everything `SPEC.md` and `PROPOSAL.md` mention is no longer flagged. `SPEC.md`
-itself is still the contract, and `/jlu-goal` still proves behaviour against a real
-stack — but nothing maps the diff back to numbered requirements.
+**Nothing inherits the requirements-coverage table or the scope-creep check.**
+`SPEC.md` is still the contract and `/jlu-goal` still proves behaviour against a real
+stack, but nothing maps the diff back to numbered requirements.
 
 **2b.1 — Coverage-breadth check (static, scoped to changed DTOs — always runs,
 advisory).** This survives because it is a deterministic script, not the agent. It
@@ -947,6 +949,8 @@ other rows say. Report it as such — never present a partial ship as done.
 ---
 
 ## Step N — Close workflow span
+
+Skip this entire step when `TRACING_ON = false` (Step 0).
 
 Determine `$WORKFLOW_OUTCOME`:
 - `ok` — PRs created successfully
