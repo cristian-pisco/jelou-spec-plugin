@@ -9,7 +9,7 @@
 import { test, describe, before, after, beforeEach } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -166,6 +166,44 @@ describe('finalize-phase.sh — scope check', () => {
       assert.equal(r.code, 0, `expected ok, got: ${r.stdout}\n${r.stderr}`);
       assert.equal(r.parsed.status, 'ok');
       assert.equal(r.parsed.files_committed, '2');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('allows a manifest nested under a service directory', () => {
+    const dir = setupRepo();
+    try {
+      writeFileSync(join(dir, 'a.ts'), 'hello\nmod\n');
+      mkdirSync(join(dir, 'shop-api'), { recursive: true });
+      writeFileSync(join(dir, 'shop-api', 'package-lock.json'), '{}\n');
+      const r = runScript({
+        ...BASE_ENV,
+        FINALIZE_SOURCE_PATH: dir,
+        FINALIZE_EXPECTED: 'a.ts',
+      });
+      assert.equal(r.code, 0, `expected ok, got: ${r.stdout}\n${r.stderr}`);
+      assert.equal(r.parsed.status, 'ok');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('still aborts on a nested file that is not a known manifest', () => {
+    const dir = setupRepo();
+    try {
+      writeFileSync(join(dir, 'a.ts'), 'hello\nmod\n');
+      mkdirSync(join(dir, 'shop-api'), { recursive: true });
+      writeFileSync(join(dir, 'shop-api', 'sneaky.ts'), 'oops\n');
+      const r = runScript({
+        ...BASE_ENV,
+        FINALIZE_SOURCE_PATH: dir,
+        FINALIZE_EXPECTED: 'a.ts',
+      });
+      assert.equal(r.code, 2);
+      assert.equal(r.parsed.status, 'abort');
+      assert.equal(r.parsed.reason, 'unexpected_files_in_diff');
+      assert.match(r.parsed.unexpected_files, /shop-api\/sneaky\.ts/);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

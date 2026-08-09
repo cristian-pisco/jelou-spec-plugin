@@ -118,17 +118,24 @@ while IFS= read -r line; do
   ALLOWED["$line"]=1
 done <<< "$FINALIZE_EXPECTED"
 
+declare -A AUTO_STAGED_BASENAMES
 for manifest in "${AUTO_STAGED[@]}"; do
   ALLOWED["$manifest"]=1
+  AUTO_STAGED_BASENAMES["$manifest"]=1
 done
 
-# Validate every file in the diff is in the allowlist.
+# Validate every file in the diff is in the allowlist. Manifests are matched on
+# basename so a service nested under the repo root (monorepo layout) is covered.
 UNEXPECTED=()
 while IFS= read -r file; do
   [[ -z "$file" ]] && continue
-  if [[ -z "${ALLOWED[$file]:-}" ]]; then
-    UNEXPECTED+=("$file")
+  if [[ -n "${ALLOWED[$file]:-}" ]]; then
+    continue
   fi
+  if [[ -n "${AUTO_STAGED_BASENAMES[${file##*/}]:-}" ]]; then
+    continue
+  fi
+  UNEXPECTED+=("$file")
 done <<< "$DIFF_FILES"
 
 if [[ ${#UNEXPECTED[@]} -gt 0 ]]; then
