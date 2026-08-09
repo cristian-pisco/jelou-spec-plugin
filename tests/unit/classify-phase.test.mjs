@@ -9,7 +9,7 @@
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -378,5 +378,202 @@ describe('classify-phase.sh compilable', () => {
     const r = runScript('compilable', { CLASSIFY_FILES: '' });
     assert.equal(r.parsed.compilable, 'false');
     assert.equal(r.parsed.reason, 'no_files');
+  });
+});
+
+// ===========================================================================
+// all subcommand (Step 7c.1 — mode + trivial in one invocation)
+// ===========================================================================
+describe('classify-phase.sh all', () => {
+  function writePhase(dir, contents) {
+    const path = join(dir, 'phase.md');
+    writeFileSync(path, contents);
+    return path;
+  }
+
+  function runAll(dir, phasePath, extraEnv = {}) {
+    return runScript('all', {
+      CLASSIFY_PHASE_FILE: phasePath,
+      CLASSIFY_SOURCE_PATH: dir,
+      CLASSIFY_SERVICES_IN_PHASE: '1',
+      ...extraEnv,
+    });
+  }
+
+  function expectedFrontmatterTrivial(modeParsed) {
+    return modeParsed.frontmatter_override === 'trivial' ? '1' : '0';
+  }
+
+  function assertAgreesWithSeparateSubcommands(dir, phasePath) {
+    const all = runAll(dir, phasePath);
+    const mode = runScript('mode', {
+      CLASSIFY_PHASE_FILE: phasePath,
+      CLASSIFY_SERVICES_IN_PHASE: '1',
+    });
+    const trivial = runScript('trivial', {
+      CLASSIFY_SOURCE_PATH: dir,
+      CLASSIFY_SERVICES_IN_PHASE: '1',
+      CLASSIFY_FRONTMATTER_TRIVIAL: expectedFrontmatterTrivial(mode.parsed),
+    });
+
+    assert.equal(all.code, 0);
+    for (const key of ['mode', 'fr_nfr_count', 'frontmatter_override', 'docs_validation', 'docs_rejection_reason']) {
+      assert.equal(all.parsed[key], mode.parsed[key], `mode key ${key}`);
+    }
+    assert.equal(all.parsed.mode_reason, mode.parsed.reason);
+    for (const key of ['trivial', 'lines_changed', 'files_changed', 'has_lockfile', 'has_migration', 'has_dts', 'has_tsconfig', 'downgrade_reason']) {
+      assert.equal(all.parsed[key], trivial.parsed[key], `trivial key ${key}`);
+    }
+    assert.equal(all.parsed.trivial_reason, trivial.parsed.reason);
+    assert.equal(all.parsed.reason, undefined);
+    return all;
+  }
+
+  test('agrees with mode + trivial on a plain tdd phase', () => {
+    const dir = setupRepo();
+    try {
+      const phase = writePhase(dir, '# Phase 01\n\n## Requirements (immutable)\n- FR-1: implement the handler\n');
+      writeFileSync(join(dir, 'src.ts'), 'export const a = 1;\n');
+      const all = assertAgreesWithSeparateSubcommands(dir, phase);
+      assert.equal(all.parsed.mode, 'tdd');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('agrees with mode + trivial on a validated docs phase', () => {
+    const dir = setupRepo();
+    try {
+      const phase = writePhase(dir, '# Phase 01\n**Mode: docs**\n\n## Requirements (immutable)\n- Update the README\n');
+      const all = assertAgreesWithSeparateSubcommands(dir, phase);
+      assert.equal(all.parsed.mode, 'docs');
+      assert.equal(all.parsed.mode_reason, 'frontmatter_override_validated');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('agrees with mode + trivial on a rejected docs override', () => {
+    const dir = setupRepo();
+    try {
+      const phase = writePhase(dir, '# Phase 01\n**Mode: docs**\n\n## Requirements (immutable)\n- Implement the controller\n');
+      const all = assertAgreesWithSeparateSubcommands(dir, phase);
+      assert.equal(all.parsed.mode, 'tdd');
+      assert.equal(all.parsed.mode_reason, 'docs_override_rejected');
+      assert.equal(all.parsed.docs_validation, 'failed');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('derives the frontmatter-trivial override internally', () => {
+    const dir = setupRepo();
+    try {
+      const phase = writePhase(dir, '# Phase 01\n**Mode: trivial**\n\n## Requirements (immutable)\n- FR-1: rename a constant\n');
+      writeFileSync(join(dir, 'big.ts'), Array.from({ length: 60 }, (_, i) => `const v${i} = ${i};`).join('\n'));
+      git(dir, 'add', 'big.ts');
+      const all = assertAgreesWithSeparateSubcommands(dir, phase);
+      assert.equal(all.parsed.frontmatter_override, 'trivial');
+      assert.equal(all.parsed.trivial, 'false');
+      assert.equal(all.parsed.trivial_reason, 'frontmatter_override_downgraded');
+      assert.match(all.parsed.downgrade_reason, /lines_over_50/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('ignores a caller-supplied CLASSIFY_FRONTMATTER_TRIVIAL', () => {
+    const dir = setupRepo();
+    try {
+      const phase = writePhase(dir, '# Phase 01\n\n## Requirements (immutable)\n- FR-1: implement the handler\n');
+      writeFileSync(join(dir, 'lots.ts'), Array.from({ length: 40 }, (_, i) => `const v${i} = ${i};`).join('\n'));
+      git(dir, 'add', 'lots.ts');
+      const all = runAll(dir, phase, { CLASSIFY_FRONTMATTER_TRIVIAL: '1' });
+      assert.equal(all.parsed.frontmatter_override, 'none');
+      assert.equal(all.parsed.trivial, 'false');
+      assert.equal(all.parsed.trivial_reason, 'size_gate');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('trivial keys are meaningless on a clean tree, which is why 7c.1 ignores them', () => {
+    const dir = setupRepo();
+    try {
+      const phase = writePhase(dir, '# Phase 01\n\n## Requirements (immutable)\n- FR-1: implement a large handler\n');
+      const all = runAll(dir, phase);
+      assert.equal(all.parsed.lines_changed, '0');
+      assert.equal(all.parsed.files_changed, '0');
+      assert.equal(all.parsed.trivial, 'true');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('errors when the source path is missing', () => {
+    const dir = setupRepo();
+    try {
+      const phase = writePhase(dir, '# Phase 01\n\n## Requirements (immutable)\n- FR-1: x\n');
+      const r = runScript('all', {
+        CLASSIFY_PHASE_FILE: phase,
+        CLASSIFY_SOURCE_PATH: join(dir, 'nope'),
+        CLASSIFY_SERVICES_IN_PHASE: '1',
+      });
+      assert.equal(r.code, 1);
+      assert.match(r.stderr, /source path not found/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+// ===========================================================================
+// execute-task per-phase wiring — regression guard
+//
+// PHASE_IS_TRIVIAL must come from a POST-GREEN invocation (Step 7e), never from
+// the pre-dispatch Step 7c.1 call. The triviality classifier is a size gate over
+// `git diff HEAD`; run before the tdd-cycle writes anything it reports
+// trivial=true on a clean tree, which silently disables Step 8a.3's refactor
+// pass (8a.3 skips a service when every one of its phases was trivial).
+// ===========================================================================
+describe('execute-task derives PHASE_IS_TRIVIAL post-Green', () => {
+  const workflow = readFileSync(
+    join(__dirname, '..', '..', 'jelou', 'workflows', 'execute-task.md'),
+    'utf8',
+  );
+
+  const section = (startHeader, endHeader) => {
+    const start = workflow.indexOf(startHeader);
+    assert.notEqual(start, -1, `missing section: ${startHeader}`);
+    const end = workflow.indexOf(endHeader, start + startHeader.length);
+    assert.notEqual(end, -1, `missing terminator: ${endHeader}`);
+    return workflow.slice(start, end);
+  };
+
+  const step7c1 = section('### 7c.1.', '### 7df.');
+  const step7e = section('### 7e —', '### 7e.1');
+
+  test('7c.1 calls classify-phase.sh all but stores no triviality', () => {
+    assert.match(step7c1, /classify-phase\.sh all/);
+    assert.doesNotMatch(step7c1, /\*\*Store\*\*:[\s\S]*PHASE_IS_TRIVIAL/);
+    assert.match(step7c1, /IGNORE THEM HERE/);
+    assert.match(step7c1, /PHASE_FRONTMATTER_OVERRIDE/);
+  });
+
+  test('7e runs the trivial subcommand after Green and owns PHASE_IS_TRIVIAL', () => {
+    assert.match(step7e, /classify-phase\.sh trivial/);
+    assert.match(step7e, /After Green is verified/);
+    assert.match(step7e, /\*\*Store\*\*: `PHASE_IS_TRIVIAL`/);
+  });
+
+  test('7e reuses the frontmatter override 7c.1 already returned', () => {
+    assert.match(step7e, /CLASSIFY_FRONTMATTER_TRIVIAL="<0\|1>"/);
+    assert.match(step7e, /PHASE_FRONTMATTER_OVERRIDE = trivial/);
+    assert.match(step7e, /\*\*Do not re-derive it\*\*/);
+  });
+
+  test('the workflow never tells the reader to skip the post-Green trivial call', () => {
+    assert.doesNotMatch(workflow, /do NOT invoke\s*`?bin\/classify-phase\.sh trivial/i);
+    assert.doesNotMatch(workflow, /Known trade — the triviality result/);
   });
 });

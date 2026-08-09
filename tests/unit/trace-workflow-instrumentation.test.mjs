@@ -35,9 +35,17 @@ describe('execute-task workflow — trace instrumentation', () => {
     assert.match(wf, /WORKFLOW_TRACE_ID/);
   });
 
-  test('per-phase span opened with --name phase', () => {
-    assert.match(wf, /trace-start-span\.mjs[\s\S]*?--name phase/);
+  test('per-phase span opened in-process by phase-state.mjs, not a Bash call', () => {
+    assert.match(wf, /phase-state\.mjs --event=start[\s\S]*?--span-parent="\$WORKFLOW_SPAN_ID"/);
+    assert.match(wf, /--span-trace="\$WORKFLOW_TRACE_ID"/);
     assert.match(wf, /PHASE_SPAN_ID/);
+    assert.doesNotMatch(wf, /trace-start-span\.mjs[\s\S]{0,200}--name phase/);
+  });
+
+  test('tracing is off by default and gated once in Step 0.5', () => {
+    assert.match(wf, /TRACING_ON/);
+    assert.match(wf, /TRUE only when the env var `JLU_TRACE=1`/);
+    assert.match(wf, /emits ZERO trace Bash calls/);
   });
 
   test('per-agent-dispatch span opened with --name agent_dispatch', () => {
@@ -170,13 +178,13 @@ describe('execute-task — Stage-1 deterministic quality signals', () => {
   });
 
   test('phase close records the pass@1/pass@k success signal', () => {
-    assert.match(wf, /--success /, 'phase end-span must pass --success');
+    assert.match(wf, /--span-success="\$PHASE_SUCCESS"/, 'phase close must pass --span-success');
     assert.match(wf, /PHASE_SUCCESS/);
     assert.match(wf, /pass@1[\s\S]*?pass@k/);
   });
 
   test('phase close records attempts_to_green', () => {
-    assert.match(wf, /--attempts /);
+    assert.match(wf, /--span-attempts="\$PHASE_ATTEMPTS"/);
     assert.match(wf, /PHASE_ATTEMPTS/);
   });
 });
