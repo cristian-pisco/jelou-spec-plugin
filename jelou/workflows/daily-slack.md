@@ -57,7 +57,7 @@ You are the orchestrator for the `/jlu-daily-slack` command. You generate a Slac
 
 ## Step 5 — Verify ClickUp MCP
 
-Call `clickup_get_workspace_hierarchy` as a connectivity probe. On any failure, stop with the same message used by `/jlu-sync-clickup` Step 0.
+Call `clickup_get_workspace_hierarchy` as a connectivity probe. On any failure, stop with the same message used by `/jlu-task-clickup` Step 0 — "Verify ClickUp MCP" in `jelou/workflows/task-clickup.md`.
 
 ## Step 6 — Discover Sprint Tasks
 

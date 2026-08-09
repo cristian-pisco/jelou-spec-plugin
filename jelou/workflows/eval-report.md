@@ -32,3 +32,10 @@ invalid args.
 This is a read-only skill. No state is written. Evaluation is best-effort — if the
 trace store, feedback store, or suggestion history is missing or unreadable, the
 user sees a clean "no evaluation data yet" message and the workflow exits cleanly.
+
+**An empty store is the NORMAL state, not a fault.** Tracing is OFF unless `JLU_TRACE=1`
+is set (see `jelou/references/tracing.md` → "Tracing is OFF by default"), so normal runs
+emit no spans and therefore no eval events. This report only carries data from
+`JLU_TRACE=1` runs and from the `jlu-bench` evaluation harness, which sets it. When the
+output says "no evaluation data yet", say so plainly and do NOT send the user debugging a
+healthy install.

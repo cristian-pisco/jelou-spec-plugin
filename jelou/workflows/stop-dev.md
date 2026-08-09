@@ -1,6 +1,6 @@
 # /jlu:stop-dev Workflow
 
-> Purpose: Stop the daemon (no-op in Phase 2) and optionally kill the TMUX window.
+> Purpose: Stop the daemon, tear the task stack down, and optionally kill the TMUX window.
 
 Inputs:
 - `argument`: optional `--kill-services` flag.
@@ -68,6 +68,6 @@ If `stack.projects` is empty, print `Stack: nothing to tear down (no active task
 
 ## Notes
 
-- Phase 2: daemon is not yet alive, so killDaemon is a no-op.
+- `stopDev` calls the real `killDaemon` from `bin/lib/dev-orchestrator/daemon-spawn.mjs` (SIGTERM, then SIGKILL after 5s) against the pid `/jlu:start-dev` recorded. When no daemon pid is live it releases the lock and reports `killed: false` — a no-op only in that case, never by design.
 - Teardown reads `stack-state.json` (written by `/jlu:start-dev --jelou-stack`) to know which projects, host processes, and `.env` backups to unwind, and deletes it on success — so a second `stop-dev` finds no stack state and is a clean no-op.
 - `/jlu-stop-dev --kill-services` is the non-interactive shortcut.

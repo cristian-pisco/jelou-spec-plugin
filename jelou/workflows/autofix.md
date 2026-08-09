@@ -189,8 +189,10 @@ import('{plugin-root}/bin/lib/dev-orchestrator/stack/fix-target.mjs').then(({ re
   const target = resolveFixTarget({ service: process.argv[1], worktreePaths: JSON.parse(process.argv[2]), repoPath: process.argv[3] });
   process.stdout.write(JSON.stringify(target));
 });
-" "{argument}" '{worktreePathsJson}' "{stackEntry.path}"
+" "{argument}" '{worktreePathsJson}' "{registryEntry.path}"
 ```
+
+`repoPath` is `{registryEntry.path}` — the canonical checkout resolved in Step 1. It is the fallback `resolveFixTarget` returns when this slug has no worktree for the service (a `shared-reuse` target), so it MUST be a real path: passing an unbound placeholder makes `target.path` a literal and the clean-tree guard below runs `git -C` against a directory that does not exist.
 
 If `target.needsCleanGuard` is true, run the clean-tree check via `Bash`, using the canonical porcelain args from `gitStatusPorcelainArgs()` (`stack/clean-tree.mjs`) rather than inlining flags — `git -C {target.path} <gitStatusPorcelainArgs() joined with spaces>` (i.e. `git -C {target.path} status --porcelain`) — then:
 

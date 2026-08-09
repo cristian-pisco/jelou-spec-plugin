@@ -191,7 +191,9 @@ Proceed? (yes / adjust)
      - Tests: <list of test files to re-run>
      - Phases: <list of phase numbers to re-validate>
      ```
-2. Reset affected phase statuses to `planned` (for re-execution).
+2. Reset affected phase statuses to `pending` (for re-execution). `pending` is the phase-status
+   vocabulary (`pending | in_progress | done | blocked`) and is what execute-task's resume logic
+   matches; `planned` is a TASK lifecycle state and must never be written as a phase status.
 
 ---
 

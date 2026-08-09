@@ -304,13 +304,34 @@ Never hardcode a port in the overlay: allocation shifts run to run as the eligib
     **Per-service plan branch (from Phase 2.0).** Before the reuse-or-reboot decision below, check
     the service's entry in `{planJson}` (match by `id`):
     - **Task-isolated entry** (`policy: 'task-isolated'`): boot it via the `## Plan-driven boot`
-      **task-isolated** steps in `jelou/references/env-lifecycle.md` — write every `planEntryToCommands(entry).files[]` entry verbatim to `<entry.cwd>` (the `docker-compose.jlu.yml` override and, when `wiredEnv` is present, the de-obfuscated `.env`);
-      `docker compose -p <entry.projectName> -f <entry.composeFile> -f docker-compose.jlu.yml up -d`;
-      **then the step 4b dependency-provisioning step** (`descriptor.install`, run BEFORE the dev
-      command and outside the readiness clock — see below);
-      `docker exec -d <entry.projectName> sh -lc "cd /app && <entry.command> > /tmp/<entry.projectName>.dev.log 2>&1"`;
-      wait readiness on the allocated host port (`entry.readiness.port`); register
-      `BOOTED+=(<service>)` and `TEARDOWN_CMD[<service>]="docker compose -p <entry.projectName> down"`.
+      **task-isolated** steps in `jelou/references/env-lifecycle.md`, running what
+      `descriptor = planEntryToCommands(entry)` emits **verbatim**. Never transcribe a
+      remembered variant of these commands: the emission carries `--env-file` args from
+      `environmentFiles` (real for any peered service whose overlay was written) and a
+      `restart` step, and a hand-written `docker exec -d … sh -lc` drops both.
+      1. Write every `descriptor.files[]` entry verbatim to `<entry.cwd>` (the
+         `docker-compose.jlu.yml` override and, when `wiredEnv` is present, the de-obfuscated
+         `.env`), **and persist every overlay file named in `descriptor.environmentFiles[]`
+         before any exec** — an `--env-file` pointing at a file that is not on disk yet fails
+         the exec outright.
+      2. `docker <descriptor.up>` (`compose -p <entry.projectName> -f <entry.composeFile> -f
+         docker-compose.jlu.yml up -d`).
+      3. **Then the `env-lifecycle.md` step 4b dependency-provisioning step** — when
+         `descriptor.install` is non-null, run it BEFORE the dev command and outside the
+         readiness clock (see below).
+      4. When `descriptor.exec` is non-null, `docker <descriptor.exec>` — it already includes
+         the `--env-file <path>` pair per `environmentFiles[]` entry and the
+         `-d <projectName> sh -lc "cd /app && <command> > /tmp/<projectName>.dev.log 2>&1"`
+         tail. `exec` is null for a launcher that starts the dev command from its own
+         entrypoint (`startsDevOnUp`) — that is not an error, do NOT substitute one.
+      5. When `descriptor.restart` is non-null, `docker <descriptor.restart>` (`compose -p
+         <entry.projectName> restart`) — a self-starting launcher booted before its
+         dependencies were installed, so the restart is what makes them take effect. Skipping
+         it leaves the container running against the pre-install state.
+      6. Wait readiness per `descriptor.readiness` on the allocated host port
+         (`entry.readiness.port`); register `BOOTED+=(<service>)` and
+         `TEARDOWN_CMD[<service>]="docker <descriptor.teardown>"` (`compose -p
+         <entry.projectName> down`).
       WARN if `entry.imageResolved` is false. Then SKIP the reuse-or-reboot decision below for this
       service (it is fully booted).
       **Dependency provisioning is a gate, not a WARN.** A non-zero `descriptor.install` exit
@@ -354,18 +375,33 @@ Never hardcode a port in the overlay: allocation shifts run to run as the eligib
     On `ready_timeout` → `STATUS: BLOCKED` (teardown still runs via the trap). Print the
     readiness log's error-shaped lines with the verdict — a bare "readiness timed out after N
     seconds" makes the next agent re-read the log by hand. Extract them with the same helper the
-    dev-block verifier uses, never by hand-rolling a grep:
+    dev-block verifier uses, never by hand-rolling a grep. **Read the log through
+    `descriptor.readiness.logSource`, never with `node:fs` against a `/tmp` path.** On a
+    task-isolated boot that path lives INSIDE the container, so a host `readFile` returns
+    ENOENT — or, worse, a stale same-named host file — exactly when the diagnosis matters.
+    The descriptor already says where the log is
+    (`bin/lib/boot-engine/launcher.mjs` `taskLogSource`):
+    - `logSource.mode === 'exec-file'` → `docker exec <logSource.container> cat <logSource.path>`
+      (the `env-lifecycle.md` step 4b shape).
+    - `logSource.mode === 'docker-logs'` → `docker logs <logSource.container>`
+    - a `shared-reuse` host launcher with no `logSource` → the host launch log
+      (`$TASK_DIR/.goal/launch-<service>.log`).
+
+    Pipe whichever command applies into the helper on stdin:
     ```bash
-    node -e "
+    docker exec <logSource.container> cat <logSource.path> | node -e "
     import('<plugin-root>/bin/lib/boot-engine/execute-shared-reuse.mjs').then(async (m) => {
-      const { readFile } = await import('node:fs/promises');
-      process.stdout.write(m.errorHints(await readFile(process.argv[1], 'utf8')).join('\n'));
+      const chunks = [];
+      for await (const c of process.stdin) chunks.push(c);
+      process.stdout.write(m.errorHints(Buffer.concat(chunks).toString('utf8')).join('\n'));
     });
-    " /tmp/<entry.projectName>.dev.log
+    "
     ``` A missing-module cause is
-    NOT expected here anymore: step 4b provisions dependencies from the worktree lockfile before
+    NOT expected here anymore: `env-lifecycle.md` step 4b provisions dependencies from the
+    worktree lockfile before
     the dev command runs, and fails the service at the gate instead. If a `Cannot find module`
-    still reaches this timeout, the boot's dependency source is one step 4b does not model —
+    still reaches this timeout, the boot's dependency source is one `env-lifecycle.md` step 4b
+    does not model —
     report it as such rather than retrying.
 
     **Certification mark (applies the step 8b.5 trust rule).** After each service's boot
@@ -459,9 +495,13 @@ orchestrator narrative.
     the Gmail MCP is session-bound; it is the ONLY execution the orchestrator performs.
 
     **No discretionary auth-gate menu — auto-refresh, never "your call".** An invalid or
-    stale session is NEVER the user's decision to make. The orchestrator MUST run the local
-    OTP login driver (`bin/e2e-login.mjs`) automatically and regenerate the `storageState`;
-    it MUST NOT surface an `AskUserQuestion` offering to "accept the stale session / pause for
+    stale session is NEVER the user's decision to make. The orchestrator MUST run the login
+    driver **for the target's class** automatically and regenerate the `storageState` —
+    `bin/e2e-login-local.mjs` (after `bin/e2e-ensure-account.mjs`) for a loopback
+    `E2E_BASE_URL`, and the Gmail/OTP driver `bin/e2e-login.mjs` only for a genuinely
+    remote/prod target. Running the OTP driver at localhost is a defect, not a fallback: it
+    exits `EXIT.CAPTCHA_BLOCKED` (47) and blocks the very refresh this guard mandates.
+    The orchestrator MUST NOT surface an `AskUserQuestion` offering to "accept the stale session / pause for
     a manual refresh / choose whether to refresh" — presenting that choice is the exact defect
     this guard forbids. `E2E_BASE_URL` and `TEST_EMAIL`/`TEST_PASSWORD` are known because the
     14b auth drivers self-load `.env.e2e` from `UI_WORKTREE`; never claim the target is unknown and never punt the refresh
@@ -473,8 +513,15 @@ orchestrator narrative.
 
 ### Phase 4 — UI execution (delegated; frontend/fullstack objectives)
 
-12. For each service in `ui_services`: dispatch `jlu-ui-qa-runner` (session already
-    provisioned in 11c) with `<PLUGIN_ROOT>`, `<WORKERS>` and `--no-boot` semantics. Parse its `STATUS:`; on
+12. For each service in `ui_services`: first **resolve `PLAYWRIGHT_CONFIG`** exactly as
+    `ui-qa-run.md` step 7b' does — in the service's resolved worktree, a
+    `playwright.config.{ts,js}` at the worktree root → `PLAYWRIGHT_CONFIG` empty; one at
+    `tests/e2e/` → `PLAYWRIGHT_CONFIG=tests/e2e/playwright.config.ts`. It is a **required**
+    runner input (`agents/jlu-ui-qa-runner.md`): dispatching without it leaves the run with no
+    `--config`, and a consumer whose config lives under `tests/e2e/` collects 0 tests and the
+    whole UI lane reads as vacuously green. Then dispatch `jlu-ui-qa-runner` (session already
+    provisioned in 11c) with `<PLUGIN_ROOT>`, `<WORKERS>`, `<PLAYWRIGHT_CONFIG>` and
+    `--no-boot` semantics. Parse its `STATUS:`; on
     `NEEDS_CONTEXT`, broker via `AskUserQuestion` and re-dispatch with `USER_FEEDBACK`;
     on `ui_breadth_gaps`, route to `jlu-ui-e2e-writer` and re-dispatch once. Record
     PASS/FAIL, and attribute per-objective results by the `@goal:G<id>` title tags
@@ -635,7 +682,7 @@ the top of this file), so the runners' live probes are safe to mutate.
   service without a bootable `dev` block is always a hard refuse — the flag never drops a UI
   service.
 - `ready_timeout` on boot → `BLOCKED` with the log's `error_hints`; teardown runs.
-- `descriptor.install` non-zero on a task-isolated boot (step 4b) → that service is not bootable:
+- `descriptor.install` non-zero on a task-isolated boot (`env-lifecycle.md` step 4b) → that service is not bootable:
   the dev command is never exec'd, the readiness budget is never spent, and the step 8b.6
   `--skip-unbootable` table decides refuse-vs-skip. Never "install on the host and retry" — the
   lockfile install already runs where the container resolves its dependencies.

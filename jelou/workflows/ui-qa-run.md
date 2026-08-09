@@ -290,7 +290,7 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
        - `0` → re-run the probe; valid → continue to step 15.
        - `41` → print the 401 abort message (below) and exit `BLOCKED` (2).
        - `42`/`43` → report which OTP step failed; offer ONE retry of the whole gate; second failure → `BLOCKED`.
-       - `44` → enter a bounded ask-the-user retry (same 3-round shape as step 18c, but self-contained — no fix-loop dispatch, no selectors.md persistence): ask the user where the login form lives (route, field hints), set `LOGIN_PATH` from the answer, retry (max 3 rounds).
+       - `44` → enter a bounded ask-the-user retry (same 3-round shape as step 18e, but self-contained — no fix-loop dispatch, no selectors.md persistence): ask the user where the login form lives (route, field hints), set `LOGIN_PATH` from the answer, retry (max 3 rounds).
        - `47` → **captcha/Turnstile.** FIRST branch on `E2E_BASE_URL`. If it is **loopback**
          (`localhost`/`127.0.0.1`), a captcha is a **misconfiguration, not a capture trigger**: a
          local login backend does not enforce Turnstile, so the challenge means the local frontend
@@ -366,7 +366,7 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
 
     **Warn-and-continue (never block).** On any non-zero exit (`45`/`46`/`*`), report `SESSION_SYNC_FAILED` with detail and continue to step 15 — mirroring the extension's "alert and do nothing". Provisioning is idempotent: the upsert keys on `sessionId` and the localhost cookie is replaced, not appended, so re-runs are safe.
 
-    **Required env (`.env.e2e`):** `COOKIE_SECRET` (must match the backend). Optional: `SESSION_SYNC_MONGO_URI` (default `mongodb://127.0.0.1:27017`), `SESSION_SYNC_DB` (`logsM`), `SESSION_TTL_HOURS` (`12`), `SESSION_COOKIE_NAME` (`jelou_auth`), `JLU_MONGODB_MODULE` (driver-path override). Sourced in 14b's `set -a` block; secrets never printed.
+    **Required env (`.env.e2e`):** `COOKIE_SECRET` (must match the backend). Optional: `SESSION_SYNC_MONGO_URI` (default `mongodb://127.0.0.1:27017`), `SESSION_SYNC_DB` (`logsM`), `SESSION_TTL_HOURS` (`12`), `SESSION_COOKIE_NAME` (`jelou_auth`), `JLU_MONGODB_MODULE` (driver-path override). `e2e-session-sync.mjs` self-loads these from `UI_WORKTREE` via `bin/lib/env-files.mjs` (the same parser 14b's drivers use) — nothing is `source`d and no secret is ever printed.
 
     **Still forbidden:** using this to mask an auth failure (see the carve-out above). It is gated on a *successful* login and fails closed.
 
@@ -375,8 +375,11 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
     zero-test / minimal-input guards, crash + auth-collapse detection, the bounded
     fix-loop (which dispatches `jlu-ui-fix-loop`), the confirmation pass, and the run
     report — runs in the `jlu-ui-qa-runner` subagent, NOT inline in the orchestrator.
-    The orchestrator does NOT execute steps 15–22 itself; those steps below are the
-    canonical spec the runner follows. Dispatch `jlu-ui-qa-runner` with: `<TASK_DIR>`,
+    The orchestrator does NOT execute steps 15–18 and 20 itself; those steps below are
+    the canonical spec the runner follows. Steps 19 (teardown / lock release) and 21
+    (TASKS.md timeline + `sub_state`) stay with the orchestrator — they touch the
+    orchestrator's own shell (fd 9, `$LOCK_FILE`, acquired at step 4) and `TASK_DIR`,
+    both outside the runner's worktree sandbox. Dispatch `jlu-ui-qa-runner` with: `<TASK_DIR>`,
     `<UI_SERVICE_ID>`, the worktree resolved in step 12, `<PLUGIN_ROOT>`, `<WORKERS>`,
     the `PLAYWRIGHT_CONFIG` recorded in step 7b', and the `ALLOW_PROD_TARGET` /
     `ALLOW_TEST_EDITS` flags.
@@ -392,12 +395,13 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
       (`MODE=derive-from-spec`, `--allow-test-edits`) for the named dimensions, then
       re-dispatch the runner once to confirm RED→GREEN.
 
-#### Execution body — performed by `jlu-ui-qa-runner` (the orchestrator dispatches it; it does not run these inline)
+#### Execution body — steps 15–18 and 20, performed by `jlu-ui-qa-runner` (the orchestrator dispatches it; it does not run these inline). Steps 19 and 21, interleaved below, are explicitly **orchestrator-owned** and are not part of the runner's range.
 
-15. **Run Playwright** in the UI service's worktree. Source the UI service's `.env` (and optional `.env.e2e` overlay) so Playwright sees the same configuration the dev server is using; refuse to start if any env var declared in `user-flow.md` `Env Vars` is missing, and HEAD-check each URL whose source points outside `Service Boot Order`. See `jelou/references/e2e-environment.md` for the contract.
+15. **Run Playwright** in the UI service's worktree. Playwright must see the same configuration the dev server is using — `.env` first, then the `.env.e2e` overlay — but the shell **never sources them** (same contract as 14b): the Playwright process loads them through `playwright.config.ts` (`import 'dotenv/config'` or `npx dotenv -e .env -e .env.e2e`) and the plugin's bin tools self-load from `UI_WORKTREE` via `bin/lib/env-files.mjs`. Never write `set -a; . ./.env` here — a real `.env` routinely carries an unquoted value with shell metacharacters, so bash executes fragments of it into the transcript, and the `guard-env-reads` PreToolUse hook DENIES the source outright. Refuse to start if any env var declared in `user-flow.md` `Env Vars` is missing, and HEAD-check each URL whose source points outside `Service Boot Order`. See `jelou/references/e2e-environment.md` for the contract.
 
     ```bash
     cd "$UI_WORKTREE"
+    export UI_WORKTREE
 
     # Opt-in env target: E2E_BASE_URL MUST be declared in .env.e2e, never inherited
     # from the app's .env (which typically points at production). See references/e2e-environment.md.
@@ -411,14 +415,8 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
       exit 2
     fi
 
-    # Load .env (per docker-conventions.md it was copied into the worktree at task creation)
-    # then the .env.e2e overlay. set -a exports every assignment to child processes.
-    set -a
-    [ -f .env ]     && . ./.env
-    [ -f .env.e2e ] && . ./.env.e2e
-    set +a
-
     # Mandatory: baseURL must come from env, not be hard-coded in playwright.config.ts.
+    E2E_BASE_URL=$(sed -n 's/^[[:space:]]*\(export[[:space:]]\+\)\?E2E_BASE_URL=//p' .env.e2e | tail -1 | tr -d "\"'")
     : "${E2E_BASE_URL:?missing E2E_BASE_URL — set it in .env.e2e (see references/e2e-environment.md)}"
 
     # Anti-prod gate (DEFAULT-DENY / fail-closed): only a target the classifier verifies as
@@ -437,13 +435,12 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
 
     # Per-flow vars from user-flow.md Env Vars section. The writer agent persists this list to
     # $TASK_DIR/services/$UI_SERVICE/e2e/required-env.txt (one VAR_NAME per line); the orchestrator
-    # validates each. Missing → fail-fast with the variable name.
+    # validates each BY NAME (quiet grep — never printing a value). Missing → fail-fast.
     if [ -f "$TASK_DIR/services/$UI_SERVICE/e2e/required-env.txt" ]; then
       MISSING=()
       while IFS= read -r VAR; do
         [ -z "$VAR" ] && continue
-        eval "VAL=\${$VAR-__UNSET__}"
-        [ "$VAL" = "__UNSET__" ] && MISSING+=("$VAR")
+        grep -qE "^[[:space:]]*(export[[:space:]]+)?$VAR=" .env .env.e2e 2>/dev/null || MISSING+=("$VAR")
       done < "$TASK_DIR/services/$UI_SERVICE/e2e/required-env.txt"
       if [ "${#MISSING[@]}" -gt 0 ]; then
         echo "ERROR: required env vars missing for $UI_SERVICE: ${MISSING[*]}"
@@ -457,7 +454,8 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
     if [ -f "$TASK_DIR/services/$UI_SERVICE/e2e/external-endpoints.txt" ]; then
       while IFS= read -r VAR; do
         [ -z "$VAR" ] && continue
-        eval "URL=\${$VAR-}"
+        # Same by-name extraction as E2E_BASE_URL: endpoint URLs only, .env.e2e overlay wins.
+        URL=$(sed -n "s/^[[:space:]]*\(export[[:space:]]\+\)\?$VAR=//p" .env .env.e2e 2>/dev/null | tail -1 | tr -d "\"'")
         [ -z "$URL" ] && continue
         if ! curl -fsS -o /dev/null --max-time 5 -I "$URL"; then
           echo "ERROR: external dependency unreachable: $VAR=$URL"
@@ -571,7 +569,7 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
        ```
        Still failing → next attempt (back to a). Green → next failure.
 
-    e. **On `NEEDS_CONTEXT` — the interactive feedback loop (step 18c).**
+    e. **On `NEEDS_CONTEXT` — the interactive feedback loop (step 18e).**
 
        Per-item state: `ASK_ROUNDS[<item>]` (0..3) where `<item>` is the `missing:` description.
 
@@ -591,7 +589,10 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
 
     When every failure is individually green (or flagged/blocked), run the **full suite exactly once** (step 15 command) to confirm no cross-test regressions. New failures in that confirmation run do NOT re-enter the fix-loop — flag them in the run report; the budget is spent.
 
-19. **Teardown.** The EXIT trap fires regardless of success/error/SIGINT/SIGTERM. When
+19. **Teardown — ORCHESTRATOR-OWNED (the runner never performs this).** `jlu-ui-qa-runner`
+    is forbidden to boot or tear down, and `fd 9` / `$LOCK_FILE` live only in the
+    orchestrator's shell (the lock is acquired at step 4), so this trap is armed and fired
+    by the orchestrator, not by the dispatched runner. The EXIT trap fires regardless of success/error/SIGINT/SIGTERM. When
     `--no-boot` is NOT set, run `teardown(BOOTED)` per `jelou/references/env-lifecycle.md`
     to stop each booted service. When `--no-boot` IS set, skip service teardown — the
     caller owns the environment. The lock release always runs regardless of `--no-boot`:
@@ -618,10 +619,13 @@ Boot only the services this task affects, run the Playwright E2E suite headless 
     files while `JLU_E2E_VIDEO` was non-`off`, note it — the consumer `playwright.config.ts` is
     not reading `process.env.JLU_E2E_VIDEO` (see `references/playwright-conventions.md`).
 
-    Include a "Questions and feedback" section when step 18c fired: one row per question —
+    Include a "Questions and feedback" section when step 18e fired: one row per question —
     | # | What was missing | What was tried | User's answer | Outcome |
 
-21. **Append to TASKS.md** Timeline:
+21. **Append to TASKS.md — ORCHESTRATOR-OWNED (the runner never performs this).** The
+    runner's duties end at the step-20 report and it must not write outside
+    `<UI_SERVICE_WORKTREE>`, while `TASKS.md` lives in `TASK_DIR`. After parsing the
+    runner's `STATUS:` line in 14d, the orchestrator writes the Timeline row:
     ```
     | <ts> | UI QA run | <pass>/<total> green, <flagged> flagged. Report: services/<ui>/e2e/run-<ts>.md |
     ```

@@ -163,11 +163,14 @@ Run sequentially. Always log the exact command before invocation.
 cd "$EFFECTIVE_PATH"
 
 UNIT_JSON="$(mktemp -t jlu-test-unit-XXXXXX.json)"
+UNIT_LOG="$(mktemp -t jlu-test-unit-XXXXXX.log)"
 echo "## Running unit tests"
 echo "    \$ ${UNIT_CMD_WITH_JSON_FLAG}"
 eval "${UNIT_CMD_WITH_JSON_FLAG}" 2>&1 | tee "${UNIT_LOG}"
-UNIT_EXIT=$?
+UNIT_EXIT=${PIPESTATUS[0]}
 ```
+
+**`$?` after a pipe is the exit status of `tee`, not of the runner — it is 0 even when the suite fails.** Always read the runner's status from `${PIPESTATUS[0]}` (or set `set -o pipefail` before the pipeline). Never take `UNIT_EXIT=$?` straight off a `| tee` line: that reports a red suite as PASS in Step 5c.
 
 Where `UNIT_CMD_WITH_JSON_FLAG` adds a structured-output flag when the runner supports it (so Step 6 can parse failures programmatically):
 
@@ -186,10 +189,11 @@ Where `UNIT_CMD_WITH_JSON_FLAG` adds a structured-output flag when the runner su
 ```bash
 if [ "$INTEGRATION_CMD" != "$UNIT_CMD" ]; then
   INT_JSON="$(mktemp -t jlu-test-integration-XXXXXX.json)"
+  INT_LOG="$(mktemp -t jlu-test-integration-XXXXXX.log)"
   echo "## Running integration tests"
   echo "    \$ ${INTEGRATION_CMD_WITH_JSON_FLAG}"
   eval "${INTEGRATION_CMD_WITH_JSON_FLAG}" 2>&1 | tee "${INT_LOG}"
-  INT_EXIT=$?
+  INT_EXIT=${PIPESTATUS[0]}
 else
   INT_EXIT=0  # already covered by UNIT_CMD
 fi
@@ -363,7 +367,7 @@ Temporary log files in `/tmp` are best-effort — failing to delete them is not 
 
 - **Single-service by design.** To validate multiple services in one task, invoke `/jlu-test-suite` once per service from each `cd`. V2 may add a `--all-affected` flag that reads TASKS.md.
 - **Workers fixed at 1.** Literal interpretation of "minimum workers". There is no env var override in V1 — if you need more parallelism, run the underlying runner directly.
-- **Coverage is out of scope; breadth is gated elsewhere.** Step 8c (QA) reads coverage reports statically; this skill never runs `--coverage` to keep RAM predictable. Line/branch coverage is out of scope, but **breadth** (did the cases span the validator/reference space?) is gated by `/jlu-goal` Phase 4.5, not by `--coverage`.
+- **Coverage is out of scope; breadth is gated elsewhere.** `/jlu-goal` Phase 4.5 owns the breadth verdict (`/jlu-execute-task` step 8c, which used to read coverage reports statically, is retired); this skill never runs `--coverage` to keep RAM predictable. Line/branch coverage is out of scope, but **breadth** (did the cases span the validator/reference space?) is gated by `/jlu-goal` Phase 4.5, not by `--coverage`.
 - **Sonnet+ recommended.** Step 6 (failure classification) reads test files and infers component types. Haiku can produce wrong classifications on projects with non-standard naming.
 - **CI parity.** This skill's results should match the CI for unit + integration; if they don't, suspect runner version drift or env vars set in CI that aren't in your shell.
 

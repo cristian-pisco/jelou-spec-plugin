@@ -20,10 +20,12 @@
 **When `TRACING_ON = true`**, run:
 ```bash
 WF_OUT=$(node "<root>/bin/trace-start-span.mjs" \
-  --name close_task --scope task --task "$TASK_SLUG")
+  --name close_task --scope task)
 WORKFLOW_SPAN_ID=$(echo "$WF_OUT" | jq -r '.span_id // ""')
 WORKFLOW_TRACE_ID=$(echo "$WF_OUT" | jq -r '.trace_id // ""')
 ```
+
+Note: `--task` is omitted at this step because `TASK_SLUG` is not resolved until Step 1. The trace_id binds the workflow to the task once the slug exists; the trace-dependent steps that need it (Step 2b `trace-feedback`, Step 3.5 `trace-snapshot-task`) all run after Step 1 and pass `--task "$TASK_SLUG"` themselves.
 
 ---
 
@@ -142,8 +144,8 @@ If all preconditions pass (or user overrides), proceed with closure.
      counts, internal slugs / IDs / file paths / branch names, or
      service IDs in code form.
 
-   Then post via `clickup_create_task_comment(task_id=<macro-id>,
-   comment_text=<composed body>)`. Do not also post the PR list — that
+   Then post via `clickup_create_comment(entity_type="task",
+   entity_id=<macro-id>, comment_text=<composed body>)`. Do not also post the PR list — that
    is `/jlu-task-clickup`'s responsibility and is already attached as a
    separate comment.
 6. Record the closure in `CLICKUP_TASK.json`:
@@ -307,7 +309,7 @@ Present the final summary:
 Skip this entire step when `TRACING_ON = false` (Step 0).
 
 Determine `$WORKFLOW_OUTCOME`:
-- `ok` — closure complete (ClickUp + Slack updated, task status moved)
+- `ok` — closure complete (ClickUp updated, task status moved)
 - `blocked` — closure halted (missing PR merge confirmation, ClickUp sync failure)
 - `failed` — irrecoverable error
 

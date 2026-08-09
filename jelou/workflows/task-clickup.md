@@ -253,11 +253,17 @@ set.
 On **Update Task**, the `assignees`, `watchers`, and `group_assignees`
 shapes change to `{add, rem}` per
 [`/reference/updatetask`](https://developer.clickup.com/reference/updatetask)
-— this is documented as different from Create. **`custom_fields` is NOT a
-valid parameter of the Update Task body** — the docs explicitly direct
-custom-field writes to a separate endpoint
+— this is documented as different from Create. The raw REST Update Task body
+does not accept `custom_fields`; the docs direct custom-field writes to a
+separate endpoint
 ([`/reference/setcustomfieldvalue`](https://developer.clickup.com/reference/setcustomfieldvalue),
-`POST /api/v2/task/{task_id}/field/{field_id}`).
+`POST /api/v2/task/{task_id}/field/{field_id}`). **The MCP server exposes no
+tool for that endpoint** — there is no `clickup_set_task_custom_field_value`.
+What it does expose is a `custom_fields` parameter on `clickup_update_task`
+itself (an array of `{ id, value }`), which the server fans out to the
+per-field endpoint for you. So on this workflow's tooling, custom-field
+writes on update go through `clickup_update_task`, in the same call as the
+other changed fields.
 
 ```
 clickup_update_task(
@@ -269,27 +275,21 @@ clickup_update_task(
   points: <story-points-from-step-4b>,
   status: "<mapped-status>",
   assignees: { "add": [<user-id-int>], "rem": [] },   # NOT a flat array on Update
-  ...other changed fields                              # NO custom_fields here
+  custom_fields: [ { id: "<custom-field-uuid>", value: <see Step 5e> }, ... ],
+  ...other changed fields
 )
 ```
 
 Never pass `time_estimate` — this workflow does not set work hours on tasks.
 
-For each custom field that changed, issue a separate call:
-
-```
-clickup_set_task_custom_field_value(
-  task_id: "<macro-task-id>",
-  field_id: "<custom-field-uuid>",
-  value: <type-specific value, see Step 5e>
-)
-```
+Include in `custom_fields` only the fields that actually changed. Do **not**
+reach for a per-field setter tool — none exists on this MCP server.
 
 ### 5e. Custom-field value shapes (per `/docs/customfields`)
 
-When passing custom fields via `custom_fields` on Create Task or via the
-dedicated Set Custom Field Value endpoint on Update Task, the `value` shape
-depends on the field type. Use the documented shapes literally:
+When passing custom fields via `custom_fields` — on `clickup_create_task` or
+on `clickup_update_task` — the `value` shape depends on the field type. Use
+the documented shapes literally:
 
 | Type | `value` shape |
 |------|---------------|
@@ -360,7 +360,7 @@ than nothing.
 ## Step 6 — Attach PR Links as Task Comment
 
 1. Read PR URLs from TASKS.md "External Links" section or CLICKUP_TASK.json `pr` field.
-2. If PRs exist: Use `clickup_create_task_comment` on the macro task with formatted PR links.
+2. If PRs exist: Use `clickup_create_comment(entity_type="task", entity_id=<macro-task-id>, comment_text=<formatted PR links>)`.
 3. Format:
    ```
    Pull Requests:

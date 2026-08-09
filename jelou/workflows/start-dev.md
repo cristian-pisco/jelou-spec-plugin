@@ -131,13 +131,13 @@ Capture the JSON output.
 
 - If `status: "tmux-missing"`, that should already have been caught at Step 3; surface as an error.
 - If `status: "exists"`, ask via `question`: `"Window '{name}' already exists. (a) reuse and exit, (b) kill-and-restart, (c) cancel"`. On (b), kill the window via Bash (`tmux kill-window -t <name>`) and re-run Step 5.
-- If `status: "created"`, print: `Started <paneCount> services in TMUX window '<windowName>' (layout: <layout>). Daemon will be wired in Phase 3.`
+- If `status: "created"`, print: `Started <paneCount> services in TMUX window '<windowName>' (layout: <layout>). Daemon pid: <daemonPid>.`
 
 If `skipped` is non-empty, list the skipped services with reasons.
 
 ## Notes
 
-- Phase 2 deliberately does NOT spawn a daemon. The `daemonSpawn` callback in `startDev` defaults to a stub returning `{ pid: 0 }`. Phase 3 will wire in the real daemon.
+- `startDev` spawns the real daemon: its `daemonSpawn` callback defaults to `daemonSpawn` from `bin/lib/dev-orchestrator/daemon-spawn.mjs`, which spawns `daemon.mjs` detached and returns its pid as `daemonPid` in the result. Tests inject a fake; nothing else overrides it.
 - Use `/jlu-start-dev` in messages (works for both runtimes).
 - If the user is not inside tmux, the orchestrator creates a default `jlu-dev` session. The user may need to `tmux attach -t jlu-dev` afterwards.
 
@@ -193,6 +193,28 @@ import('{plugin-root}/bin/lib/dev-orchestrator/task-context.mjs').then(({ resolv
 ```
 
 If the output starts with `AMBIGUOUS:`, prompt the user the same way as Step 2 of the generic path above.
+
+Then resolve the source mode. This path is entered directly, so it must produce its own `{sourceMode}` — never assume Step 2.5 of the deprecated tmux path ran. Read the allowed choices from the same shared contract:
+
+```bash
+node -e "
+import('{plugin-root}/bin/lib/dev-orchestrator/source-mode.mjs').then(({ sourceModeChoices }) => {
+  process.stdout.write(JSON.stringify(sourceModeChoices({ hasActiveTask: process.argv[1] !== '_global' })));
+});
+" "{slug}"
+```
+
+Ask the user which source mode to use, offering `main` and `task-aware` exactly as returned. If no task is active, `task-aware` is disabled with the explanation `No active task is available`, so only `main` is selectable. Capture the selected normalized value as `{sourceMode}` — this is the value Step B passes to `build-boot-plan.mjs --source-mode`.
+
+Create the run identity for this invocation the same way Step 2.5 does:
+
+```bash
+node -e "
+import('node:crypto').then(({ randomUUID }) => process.stdout.write(randomUUID()));
+"
+```
+
+Capture the output as `{runId}` and reuse it — with `runIdentity = { workspaceId, taskSlug: slug, runId }` — for every lifecycle emitter, execution descriptor, journal write, and cleanup call below.
 
 Build and validate the plan with the Step B command before continuing. Report every selected source before any runtime mutation as a table with `serviceId`, `sourcePath`, and `commit` from each entry's source descriptor. If validation fails, stop without entering Step B0 or writing stack state.
 

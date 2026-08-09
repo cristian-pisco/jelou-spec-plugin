@@ -7,7 +7,7 @@
 
 You are the orchestrator for the `/jlu-report-task` command.
 
-## Step 0 — Trace gate, then open workflow span
+## Step 0 — Trace gate (the workflow span opens at the end of Step 1, once `TASK_SLUG` exists)
 
 **Resolve `TRACING_ON` exactly once, here.** See `jelou/references/tracing.md`.
 
@@ -17,13 +17,7 @@ You are the orchestrator for the `/jlu-report-task` command.
 
 **When `TRACING_ON = false`, emit no trace Bash call at all** — not `trace-start-span`, not `trace-end-span`. `WORKFLOW_SPAN_ID` and `WORKFLOW_TRACE_ID` stay unset and "Step N — Close workflow span" is skipped outright. The cost being avoided is the Bash call itself — the process spawn plus the agent-turn roundtrip — which is paid even when the script short-circuits internally, so the gate lives here and never inside the script.
 
-**When `TRACING_ON = true`**, run:
-```bash
-WF_OUT=$(node "<root>/bin/trace-start-span.mjs" \
-  --name report_task --scope task --task "$TASK_SLUG")
-WORKFLOW_SPAN_ID=$(echo "$WF_OUT" | jq -r '.span_id // ""')
-WORKFLOW_TRACE_ID=$(echo "$WF_OUT" | jq -r '.trace_id // ""')
-```
+**When `TRACING_ON = true`**, do NOT open the span here — `TASK_SLUG` does not exist yet, and a span opened now would carry an empty `--task`. Run Step 1 first to resolve the slug, then open the span as described at the end of Step 1.
 
 ---
 
@@ -31,6 +25,16 @@ WORKFLOW_TRACE_ID=$(echo "$WF_OUT" | jq -r '.trace_id // ""')
 
 1. If a task slug is provided as an argument, use it.
 2. Otherwise, find the most recent task in `.spec-workspace/specs/` by reading `.spec-workspace.json` to locate the workspace.
+
+**Store**: `TASK_SLUG`
+
+Then, and only when `TRACING_ON = true` (Step 0), open the workflow span with the resolved slug:
+```bash
+WF_OUT=$(node "<root>/bin/trace-start-span.mjs" \
+  --name report_task --scope task --task "$TASK_SLUG")
+WORKFLOW_SPAN_ID=$(echo "$WF_OUT" | jq -r '.span_id // ""')
+WORKFLOW_TRACE_ID=$(echo "$WF_OUT" | jq -r '.trace_id // ""')
+```
 
 ## Step 2 — Gather Task Artifacts
 
