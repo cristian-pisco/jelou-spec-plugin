@@ -124,6 +124,45 @@ describe('normalizeRegistry', () => {
     assert.equal(out.network.authInjectPort, null);
   });
 
+  test('a declared service carries peer_suffixes so the frontend keeps its path prefixes', () => {
+    const out = normalizeRegistry({
+      services: {
+        'jelou-apps': {
+          path: '../jelou-apps',
+          stack: 'react',
+          peers: { 'dashboard-server': 'NX_DASHBOARD_BASE' },
+          peer_suffixes: { NX_DASHBOARD_BASE: '/api' },
+          dev: { launcher: 'npm', command: 'yarn start' }
+        }
+      }
+    }, { resolve });
+
+    assert.deepEqual(out.services[0].peerSuffixes, { NX_DASHBOARD_BASE: '/api' });
+  });
+
+  test('a service without peer_suffixes does not gain the key', () => {
+    const out = normalizeRegistry({ services: { a: { path: '../a', dev: { launcher: 'npm' } } } }, { resolve });
+
+    assert.equal('peerSuffixes' in out.services[0], false);
+  });
+
+  test('a declared frontend id keeps its own suffixes instead of the synthesized ones', () => {
+    const out = normalizeRegistry({
+      services: {
+        'jelou-apps': {
+          path: '../jelou-apps',
+          peers: { 'dashboard-server': 'NX_DASHBOARD_BASE' },
+          peer_suffixes: { NX_DASHBOARD_BASE: '/api' },
+          dev: { launcher: 'npm', command: 'yarn start' }
+        }
+      },
+      frontend: { path: '../jelou-apps', command: 'yarn start', port: 5175, envLocal: { NX_DASHBOARD_BASE: { service: 'dashboard-server', suffix: '/ignored' } } }
+    }, { resolve });
+
+    assert.equal(out.services.filter((service) => service.id === 'jelou-apps').length, 1);
+    assert.deepEqual(out.services[0].peerSuffixes, { NX_DASHBOARD_BASE: '/api' });
+  });
+
   test('carries runtime_mounts as runtimeMounts (default [])', () => {
     const raw = { services: {
       a: { path: '../a', runtime_mounts: ['config/secrets'], dev: { launcher: 'docker-exec' } },

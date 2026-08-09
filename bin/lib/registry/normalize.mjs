@@ -3,7 +3,7 @@ const DEFAULT_PROVISIONING_ADAPTER = 'plugin:local-jelou-provisioning';
 function normalizeService(id, svc, resolve) {
   const dev = { ...(svc.dev || {}) };
   dev.extra_ports = dev.extra_ports || [];
-  return {
+  const normalized = {
     id,
     path: resolve(svc.path),
     stack: svc.stack || null,
@@ -12,6 +12,8 @@ function normalizeService(id, svc, resolve) {
     runtimeMounts: svc.runtime_mounts || [],
     dev
   };
+  if (svc.peer_suffixes) normalized.peerSuffixes = svc.peer_suffixes;
+  return normalized;
 }
 
 function frontendService(frontend) {
