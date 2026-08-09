@@ -11,7 +11,16 @@ Before any `git worktree add` runs (in `/jlu-new-task` and downstream), the serv
 1. Exit 0 → already ignored, nothing to do.
 2. Non-zero → the workflow records that a fix is needed and **continues**.
 3. The worktree is created as usual: `git worktree add .worktrees/<TASK_SLUG> -b production/<TASK_SLUG> origin/$TRUNK`.
-4. Then, **inside the worktree** (where `production/<TASK_SLUG>` is checked out), `.worktrees/` is appended to `.gitignore` (the file is created if absent, and an already-present equivalent pattern is not duplicated), staged, and committed as `chore: git-ignore .worktrees/`.
+4. Then, **inside the worktree** (where `production/<TASK_SLUG>` is checked out), `.worktrees/` is appended to `.gitignore`, staged, and committed:
+
+   ```bash
+   cd <repo>/.worktrees/<TASK_SLUG>
+   grep -qE '^\.worktrees/?$' .gitignore 2>/dev/null || printf '.worktrees/\n' >> .gitignore
+   git add .gitignore
+   git commit -m "chore: git-ignore .worktrees/"
+   ```
+
+   `.gitignore` is created if absent. The `grep` guard prevents a duplicate entry when an equivalent pattern (`.worktrees` or `.worktrees/`) is already present but was not matched by `check-ignore` — for example because it lives in a not-yet-committed working copy. If after the guard there is nothing to commit, skip the commit silently.
 
 This reversal exists because the old abort was fatal in headless/autonomous runs: the service ended up with no `production/<slug>` branch, and `finalize-phase.sh` then aborted every phase with `reason=wrong_branch` with nobody to escalate to.
 

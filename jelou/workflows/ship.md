@@ -9,13 +9,9 @@
 
 ## Step 0 — Trace gate + trace bootstrap
 
-**Resolve `TRACING_ON` exactly once, here.** See `jelou/references/tracing.md`.
+**Resolve `TRACING_ON` exactly once, here.** Resolution table and the reason the gate lives in the workflow rather than inside the scripts: `jelou/references/tracing.md` → "Tracing is OFF by default".
 
-- `TRACING_ON = true` **only** when the env var `JLU_TRACE=1`.
-- `TRACE_DISABLED=1` forces `TRACING_ON = false`, whatever `JLU_TRACE` says (back-compat hard kill).
-- Default, with neither set: **false**. Tracing is OFF for normal runs; the `jlu-bench` evaluation harness is what turns it on.
-
-**When `TRACING_ON = false`, emit no trace Bash call at all** — not `trace-reconcile`, not `trace-start-span`, not `trace-suggest`, not `trace-end-span`. Skip the rest of Step 0, skip Step 0b entirely (it shells out), leave `WORKFLOW_SPAN_ID` / `WORKFLOW_TRACE_ID` unset, and skip "Step N — Close workflow span". The cost being avoided is the Bash call itself — the process spawn plus the agent-turn roundtrip — which is paid even when the script short-circuits internally, so the gate lives here and never inside the script.
+**When `TRACING_ON = false`, emit no trace Bash call at all** — not `trace-reconcile`, not `trace-start-span`, not `trace-suggest`, not `trace-end-span`. Skip the rest of Step 0, skip Step 0b entirely (it shells out), leave `WORKFLOW_SPAN_ID` / `WORKFLOW_TRACE_ID` unset, and skip "Step N — Close workflow span".
 
 **When `TRACING_ON = true`**, proceed with the rest of this step exactly as written:
 
@@ -36,18 +32,14 @@
 
 Skip this entire step when `TRACING_ON = false` (Step 0) — it shells out, so it is never emitted with tracing off.
 
-Run the suggester scoped to the current task. It scans recent trace history and emits one SUGGEST block per active rule that fires (bump model tier, extend failure patterns, suggest parallelization, immediate flag on blocked/failed spans of THIS task). The 7-day cooldown is honored automatically.
+Run the suggester scoped to the current task. Which rules fire, the 7-day cooldown, and the never-interrupt surfacing contract: `jelou/references/tracing.md` → "Decision surface — suggestion rules".
 
 ```bash
 SUGGESTIONS=$(TRACE_CURRENT_TASK="$TASK_SLUG" node "<root>/bin/trace-suggest.mjs" 2>/dev/null || true)
 ```
 
-Telemetry MUST NOT interrupt the ship flow. Never prompt on these findings here.
-
-- If `SUGGESTIONS` is non-empty: print the blocks as a short informational note ("Prior-run suggestions (run `/jlu-refine-task` or `/jlu-trace-report` to act):") and continue immediately. Do NOT use `question` / `AskUserQuestion`, and do NOT write to `suggestion-history.jsonl` — nothing was decided, so no cooldown starts.
-- If `SUGGESTIONS` is empty, continue silently.
-
-Interactive approval of these suggestions lives only in `/jlu-refine-task` (the interview flow) and the on-demand `/jlu-trace-report`. Tracing is best-effort: if the suggester errors out, the empty variable means the workflow simply continues.
+- Non-empty: print the blocks as a short informational note ("Prior-run suggestions (run `/jlu-refine-task` or `/jlu-trace-report` to act):") and continue immediately. Do NOT use `question` / `AskUserQuestion`, and do NOT write to `suggestion-history.jsonl` — nothing was decided, so no cooldown starts.
+- Empty (including the suggester erroring out): continue silently.
 
 ---
 
@@ -55,26 +47,16 @@ Interactive approval of these suggestions lives only in `/jlu-refine-task` (the 
 
 > **Idempotent. Every mutation is followed by its named verification command.**
 
-- Running this workflow twice produces the same result. Existing PRs are skipped.
 - Every PR description tells reviewers what changed and why — traced back to SPEC.md requirements.
-- Rate limits are handled gracefully with backoff. Never skip the retry protocol.
-
-**When to simplify:** For single-service tasks with one PR, the cross-referencing and multi-service coordination steps are automatically skipped.
+- Nothing is simplified by hand: Step 8 fires only when 2+ services have PRs, and the dual-PR steps (5b, 6b, 7f, 8b) only when `DUAL_PR = yes`. Each step's own run condition is the switch.
 
 ---
 
 ## Autonomous mode — how every gate resolves
 
-`<AUTONOMOUS>` is a caller input, `no` unless the caller says otherwise.
-execute-task Step 9.5b passes `yes`: the chain carries the user's standing
-authorization (`autochain-handoff.md` §2) and nobody is watching, so a
-`question` there is a halted chain, not a decision. A standalone `/jlu-ship` is
-`no` — the user typed the command, they are present, the gates ask as written.
+Contract: `jelou/references/autonomous-mode.md`. `<AUTONOMOUS>` is a caller input, `no` unless the caller says otherwise; execute-task Step 9.5b passes `yes`, a standalone `/jlu-ship` is `no`.
 
-**In autonomous mode no gate asks.** Each resolves to its default below, appends
-one `SHIP_CAVEATS` line recording what was decided and why, and continues. The
-caveat is what makes this safe: nothing is waved through silently, every
-autonomous decision is published in the PR body.
+**In autonomous mode no gate asks.** Each resolves to its default below and appends one `SHIP_CAVEATS` line — this workflow's disclosure channel, rendered in the PR body.
 
 Rows at Step 2 and 2b resolve in the orchestrator, before the fan-out. Rows from
 4b onward resolve inside `jlu-ship-runner`, per service.
@@ -174,13 +156,12 @@ For **Step 8** (`gh pr edit`), on exhaustion: warn "Cross-reference update for <
 **Caller inputs (optional).** Running inside the autochain (execute-task Step
 9.5b), the caller hands over `<AUTONOMOUS> = yes` (see "Autonomous mode" above —
 it decides how every gate resolves) and `SHIP_CAVEATS` — advisory lines from
-Steps 8e/8g that must be disclosed in every PR body (Step 7d). Both are
-absent or empty on a standalone `/jlu-ship` run. A caller-driven run adds **no**
-confirmation of its own beyond the named gates in this workflow: the chain
-already carries the user's standing authorization to ship
-(`autochain-handoff.md` §2), so never insert an extra "shall I open the PR?"
-question, and when the slug arrives as an argument the Step 1.2e confirmation
-does not apply.
+Steps 8e/8g that must be disclosed in every PR body (Step 7d). Both are absent
+or empty on a standalone `/jlu-ship` run. A caller-driven run adds **no**
+confirmation of its own beyond the named gates in this workflow — the standing
+authorization is `autochain-handoff.md` §2, so
+never insert an extra "shall I open the PR?" question, and when the slug arrives
+as an argument the Step 1.2e confirmation does not apply.
 
 ---
 
@@ -214,23 +195,13 @@ Read and cache task artifacts in one pass (single parallel tool-call message whe
 
 ---
 
-### 2b. Spec Compliance Review: RETIRED (only the coverage-breadth probe survives)
-
-**Retired**: the `jlu-spec-reviewer` agent is deleted from the plugin and no
-compliance report is produced or published. Measured, not assumed: it cost **~112 s
-and ~6 261 output tokens per dispatch**, ran twice per task, and could not stop
-anything — the gate defaulted to "proceed with a caveat" in autonomous mode, which is
-how the chain actually runs.
-
-**Nothing inherits the requirements-coverage table or the scope-creep check.**
-`SPEC.md` is still the contract and `/jlu-goal` still proves behaviour against a real
-stack, but nothing maps the diff back to numbered requirements.
+### 2b — Coverage-breadth check
 
 **2b.1 — Coverage-breadth check (static, scoped to changed DTOs — always runs,
-advisory).** This survives because it is a deterministic script, not the agent. It
-puts the `/jlu-goal` Phase 4.5 breadth gate on the always-run PR path without
-booting anything. For each affected service, resolve `<SERVICE_CWD>` (worktree or
-repo root, same logic as Step 4), detect the default branch:
+advisory).** A deterministic script that puts the `/jlu-goal` Phase 4.5 breadth
+gate on the always-run PR path without booting anything. For each affected
+service, resolve `<SERVICE_CWD>` (worktree or repo root, same logic as Step 4),
+detect the default branch:
 
 ```bash
 cd <SERVICE_CWD> && git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@'
@@ -281,12 +252,13 @@ context isolation — verbose install/build/git/`gh` output never enters the
 orchestrator's window — not wall-clock. Never fan these out in parallel.
 
 **Depth-limited runtimes.** The runner dispatches validators and the git-agent
-itself, which is dispatch depth 2 — Codex defaults to `agents.max_depth = 1`.
-Where depth 2 is unavailable, keep the fan-out and drop the nesting: the runner
-still runs as the one subagent per service and performs 4b.1/4b.2/5 inline in
-its own session. Never resolve it the other way (running the per-service body in
-the orchestrator to keep the validators dispatched) — isolating the verbose
-per-service output is the whole point of the fan-out.
+itself, which is dispatch depth 2 — unavailable where `agents.max_depth = 1`
+(`jelou/references/codex-runtime.md` → "Subagent dispatch constraints"). There,
+keep the fan-out and drop the nesting: the runner still runs as the one subagent
+per service and performs 4b.1/4b.2/5 inline in its own session.
+Never resolve it the other way (running the per-service body in the orchestrator
+to keep the validators dispatched) — isolating the verbose per-service output is
+the whole point of the fan-out.
 
 **Brokering `NEEDS_DECISION` (interactive runs only).** With
 `<AUTONOMOUS> = no`, the runner cannot ask the user: an `AskUserQuestion` one
@@ -304,9 +276,9 @@ arrives anyway, that is a runner bug: do NOT ask the user (nobody is watching a
 chain). Apply the gate table's default for that gate yourself, caveat it, and
 re-dispatch.
 
-Never invent a confirmation of your own around the fan-out. An unverified
-requirement, a QA follow-up and a caveat are not gates — they are
-`<SHIP_CAVEATS>` lines the runner renders in the PR body.
+Never invent a confirmation of your own around the fan-out — an unverified
+requirement, a QA follow-up and a caveat are not gates but `<SHIP_CAVEATS>`
+lines the runner renders in the PR body (`autochain-handoff.md` §5).
 
 Merge each runner's `rows` into `PR_RESULTS` (and `STAGING_PR`,
 `PREFLIGHT_OVERRIDE`, `SYNC_MARKERS`), and append its `caveats` to
@@ -323,9 +295,8 @@ PR_RESULTS[<service-id>] = {
 ```
 
 A `blocked` or `skipped` service never aborts the remaining ones — every service
-gets its runner, and Step 11 reports the aggregate. The difference matters
-downstream: `skipped` is benign (nothing to ship), `blocked` means the PR should
-have opened and did not, which is what makes the task not green.
+gets its runner, and Step 11 reports the aggregate. For what the two mean
+downstream, see "`blocked` is not `skipped`" under "Autonomous mode" above.
 
 **Rate limit throttle**: After a runner returns for a service, wait 3 seconds before dispatching the next service's runner. The delay fires only between services, not after the final service in the loop.
 
@@ -333,13 +304,14 @@ have opened and did not, which is what makes the task not green.
 
 ## Step 4 — Resolve Service Working Directory
 
-For the current service, apply the **mode-driven** worktree resolution algorithm from `references/worktree-resolution.md`. Do **not** use a filesystem existence check — respect `SETUP_MODE` parsed from `TASKS.md → ## Branching → Mode`.
+For the current service, apply the **mode-driven** resolution algorithm in
+`references/worktree-resolution.md` → "Resolution Algorithm", with the repo path
+from `services.yaml`. `SETUP_MODE` (parsed from `TASKS.md → ## Branching →
+Mode`) decides — never a filesystem existence check.
 
-1. Look up the service repo path from `services.yaml`.
-2. Resolve based on `SETUP_MODE`:
-   - `Mode: worktree`: `SERVICE_CWD = <service-repo>/.worktrees/<TASK_SLUG>`. If that path is missing, fall back to the main repo and warn: `Worktree missing for <service-id> despite Mode: worktree — using main repo.`
-   - `Mode: branch`: `SERVICE_CWD = <service-repo>` (main repo root). Ignore any leftover `.worktrees/<TASK_SLUG>/` that may exist. If detected, log: `Branch-mode task has a leftover worktree at <path>. Ignoring it.`
-   - `## Branching` section absent (legacy): fall back to `references/worktree-resolution.md` §3c.
+- `Mode: worktree` → `SERVICE_CWD = <service-repo>/.worktrees/<TASK_SLUG>`; if missing, fall back to the main repo with the reference's warning.
+- `Mode: branch` → `SERVICE_CWD = <service-repo>`, the main repo root. Ignore any leftover `.worktrees/<TASK_SLUG>/` and log `Branch-mode task has a leftover worktree at <path>. Ignoring it.`
+- No `## Branching` section (legacy) → the reference's §3c fallback.
 
 **Store**: `SERVICE_CWD`
 
@@ -735,25 +707,9 @@ Parse the output to extract the PR URL and number. Record action as `created`.
 
 Runs only if `DUAL_PR = yes` AND `STAGING_SYNC[<service-id>]` ∈ {rebuild, incremental, no-op} AND `STAGING_PR_ACTION[<service-id>]` is not `"existing"`.
 
-Construct the staging PR body:
-
-```markdown
-## Problem
-<Problem statement from SPEC.md>
-
-## Impact
-<Summary from PROPOSAL.md>
-
-## Changes
-**Service**: <SERVICE_ID>
-**Branch**: `staging/<TASK_SLUG>` → `alpha`
-
-### Phase Progress
-<Phase progress table from TASKS.md for this service>
-
-### Test Results
-<Test summary from TASKS.md for this service, if available>
-```
+Construct the staging PR body from the **same markdown block as Step 7d** (not
+its preflight-override banner, which is trunk-only), with the `**Branch**` line
+reading `staging/<TASK_SLUG>` → `alpha` instead of the trunk pair.
 
 If `STAGING_SYNC[<service-id>] = "rebuild"`, prepend to the PR body (before `## Problem`):
 
@@ -908,7 +864,6 @@ Present the results:
 
 ### Next Steps
 - Request code review on the PR(s) above
-- After merge, run `/jlu-close-task` to finalize
 ```
 
 A non-empty `Blocked` section means this ship did NOT fully succeed, whatever the

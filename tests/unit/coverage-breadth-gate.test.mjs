@@ -184,8 +184,8 @@ describe('ship.md — breadth gate on the always-run PR path', () => {
     assert.match(wf, /--dto/);
   });
   test('the auditor is the surviving enforcement after the reviewer was retired', () => {
-    assert.match(wf, /### 2b\. Spec Compliance Review: RETIRED/);
-    assert.match(wf, /survives because it is a deterministic script/);
+    assert.match(wf, /### 2b — Coverage-breadth check/);
+    assert.match(wf, /A deterministic script/);
     assert.match(wf, /uncovered_dimensions/);
   });
 });

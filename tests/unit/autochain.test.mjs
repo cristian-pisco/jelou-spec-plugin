@@ -279,7 +279,7 @@ describe('spec-reviewer retirement', () => {
     assert.doesNotMatch(step8c, /MODE: final-qa`\b.*NEEDS_CONTEXT/s);
     assert.doesNotMatch(step8c, /Spawn `jlu-spec-reviewer`/);
     assert.doesNotMatch(ship, /Spawn `jlu-spec-reviewer` agent/);
-    assert.match(ship, /### 2b\. Spec Compliance Review: RETIRED/);
+    assert.doesNotMatch(ship, /jlu-spec-reviewer/);
   });
 
   test('ship keeps the deterministic coverage-breadth probe', () => {

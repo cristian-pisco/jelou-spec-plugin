@@ -36,7 +36,6 @@ const RETIRED_AGENTS = [
       'jelou/references/tdd-cycle.md',
       'jelou/references/tdd-principles.md',
       'jelou/workflows/execute-task.md',
-      'jelou/workflows/ship.md',
       'tests/unit/autochain.test.mjs',
       'tests/unit/e2e-testcontainers-carveout.test.mjs',
       'tests/unit/no-comments-rule.test.mjs',

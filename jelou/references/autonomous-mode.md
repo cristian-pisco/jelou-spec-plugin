@@ -67,10 +67,17 @@ discovered rather than one it always asks — resolves in this order:
 1. **From the inputs.** The description, seed, spec, or codebase docs already
    answer it. Use that; no disclosure needed (it was never a gap).
 2. **From `<ANSWERS_FILE>`,** when the caller supplied one: a markdown or YAML
-   file of pre-recorded answers. A gap matched here is resolved and disclosed as
-   `answered from <file>`. This is how a benchmark keeps runs deterministic.
+   file of pre-recorded answers. This is how a benchmark keeps runs deterministic.
 3. **Conservative default + disclosure.** The narrowest defensible reading of the
    requirement, recorded in the disclosure channel with the gap it resolves.
+
+The disclosure line each level emits:
+
+| Level | Disclosure line |
+|---|---|
+| 1 | none — it was never a gap |
+| 2 | `<gap> — answered from <file>` |
+| 3 | `<gap> — assumed <decision>, narrowest reading of <cited requirement>` |
 
 If step 3 would have to decide *what to build* rather than *how to build it*, the
 abort floor applies instead.
