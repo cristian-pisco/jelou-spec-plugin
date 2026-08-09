@@ -153,7 +153,7 @@ describe('probe-coverage-breadth — CLI', () => {
   });
 });
 
-describe('production-like.md — Phase 4.5 gate prose', () => {
+describe('goal.md — Phase 4.5 gate prose', () => {
   const wf = read('jelou/workflows/goal.md');
   test('documents the coverage-breadth + realistic-payload gate', () => {
     assert.match(wf, /Coverage-breadth \+ realistic-payload gate/i);
@@ -174,9 +174,6 @@ describe('production-like.md — Phase 4.5 gate prose', () => {
 describe('false-green guards in the delegates', () => {
   test('test-suite.md: green is not a breadth verdict', () => {
     assert.match(read('jelou/workflows/test-suite.md'), /green != broad/);
-  });
-  test('ui-qa-run.md: minimal_input_coverage guard under production-like', () => {
-    assert.match(read('jelou/workflows/ui-qa-run.md'), /minimal_input_coverage/);
   });
 });
 

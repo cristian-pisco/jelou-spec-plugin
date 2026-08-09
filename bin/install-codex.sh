@@ -376,4 +376,4 @@ echo "Done. Core skills now available in Codex (invoke with \$ or implicitly):"
 echo "  \$jlu-new-task   \$jlu-map-codebase   \$jlu-load-context   \$jlu-execute-task   \$jlu-ship"
 echo "Restart Codex so it loads the new skills from $SKILLS_DIR."
 echo
-echo "Note: /jlu-task-clickup and /jlu-daily-slack are Phase 2 (skipped in Phase 1 runs)."
+echo "Note: /jlu-daily-slack is Phase 2 (skipped in Phase 1 runs)."

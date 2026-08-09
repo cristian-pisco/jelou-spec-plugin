@@ -77,7 +77,7 @@ export default globalSetup;
 
 ## Orchestrated OTP login (storageState regeneration for OTP-gated apps)
 
-When the consumer's login requires an emailed OTP (no `/api/test/login`, no test mode), the sanctioned way to (re)generate `storageState` is the plugin's auth gate (`/jlu-ui-qa-run` step 14b):
+When the consumer's login requires an emailed OTP (no `/api/test/login`, no test mode), the sanctioned way to (re)generate `storageState` is the plugin's auth gate:
 
 1. `bin/e2e-session-probe.mjs` checks the stored session against `E2E_BASE_URL`.
 2. If invalid, `bin/e2e-login.mjs` performs the real login: fills `TEST_EMAIL`/`TEST_PASSWORD` (from `.env.e2e`, values never enter the conversation), reaches the OTP screen, prints `WAITING_OTP`, and polls `OTP_FILE`.

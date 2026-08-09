@@ -1,7 +1,7 @@
 # Environment Lifecycle — Shared Boot / Gate / Teardown Contract
 
 > The single source of truth for the production-like dev-environment lifecycle.
-> Consumed by `jelou/workflows/ui-qa-run.md` and `jelou/workflows/goal.md`.
+> Consumed by `jelou/workflows/goal.md`.
 > It describes three operations — a pre-flight gate, an ephemeral boot, and a
 > deterministic teardown — over services that declare a `dev` block
 > (`jelou/references/dev-block-schema.md`). It does NOT spin up Testcontainers:
@@ -60,7 +60,7 @@ Port-availability check — for each service's port (from `dev.health_url` or `d
 
 ```bash
 if lsof -iTCP:"$PORT" -sTCP:LISTEN -P -n 2>/dev/null | grep -q LISTEN; then
-  echo "ERROR: port $PORT is already bound. Run /jlu-ui-qa-cleanup or kill the holder manually."; exit 1
+  echo "ERROR: port $PORT is already bound. Kill the holder manually."; exit 1
 fi
 ```
 

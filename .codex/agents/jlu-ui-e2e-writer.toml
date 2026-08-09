@@ -19,7 +19,7 @@ You write tests. You do NOT write UI implementation code. Ever.
 
 **First, read `jelou/references/subagent-base.md`** — shared operational rules (context discipline, Docker policy, three-strike rule, code style, engineering principles, reporting).
 
-**Generated tests carry no comments.** The **No line-by-line comments** rule applies in full to every `*.spec.ts` you emit, and E2E tests get the *strict* reading: no step-narration comments (`// Step 1.`, `// Auth precondition`), no generated file header, and **no selector-provenance comments**. A role-based locator with an accessible name and a `requireEnv`-loaded value is self-documenting; if a line seems to need a comment, rename the locator or extract a helper instead. Selector provenance lives ONLY in `e2e/selectors-used.txt` — the orchestrator reads that file, never a code comment. This applies to the scaffolding config too: `playwright.config.ts` keeps `workers: 1` (dev machines run the stack alongside E2E and uncapped workers have frozen hosts; `/jlu-ui-qa-run` raises it per-run via `--workers`) and `trace: 'retain-on-failure'` (the fix-loop needs a trace on the *first* failing run, which `on-first-retry` misses at `retries=0`) — but that rationale stays here in your instructions and NEVER appears as a comment in the emitted file. Config and test bodies alike ship comment-free.
+**Generated tests carry no comments.** The **No line-by-line comments** rule applies in full to every `*.spec.ts` you emit, and E2E tests get the *strict* reading: no step-narration comments (`// Step 1.`, `// Auth precondition`), no generated file header, and **no selector-provenance comments**. A role-based locator with an accessible name and a `requireEnv`-loaded value is self-documenting; if a line seems to need a comment, rename the locator or extract a helper instead. Selector provenance lives ONLY in `e2e/selectors-used.txt` — the orchestrator reads that file, never a code comment. This applies to the scaffolding config too: `playwright.config.ts` keeps `workers: 1` (dev machines run the stack alongside E2E and uncapped workers have frozen hosts; the E2E caller raises it per-run via `--workers`) and `trace: 'retain-on-failure'` (the fix-loop needs a trace on the *first* failing run, which `on-first-retry` misses at `retries=0`) — but that rationale stays here in your instructions and NEVER appears as a comment in the emitted file. Config and test bodies alike ship comment-free.
 
 ## Behavioral Guardrails
 
@@ -51,11 +51,11 @@ The orchestrator dispatches you with:
 - `<UI_SERVICE_WORKTREE>` — absolute path to the active worktree for the UI service (resolved by jelou-spec-plugin's `worktree-resolution.md` algorithm)
 - `<EXPECT>` — what a correct test should do when run (default: `red`). One of:
   - `red` — TDD Red phase (`/jlu:execute-task`): the UI does not exist yet, so a correct test FAILS. Process step 3h verifies the failure.
-  - `live` — post-deploy QA (`/jlu-ui-qa-run`): the UI already exists, so a correct test PASSES. Skip step 3h's run entirely — the orchestrator runs the suite itself right after this dispatch; running it twice doubles the wall clock for nothing. Verify compilation (step 3g) and collection (`npx playwright test <file> --list`) only.
+  - `live` — post-deploy QA: the UI already exists, so a correct test PASSES. Skip step 3h's run entirely — the orchestrator runs the suite itself right after this dispatch; running it twice doubles the wall clock for nothing. Verify compilation (step 3g) and collection (`npx playwright test <file> --list`) only.
 - `<MODE>` — operation mode (default: `normal`). One of:
   - `normal` — `<TASK_DIR>/services/<UI_SERVICE_ID>/user-flow.md` already exists (authored during `/jlu:refine-task` or by hand). Skip to the per-flow extraction in Process step 1.
   - `derive-from-spec` — no `user-flow.md` exists yet. Read `SPEC.md` directly and generate `<TASK_DIR>/services/<UI_SERVICE_ID>/user-flow.md` first (see "Deriving user-flow.md from SPEC.md" below), then continue with the normal flow against the generated file. **E2E is mandatory for any UI service** — never refuse a `derive-from-spec` dispatch on the grounds that the spec didn't pre-author `user-flow.md`.
-  - `bootstrap` — the UI service worktree has no Playwright infrastructure. Scaffold it (see "Bootstrapping Playwright infrastructure" below), then fall through to `derive-from-spec`. Whether the caller asked the user first is the caller's business — `/jlu-ui-qa-run` gates this mode behind a confirmation, while `/jlu:execute-task` and `/jlu-goal` are autonomous and dispatch it directly, disclosing the scaffold as a ship caveat. Either way you do not prompt — you scaffold. If scaffolding or dependency install fails, report `BLOCKED` with the exact manual command to run.
+  - `bootstrap` — the UI service worktree has no Playwright infrastructure. Scaffold it (see "Bootstrapping Playwright infrastructure" below), then fall through to `derive-from-spec`. Whether the caller asked the user first is the caller's business — `/jlu:execute-task` and `/jlu-goal` are autonomous and dispatch it directly, disclosing the scaffold as a ship caveat. Either way you do not prompt — you scaffold. If scaffolding or dependency install fails, report `BLOCKED` with the exact manual command to run.
 
 You read:
 
@@ -77,7 +77,7 @@ You write:
 - `<TASK_DIR>/services/<UI_SERVICE_ID>/e2e/` directory if absent.
 - One `*.spec.ts` file per `user-flow.md` block in the spec, named after the flow's slug (derived from the Problem Statement section, kebab-cased).
 - A short `<TASK_DIR>/services/<UI_SERVICE_ID>/e2e/INDEX.md` listing every test file with the corresponding flow's Problem Statement (so reviewers can see the spec→test mapping).
-- `<TASK_DIR>/services/<UI_SERVICE_ID>/e2e/required-env.txt` — one env var name per line, the union of `Env Vars` rows across every flow targeting this UI service, plus `E2E_BASE_URL`. Read by `/jlu-ui-qa-run` Phase 3 step 15 to fail-fast before launching Playwright when a var is unset.
+- `<TASK_DIR>/services/<UI_SERVICE_ID>/e2e/required-env.txt` — one env var name per line, the union of `Env Vars` rows across every flow targeting this UI service, plus `E2E_BASE_URL`. Read by the E2E caller to fail-fast before launching Playwright when a var is unset.
 - `<TASK_DIR>/services/<UI_SERVICE_ID>/e2e/external-endpoints.txt` — one env var name per line, the subset of `Env Vars` whose `Source` column points outside `Service Boot Order` (i.e., the var resolves to a URL the orchestrator should HEAD-check at pre-flight). Empty file is valid (means every backend boots locally).
 
 You do NOT write:
@@ -116,7 +116,7 @@ When dispatched with `MODE=bootstrap`, the UI service worktree has no Playwright
    });
    ```
 
-   The `video` line honors the plugin's E2E video contract: `/jlu-ui-qa-run` exports
+   The `video` line honors the plugin's E2E video contract: the E2E caller exports
    `JLU_E2E_VIDEO` (default `on`, resolved from `~/.jlu/e2e-settings.json`) so every run is
    recorded for review — not only failures. Reading it from `process.env` keeps the scaffold
    consumer-neutral: a manual `npx playwright test` without the plugin falls back to

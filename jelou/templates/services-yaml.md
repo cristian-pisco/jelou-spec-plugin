@@ -13,7 +13,7 @@ services:
       service: {{compose-service}} # docker compose service name
       compose_file: docker-compose.yml  # relative to repo root; default
       port_env: APP_PORT           # env var for the exposed port; default
-    dev:                           # optional — required by /jlu-ui-qa-run; absence = service is skipped by E2E orchestration
+    dev:                           # optional — required by E2E orchestration; absence = service is skipped
       launcher: docker             # docker | docker-exec | npm | make | shell
       command: npm run dev         # required when launcher != docker; runs INSIDE the container when launcher: docker-exec
       teardown: pkill -f '[s]ervice-alpha.*src/main\.js'   # required when launcher != docker; derived from `docker` when launcher: docker.
@@ -44,7 +44,7 @@ services:
 | `docker.service` | string | conditional | Docker Compose service name (required if `docker` is present). |
 | `docker.compose_file` | string | no | Path to the Compose file relative to the repo root. Default: `docker-compose.yml`. |
 | `docker.port_env` | string | no | Environment variable name for the exposed host port. Default: `APP_PORT`. |
-| `dev` | object | no | Dev-server orchestration block. Required by the UI QA workflow's `/jlu-ui-qa-run`; ignored by other workflows. Services without a `dev` block are skipped by E2E orchestration. See `jelou/references/dev-block-schema.md` for the full contract. |
+| `dev` | object | no | Dev-server orchestration block. Required by the UI QA lane; ignored by other workflows. Services without a `dev` block are skipped by E2E orchestration. See `jelou/references/dev-block-schema.md` for the full contract. |
 | `dev.launcher` | enum | conditional | `docker` \| `docker-exec` \| `npm` \| `make` \| `shell`. Required if `dev` is present. When `docker`, `command`/`teardown`/port are derived from the sibling `docker` block. `docker-exec` is for idle dev containers (`CMD sleep infinity`): boot `up -d`s the container then execs `command` inside it. |
 | `dev.command` | string | conditional | Boot command. Required when `launcher != docker`. For `docker-exec`, runs **inside** the container (must use the service's real package manager). |
 | `dev.teardown` | string | conditional | Shutdown command. Required when `launcher != docker`. |
@@ -56,7 +56,7 @@ services:
 | `dev.ready_signal.path` | string | no | URL path for `type=http_200`. Default `/`. |
 | `dev.ready_timeout_s` | int | no | Seconds to wait for readiness before aborting. Default `30`. |
 | `dev.ram_estimate_mb` | int | no | Advisory per-service RAM estimate. Summed by the UI QA pre-flight check. Default `0` (counts as unknown). |
-| `dev.data_isolation` | enum | yes (when `dev` present) | `shared` \| `per-run` \| `none`. `shared` is refused by `/jlu-ui-qa-run` without `--allow-shared-data`. |
+| `dev.data_isolation` | enum | yes (when `dev` present) | `shared` \| `per-run` \| `none`. `shared` is refused by the E2E caller without `--allow-shared-data`. |
 | `e2e` | object | no | Backend E2E discovery config for `/jlu-goal` Phase 3.5. Absence = the default glob. |
 | `e2e.globs` | string[] | no | Glob(s) identifying the service's real-DB-over-HTTP E2E tier. Default `["test/e2e/**/*.e2e-spec.ts"]`. Declare a non-default convention here (e.g. `["test/**/*.integration-spec.ts"]`) to make that tier count as the mandatory backend E2E phase — the runner *runs* whatever matches. This declarative field is the ONLY sanctioned way to recognize a non-default convention; a subagent may never waive the phase by narrative. |
 
@@ -123,4 +123,4 @@ services:
 - Paths are relative to the `.spec-workspace/` directory.
 - Relationships between services (API calls, events, shared schemas) are not stored here. They are discovered by reading each service's `INTEGRATIONS.md` under `.spec-workspace/services/<service-id>/codebase/`.
 - If a spec or codebase doc references a service not in the registry, the plugin warns and offers to register it.
-- The `dev` block has three consumers: the UI QA workflow (boots from it), `/jlu-goal` (derives/persists/re-verifies it), and `/jlu-map-codebase` (certifies it at mapping time); workflows outside those three ignore it. Services without a `dev` block remain valid; `/jlu-ui-qa-run` skips a non-UI service that lacks one. `/jlu-map-codebase` now derives, boot-verifies, and persists missing `dev` blocks at mapping time (certification: a block whose real boot went green gains a `verified: {date, commit, block_hash}` mark — see `jelou/references/dev-block-schema.md`), and `/jlu-goal` auto-repairs without asking: it derives and persists a missing block for any boot-order service (step 8b), and its own boot re-verifies unmarked or hand-edited blocks.
+- The `dev` block has three consumers: the UI QA workflow (boots from it), `/jlu-goal` (derives/persists/re-verifies it), and `/jlu-map-codebase` (certifies it at mapping time); workflows outside those three ignore it. Services without a `dev` block remain valid; E2E orchestration skips a non-UI service that lacks one. `/jlu-map-codebase` now derives, boot-verifies, and persists missing `dev` blocks at mapping time (certification: a block whose real boot went green gains a `verified: {date, commit, block_hash}` mark — see `jelou/references/dev-block-schema.md`), and `/jlu-goal` auto-repairs without asking: it derives and persists a missing block for any boot-order service (step 8b), and its own boot re-verifies unmarked or hand-edited blocks.

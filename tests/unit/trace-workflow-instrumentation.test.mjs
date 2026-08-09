@@ -127,47 +127,6 @@ describe('ship workflow — trace instrumentation', () => {
   });
 });
 
-describe('report-task workflow — trace instrumentation', () => {
-  const wf = read('jelou/workflows/report-task.md');
-
-  test('opens workflow-level span with --name report_task', () => {
-    assert.match(wf, /trace-start-span\.mjs[\s\S]*?--name report_task/);
-  });
-
-  test('closes the workflow span', () => {
-    assert.match(wf, /trace-end-span\.mjs/);
-  });
-});
-
-describe('close-task workflow — trace instrumentation', () => {
-  const wf = read('jelou/workflows/close-task.md');
-
-  test('opens workflow-level span with --name close_task', () => {
-    assert.match(wf, /trace-start-span\.mjs[\s\S]*?--name close_task/);
-  });
-
-  test('closes the workflow span', () => {
-    assert.match(wf, /trace-end-span\.mjs/);
-  });
-
-  test('snapshots the task trace to TASK_DIR before final closure', () => {
-    assert.match(wf, /_traces\/snapshot\.jsonl/);
-    assert.match(wf, /task_slug/);
-  });
-
-  test('harvests the free accept ground-truth via trace-feedback.mjs on PR merge', () => {
-    assert.match(wf, /trace-feedback\.mjs[\s\S]*?--signal accept/,
-      'close-task must record the accept signal at PR merge');
-    assert.match(wf, /--source pr_merge/,
-      'accept signal must carry --source pr_merge');
-  });
-
-  test('harvests the reject ground-truth when the trunk PR is closed unmerged', () => {
-    assert.match(wf, /trace-feedback\.mjs[\s\S]*?--signal reject/);
-    assert.match(wf, /--source pr_close/);
-  });
-});
-
 describe('execute-task — Stage-1 deterministic quality signals', () => {
   const wf = read('jelou/workflows/execute-task.md');
 

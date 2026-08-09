@@ -40,10 +40,10 @@ function dispatchingSkills() {
 describe('agent namespace dispatch — every agent-dispatching skill prefixes with jlu:', () => {
   const skills = dispatchingSkills();
 
-  test('the derived set is non-empty and includes ship + diagnose', () => {
-    assert.ok(skills.length >= 8, `expected several dispatching skills, got ${skills.length}`);
+  test('the derived set is non-empty and includes ship + execute-task', () => {
+    assert.ok(skills.length >= 5, `expected several dispatching skills, got ${skills.length}`);
     assert.ok(skills.includes('ship'), 'ship dispatches agents');
-    assert.ok(skills.includes('diagnose'), 'diagnose dispatches agents');
+    assert.ok(skills.includes('execute-task'), 'execute-task dispatches agents');
   });
 
   for (const skill of dispatchingSkills()) {

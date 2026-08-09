@@ -12,16 +12,10 @@ Skills are invoked with the plugin namespace prefix `jlu:`.
 | `execute-task`         | `/jlu:execute-task [slug] [clickup-url\|id] [--no-autochain]` |
 | `map-codebase`         | `/jlu:map-codebase [service-id]` |
 | `refine-task`          | `/jlu:refine-task [change-desc] [clickup-url\|id] [--no-autochain]` |
-| `extend-phase`         | `/jlu:extend-phase`              |
 | `ship`                 | `/jlu:ship`                      |
 | `resolve-pr`           | `/jlu:resolve-pr [pr-url\|pr-number] [--autonomous]` |
-| `report-task`          | `/jlu:report-task`               |
 | `load-context`         | `/jlu:load-context`              |
-| `close-task`           | `/jlu:close-task`                |
-| `rollback-phase`       | `/jlu:rollback-phase`            |
-| `task-clickup`         | `/jlu:task-clickup`              |
 | `daily-slack`          | `/jlu:daily-slack`               |
-| `architecture-review`  | `/jlu:architecture-review`       |
 | `ubiquitous-language`  | `/jlu:ubiquitous-language`       |
 | `goal`                 | `/jlu:goal [goal matrix]`        |
 
@@ -41,20 +35,14 @@ OpenCode normalization rules:
 | `execute-task`         | `/jlu-execute-task [slug] [clickup-url\|id] [--no-autochain]` |
 | `map-codebase`         | `/jlu-map-codebase [service-id]` |
 | `refine-task`          | `/jlu-refine-task [change-desc] [clickup-url\|id] [--no-autochain]` |
-| `extend-phase`         | `/jlu-extend-phase`              |
 | `ship`                 | `/jlu-ship`                      |
 | `resolve-pr`           | `/jlu-resolve-pr [pr-url\|pr-number] [--autonomous]` |
-| `report-task`          | `/jlu-report-task`               |
 | `load-context`         | `/jlu-load-context`              |
-| `close-task`           | `/jlu-close-task`                |
-| `rollback-phase`       | `/jlu-rollback-phase`            |
-| `task-clickup`         | `/jlu-task-clickup`              |
 | `daily-slack`          | `/jlu-daily-slack`               |
-| `architecture-review`  | `/jlu-architecture-review`       |
 | `ubiquitous-language`  | `/jlu-ubiquitous-language`       |
 | `goal`                 | `/jlu-goal [goal matrix]`        |
 
-`/jlu-create-pr` is a deprecated alias for `/jlu-ship`, and `/jlu-production-like` is a deprecated alias for `/jlu-goal`; each prints a warning and delegates immediately. Before opening PRs, `/jlu-ship` validates that each service installs deps cleanly and builds — in-container for docker-compose services.
+Before opening PRs, `/jlu-ship` validates that each service installs deps cleanly and builds — in-container for docker-compose services.
 
 OpenCode commands live in `.opencode/commands/jlu-<skill>.md` and resolve workflow files global-first from `~/.config/opencode/jelou/` before project-local fallbacks. Most commands dispatch `jelou/workflows/<skill>.md`; OpenCode-specific overrides may live under `jelou/workflows-opencode/`.
 

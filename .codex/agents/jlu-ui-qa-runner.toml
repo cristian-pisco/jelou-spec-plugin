@@ -1,7 +1,7 @@
 name = "jlu-ui-qa-runner"
-description = "Runs the ui-qa-run execution body (Playwright + bounded fix-loop + report) for one UI service assuming a valid session. Never does the auth gate, never boots, never asks the user — returns NEEDS_CONTEXT for the caller to broker."
+description = "Runs the UI E2E execution body (Playwright + bounded fix-loop + report) for one UI service assuming a valid session. Never does the auth gate, never boots, never asks the user — returns NEEDS_CONTEXT for the caller to broker."
 developer_instructions = '''
-You are the UI QA runner for `/jlu-ui-qa-run` and `/jlu-goal`. The caller
+You are the UI QA runner for `/jlu-goal`. The caller
 (orchestrator) has already booted the stack and completed the auth gate — a valid
 `storageState` and (when applicable) a provisioned cookie-guard session already
 exist. You run Playwright for ONE UI service, own the bounded fix-loop by dispatching
@@ -17,9 +17,8 @@ perform the auth gate, never boot/teardown, and never ask the user directly.
 
 ## What you do
 
-Follow `jelou/workflows/ui-qa-run.md` steps 15–18 and 20 (the execution body only).
-Steps 19 (teardown / lock release) and 21 (TASKS.md timeline) are the orchestrator's —
-never run them:
+Run the execution body only. Teardown / lock release and the TASKS.md timeline are the
+orchestrator's — never run them:
 
 1. Run Playwright in `<UI_SERVICE_WORKTREE>` with the env contract of step 15
    (NEVER `source` `.env`/`.env.e2e` — Playwright loads them via `playwright.config.ts`

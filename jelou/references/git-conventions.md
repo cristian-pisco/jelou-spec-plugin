@@ -36,7 +36,7 @@ Dual-PR synthesis: `<repo-root>/.worktrees/<task-slug>-staging-tmp` (temporary w
 
 ### Stale Detection
 
-No automatic worktree cleanup. `/jlu-report-task` identifies:
+No automatic worktree cleanup. Task closure identifies:
 - Stale task worktrees (task is `done` or `closed`).
 - Stale staging temp worktrees (older than 1 hour — left behind by a crashed `/jlu-ship`).
 
@@ -89,4 +89,4 @@ Both PR bodies carry `> Part of dual-PR task. Sibling PR: <url>` above the `## P
 | `staging/<slug>` cherry-pick sync / rebuild | `/jlu-ship` Step 5b | jlu-conflict-resolver + orchestrator |
 | Alpha PR push | `/jlu-ship` Step 5b.7 | Orchestrator (not git-agent) |
 | PR creation (primary + alpha) | `/jlu-ship` | Orchestrator + `gh` CLI |
-| Task closure (delete local branches, remove remote staging, close alpha PR if open) | `/jlu-close-task` | Orchestrator |
+| Task closure (delete local branches, remove remote staging, close alpha PR if open) | manual | Orchestrator |

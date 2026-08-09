@@ -81,7 +81,7 @@ template only when absent, and never clobbers a file the user has edited:
 node "<plugin-root>/bin/seed-e2e-settings.mjs"
 ```
 
-This is belt-and-suspenders: the plugin's `SessionStart` hook and `/jlu-ui-qa-run` also seed it,
+This is belt-and-suspenders: the plugin's `SessionStart` hook and `/jlu-goal` also seed it,
 so an update via the native plugin CLI (which does not re-run `setup`) still lands the file on the
 next session or E2E run.
 

@@ -138,7 +138,7 @@ The orchestrator uses subagent summaries to:
 1. **Update TASKS.md** — Write progress updates, test results, and timeline events.
 2. **Update phase files** — Record agent output, artifacts, and deviations in the Execution section.
 3. **Decide next steps** — Route to the next agent, escalate to user, or trigger state transitions.
-4. **Generate reports** — Consolidate summaries across agents and services for `/jlu:report-task`.
+4. **Generate reports** — Consolidate summaries across agents and services for the execution summary.
 5. **Detect patterns** — Multiple `blocked` or `failed` statuses may indicate a systemic issue requiring user attention.
 
 The orchestrator never writes code or tests — it only delegates, consolidates, evaluates, and summarizes (Section 11.2).

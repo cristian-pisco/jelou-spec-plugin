@@ -39,7 +39,7 @@ During `/jlu-ship` dual-PR synthesis, a temporary worktree is created at:
 <service-repo>/.worktrees/<TASK_SLUG>-staging-tmp
 ```
 
-This worktree is **never** used for regular reads or edits. It exists only for the duration of the cherry-pick operation and is removed before `/jlu-ship` returns. If `/jlu-report-task` detects one older than 1 hour, treat it as leaked state from a crashed run.
+This worktree is **never** used for regular reads or edits. It exists only for the duration of the cherry-pick operation and is removed before `/jlu-ship` returns. If a later run detects one older than 1 hour, treat it as leaked state from a crashed run.
 
 ## Output: Worktree Map
 

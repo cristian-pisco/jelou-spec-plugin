@@ -13,7 +13,7 @@ delegates test EXECUTION to runner subagents — it never runs a suite or author
 inline:
 
 - backend services → `jlu-test-suite-runner` (host unit+integration via `/jlu-test-suite`) + `jlu-backend-e2e-runner` (a Testcontainers backend-E2E phase, dependencies only, real HTTP)
-- UI services      → `jlu-ui-qa-runner` (`/jlu-ui-qa-run --no-boot`, Playwright against the live stack); the orchestrator owns only the OTP auth gate before it
+- UI services      → `jlu-ui-qa-runner` (Playwright against the live stack, no boot of its own); the orchestrator owns only the OTP auth gate before it
 
 No seed system: reuses `dev` blocks + `data_isolation: per-run`. Testcontainers is permitted ONLY in the backend E2E path (`test/e2e/**`, `*.e2e-spec.ts`), dependencies-only, capped to `WORKERS` (see `subagent-base.md`).
 
@@ -746,7 +746,7 @@ the top of this file), so the runners' live probes are safe to mutate.
 ## See also
 
 - `jelou/references/env-lifecycle.md` — the lifecycle contract this workflow owns.
-- `jelou/workflows/test-suite.md`, `jelou/workflows/ui-qa-run.md` — the delegated skills.
+- `jelou/workflows/test-suite.md` — the delegated skill.
 - `bin/parse-goal-matrix.mjs` — the Phase 0 goal-matrix parser.
 - `bin/classify-task-scope.mjs` — the scope classifier.
 - `bin/probe-coverage-breadth.mjs` — the Phase 4.5 static breadth audit (validator-rejection + realistic-payload coverage).

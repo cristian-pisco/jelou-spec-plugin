@@ -401,11 +401,11 @@ This path assumes the Jelou dev containers' base images already exist (idle imag
 
 A **stale** base image is a different case and is NOT a setup precondition: when the base compose declares a volume over `<codeTarget>/node_modules`, the container resolves its dependencies from the image rather than from any checkout, so an image built before the branch's lockfile serves outdated dependencies. Step 4b of the boot contract already handles this by taking that mount target over with a lock-keyed named volume and installing inside the container — never by rebuilding the image, and never by installing on the host, which the container cannot see.
 
-### Observer — background log watch (F3-a) + optional auto-fix (F3-b)
+### Observer — background log watch (F3-a)
 
 > Once Step C reports `green`, start a backgrounded log observer over the booted stack. This runs independently of Steps D–I (frontend + auth) below — start it right after the backend-boot green report, then proceed with D–I in parallel.
 
-**`--auto-fix` flag.** The `--jelou-stack` boot accepts an optional `--auto-fix` flag alongside it (e.g. `/jlu:start-dev --jelou-stack --auto-fix`). This is opt-in and off by default. When NOT passed, the observer behaves exactly as documented below — it only reports (appends `pattern_match` events) and notifies; nothing auto-edits code. When passed, it additionally drives the bounded `/jlu:autofix <service>` loop (`jelou/workflows/autofix.md`) for any service the observer flags — **`--auto-fix` performs unattended code edits**; it is opt-in specifically because of that. `/jlu:autofix <service>` is always available as a manual, on-demand command regardless of this flag.
+The observer only reports (appends `pattern_match` events) and notifies; it never auto-edits code.
 
 The observer needs a per-service `plan` describing where to read each service's logs. Build it from the boot plan with `observerPlanFromBootPlan` (task-isolated → `logMode:'exec-file'` on `<service>-<slug>`; shared-reuse → `logMode:'docker-logs'`), then merge in each shared-reuse service's resolved dev container id (from Step B); drop any shared-reuse entry whose container did not resolve:
 
@@ -452,7 +452,7 @@ Promise.all([
 " "{configPath}" "/tmp/jlu-observer-plan-{slug}.json" "{workspaceId}" "{slug}" "/tmp/jlu-observer-{slug}.log" > /tmp/jlu-observer-{slug}.log 2>&1 &
 ```
 
-`runObserverPass` (`stack/observer-runtime.mjs`) reads each service's docker log source (via `logSourceArgs`: `exec-file` services are tailed with `docker exec <projectName> tail`; `docker-logs` services are read with `docker logs <container>`), diffs it against the previous pass, and matches new lines against that service's effective failure patterns (`effectiveFailurePatterns` — the config's global `defaults.log_failure_patterns` plus any per-service override). Every match appends a `pattern_match` event to `eventsLogPath({ workspaceId, slug })` — the exact same JSONL file the existing `/jlu-diagnose` command reads — and, gated by the shared `cooldown`, fires a cooldown-gated OS notification (`notifyOs`) naming the failing service.
+`runObserverPass` (`stack/observer-runtime.mjs`) reads each service's docker log source (via `logSourceArgs`: `exec-file` services are tailed with `docker exec <projectName> tail`; `docker-logs` services are read with `docker logs <container>`), diffs it against the previous pass, and matches new lines against that service's effective failure patterns (`effectiveFailurePatterns` — the config's global `defaults.log_failure_patterns` plus any per-service override). Every match appends a `pattern_match` event to `eventsLogPath({ workspaceId, slug })` — and, gated by the shared `cooldown`, fires a cooldown-gated OS notification (`notifyOs`) naming the failing service.
 
 Immediately after the observer launches with `&`, capture its PID in the same shell (`OBSERVER_PID=$!`), then record its PID into stack-state (`kind: 'hostPid'`, role `observer`) so `/jlu:stop-dev` tears it down:
 
@@ -470,18 +470,7 @@ import('{plugin-root}/bin/lib/dev-orchestrator/stack/stack-state.mjs').then((m) 
 " "{workspaceId}" "{slug}" '{"role":"observer","pid":<OBSERVER_PID>}' "{runId}"
 ```
 
-Autofix is NOT recorded as a host PID — when `--auto-fix` is set it runs as an in-session `Agent` dispatch (see below), not a detached host process, so there is no separate process for teardown to kill.
-
-Tell the user: the observer is now watching the booted stack's container logs in the background. Any service it flags can be inspected with the existing `/jlu-diagnose <service>` command, which reads the same events log this observer writes to. If `--auto-fix` was passed, also tell the user the auto-fix loop is armed for this session and will invoke `/jlu-autofix <service>` automatically on a flagged service, always with an escalation back to them if it can't resolve it cleanly.
-
-**`--auto-fix` wiring (F3-b).** The backgrounded observer script itself only ever appends events and fires OS notifications — a detached background process has no way to invoke the `Agent`/`Bash` tools that `/jlu-autofix` needs, so the auto-fix trigger has to live with the orchestrator (this session), not inside the `setInterval` loop. When `--auto-fix` is set:
-
-1. Maintain, for the lifetime of this session, an in-flight set (`autofixInFlight`, service names currently being auto-fixed) and a SEPARATE `autofixCooldown = Cooldown(effectiveDefaults(config).notification_cooldown_seconds)` object, keyed `<service>:autofix` — this is independent of the observer's own notifier cooldown (keyed `<service>:soft`); the two `Cooldown` instances track their keys independently, so being inside one window says nothing about the other.
-2. At natural checkpoints during this session (after reporting the boot as green, and again whenever you next act on the user's behalf — e.g. before responding to their next message, or when explicitly asked to check the stack), read the tail of `eventsLogPath({ workspaceId, slug })` for new `pattern_match` events since the last checkpoint.
-3. For each service with a new `pattern_match`: if that service is already in `autofixInFlight`, skip (an autofix run is already active for it — never double-dispatch). If `autofixCooldown.allow('<service>:autofix')` returns `false`, skip (still within the autofix's own cooldown window). Otherwise add the service to `autofixInFlight` and dispatch the `/jlu:autofix <service>` workflow (`jelou/workflows/autofix.md`) for it.
-4. When that dispatch reports DONE or ESCALATE (autofix's own bounded loop always ends in one of those two — see `autofix.md`), remove the service from `autofixInFlight` and surface the result to the user. A DONE report closes the loop for that occurrence; an ESCALATE report hands it back to the user exactly as `/jlu:autofix` would if invoked manually.
-
-This keeps the debounce guarantee to what actually holds: at most one autofix run in-flight per service at any time, plus the autofix's own `<service>:autofix` cooldown window — it does NOT mean a service inside the observer's notification cooldown window (`<service>:soft`) is skipped for auto-fix; that is a separate, independently-tracked key.
+Tell the user: the observer is now watching the booted stack's container logs in the background. Any service it flags is reported in the events log this observer writes to, and the failing service's pane can be read with `/jlu:logs <service>`.
 
 **Duplicate-event handling.** The duplicate-event problem from an earlier version of this step is fixed: `prevCaptures` is constructed once, outside the loop (alongside `cooldown`, as above), and threaded into every `runObserverPass` call, so capture state is retained across passes — a failing line matches exactly once on first appearance, and steady state (an unchanged tail) yields no re-match. The one remaining bounded limitation, shared with the existing daemon, is the tail window itself: a failing line older than the `--tail`/`tail -n` window (200 lines) that scrolls off and later reappears at the tail can re-match, since it looks like a new line to a capture diff that only ever sees the last 200 lines.
 

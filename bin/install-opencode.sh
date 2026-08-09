@@ -256,6 +256,6 @@ echo "Core commands now available:"
 echo "  /jlu-new-task"
 echo "  /jlu-map-codebase"
 echo "  /jlu-execute-task"
-echo "  /jlu-create-pr"
+echo "  /jlu-ship"
 echo
 echo "Note: /jlu-sync-clickup and /jlu-post-slack are Phase 2 placeholders."

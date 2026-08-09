@@ -3,7 +3,7 @@
 // Run: `node --test tests/unit/next-steps-command-guard.test.mjs`
 //
 // The load-context workflow prints a "Next Steps" block at the end of a
-// context load. The canonical guidance is `/jlu:ship` → `/jlu:close-task`, but a
+// context load. The canonical guidance is `/jlu:execute-task` → `/jlu:ship`, but a
 // run was once observed emitting `/jlu:land-and-deploy` — a command that does not
 // exist (it conflated gstack's `land-and-deploy` into the jlu namespace, and
 // invented a command for deferred deploy-time work). The former jlu-summary-agent
@@ -57,10 +57,10 @@ describe('load-context Task Summary — closed /jlu:* command vocabulary', () =>
     );
   });
 
-  test('it still canonically points at /jlu:ship then /jlu:close-task', () => {
+  test('it still canonically points at /jlu:execute-task then /jlu:ship', () => {
     const refs = commandRefs(src);
+    assert.ok(refs.includes('execute-task'), 'must reference /jlu:execute-task');
     assert.ok(refs.includes('ship'), 'must reference /jlu:ship');
-    assert.ok(refs.includes('close-task'), 'must reference /jlu:close-task');
   });
 
   test('it carries the closed-vocabulary guardrail (cannot be silently dropped)', () => {

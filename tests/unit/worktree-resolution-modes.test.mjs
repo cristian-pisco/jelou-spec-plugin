@@ -29,7 +29,6 @@ function read(path) {
 const WORKFLOWS = [
   'jelou/workflows/execute-task.md',
   'jelou/workflows/ship.md',
-  'jelou/workflows/rollback-phase.md',
   'jelou/workflows/load-context.md',
 ];
 

@@ -2,7 +2,7 @@
 
 Every user-invocable skill in `jelou-spec-plugin`, what it does, and when to reach for it.
 
-**35 skills**, of which 33 are active and 2 are deprecated aliases kept for compatibility.
+**22 skills**, all active.
 
 - Signatures are the canonical `argument-hint` from each `skills/<name>/SKILL.md`. Everything in `[brackets]` is optional.
 - Invocation differs per runtime — see [Invocation](#invocation) at the end. This manual uses the Claude Code form `/jlu-<name>`.
@@ -11,14 +11,13 @@ Every user-invocable skill in `jelou-spec-plugin`, what it does, and when to rea
 ## Contents
 
 - [Where to start](#where-to-start)
-- [Task lifecycle](#task-lifecycle) — 8 skills
-- [Visibility and reporting](#visibility-and-reporting) — 5 skills
-- [Local dev environment](#local-dev-environment) — 8 skills
-- [Testing and QA](#testing-and-qa) — 4 skills
-- [Knowledge and design](#knowledge-and-design) — 5 skills
+- [Task lifecycle](#task-lifecycle) — 5 skills
+- [Visibility and reporting](#visibility-and-reporting) — 3 skills
+- [Local dev environment](#local-dev-environment) — 6 skills
+- [Testing and QA](#testing-and-qa) — 2 skills
+- [Knowledge and design](#knowledge-and-design) — 3 skills
 - [Plugin observability](#plugin-observability) — 2 skills
 - [Maintenance](#maintenance) — 1 skill
-- [Deprecated aliases](#deprecated-aliases) — 2 skills
 - [Invocation](#invocation)
 
 ---
@@ -33,7 +32,6 @@ If you have never used the plugin, this is the whole happy path:
 /jlu-execute-task              # runs automatically when autochain is on
 /jlu-goal                      # QA against the real local stack
 /jlu-ship                      # PRs
-/jlu-close-task                # after merge
 ```
 
 With autochain on (the default), `/jlu-new-task` chains into `/jlu-execute-task` and then into `/jlu-ship`, driving every open PR to green. In that case the only command you type after the spec interview is `/jlu-goal`.
@@ -51,13 +49,11 @@ draft → refining → planned → implementing → validating → ready_to_publ
 | `draft` | `/jlu-new-task` | the inline spec interview |
 | `refining` | spec interview started | spec approval |
 | `planned` | spec approved (human gate) | `/jlu-execute-task` |
-| `implementing` | `/jlu-execute-task` (human gate) | `/jlu-extend-phase`, `/jlu-rollback-phase` |
+| `implementing` | `/jlu-execute-task` (human gate) | the TDD phase loop |
 | `validating` | all phases done | final QA |
 | `ready_to_publish` | QA green | `/jlu-ship` |
-| `done` | closure approved | `/jlu-close-task` |
+| `done` | closure approved | task closure |
 | `closed` | PR merged | — |
-
-`/jlu-extend-phase` is the legal way back: from `implementing` or `validating` it returns the task to `planned` (minor impact) or `refining` (major impact), preserving the code already written.
 
 ---
 
@@ -90,18 +86,6 @@ Applies a targeted change to an already-approved spec, via a focused interview. 
 
 **Notes:** with autochain on, re-enters `/jlu-execute-task` when the change altered the phase plan.
 
-### `/jlu-extend-phase`
-
-```
-/jlu-extend-phase [task-slug] [phase-number]
-```
-
-Adds new scope to an in-progress task via a mini-interview, then moves the task back to `planned` or `refining` depending on impact.
-
-**When:** scope grew mid-implementation ("I also need X"). Prefer this over editing artifacts by hand — it keeps the existing code as baseline instead of discarding it.
-
-**Requires:** state `implementing` or `validating`.
-
 ### `/jlu-execute-task`
 
 ```
@@ -118,16 +102,6 @@ Runs the full TDD pipeline: proposal generation, then phase by phase RED → GRE
 - With autochain on, after final QA is green it runs `/jlu-ship` inline and drives every open PR to green, resumable from `AUTOCHAIN.json`.
 - Session-recoverable: on re-entry it offers resume / re-validate / start over.
 
-### `/jlu-rollback-phase`
-
-```
-/jlu-rollback-phase [task-slug] [phase-number]
-```
-
-Resets the service worktrees to the last known-good phase state.
-
-**When:** a phase went wrong badly enough that starting it over beats fixing it.
-
 ### `/jlu-ship`
 
 ```
@@ -138,7 +112,7 @@ Stages, commits, pushes, and opens a pull request for every affected service. Be
 
 **When:** implementation is done and QA is green.
 
-**Notes:** delegates the per-service body to `jlu-ship-runner`, one runner per service. `/jlu-create-pr` is a deprecated alias.
+**Notes:** delegates the per-service body to `jlu-ship-runner`, one runner per service.
 
 ### `/jlu-resolve-pr`
 
@@ -159,16 +133,6 @@ Issues are clustered by root cause; mechanical fixes are applied automatically, 
 
 **Notes:** `--autonomous` never prompts — every ask-path resolves to skip, rerun, or escalate. That is the mode autochain uses. Never force-pushes, never merges.
 
-### `/jlu-close-task`
-
-```
-/jlu-close-task [task-slug]
-```
-
-Closes the task after the PR is merged: updates ClickUp to CLOSED, cleans up worktrees and artifacts, marks the task `closed`.
-
-**Requires:** the PR must actually be in `merged` state.
-
 ---
 
 ## Visibility and reporting
@@ -183,16 +147,6 @@ Scans the workspace and prints a table of every local task: slug, title, lifecyc
 
 **When:** "what tasks do I have?"
 
-### `/jlu-report-task`
-
-```
-/jlu-report-task [task-slug]
-```
-
-Executive summary of one task: progress, blockers, and stale-worktree detection.
-
-**When:** "where am I on this?"
-
 ### `/jlu-load-context`
 
 ```
@@ -202,16 +156,6 @@ Executive summary of one task: progress, blockers, and stale-worktree detection.
 Loads a task's artifacts into a fresh session so you can ask questions and pick up where you left off.
 
 **When:** resuming in a new window. Cheaper than re-reading artifacts by hand and it loads them in the right order.
-
-### `/jlu-task-clickup`
-
-```
-/jlu-task-clickup [task-slug]
-```
-
-Creates or updates the ClickUp macro task and its subtasks from the workspace artifacts, via MCP.
-
-**When:** ClickUp drifted from local state. The lifecycle skills already sync automatically, so this is a repair tool.
 
 ### `/jlu-daily-slack`
 
@@ -227,7 +171,7 @@ Generates a sprint-scoped daily summary and posts it to a Slack channel. Meeting
 
 ## Local dev environment
 
-These eight skills manage the local stack. Nothing here touches specs, tasks, or PRs.
+These six skills manage the local stack. Nothing here touches specs, tasks, or PRs.
 
 Two boot paths exist. The **plan-driven `--jelou-stack` boot** is the current one: it reuses your existing docker containers, and for services with a worktree for the active task it boots a namespaced, task-isolated container from the worktree code. The older tmux path still works but is **deprecated** — new work should pass `--jelou-stack`.
 
@@ -246,14 +190,13 @@ Interactively registers or updates a service in `jlu-services.json`.
 ### `/jlu-start-dev`
 
 ```
-/jlu-start-dev [--jelou-stack] [--auto-fix] [--tail]
+/jlu-start-dev [--jelou-stack] [--tail]
 ```
 
 Launches the registered services in a TMUX window dedicated to the active task slug, and starts the observer daemon.
 
 **Flags**
 - `--jelou-stack` — the plan-driven boot (reuse dev containers + task-isolated worktree containers). Recommended.
-- `--auto-fix` — when the observer sees a failure pattern, invoke `/jlu-autofix` automatically instead of only logging the event.
 - `--tail` — follow the logs.
 
 ### `/jlu-stop-dev`
@@ -280,50 +223,6 @@ Adds one service's pane to an already-running `jlu-dev` window without restartin
 
 Prints the last N lines of a service's pane. Read-only.
 
-### `/jlu-diagnose`
-
-```
-/jlu-diagnose [service-name]
-```
-
-Triages a failing service. Reads recent failure events plus a fresh pane capture, dispatches the `jlu-dev-diagnoser` agent, and proposes a structured fix that runs in the right context (host or container). **You confirm before anything runs.**
-
-**When:** a service is red and you want to understand why before touching it.
-
-**Notes**
-- The diagnoser can never bypass the confirmation gate — its tools are read-only.
-- If the diagnosis matches a failure signature that is not yet registered, the last step offers to register it (see `/jlu-add-failure-pattern`).
-
-### `/jlu-autofix`
-
-```
-/jlu-autofix <service>
-```
-
-The unattended sibling of `/jlu-diagnose`: a bounded loop that fixes a failing service without asking per fix. Up to **3 attempts** of:
-
-**evidence** (recent events + fresh log capture) → **diagnose** (`jlu-dev-diagnoser`) → **apply exactly one fix** → **verify** (restart the service, one observer pass, poll readiness).
-
-The fix takes one of two branches:
-- `runs_in: container` — a shell command inside the container (reinstall a dependency, free a port). Executed directly.
-- code — dispatched to `jlu-implementer`, constrained to the task worktree.
-
-**Requires:** the service must be in the unified registry, i.e. a `--jelou-stack` boot. It refuses on anything else.
-
-**It never gives up silently.** These all escalate to you:
-
-| Condition | Why |
-|---|---|
-| diagnosis `confidence: low`, or no fix proposed | it will not guess |
-| the main checkout is dirty | it will not edit on top of your uncommitted work |
-| the implementer returns `BLOCKED` / `flagged` / `NEEDS_CONTEXT` | the fix agent itself refused |
-| the same hunk edited twice (repeated `hunk_hash`) | the implementer is looping on a dead end |
-| 3 attempts without a green verify | summarizes all three and points at `/jlu-diagnose` |
-
-Success is only declared when there is no new failure-pattern match **and** readiness polls green.
-
-**Notes:** it does not register new failure patterns — there is no gate at which to ask you.
-
 ### `/jlu-add-failure-pattern`
 
 ```
@@ -344,7 +243,7 @@ container .* not running · service ".*" is not running
 
 **Notes**
 - Validates that the regex compiles, and dedupes. Reports `Daemon: reloaded | not-running`.
-- No subagent ever calls this. Three surfaces only *suggest* it: the `jlu-dev-diagnoser` agent's `register_pattern` field, `/jlu-diagnose`'s final step, and the trace suggester's `extend_patterns` rule (same error signature ≥3 times in 30 days), surfaced through `/jlu-refine-task`. The write always happens after a human yes.
+- No subagent ever calls this. Two surfaces only *suggest* it: the `jlu-dev-diagnoser` agent's `register_pattern` field, and the trace suggester's `extend_patterns` rule (same error signature ≥3 times in 30 days), surfaced through `/jlu-refine-task`. The write always happens after a human yes.
 
 ---
 
@@ -362,7 +261,7 @@ container .* not running · service ".*" is not running
 
 **How the work is split.** The orchestrator owns the environment lifecycle (boot once, teardown once) and delegates all execution:
 - backend services → `jlu-test-suite-runner` (host unit + integration) and `jlu-backend-e2e-runner` (Testcontainers, dependencies only, real HTTP)
-- UI services → `jlu-ui-qa-runner` (`/jlu-ui-qa-run --no-boot`); the orchestrator owns only the OTP auth gate before it
+- UI services → `jlu-ui-qa-runner`, which never boots on its own; the orchestrator owns only the OTP auth gate before it
 
 **Flags**
 - `--max-iterations=N` — convergence-loop cap, default `3`.
@@ -372,7 +271,7 @@ container .* not running · service ".*" is not running
 - `--allow-prod-target` — override the anti-prod E2E target gate. Use sparingly.
 - `--skip-unbootable` — drop a non-bootable **backend** from the boot order instead of refusing. Never drops a UI service.
 
-**Notes:** invoked with no matrix, it resumes from the `GOALS.md` persisted by a previous run. `/jlu-production-like` is a deprecated alias.
+**Notes:** invoked with no matrix, it resumes from the `GOALS.md` persisted by a previous run.
 
 ### `/jlu-test-suite`
 
@@ -387,30 +286,6 @@ Runs the current service's unit + integration suites with **workers = 1** and re
 **When:** local pre-PR validation, when you want a richer signal than `/jlu-execute-task`'s affected-tests step. CI still runs the full suite on push.
 
 **Notes:** it validates, it never auto-fixes. Standalone it runs on the host and only warns if the dev infrastructure is unreachable; under `/jlu-goal` the stack is already up and the integration tests hit it live.
-
-### `/jlu-ui-qa-run`
-
-```
-/jlu-ui-qa-run [task-slug]
-```
-
-Boots only the services the task affects, runs the Playwright E2E suite headless and single-worker, and on failure dispatches the bounded fix-loop. Records video for every run, pass or fail.
-
-**When:** verifying UI behaviour post-deploy. In a full-task QA pass, prefer `/jlu-goal`, which calls this for you.
-
-**Flags:** `--force`, `--workers=N` (default 1, refuses unsafe values unless the RAM and CPU gates pass), `--allow-shared-data`, `--allow-test-edits` (lets the fix-loop edit `.spec.ts`; forbidden by default), `--allow-prod-target`, `--no-boot` (the caller already owns the infrastructure — this is how `/jlu-goal` invokes it).
-
-**Notes:** with no slug it parses one from the branch (`production/<slug>` or `staging/<slug>`) and refuses on off-task branches.
-
-### `/jlu-ui-qa-cleanup`
-
-```
-/jlu-ui-qa-cleanup [task-slug]
-```
-
-Recovers from a crashed E2E run: leaked dev servers, stale containers, held lock files, occupied ports.
-
-**When:** `/jlu-ui-qa-run` died mid-run and the next one refuses to start.
 
 ---
 
@@ -438,18 +313,6 @@ Curates the workspace's domain glossary. An extractor scans code for terminology
 
 **When:** the same concept has three names across services, or a new team member cannot read the domain.
 
-### `/jlu-architecture-review`
-
-```
-/jlu-architecture-review [<service-id>] [--cross-service]
-```
-
-Surfaces *deepening opportunities* — refactors that turn shallow modules into deep ones. An explorer proposes candidates from the code alone, then an interactive grilling loop walks each one with you; a rejected candidate can be recorded lazily as an ADR.
-
-**When:** the code works but keeps costing more than it should to change.
-
-**Notes:** the vocabulary (Module, Interface, Seam, Adapter, Depth, Leverage, Locality) is contractual — see `jelou/references/architecture-language.md`.
-
 ### `/jlu-council`
 
 ```
@@ -461,18 +324,6 @@ Convenes a multi-model jury on an architecture idea. Heterogeneous judges refute
 **When:** before committing to a design you are not sure about, or when you want a second opinion that is not your own model agreeing with you.
 
 **Notes:** a cleared idea hands off exclusively to `/jlu-new-task`, in a fresh window, with a self-sufficient seed.
-
-### `/jlu-investigate`
-
-```
-/jlu-investigate "<question>" [--engine perplexity|fusion]
-```
-
-Stateful research. Runs one engine per call (Perplexity by default, OpenRouter Fusion with `--engine fusion`) and persists each investigation as a resumable Obsidian note, falling back to a local file. Resumes by topic slug.
-
-**When:** comparing options, or gathering what is known about a topic.
-
-**Not a debugger.** Failures, 500s, and stack traces route to `/jlu-diagnose`.
 
 ---
 
@@ -517,17 +368,6 @@ Updates the plugin to the latest version for the current runtime. On Claude Code
 **Notes**
 - `--ref <ref>` pins a tag or branch instead of latest.
 - On Claude Code a **restart or a new session** is required for the new version to load.
-
----
-
-## Deprecated aliases
-
-Both still work and forward to their replacement. They exist so old muscle memory and old docs do not break.
-
-| Alias | Use instead |
-|---|---|
-| `/jlu-production-like` | `/jlu-goal` |
-| `/jlu-create-pr` | `/jlu-ship` |
 
 ---
 

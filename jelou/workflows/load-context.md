@@ -106,8 +106,8 @@ Before presenting context, compute a compact status summary from the TASKS.md yo
    | `planned` | Spec finalized — ready to implement | Run `/jlu-execute-task` to begin TDD implementation. |
    | `implementing` | TDD execution in progress | Run `/jlu-execute-task` to resume — next phase is `<recovery-info.next-phase>` (phase <N>/<total>). |
    | `validating` | All phases complete — QA running | Run `/jlu-execute-task` to complete QA, then `/jlu-ship` when all services pass. |
-   | `ready_to_publish` | Implementation done — PR needed | Run `/jlu-ship` to open pull requests. *(If PR already exists: awaiting review — merge, then `/jlu-close-task`.)* |
-   | `done` | PRs open — awaiting merge | PR is open. Await review and merge, then run `/jlu-close-task`. |
+   | `ready_to_publish` | Implementation done — PR needed | Run `/jlu-ship` to open pull requests. *(If PR already exists: awaiting review — merge it.)* |
+   | `done` | PRs open — awaiting merge | PR is open. Await review and merge. |
    | `closed` | Task finalized | No action needed. |
 
 6. **If active blockers exist**, override the next step with: `Resolve blocker: <description>`
@@ -206,7 +206,7 @@ Status: <lifecycle-state> — <human-label from Step 6>
 
 **Never fabricate data.** Every number must come from TASKS.md or the git output already gathered — never estimate. If a metric is unavailable, show `—`; an honest gap beats a plausible guess.
 
-**Never invent commands. The `/jlu:*` vocabulary is closed.** Every `/jlu:*` you name in Next Steps must be a command that actually ships in this plugin — the lifecycle set is `/jlu:new-task`, `/jlu:execute-task`, `/jlu:refine-task`, `/jlu:extend-phase`, `/jlu:test-suite`, `/jlu:goal`, `/jlu:ship`, `/jlu:close-task`. Outward-facing or deploy-time work that no plugin command performs — deploying a service, setting a gateway env var, flipping a feature flag, running a live external E2E — is a **plain-prose manual/ops step**, never a `/jlu:*` command. There is no `jlu:land-and-deploy` command and no `jlu:deploy` command; if you are reaching for one, you are hallucinating — write the action in prose instead.
+**Never invent commands. The `/jlu:*` vocabulary is closed.** Every `/jlu:*` you name in Next Steps must be a command that actually ships in this plugin — the lifecycle set is `/jlu:new-task`, `/jlu:execute-task`, `/jlu:refine-task`, `/jlu:test-suite`, `/jlu:goal`, `/jlu:ship`, `/jlu:resolve-pr`. Outward-facing or deploy-time work that no plugin command performs — deploying a service, setting a gateway env var, flipping a feature flag, running a live external E2E — is a **plain-prose manual/ops step**, never a `/jlu:*` command. There is no `jlu:land-and-deploy` command and no `jlu:deploy` command; if you are reaching for one, you are hallucinating — write the action in prose instead.
 
 After the summary, tell the user:
 > Context loaded. You can ask me anything about this task. When making changes, I'll use the worktree paths shown above. I can read any artifact from the inventory for more detail.

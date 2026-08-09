@@ -268,13 +268,3 @@ describe('renderParts (obs append support)', () => {
     assert.deepEqual(p.engines, ['perplexity']);
   });
 });
-
-describe('investigate runtime trio', () => {
-  const root = fileURLToPath(new URL('../..', import.meta.url));
-  test('skill + workflow + opencode + codex prompt all present', () => {
-    assert.ok(existsSync(pjoin(root, 'skills/investigate/SKILL.md')));
-    assert.ok(existsSync(pjoin(root, 'jelou/workflows/investigate.md')));
-    assert.ok(existsSync(pjoin(root, '.opencode/commands/jlu-investigate.md')));
-    assert.ok(existsSync(pjoin(root, '.codex/skills/jlu-investigate/SKILL.md')));
-  });
-});

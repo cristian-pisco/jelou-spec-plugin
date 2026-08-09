@@ -155,12 +155,6 @@ describe('orchestrator workflows — capped invocations stay capped', () => {
     assert.match(testSuite, /MemAvailable/);
   });
 
-  test('ui-qa-run keeps the worker default and CPU cap', () => {
-    const uiQaRun = read('jelou/workflows/ui-qa-run.md');
-    assert.match(uiQaRun, /--workers=\$\{WORKERS:-1\}/);
-    assert.match(uiQaRun, /MAX_WORKERS_BY_CPU/);
-  });
-
   test('env-lifecycle carries the canonical CPU cap and RAM gate', () => {
     const envLifecycle = read('jelou/references/env-lifecycle.md');
     assert.match(envLifecycle, /MAX_WORKERS_BY_CPU=\$\(\( CPU_CORES \/ 2 \)\)/);

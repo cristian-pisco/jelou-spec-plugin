@@ -6,7 +6,14 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
-const ORPHAN_ALLOWLIST = {};
+const ORPHAN_ALLOWLIST = {
+  'jlu-dev-diagnoser':
+    'Dev-environment triage agent kept for start-dev; the /jlu-diagnose workflow that dispatched it was retired.',
+  'jlu-architecture-explorer':
+    'Architecture-review agent kept while the retired /jlu-architecture-review workflow is reabsorbed.',
+  'jlu-architecture-grill':
+    'Architecture-review agent kept while the retired /jlu-architecture-review workflow is reabsorbed.',
+};
 
 function agentNames() {
   return readdirSync(join(ROOT, 'agents'))

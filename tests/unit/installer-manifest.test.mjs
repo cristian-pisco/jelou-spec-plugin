@@ -248,7 +248,6 @@ describe('boot-certification workflows — referenced bins exist in the repo', (
   const surfaces = [
     'jelou/workflows/map-codebase.md',
     'jelou/workflows/goal.md',
-    'jelou/workflows/ui-qa-run.md',
     'agents/jlu-dev-block-verifier.md',
   ];
 

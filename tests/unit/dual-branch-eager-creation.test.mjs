@@ -126,28 +126,6 @@ describe('ship: reuses the pre-created staging branch', () => {
   });
 });
 
-describe('close-task: tears down eagerly-pushed staging', () => {
-  const wf = read('jelou/workflows/close-task.md');
-
-  test('staging teardown runs whenever DUAL_PR = yes, not only when an alpha PR was recorded', () => {
-    assert.match(wf, /\*\*Staging branch teardown\*\* \(whenever `DUAL_PR = yes`\)/);
-    assert.match(wf, /the remote branch can exist even if `\/jlu-ship` never ran/);
-  });
-
-  test('handles the no-alpha-PR case explicitly', () => {
-    assert.match(wf, /no alpha PR was ever opened/);
-  });
-});
-
-describe('report-task: stale-branch net covers staging', () => {
-  const wf = read('jelou/workflows/report-task.md');
-
-  test('stale branch-mode check verifies staging as well as production', () => {
-    assert.match(wf, /git -C <service-repo> rev-parse --verify staging\/<TASK_SLUG> 2>\/dev\/null/);
-    assert.match(wf, /dual-PR tasks created but never carried through/);
-  });
-});
-
 describe('README: dual-PR section reflects eager creation', () => {
   const readme = read('README.md');
 

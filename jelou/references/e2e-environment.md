@@ -62,7 +62,7 @@ The Playwright run refuses to start unless these are set:
 
 ### `E2E_BASE_URL` must come from `.env.e2e` — never `.env`
 
-The app's own `.env` typically points at production (`apps.jelou.ai`, `workflows.jelou.ai`). To guarantee the E2E target is a deliberate choice and never inherited from the app config, `/jlu-ui-qa-run` requires `E2E_BASE_URL` to be declared in the E2E-specific `.env.e2e` overlay:
+The app's own `.env` typically points at production (`apps.jelou.ai`, `workflows.jelou.ai`). To guarantee the E2E target is a deliberate choice and never inherited from the app config, the E2E caller requires `E2E_BASE_URL` to be declared in the E2E-specific `.env.e2e` overlay:
 
 ```bash
 [ -f .env.e2e ] || { echo "ERROR: .env.e2e missing"; exit 2; }
@@ -133,7 +133,7 @@ The writer agent reads `playwright.config.ts` and refuses with `STATUS: NEEDS_CO
 
 For every backend the UI talks to during a flow, choose exactly one:
 
-1. **Boot it locally via `Service Boot Order`.** The service appears in the flow's `Service Boot Order`, has a `dev` block in `services.yaml`, and is launched by `/jlu-ui-qa-run` Phase 3. This is the default for services in `affected_services`.
+1. **Boot it locally via `Service Boot Order`.** The service appears in the flow's `Service Boot Order`, has a `dev` block in `services.yaml`, and is launched by the E2E caller's boot phase. This is the default for services in `affected_services`.
 
 2. **Point at a real existing endpoint via `.env`.** The service URL is read from a declared env var (e.g., `BILLING_API_URL`, `AUTH_URL`). The orchestrator HEAD-checks each declared external URL during pre-flight and refuses to start if any is unreachable. Use this for upstreams the task does not own (sandboxes, staging, third-party APIs with test modes).
 
@@ -188,7 +188,6 @@ For services with `dev.data_isolation: shared` (per `dev-block-schema.md`), `--a
 - `jelou/references/auth-fixtures.md` — credential security contract; uses `process.env.LOGIN_URL` and friends.
 - `jelou/references/dev-block-schema.md` — `env_files` declares which files the orchestrator sources before launching non-Docker dev servers.
 - `jelou/templates/spec-templates/user-flow.md` — `Env Vars` section that the writer reads and the orchestrator validates.
-- `jelou/workflows/ui-qa-run.md` — Phase 3 step 15 implements the `.env` source + var-existence check.
 
 ## Backend E2E (goal)
 

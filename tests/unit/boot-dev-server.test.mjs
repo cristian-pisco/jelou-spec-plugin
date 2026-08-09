@@ -83,10 +83,4 @@ describe('boot-dev-server — wiring into the boot contract and auth drivers', (
       assert.match(src, /lib\/env-files\.mjs/, `${f} should import the parser lib`);
     }
   });
-
-  test('ui-qa-run step 14b no longer bash-sources the env files', () => {
-    const ui = read('jelou/workflows/ui-qa-run.md');
-    assert.match(ui, /self-load/i);
-    assert.match(ui, /Do \*\*not\*\* `?source`?|do not `?source`?/i);
-  });
 });

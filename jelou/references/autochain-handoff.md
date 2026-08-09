@@ -22,7 +22,7 @@ failure is a WARN in the report, never a stop. Interview sessions
 `CLICKUP_TASK.json` and make future unattended runs promptless.
 
 **Hard-stop demotion:** task-clickup.md's Step-0 rule ("stop immediately …
-do not proceed") applies to standalone `/jlu-task-clickup` runs. When
+do not proceed") applies to standalone ClickUp sync runs. When
 task-clickup executes as part of the autochain, that hard-stop is DEMOTED to
 WARN-and-skip: report the MCP failure, skip the ClickUp step, continue the
 chain. The chain's outcome never depends on ClickUp.

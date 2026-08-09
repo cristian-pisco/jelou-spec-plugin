@@ -1,6 +1,6 @@
 # OKR Mapping — Jelou Tech 2026
 
-Every ClickUp task created by `/jlu-task-clickup` MUST be tied to exactly one Key
+Every ClickUp task created for a JLU task MUST be tied to exactly one Key
 Result. The KR is written to **two** places on the macro task:
 
 1. The `markdown_description` (human-readable block — see "Embedding format"

@@ -1,6 +1,6 @@
 # `services.yaml` `dev` Block — Schema Reference
 
-> The `dev` block is an additive extension to `services.yaml` (see `jelou/templates/services-yaml.md`). It has three consumers: `/jlu-ui-qa-run` boots from it for E2E orchestration, `/jlu-goal` derives/persists/re-verifies it for boot-order services, and `/jlu-map-codebase` derives, persists, and boot-certifies it at mapping time. Workflows outside those three (execute-task, ship, etc.) ignore it. In `/jlu-ui-qa-run`, a non-UI affected service without a `dev` block is skipped with a clear message. `/jlu-goal` does NOT skip a boot-order service that lacks one — it derives a block (`bin/derive-dev-block.mjs`) and persists it automatically (step 8b) rather than improvise or ask. `/jlu-map-codebase` goes further: at mapping time it derives, persists, AND boot-verifies missing blocks (via `jlu-dev-block-verifier` running `bin/verify-dev-block.mjs`), writing the `verified` mark documented below when the real boot goes green.
+> The `dev` block is an additive extension to `services.yaml` (see `jelou/templates/services-yaml.md`). It has two consumers: `/jlu-goal` derives/persists/re-verifies it for boot-order services, and `/jlu-map-codebase` derives, persists, and boot-certifies it at mapping time. Workflows outside those two (execute-task, ship, etc.) ignore it. In the E2E lane, a non-UI affected service without a `dev` block is skipped with a clear message. `/jlu-goal` does NOT skip a boot-order service that lacks one — it derives a block (`bin/derive-dev-block.mjs`) and persists it automatically (step 8b) rather than improvise or ask. `/jlu-map-codebase` goes further: at mapping time it derives, persists, AND boot-verifies missing blocks (via `jlu-dev-block-verifier` running `bin/verify-dev-block.mjs`), writing the `verified` mark documented below when the real boot goes green.
 
 ## Purpose
 
@@ -152,7 +152,7 @@ Optional list of env files (relative to the worktree) the orchestrator sources b
 - **Loaded as:** `set -a; . ./<file>; set +a` (POSIX export-all-assignments). Bash-only syntax in the file (e.g., heredocs, `$()`) is the consumer's responsibility.
 - **Why exist:** Next.js, Vite, and similar dev servers auto-load `.env`, but raw shell or `make` launchers do not. Without this field the spawned dev server starts with an empty environment, which then breaks both the dev server and downstream Playwright vars that resolve through it.
 
-The Playwright runner itself separately sources `.env` / `.env.e2e` from the **UI service's** worktree before launching — see `jelou/references/e2e-environment.md` and `jelou/workflows/ui-qa-run.md` Phase 3 step 15. `env_files` here is about boot-time environment for non-Docker dev servers, not test-time environment for Playwright.
+The Playwright runner itself separately sources `.env` / `.env.e2e` from the **UI service's** worktree before launching — see `jelou/references/e2e-environment.md`. `env_files` here is about boot-time environment for non-Docker dev servers, not test-time environment for Playwright.
 
 ## `ram_estimate_mb`
 
@@ -173,7 +173,7 @@ Tune from observation, not guesswork.
 Declares how the service's persistent state behaves across concurrent E2E runs:
 
 - **`per-run`** — each run gets a fresh data state (e.g., a Postgres container started clean, a service that seeds its own DB on boot). Safe for concurrent invocations.
-- **`shared`** — runs share the same backing store (e.g., a long-lived staging DB the dev server points at). **Refused by `/jlu-ui-qa-run` without `--allow-shared-data`** because two concurrent runs will corrupt each other's data.
+- **`shared`** — runs share the same backing store (e.g., a long-lived staging DB the dev server points at). **Refused by the E2E caller without `--allow-shared-data`** because two concurrent runs will corrupt each other's data.
 - **`none`** — service is stateless; no isolation needed (e.g., a static-content service, a stateless API gateway).
 
 When `--allow-shared-data` is set, the user accepts the risk and is responsible for ensuring the runs don't collide on data.
@@ -225,7 +225,7 @@ reports, the orchestrator persists.
 
 Optional sub-block of `dev`, shape `verified: { date, commit, block_hash }`. It records that
 this exact `dev` block once booted the service for real — the block is a verified fact, not a
-hypothesis. Consumers (`/jlu-goal`, `/jlu-ui-qa-run`) trust ONLY marked blocks whose hash is
+hypothesis. Consumers (`/jlu-goal`, the E2E caller) trust ONLY marked blocks whose hash is
 current; anything else is a hypothesis the run's own boot re-verifies.
 
 **Field semantics:**
@@ -247,11 +247,11 @@ current; anything else is a hypothesis the run's own boot re-verifies.
   `bin/verify-dev-block.mjs --checkout <svc.path>`: real boot → readiness → launcher
   teardown) returns `VERDICT: GREEN` with `COMMAND_EXECUTED: true`. `GREEN_PREEXISTING`
   (the service was already serving, so the command never ran) never marks.
-- `/jlu-goal` and `/jlu-ui-qa-run` (standalone) — when their OWN boot actually STARTED the
+- `/jlu-goal` and the E2E caller (standalone) — when their OWN boot actually STARTED the
   service (the `dev.command` executed; a reuse of an already-healthy service never marks)
   on the canonical `svc.path` checkout with readiness green. Worktree boots trust or
   re-verify but NEVER write the mark.
-- Under `--no-boot`, `/jlu-ui-qa-run` NEVER writes — the caller owns the lifecycle and
+- Under `--no-boot`, the E2E caller NEVER writes — the caller owns the lifecycle and
   the marks.
 - The `jlu-dev-block-verifier` subagent NEVER writes the mark (or any registry content):
   it reports a verdict, and the orchestrator persists via
@@ -275,7 +275,7 @@ session-validation API. These are usually NOT in `affected_services` and may be 
 returns `401` while the service-under-test itself looks healthy (the datum-legacy run's gateway-401
 root cause).
 
-`/jlu-goal` (Phase 1 step 8a) and `/jlu-ui-qa-run` expand the boot order with
+`/jlu-goal` (Phase 1 step 8a) and the E2E caller expand the boot order with
 `depends_on` **transitively** (a dependency's own `depends_on` is folded in too), ordering each
 dependency before its dependents. Every folded dependency must have a `dev` block, exactly like any
 other boot-order service (`bin/derive-dev-block.mjs` + step 8b resolve missing ones). Other
@@ -306,7 +306,7 @@ The `dev` block is **strictly additive**. Existing `services.yaml` files without
 
 A separate, per-workspace registry — distinct from `services.yaml` and from `jelou-stack.json` — is now available: `<workspace>/registry/jelou-registry.yaml`. It is authored by a human (or seeded from a canonical template) in a strict YAML subset, **compiled** by `bin/compile-registry.mjs` (or seeded-then-compiled by `bin/seed-registry.mjs`) into `<workspace>/registry/registry.json`, and read at runtime by `readUnifiedRegistry(workspaceRoot)` (`bin/lib/registry/read.mjs`), which just `JSON.parse`s the compiled file. The canonical template ships at `jelou/config/jelou-registry.template.yaml`.
 
-This is **consolidation sub-project #1** — the base of a single registry format. As of #3c, `/jlu-start-dev --jelou-stack` and `/jlu-autofix` are migrated onto it (via the plan-driven boot; the F-series `jelou-stack.json` boot was retired). Still pending: `/jlu-goal` (#4) reads the `services.yaml` `dev` blocks documented above, and the generic tmux `/jlu-start-dev` path reads `jlu-services.json` (deprecated). The mapping table below is retained as historical provenance for how the retired `jelou-stack.json` fields map onto this format.
+This is **consolidation sub-project #1** — the base of a single registry format. As of #3c, `/jlu-start-dev --jelou-stack` is migrated onto it (via the plan-driven boot; the F-series `jelou-stack.json` boot was retired). Still pending: `/jlu-goal` (#4) reads the `services.yaml` `dev` blocks documented above, and the generic tmux `/jlu-start-dev` path reads `jlu-services.json` (deprecated). The mapping table below is retained as historical provenance for how the retired `jelou-stack.json` fields map onto this format.
 
 ### Additive fields (over the `dev` block above)
 

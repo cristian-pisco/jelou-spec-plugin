@@ -1,6 +1,6 @@
 # Sample Consumer
 
-A tiny stdlib-only API plus a Playwright project that exercises the `/jlu-ui-qa-run` flow end-to-end in CI. Used by `.github/workflows/test.yml` and as a local sandbox for dogfooding M1/M2/M3.
+A tiny stdlib-only API plus a Playwright project that exercises the UI E2E flow end-to-end in CI. Used by `.github/workflows/test.yml` and as a local sandbox for dogfooding M1/M2/M3.
 
 ## Layout
 

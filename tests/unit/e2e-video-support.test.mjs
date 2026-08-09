@@ -189,20 +189,6 @@ describe('the read path seeds on any runtime, with no hook at all', () => {
 });
 
 describe('JLU_E2E_VIDEO wiring across the harness', () => {
-  test('ui-qa-run exports JLU_E2E_VIDEO and reports .webm artifacts', () => {
-    const wf = read('jelou/workflows/ui-qa-run.md');
-    assert.match(wf, /export JLU_E2E_VIDEO=/);
-    assert.match(wf, /seed-e2e-settings\.mjs"?\s+--print-video/);
-    assert.match(wf, /\.webm/);
-    assert.match(wf, /playwright-output/);
-  });
-
-  test('ui-qa-cleanup sweeps .webm on the retention window', () => {
-    const cln = read('jelou/workflows/ui-qa-cleanup.md');
-    assert.match(cln, /--print-retention/);
-    assert.match(cln, /\.webm/);
-  });
-
   test('the bootstrap scaffold reads process.env.JLU_E2E_VIDEO', () => {
     const agent = read('agents/jlu-ui-e2e-writer.md');
     assert.match(agent, /video:\s*\(process\.env\.JLU_E2E_VIDEO/);
