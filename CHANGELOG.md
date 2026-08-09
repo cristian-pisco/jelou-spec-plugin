@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.351] — 2026-08-09
+
+### Fixed
+- correct the stale, dead and contradictory instructions across the workflows (#85)
+
 ## [0.3.350] — 2026-08-09
 
 ### Internal
