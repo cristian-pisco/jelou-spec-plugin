@@ -240,9 +240,13 @@ node {plugin-root}/bin/build-boot-plan.mjs --workspace {root} --slug {slug} --so
 
 This prints `{ services: [entry], network, slug }` — capture it as `{planJson}` (also used by Steps B0, C, C1, D, and the observer). Each `entry` has a `policy` of `task-isolated` or `shared-reuse`.
 
-Then boot each entry by following the `## Plan-driven boot` contract in `jelou/references/env-lifecycle.md`: for each entry, obtain its descriptor with `planEntryToCommands(entry, { runIdentity })` and execute it —
+**Skip any entry whose `dev.launcher` is neither `docker` nor `docker-exec`** (check with `isContainerLauncher(entry.launcher)`, `{plugin-root}/bin/lib/boot-engine/launcher.mjs`) before this loop. A host-launched entry (e.g. `npm`) can show up here with `policy: 'task-isolated'` when its worktree exists — `compile-registry.mjs` includes any `services.yaml` dev block even when `jelou-registry.yaml` never declared it, which is how the frontend's own entry (`jelou-apps`) ends up in `plan.services` alongside its dedicated `plan.frontend` block. `planEntryToCommands` never throws on it (every field just interpolates as `undefined`), so the failure mode is a `docker compose -p undefined ... up -d` invocation, not a clean error — skip it before that happens. This loop is for the Docker-based backend boot only; a host-launched frontend entry belongs to Steps D–H (`plan.frontend`), never to this one.
 
-- **task-isolated**: write `descriptor.files[]` → `docker <descriptor.up>` (idle container, image reused, no rebuild) → if `descriptor.install` non-null run it per step 4b of the boot contract (blocking, before the dev command, bounded by `install.timeoutMs`; a non-zero exit means this entry is `down` with cause `deps_install_failed` and its dev command is never exec'd) → if `descriptor.exec` non-null `docker <descriptor.exec>` → poll `descriptor.readiness` (http/port on the allocated host port; stdout_match tails `descriptor.readiness.logPath`) → register `docker <descriptor.teardown>` (ALWAYS). WARN if `descriptor.imageResolved` is false.
+Then boot each remaining entry by following the `## Plan-driven boot` contract in `jelou/references/env-lifecycle.md`: for each entry, obtain its descriptor with `planEntryToCommands(entry, { runIdentity })` and execute it —
+
+- **task-isolated**: write `descriptor.files[]` → `docker <descriptor.up>` (image reused, no rebuild) → if `descriptor.install` non-null run it per step 4b of the boot contract (blocking, bounded by `install.timeoutMs`; a non-zero exit means this entry is `down` with cause `deps_install_failed` and its dev command is never started) → if `descriptor.exec` non-null `docker <descriptor.exec>`, else if `descriptor.restart` non-null `docker <descriptor.restart>` → poll `descriptor.readiness` (http/port on the allocated host port; stdout_match reads the log source below) → register `docker <descriptor.teardown>` (ALWAYS). WARN if `descriptor.imageResolved` is false, and WARN if `descriptor.depsUnverified` is true (the container resolves `node_modules` from its base image, so a lockfile newer than the image serves stale dependencies — rebuild the base image if the service misbehaves).
+
+  Whether the entry is idle-then-exec'd or self-starting is decided by its `dev.launcher`, and `planEntryToCommands` has already resolved it: `docker-exec` yields a `descriptor.exec` (the override makes the container idle, the dev command is exec'd into it and redirected to `descriptor.readiness.logPath`); `docker` yields `exec: null` because the image's own CMD starts the dev command when the container comes up — there is no `logPath`, and a deps install has to be followed by `descriptor.restart` so the CMD re-runs against the installed dependencies. Never assume a `/tmp/<projectName>.dev.log` exists: read `descriptor.readiness.logSource`, which is `{ mode: 'exec-file', container, path }` or `{ mode: 'docker-logs', container }`, and tail with `docker exec <container> tail -n 30 <path>` or `docker logs --tail 30 <container>` accordingly.
 - **shared-reuse**: write `descriptor.files[]` (the `wiredEnv` `.env`) if present → the existing reuse-or-reboot path (`descriptor.launcher`/`command`/`cwd`): probe the developer's container, reuse if healthy, reboot only if unhealthy/stale → poll `descriptor.readiness` (the service's normal dev port) → register `descriptor.teardown` (kill-what-started) ONLY if this run rebooted it.
 
 Track `green` (every entry reached readiness) and `down` (the entries that did not). For each `shared-reuse` entry, resolve its dev container id for the observer (Step below) by running, in the service `cwd`:
@@ -284,18 +288,25 @@ Compute the policy-aware reachable host for each service:
 
 ```bash
 node -e "
-import('{plugin-root}/bin/lib/boot-engine/host-map.mjs').then(({ hostByService }) => {
+Promise.all([
+  import('{plugin-root}/bin/lib/boot-engine/host-map.mjs'),
+  import('node:child_process')
+]).then(([{ hostByService }, { spawnSync }]) => {
   const plan = JSON.parse(process.argv[1]);
   const registry = JSON.parse(process.argv[2]);
-  process.stdout.write(JSON.stringify(hostByService({ plan, registry })));
+  const ps = spawnSync('docker', ['ps', '--format', '{{.Ports}}'], { encoding: 'utf8' }).stdout || '';
+  const occupiedOnHost = [...new Set([...ps.matchAll(/0\.0\.0\.0:(\d+)->/g)].map((m) => Number(m[1])))];
+  process.stdout.write(JSON.stringify(hostByService({ plan, registry, occupiedOnHost })));
 });
 " '{planJson}' '{registryJson}'
 ```
 
-This returns `{ hostByService: { <id>: host }, occupied: [host…] }` — `hostByService[id]` is the allocated primary host for a task-isolated service, or the normal dev port for a shared-reuse service. Reuse it in every step below.
+This returns `{ hostByService: { <id>: host }, occupied: [host…], unresolved: [id…] }` — `hostByService[id]` is the allocated primary host for a task-isolated service, and for a shared-reuse service the **published** host port read from its running container (`docker compose port`), which is not the same number as the registry's internal port: the registry records what the process listens on inside the container (`8080` for nearly every Jelou service), while the developer's container publishes it on a distinct host port (`8383`, `8229`, `8902`…). Reporting or injecting the internal port would point the whole frontend at one wrong port. Run this step only AFTER Step B, so every shared-reuse container is already up and its port is resolvable.
+
+`occupied` includes every host port docker has published, not just this plan's allocations, so Step D cannot hand the frontend a port a leftover task container from another slug is already holding. For each id in `unresolved`, warn: `⚠ <service>: no published host port — its container is not running, falling back to the internal port <n>, which is almost certainly not reachable from the host.` Treat an unresolved `frontend.envLocal` target as a boot failure rather than writing a wrong URL into the frontend `.env`.
 
 - If `green`: report each service as `<service>: http://localhost:<hostByService[service]>`.
-- For each `down` service, surface its log before failing: task-isolated → `docker exec <service>-<slug> tail -n 30 /tmp/<service>-<slug>.dev.log`; shared-reuse → `docker logs --tail 30 <resolved dev container id from Step B>`.
+- For each `down` service, surface its log before failing: task-isolated → the command implied by its `descriptor.readiness.logSource` (Step B); shared-reuse → `docker logs --tail 30 <resolved dev container id from Step B>`.
 
 ### Step C1 — Record booted task projects
 
@@ -431,7 +442,9 @@ import('{plugin-root}/bin/lib/dev-orchestrator/stack/ports.mjs').then(({ allocat
 
 ### Step E — Rewrite the frontend `.env`
 
-Back up `registry.frontend.path`/`registry.frontend.envFile` to `registry.frontend.path`/`registry.frontend.envBackup` if that backup does not already exist — these fields come from the unified registry `frontend` block (Step A). Read the current `.env` contents (empty string if the file is absent), then:
+The frontend obeys the same task-isolation rule as the backend services: `plan.frontend` (Step B) is the unified registry's `frontend` block with its `path` already re-pointed at `<registry.frontend.path>/.worktrees/<slug>` when that worktree exists (`isWorktree: true`, `policy: 'task-isolated'`), and left on the canonical checkout otherwise. **Every frontend step below — the `.env` backup, the rewrite, the Vite boot, the stack-state record — uses `plan.frontend.path`, never `registry.frontend.path`.** Booting the canonical checkout for a slug that has a frontend worktree serves main-branch code and silently invalidates the whole run. If `plan.frontend.isWorktree` is true and `plan.frontend.depsPresent` is false, stop and tell the user to install dependencies in that worktree — do not install them yourself.
+
+Back up `plan.frontend.path`/`plan.frontend.envFile` to `plan.frontend.path`/`plan.frontend.envBackup` if that backup does not already exist. Read the current `.env` contents from `plan.frontend.envSeed` (the worktree's own `.env` when it has one, otherwise the canonical checkout's — a fresh worktree inherits the developer's environment rather than starting blank), empty string if that file is absent too, then:
 
 ```bash
 node -e "
@@ -444,12 +457,12 @@ import('{plugin-root}/bin/lib/dev-orchestrator/stack/frontend-env.mjs').then(({ 
   });
   process.stdout.write(out);
 });
-" "{currentEnvText}" '{JSON.stringify(registry.frontend.envLocal)}' '{JSON.stringify(registry.frontend.envBlank)}' '{JSON.stringify(hostByService)}'
+" "{currentEnvText}" '{JSON.stringify(plan.frontend.envLocal)}' '{JSON.stringify(plan.frontend.envBlank)}' '{JSON.stringify(hostByService)}'
 ```
 
-The substitution values come from the unified registry `frontend` block (Step A) and the Step C `hostByService` map: `JSON.stringify(registry.frontend.envLocal)`, `JSON.stringify(registry.frontend.envBlank)`, and `JSON.stringify(hostByService)`.
+The substitution values come from `plan.frontend` (Step B) and the Step C `hostByService` map: `JSON.stringify(plan.frontend.envLocal)`, `JSON.stringify(plan.frontend.envBlank)`, and `JSON.stringify(hostByService)`.
 
-Write the result back over `registry.frontend.path`/`registry.frontend.envFile`.
+Write the result back over `plan.frontend.path`/`plan.frontend.envFile`.
 
 Once the `.env` has been backed up and rewritten, record the backup into stack-state (`kind: 'frontendEnv'`) so `/jlu:stop-dev` can restore the original:
 
@@ -464,14 +477,14 @@ import('{plugin-root}/bin/lib/dev-orchestrator/stack/stack-state.mjs').then((m) 
   s = m.recordOwnedMutation(s, runIdentity, { kind: 'restore', resource: { from: value.path + '/' + value.envBackup, to: value.path + '/' + value.envFile } });
   m.writeStackState(opts, s);
 });
-" "{workspaceId}" "{slug}" '{"path":"<frontend.path>","envFile":"<frontend.envFile>","envBackup":"<frontend.envBackup>"}' "{runId}"
+" "{workspaceId}" "{slug}" '{"path":"<plan.frontend.path>","envFile":"<plan.frontend.envFile>","envBackup":"<plan.frontend.envBackup>"}' "{runId}"
 ```
 
-`registry.frontend.path`, `registry.frontend.envFile`, and `registry.frontend.envBackup` come from the unified registry's `frontend` block (Step A).
+Recording `plan.frontend.path` (not the canonical path) is what lets `/jlu:stop-dev` restore the `.env` it actually overwrote.
 
 ### Step F — Boot Vite on the host
 
-From `<frontend.path>`, run `<frontend.command> --port <frontendPort> --strictPort` in the background with `&`, redirecting stdout/stderr to a runtime log file. Poll `http://localhost:<frontendPort>/` until it answers an HTTP request — Vite's first compile typically takes 30–90s, so re-poll roughly every 15s rather than failing fast.
+From `<plan.frontend.path>`, run `<plan.frontend.command> --port <frontendPort> --strictPort` in the background with `&`, redirecting stdout/stderr to a runtime log file. Poll `http://localhost:<frontendPort>/` until it answers an HTTP request — Vite's first compile typically takes 30–90s, so re-poll roughly every 15s rather than failing fast.
 
 Because the boot is backgrounded with `&`, capture its PID in the same shell (`VITE_PID=$!`), then record its PID into stack-state (`kind: 'hostPid'`, role `vite`) so `/jlu:stop-dev` tears it down:
 

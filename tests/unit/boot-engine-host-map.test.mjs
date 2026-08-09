@@ -4,7 +4,7 @@
 
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { hostByService } from '../../bin/lib/boot-engine/host-map.mjs';
+import { hostByService, parsePublishedPort } from '../../bin/lib/boot-engine/host-map.mjs';
 
 function registry() {
   return {
@@ -19,7 +19,7 @@ describe('hostByService', () => {
   test('task-isolated -> allocated primary host (and all ports occupied); shared-reuse -> normal dev port (not occupied)', () => {
     const plan = {
       services: [
-        { id: 'jelou-api', policy: 'task-isolated', ports: [
+        { id: 'jelou-api', policy: 'task-isolated', launcher: 'docker-exec', ports: [
           { internal: 8080, host: 3100, portEnv: 'APP_PORT', primary: true },
           { internal: 9001, host: 3101, portEnv: 'SUPERVISOR_PORT', primary: false }
         ] },
@@ -36,5 +36,78 @@ describe('hostByService', () => {
     const out = hostByService({ plan, registry: registry() });
     assert.deepEqual(out.hostByService, { 'jelou-api': 8080, 'dashboard-server': 8484 });
     assert.deepEqual(out.occupied, []);
+  });
+});
+
+describe('hostByService — published ports for shared-reuse', () => {
+  const registry = {
+    services: [
+      { id: 'jelou-api', dev: { port_env: 'APP_PORT', ports: { APP_PORT: 8080 }, docker: { compose_file: 'docker-compose.yml', service: 'app' } } },
+      { id: 'dashboard-server', dev: { port_env: 'APP_PORT', ports: { APP_PORT: 8080 }, docker: { compose_file: 'docker-compose.yml', service: 'app' } } }
+    ]
+  };
+  const plan = {
+    services: [
+      { id: 'jelou-api', policy: 'shared-reuse', cwd: '/repo/jelou-api' },
+      { id: 'dashboard-server', policy: 'shared-reuse', cwd: '/repo/dashboard-server' }
+    ]
+  };
+
+  test('the published host port wins over the registry internal port', () => {
+    const out = hostByService({ plan, registry, publishedPort: ({ cwd }) => (cwd === '/repo/jelou-api' ? 8383 : 8484) });
+    assert.deepEqual(out.hostByService, { 'jelou-api': 8383, 'dashboard-server': 8484 });
+    assert.deepEqual(out.unresolved, []);
+    assert.deepEqual(out.occupied.sort(), [8383, 8484]);
+  });
+
+  test('a container that is not running falls back to the internal port and is reported unresolved', () => {
+    const out = hostByService({ plan, registry, publishedPort: () => null });
+    assert.deepEqual(out.hostByService, { 'jelou-api': 8080, 'dashboard-server': 8080 });
+    assert.deepEqual(out.unresolved, ['jelou-api', 'dashboard-server']);
+  });
+
+  test('ports already published on the host are carried into occupied', () => {
+    const out = hostByService({ plan, registry, publishedPort: () => null, occupiedOnHost: [3100, 3101] });
+    assert.deepEqual(out.occupied, [3100, 3101]);
+  });
+});
+
+describe('hostByService — task-isolated entries with a host launcher', () => {
+  test('a task-isolated entry with no container launcher and no ports is reported unresolved, not a crash', () => {
+    const plan = {
+      services: [
+        { id: 'jelou-apps', policy: 'task-isolated', launcher: 'npm', cwd: '/repo/jelou-apps/.worktrees/t1' }
+      ]
+    };
+    const out = hostByService({ plan, registry: { services: [] } });
+    assert.deepEqual(out.hostByService, {});
+    assert.deepEqual(out.unresolved, ['jelou-apps']);
+    assert.deepEqual(out.occupied, []);
+  });
+
+  test('a mix of container and host-launcher task-isolated entries resolves the container one normally', () => {
+    const plan = {
+      services: [
+        { id: 'agent-harness-service', policy: 'task-isolated', launcher: 'docker', ports: [{ internal: 3000, host: 3102, portEnv: 'PORT', primary: true }] },
+        { id: 'jelou-apps', policy: 'task-isolated', launcher: 'npm' }
+      ]
+    };
+    const out = hostByService({ plan, registry: { services: [] } });
+    assert.deepEqual(out.hostByService, { 'agent-harness-service': 3102 });
+    assert.deepEqual(out.unresolved, ['jelou-apps']);
+    assert.deepEqual(out.occupied, [3102]);
+  });
+});
+
+describe('parsePublishedPort', () => {
+  test('reads the port off a docker compose port line', () => {
+    assert.equal(parsePublishedPort('0.0.0.0:8383\n'), 8383);
+    assert.equal(parsePublishedPort('[::]:8383'), 8383);
+  });
+
+  test('empty or malformed output yields null', () => {
+    assert.equal(parsePublishedPort(''), null);
+    assert.equal(parsePublishedPort('\n\n'), null);
+    assert.equal(parsePublishedPort('0.0.0.0:notaport'), null);
   });
 });

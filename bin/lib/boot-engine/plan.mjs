@@ -1,9 +1,10 @@
 import { allocateHostPorts } from '../dev-orchestrator/stack/ports.mjs';
-import { renderOverride } from '../dev-orchestrator/stack/override.mjs';
+import { renderOverride, projectName as taskProjectName } from '../dev-orchestrator/stack/override.mjs';
 import { applyTopologyOverlays, wireEnv } from '../dev-orchestrator/stack/wiring.mjs';
 import { resolveBaseImage } from '../dev-orchestrator/stack/resolve-base-image.mjs';
 import { resolveComposeMounts } from '../dev-orchestrator/stack/resolve-compose-mounts.mjs';
 import { resolveDepsProvision } from './deps-provision.mjs';
+import { isContainerLauncher } from './launcher.mjs';
 import { maskWiredEnv } from './env-mask.mjs';
 import { spawnSync } from 'node:child_process';
 import { readFileSync, existsSync } from 'node:fs';
@@ -27,7 +28,7 @@ function defaultReadEnv(cwd) {
 function defaultExists(p) { return existsSync(p); }
 
 function nodeModulesMountFor({ launcher, worktreeDir, canonicalPath, exists }) {
-  if (launcher !== 'docker-exec') return { mount: null, missing: false };
+  if (!isContainerLauncher(launcher)) return { mount: null, missing: false };
   if (exists(`${worktreeDir}/node_modules`)) return { mount: null, missing: false };
   if (exists(`${canonicalPath}/node_modules`)) return { mount: `${canonicalPath}/node_modules`, missing: false };
   return { mount: null, missing: true };
@@ -36,12 +37,30 @@ function nodeModulesMountFor({ launcher, worktreeDir, canonicalPath, exists }) {
 function defaultReadJson(p) { try { return JSON.parse(readFileSync(p, 'utf8')); } catch { return {}; } }
 
 function runtimeMountsFor({ launcher, canonicalPath, declared, exists }) {
-  if (launcher !== 'docker-exec') return [];
+  if (!isContainerLauncher(launcher)) return [];
   const out = [];
   for (const p of declared || []) {
     if (exists(`${canonicalPath}/${p}`)) out.push({ source: `${canonicalPath}/${p}`, target: `/app/${p}` });
   }
   return out;
+}
+
+export function resolveFrontendTarget({ frontend, slug, exists = defaultExists }) {
+  if (!frontend || !frontend.path) return null;
+  const worktreeDir = `${frontend.path}/.worktrees/${slug}`;
+  const isWorktree = exists(worktreeDir);
+  const path = isWorktree ? worktreeDir : frontend.path;
+  const envFile = frontend.envFile || '.env';
+  const hasOwnEnv = exists(`${path}/${envFile}`);
+  return {
+    ...frontend,
+    path,
+    canonicalPath: frontend.path,
+    isWorktree,
+    policy: isWorktree ? 'task-isolated' : 'shared-reuse',
+    envSeed: hasOwnEnv ? `${path}/${envFile}` : `${frontend.path}/${envFile}`,
+    depsPresent: exists(`${path}/node_modules`)
+  };
 }
 
 function taskReadiness(readySignal, primaryHost) {
@@ -51,7 +70,7 @@ function taskReadiness(readySignal, primaryHost) {
 }
 
 function topologyFor(service, network) {
-  if (service.dev.launcher !== 'docker-exec') return { runtime: 'host', host: 'localhost', container: null };
+  if (!isContainerLauncher(service.dev.launcher)) return { runtime: 'host', host: 'localhost', container: null };
   return {
     runtime: 'container',
     host: 'localhost',
@@ -89,8 +108,8 @@ function buildDockerExecEntry({ entry, svc, dev, slug, cwd, completeDescriptors,
     ? entry.ports
     : allocations.map((a, i) => ({ internal: a.internal, host: a.host, portEnv: portEnvs[i], primary: portEnvs[i] === dev.port_env }));
   const image = resolveImage({ cwd: svc.path, composeFile: dev.docker.compose_file, composeService: dev.docker.service });
-  const projectName = `${svc.id}-${slug}`;
-  const mounts = dev.launcher === 'docker-exec'
+  const projectName = taskProjectName(svc.id, slug);
+  const mounts = isContainerLauncher(dev.launcher)
     ? resolveMounts({ cwd: svc.path, composeFile: dev.docker.compose_file, composeService: dev.docker.service })
     : null;
   const depsProvision = resolveDepsProvision({
@@ -182,7 +201,7 @@ function buildServiceEntry({ svc, wt, sourceByService, isolated, completeDescrip
   }
 
   if (!isolated.has(svc.id)) return entry;
-  if (dev.launcher !== 'docker-exec') return entry;
+  if (!isContainerLauncher(dev.launcher)) return entry;
 
   return buildDockerExecEntry({ entry, svc, dev, slug, cwd, completeDescriptors, taken, registry, resolveImage, resolveMounts, exists, readFile });
 }
@@ -198,6 +217,8 @@ export function buildBootPlan({ registry, workspaceId, slug, worktreePaths, sour
   const taken = new Set(occupied);
   const services = registry.services.map((svc) => buildServiceEntry({ svc, wt, sourceByService, isolated, completeDescriptors, workspaceId, slug, sourceMode, taken, registry, portAllocations, peerInternalPort, resolveImage, resolveMounts, readEnv, exists, readFile }));
 
+  const frontend = resolveFrontendTarget({ frontend: registry.frontend, slug, exists });
+
   if (completeDescriptors && overlayDirectory) {
     const overlays = applyTopologyOverlays({
       services,
@@ -208,8 +229,8 @@ export function buildBootPlan({ registry, workspaceId, slug, worktreePaths, sour
       previousOverlays: previousEnvironmentOverlays,
       hostGateway: registry.network.hostGateway,
     });
-    return { services: overlays.services, network: registry.network, slug, overlayFiles: overlays.overlayFiles };
+    return { services: overlays.services, network: registry.network, slug, overlayFiles: overlays.overlayFiles, frontend };
   }
 
-  return { services, network: registry.network, slug, overlayFiles: [] };
+  return { services, network: registry.network, slug, overlayFiles: [], frontend };
 }

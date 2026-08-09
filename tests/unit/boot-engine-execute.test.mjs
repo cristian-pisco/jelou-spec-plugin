@@ -70,9 +70,35 @@ describe('planEntryToCommands task-isolated', () => {
 
   test('http readiness carries the host port through; stdout_match carries logPath', () => {
     const http = planEntryToCommands(taskEntry({ readiness: { type: 'http_200', path: '/health', port: 3100 } }));
-    assert.deepEqual(http.readiness, { type: 'http_200', path: '/health', port: 3100, logPath: '/tmp/jelou-api-t1.dev.log' });
+    assert.deepEqual(http.readiness, {
+      type: 'http_200',
+      path: '/health',
+      port: 3100,
+      logPath: '/tmp/jelou-api-t1.dev.log',
+      logSource: { mode: 'exec-file', container: 'jelou-api-t1', path: '/tmp/jelou-api-t1.dev.log' }
+    });
     const stdout = planEntryToCommands(taskEntry());
     assert.equal(stdout.readiness.logPath, '/tmp/jelou-api-t1.dev.log');
+  });
+
+  test('self-starting docker launcher reads readiness from container stdout, not a phantom log file', () => {
+    const d = planEntryToCommands(taskEntry({ launcher: 'docker' }));
+    assert.deepEqual(d.readiness.logSource, { mode: 'docker-logs', container: 'jelou-api-t1' });
+    assert.equal(d.readiness.logPath, undefined);
+  });
+
+  test('self-starting docker launcher restarts the project after a deps install', () => {
+    const install = { runs_in: 'container', cwd: '/app', cmd: 'pnpm install', timeoutMs: 900000, logPath: '/tmp/i.log' };
+    const withInstall = planEntryToCommands(taskEntry({ launcher: 'docker', depsProvision: { install } }));
+    assert.deepEqual(withInstall.restart, ['compose', '-p', 'jelou-api-t1', 'restart']);
+    assert.equal(planEntryToCommands(taskEntry({ launcher: 'docker' })).restart, null);
+    assert.equal(planEntryToCommands(taskEntry({ depsProvision: { install } })).restart, null);
+  });
+
+  test('unverified image-sourced deps are surfaced on the descriptor', () => {
+    const d = planEntryToCommands(taskEntry({ launcher: 'docker', depsProvision: { source: 'image', unverified: true, install: null } }));
+    assert.equal(d.depsUnverified, true);
+    assert.equal(planEntryToCommands(taskEntry()).depsUnverified, false);
   });
 
   test('imageResolved false is propagated', () => {

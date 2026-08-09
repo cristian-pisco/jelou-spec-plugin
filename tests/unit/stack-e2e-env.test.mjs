@@ -112,6 +112,7 @@ describe('end-to-end with a real boot plan: the allocated host wins over the dev
       {
         id: 'api-gateway-service',
         policy: 'task-isolated',
+        launcher: 'docker-exec',
         ports: [
           { internal: 8080, host: 3103, primary: true },
           { internal: 9001, host: 3104, primary: false }

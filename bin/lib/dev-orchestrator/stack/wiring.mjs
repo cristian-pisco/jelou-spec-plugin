@@ -1,12 +1,13 @@
 import { createHash } from 'node:crypto';
 import { chmodSync, mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { projectName } from './override.mjs';
 
 export function wireEnv({ envText, peers, slug, peerInternalPort }) {
   const targets = new Map();
   for (const [target, envVar] of Object.entries(peers || {})) {
     const port = peerInternalPort[target];
-    targets.set(envVar, `http://${target}-${slug}:${port}`);
+    targets.set(envVar, `http://${projectName(target, slug)}:${port}`);
   }
   const out = envText.split('\n').map((line) => {
     const eq = line.indexOf('=');
@@ -26,7 +27,7 @@ export function topologyProviderUrl({ consumer, provider, slug, hostGateway = 'h
   const port = primaryPort(provider);
   if (consumer.topology.runtime === 'host') return `http://localhost:${port.host}`;
   if (provider.topology.runtime === 'host') return `http://${hostGateway}:${port.host}`;
-  const hostname = provider.policy === 'task-isolated' ? `${provider.id}-${slug}` : provider.id;
+  const hostname = provider.policy === 'task-isolated' ? projectName(provider.id, slug) : provider.id;
   return `http://${hostname}:${port.internal}`;
 }
 

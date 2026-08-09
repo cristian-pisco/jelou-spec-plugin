@@ -1,5 +1,6 @@
 import { unmaskWiredEnv } from './env-mask.mjs';
 import { LIFECYCLE_STAGES } from '../dev-orchestrator/events.mjs';
+import { startsDevOnUp, taskLogSource } from './launcher.mjs';
 
 function installDescriptor(entry) {
   const install = entry.depsProvision && entry.depsProvision.install;
@@ -31,25 +32,32 @@ function environmentDescriptor(entry, readiness) {
 
 function taskIsolated(entry) {
   const logPath = `/tmp/${entry.projectName}.dev.log`;
-  const environment = environmentDescriptor(entry, { ...entry.readiness, logPath });
+  const selfStarting = startsDevOnUp(entry.launcher);
+  const logSource = taskLogSource({ launcher: entry.launcher, projectName: entry.projectName, logPath });
+  const baseReadiness = { ...entry.readiness, logSource };
+  if (logSource.mode === 'exec-file') baseReadiness.logPath = logPath;
+  const environment = environmentDescriptor(entry, baseReadiness);
   const files = [{ path: `${entry.cwd}/docker-compose.jlu.yml`, content: entry.overrideYaml }];
   if (entry.wiredEnv) files.push({ path: `${entry.cwd}/.env`, content: unmaskWiredEnv(entry.wiredEnv) });
   const execEnvironment = environment.environmentFiles.flatMap((path) => ['--env-file', path]);
-  const exec = entry.launcher === 'docker-exec'
-    ? ['exec', ...execEnvironment, '-d', entry.projectName, 'sh', '-lc', `cd /app && ${entry.command} > ${logPath} 2>&1`]
-    : null;
+  const exec = selfStarting
+    ? null
+    : ['exec', ...execEnvironment, '-d', entry.projectName, 'sh', '-lc', `cd /app && ${entry.command} > ${logPath} 2>&1`];
+  const install = installDescriptor(entry);
   return {
     policy: 'task-isolated',
     cwd: entry.cwd,
     files,
     up: ['compose', '-p', entry.projectName, '-f', entry.composeFile, '-f', 'docker-compose.jlu.yml', 'up', '-d'],
-    install: installDescriptor(entry),
+    install,
     exec,
+    restart: selfStarting && install ? ['compose', '-p', entry.projectName, 'restart'] : null,
     environmentFiles: environment.environmentFiles,
     restartRequired: environment.restartRequired,
     readiness: environment.readiness,
     teardown: ['compose', '-p', entry.projectName, 'down'],
-    imageResolved: entry.imageResolved
+    imageResolved: entry.imageResolved,
+    depsUnverified: !!(entry.depsProvision && entry.depsProvision.unverified)
   };
 }
 
