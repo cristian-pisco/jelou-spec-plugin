@@ -5,6 +5,7 @@
 
 import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { MANAGERS } from '../registry/package-manager.mjs';
 
 const NAME_RE = /^[a-z0-9][a-z0-9-]*$/;
 
@@ -28,7 +29,7 @@ function assertAllowedKeys(errors, ctx, obj, allowed) {
   }
 }
 
-const ALLOWED_SERVICE_KEYS = new Set(['name', 'path', 'command', 'env_file', 'depends_on', 'readiness', 'runtime', 'log_failure_patterns', 'panel']);
+const ALLOWED_SERVICE_KEYS = new Set(['name', 'path', 'command', 'env_file', 'depends_on', 'readiness', 'runtime', 'log_failure_patterns', 'panel', 'package_manager']);
 const ALLOWED_DEFAULTS_KEYS = new Set(['log_failure_patterns', 'readiness_timeout_seconds', 'log_capture_lines', 'poll_interval_ms', 'notification_cooldown_seconds', 'window_prefix']);
 const ALLOWED_PANEL_KEYS = new Set(['title', 'color', 'layout']);
 const ALLOWED_LAYOUTS = new Set(['tiled', 'even-horizontal', 'even-vertical', 'main-horizontal', 'main-vertical', 'single-pane']);
@@ -91,6 +92,9 @@ export function validateConfig(cfg) {
     }
     if (svc.depends_on !== undefined && !Array.isArray(svc.depends_on)) {
       errors.push(`${ctx}.depends_on must be an array of strings`);
+    }
+    if (svc.package_manager !== undefined && svc.package_manager !== null && !MANAGERS.includes(svc.package_manager)) {
+      errors.push(`${ctx}.package_manager must be one of ${MANAGERS.join(', ')} (got ${JSON.stringify(svc.package_manager)})`);
     }
     if (svc.log_failure_patterns) {
       if (!Array.isArray(svc.log_failure_patterns)) {

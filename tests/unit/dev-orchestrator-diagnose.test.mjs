@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  readRecentEvents, buildDiagnoseInput, parseDiagnoseOutput, substituteFix
+  readRecentEvents, buildDiagnoseInput, parseDiagnoseOutput, substituteFix, packageManagerMismatch
 } from '../../bin/lib/dev-orchestrator/diagnose.mjs';
 
 function tmp() { return mkdtempSync(join(tmpdir(), 'jlu-dx-')); }
@@ -62,6 +62,19 @@ describe('buildDiagnoseInput', () => {
     assert.equal(out.depends_on_resolved[0].name, 'redis');
     assert.equal(out.os, 'linux');
     assert.equal(out.workspaceRoot, '/work');
+  });
+
+  test('the declared package manager and its lockfile reach the agent as facts', () => {
+    const service = { name: 'workflows-service', package_manager: 'pnpm' };
+    const out = buildDiagnoseInput({ service, events: [], capture: '', allServices: [], os: 'linux', workspaceRoot: '/w' });
+    assert.equal(out.package_manager, 'pnpm');
+    assert.equal(out.lock_file, 'pnpm-lock.yaml');
+  });
+
+  test('an undeclared manager is surfaced as null rather than silently defaulted to npm', () => {
+    const out = buildDiagnoseInput({ service: { name: 'x' }, events: [], capture: '', allServices: [], os: 'linux', workspaceRoot: '/w' });
+    assert.equal(out.package_manager, null);
+    assert.equal(out.lock_file, null);
   });
 });
 
@@ -168,5 +181,44 @@ describe('substituteFix', () => {
       fix: { command: 'npm install', runs_in: 'host', rationale: 'r' }
     });
     assert.equal(out, 'npm install');
+  });
+
+  test('a fix reaching for a manager the service does not declare is refused', () => {
+    const service = {
+      name: 'workflows-service',
+      package_manager: 'pnpm',
+      runtime: { type: 'docker-compose', compose_file: './docker-compose.yml', compose_service: 'app' }
+    };
+    assert.equal(
+      substituteFix({ service, fix: { command: 'npm install @jeloulatam/clickhouse-warehouse', runs_in: 'container' } }),
+      null
+    );
+    assert.equal(
+      substituteFix({ service, fix: { command: 'pnpm add @jeloulatam/clickhouse-warehouse', runs_in: 'container' } }),
+      'docker compose -f ./docker-compose.yml exec app pnpm add @jeloulatam/clickhouse-warehouse'
+    );
+  });
+});
+
+describe('packageManagerMismatch', () => {
+  const service = { package_manager: 'pnpm' };
+
+  test('names both managers so the escalation can be specific', () => {
+    assert.deepEqual(
+      packageManagerMismatch({ service, fix: { command: 'npm install zod' } }),
+      { declared: 'pnpm', used: 'npm' }
+    );
+  });
+
+  test('a matching manager passes', () => {
+    assert.equal(packageManagerMismatch({ service, fix: { command: 'pnpm add zod' } }), null);
+  });
+
+  test('a command that invokes no package manager is not a mismatch', () => {
+    assert.equal(packageManagerMismatch({ service, fix: { command: 'rm -rf dist' } }), null);
+  });
+
+  test('a service with nothing declared cannot mismatch — the workflow gates that case', () => {
+    assert.equal(packageManagerMismatch({ service: { name: 'x' }, fix: { command: 'npm install' } }), null);
   });
 });

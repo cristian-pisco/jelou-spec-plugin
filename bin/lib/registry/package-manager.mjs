@@ -50,3 +50,34 @@ export function commandManager(command) {
   }
   return null;
 }
+
+export function lockfileForManager(manager) {
+  const found = LOCKFILES.find((candidate) => candidate.manager === manager);
+  return found ? found.file : null;
+}
+
+export function addCommand(manager, packages, { dev = false } = {}) {
+  const list = (Array.isArray(packages) ? packages : [packages]).filter(Boolean);
+  if (!list.length) return null;
+  const pkgs = list.join(' ');
+  switch (manager) {
+    case 'yarn': return `yarn add ${dev ? '-D ' : ''}${pkgs}`;
+    case 'pnpm': return `pnpm add ${dev ? '-D ' : ''}${pkgs}`;
+    case 'bun': return `bun add ${dev ? '-d ' : ''}${pkgs}`;
+    case 'npm':
+    default: return `npm install ${dev ? '-D ' : ''}${pkgs}`;
+  }
+}
+
+export function resolveServicePackageManager({ entry, detect = detectPackageManager } = {}) {
+  const declared = entry && entry.dev && entry.dev.package_manager;
+  if (declared) {
+    if (!MANAGERS.includes(declared)) {
+      return { manager: null, source: 'invalid', lockFile: null, declared };
+    }
+    return { manager: declared, source: 'declared', lockFile: lockfileForManager(declared), declared };
+  }
+  const detected = entry && entry.path ? detect(entry.path) : null;
+  if (!detected) return { manager: null, source: 'unknown', lockFile: null, declared: null };
+  return { manager: detected, source: 'detected', lockFile: lockfileForManager(detected), declared: null };
+}

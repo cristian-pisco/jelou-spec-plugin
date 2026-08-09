@@ -135,6 +135,11 @@ export function executeValidate({
   return 0;
 }
 
+function declaredPackageManager(service) {
+  if (!service) return null;
+  return service.package_manager || (service.dev && service.dev.package_manager) || null;
+}
+
 function main() {
   const args = parseArgs(process.argv);
   if (!args.service || (!args.validate && args.packages.length === 0)) {
@@ -155,12 +160,14 @@ function main() {
     }
   } catch { /* host fallback */ }
 
+  const packageManager = declaredPackageManager(service);
+
   if (args.validate) {
-    const plan = planInstallValidate({ service, serviceDir });
+    const plan = planInstallValidate({ service, serviceDir, packageManager });
     process.exit(executeValidate({ plan, serviceDir }));
   }
   if (!service) console.error(`service '${args.service}' not registered → host install in ${serviceDir}`);
-  const plan = planInstall({ service, serviceDir, packages: args.packages, dev: args.dev });
+  const plan = planInstall({ service, serviceDir, packages: args.packages, dev: args.dev, packageManager });
   process.exit(executeInstall({ plan, serviceDir }));
 }
 

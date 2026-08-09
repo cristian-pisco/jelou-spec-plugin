@@ -95,10 +95,11 @@ describe('planEntryToCommands task-isolated', () => {
     assert.equal(planEntryToCommands(taskEntry({ depsProvision: { install } })).restart, null);
   });
 
-  test('unverified image-sourced deps are surfaced on the descriptor', () => {
-    const d = planEntryToCommands(taskEntry({ launcher: 'docker', depsProvision: { source: 'image', unverified: true, install: null } }));
-    assert.equal(d.depsUnverified, true);
-    assert.equal(planEntryToCommands(taskEntry()).depsUnverified, false);
+  test('image-sourced deps reconcile through the install + restart path', () => {
+    const install = { runs_in: 'container', cwd: '/app', cmd: 'pnpm install --frozen-lockfile', timeoutMs: 900000, logPath: '/tmp/i.log' };
+    const d = planEntryToCommands(taskEntry({ launcher: 'docker', depsProvision: { source: 'image', install } }));
+    assert.deepEqual(d.install.exec, ['exec', 'jelou-api-t1', 'sh', '-lc', install.cmd]);
+    assert.deepEqual(d.restart, ['compose', '-p', 'jelou-api-t1', 'restart']);
   });
 
   test('imageResolved false is propagated', () => {

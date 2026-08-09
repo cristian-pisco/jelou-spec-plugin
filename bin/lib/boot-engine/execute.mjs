@@ -56,8 +56,7 @@ function taskIsolated(entry) {
     restartRequired: environment.restartRequired,
     readiness: environment.readiness,
     teardown: ['compose', '-p', entry.projectName, 'down'],
-    imageResolved: entry.imageResolved,
-    depsUnverified: !!(entry.depsProvision && entry.depsProvision.unverified)
+    imageResolved: entry.imageResolved
   };
 }
 

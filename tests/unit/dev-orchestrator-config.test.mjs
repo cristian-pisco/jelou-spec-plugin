@@ -31,6 +31,30 @@ describe('validateConfig — happy path', () => {
   });
 });
 
+describe('validateConfig — package_manager', () => {
+  function withManager(package_manager) {
+    const cfg = load('valid-minimal.json');
+    cfg.services[0] = { ...cfg.services[0], package_manager };
+    return validateConfig(cfg);
+  }
+
+  test('accepts every supported manager', () => {
+    for (const pm of ['npm', 'yarn', 'pnpm', 'bun']) {
+      assert.equal(withManager(pm).valid, true, `rejected ${pm}`);
+    }
+  });
+
+  test('stays optional', () => {
+    assert.equal(validateConfig(load('valid-minimal.json')).valid, true);
+  });
+
+  test('rejects a typo instead of letting it reach an install command', () => {
+    const result = withManager('pnmp');
+    assert.equal(result.valid, false);
+    assert.ok(result.errors.some((e) => e.includes('package_manager')), result.errors.join(', '));
+  });
+});
+
 describe('validateConfig — invalid configs', () => {
   test('rejects duplicate service names', () => {
     const result = validateConfig(load('invalid-duplicate-name.json'));

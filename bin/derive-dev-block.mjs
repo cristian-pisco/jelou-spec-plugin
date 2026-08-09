@@ -296,6 +296,7 @@ export function deriveDevBlock(dir, { stack, composeFile: declaredComposeFile } 
     const block = {
       launcher: 'docker-exec',
       docker: { service: svc, compose_file: composeFile },
+      package_manager: pm,
       command,
       teardown: `docker compose -f ${composeFile} exec -T ${svc} pkill -f '${procHint(scriptCmd, pm)}' || true`,
       ...readinessFor(stack, scriptCmd, hostPort),
@@ -312,6 +313,7 @@ export function deriveDevBlock(dir, { stack, composeFile: declaredComposeFile } 
     const block = {
       launcher: 'docker',
       docker: { compose_file: composeFile },
+      package_manager: pm,
       ...readinessFor(stack, scriptCmd, null),
       ready_timeout_s: 60,
       ram_estimate_mb: ramFor(stack),
@@ -327,6 +329,7 @@ export function deriveDevBlock(dir, { stack, composeFile: declaredComposeFile } 
   warnings.push(`host teardown is anchored on the checkout: confirm it matches the real process with \`pgrep -af "${teardownPattern}"\` while the dev server runs (a hoisted/relocated checkout can make it match nothing)`);
   const block = {
     launcher: pm === 'npm' ? 'npm' : 'shell',
+    package_manager: pm,
     command,
     teardown: `pkill -f '${teardownPattern}' || true`,
     env_files: ['.env', '.env.e2e'],

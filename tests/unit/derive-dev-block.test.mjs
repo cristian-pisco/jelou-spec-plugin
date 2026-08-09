@@ -192,6 +192,32 @@ describe('deriveDevBlock — yarn idle container is detected as yarn, not hardco
   test('command honors the detected manager', () => {
     assert.equal(block.command, 'yarn dev');
   });
+  test('the manager is persisted, not left for a later consumer to re-derive', () => {
+    assert.equal(block.package_manager, 'yarn');
+  });
+});
+
+describe('deriveDevBlock — every launcher shape records its package manager', () => {
+  const compose = 'services:\n  app:\n    ports:\n      - "3000:3000"\n';
+  const pkg = JSON.stringify({ scripts: { dev: 'nest start --watch' } });
+
+  test('docker-exec block', () => {
+    const dir = scratch({
+      'pnpm-lock.yaml': '', 'package.json': pkg,
+      'Dockerfile.dev': 'CMD sleep infinity', 'docker-compose.yml': compose,
+    });
+    assert.equal(deriveDevBlock(dir, { stack: 'node' }).block.package_manager, 'pnpm');
+  });
+
+  test('docker block', () => {
+    const dir = scratch({ 'pnpm-lock.yaml': '', 'package.json': pkg, 'docker-compose.yml': compose });
+    assert.equal(deriveDevBlock(dir, { stack: 'node' }).block.package_manager, 'pnpm');
+  });
+
+  test('host block', () => {
+    const dir = scratch({ 'pnpm-lock.yaml': '', 'package.json': pkg });
+    assert.equal(deriveDevBlock(dir, { stack: 'node' }).block.package_manager, 'pnpm');
+  });
 });
 
 describe('deriveDevBlock — host dev server (no compose)', () => {

@@ -86,6 +86,7 @@ const serviceForDiagnose = {
   depends_on: Object.keys(registryEntry.peers || {}),
   readiness: registryEntry.dev.ready_signal,
   runtime: { type: 'docker-compose', compose_file: registryEntry.dev.docker.compose_file, compose_service: registryEntry.dev.docker.service },
+  package_manager: registryEntry.dev.package_manager || null,
   log_failure_patterns: []
 };
 const allServicesForDiagnose = registry.services.map((s) => ({
@@ -97,6 +98,25 @@ const allServicesForDiagnose = registry.services.map((s) => ({
 ```
 
 If the service is not in `cfg.services` (`jlu-services.json`), that is expected and fine — `serviceForDiagnose` above is self-sufficient; `cfg` is only used for `effectiveDefaults`/`effectiveFailurePatterns` (poll interval, readiness timeout, cooldown, global failure patterns).
+
+**Resolve the package manager.** It must be a known fact before any fix is composed — never inferred from logs and never defaulted to `npm`:
+
+```bash
+node -e "
+import('{plugin-root}/bin/lib/registry/package-manager.mjs').then(({ resolveServicePackageManager }) => {
+  const out = resolveServicePackageManager({ entry: JSON.parse(process.argv[1]) });
+  process.stdout.write(JSON.stringify(out));
+});
+" '{JSON.stringify({ path: registryEntry.path, dev: registryEntry.dev })}'
+```
+
+Call the result `{pm}`. Then:
+- `pm.source === 'declared'` → use `pm.manager`.
+- `pm.source === 'detected'` → use `pm.manager`, and WARN: `{argument} has no dev.package_manager in the registry — detected {pm.manager} from {pm.lockFile}. Run /jlu:register-service to record it.`
+- `pm.source === 'invalid'` → **ESCALATE**: `{argument} declares an unknown package_manager '{pm.declared}' — fix services.yaml.` and stop.
+- `pm.source === 'unknown'` → `pm.manager` is null. Do NOT stop here; carry the null through. The missing-module fast path and the diagnoser both refuse to compose a package-manager command without it.
+
+Set `serviceForDiagnose.package_manager = pm.manager` before building any diagnoser input.
 
 ## Step 2 — The bounded loop
 
@@ -127,6 +147,55 @@ import('{plugin-root}/bin/lib/dev-orchestrator/stack/observer-source.mjs').then(
 });
 " '{observerEntryJson}'
 ```
+
+### 2a.5 — Missing-module fast path (deterministic, no agent)
+
+A stale container image serving dependencies older than the lockfile is the single
+most common failure here, and it has an exact signature. Resolve it without a model:
+
+```bash
+node -e "
+import('{plugin-root}/bin/lib/dev-orchestrator/missing-module.mjs').then(async ({ parseMissingModule, classifyMissingModule }) => {
+  const hit = parseMissingModule(process.argv[1]);
+  if (!hit) { process.stdout.write(JSON.stringify({ action: 'diagnose' })); return; }
+  const { readFileSync } = await import('node:fs');
+  let declared = null;
+  try {
+    const pkg = JSON.parse(readFileSync(process.argv[2] + '/package.json', 'utf8'));
+    declared = [...Object.keys(pkg.dependencies || {}), ...Object.keys(pkg.devDependencies || {})];
+  } catch { declared = null; }
+  const verdict = classifyMissingModule({ packageName: hit.packageName, declaredDependencies: declared });
+  process.stdout.write(JSON.stringify({ ...verdict, ...hit }));
+});
+" "{capture}" "{registryEntry.path}"
+```
+
+- `action === 'diagnose'` → no missing-module signature; continue to **2b** unchanged.
+- `action === 'escalate'` → **ESCALATE** with the returned `reason` and stop. A package
+  that is imported but never declared is a code defect; installing it would paper over it.
+- `action === 'install'` → skip **2b** and **2d** entirely. If `pm.manager` is null,
+  **ESCALATE**: `{argument} is missing '{packageName}' but has no declared package manager — cannot compose an install safely.` and stop. Otherwise compose the fix:
+
+```bash
+node -e "
+import('{plugin-root}/bin/lib/dev-orchestrator/missing-module.mjs').then(({ planMissingModuleFix }) => {
+  process.stdout.write(JSON.stringify(planMissingModuleFix({
+    packageName: process.argv[1],
+    packageManager: process.argv[2],
+    composeFile: process.argv[3],
+    composeService: process.argv[4]
+  })));
+});
+" "{packageName}" "{pm.manager}" "{registryEntry.dev.docker.compose_file}" "{registryEntry.dev.docker.service}"
+```
+
+Run the returned `command` via `Bash` with working directory `{entry.cwd}`, then treat it
+exactly like the container-fix branch's outcome in 2c: non-zero exit → ESCALATE with the
+captured output; exit 0 → go directly to **Verify (2e)**.
+
+Report the install to the user as what it is — a container-local reconcile. It does not
+survive an image rebuild; if this service keeps losing the same package, its base image is
+behind the lockfile and needs rebuilding.
 
 ### 2b — Diagnose
 
@@ -168,12 +237,18 @@ Branch on `diagnosis.proposed_fix.runs_in`. The two branches diverge at Decide �
 
 ```bash
 node -e "
-import('{plugin-root}/bin/lib/dev-orchestrator/diagnose.mjs').then(({ substituteFix }) => {
-  const out = substituteFix({ service: JSON.parse(process.argv[1]), fix: JSON.parse(process.argv[2]) });
+import('{plugin-root}/bin/lib/dev-orchestrator/diagnose.mjs').then(({ substituteFix, packageManagerMismatch }) => {
+  const service = JSON.parse(process.argv[1]);
+  const fix = JSON.parse(process.argv[2]);
+  const mismatch = packageManagerMismatch({ service, fix });
+  if (mismatch) { process.stdout.write('MISMATCH ' + JSON.stringify(mismatch)); return; }
+  const out = substituteFix({ service, fix });
   process.stdout.write(out === null ? 'NULL' : out);
 });
 " '{serviceForDiagnoseJson}' '{proposedFixJson}'
 ```
+
+If the output starts with `MISMATCH` → **ESCALATE**: `Agent proposed a {used} command for {argument}, which uses {declared}. Rejected — the package manager is declared by the registry, not chosen by the diagnoser.` and stop.
 
 If the output is `NULL` → **ESCALATE**: `Agent proposed a host fix for a containerized service. Manual review recommended.` and stop. Otherwise run the substituted command via `Bash` with working directory `{entry.cwd}` (so a relative `compose_file` resolves correctly). Capture stdout, stderr, and the exit code.
 

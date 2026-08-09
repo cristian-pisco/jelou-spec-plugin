@@ -314,3 +314,35 @@ describe('resolveDepsProvision — adopting a working host install', () => {
     assert.ok(p.install);
   });
 });
+
+describe('resolveDepsProvision — image-sourced dependencies', () => {
+  function imagePlan() {
+    const { exists, readFile } = fs({
+      files: { [`${WT}/pnpm-lock.yaml`]: LOCK },
+      dirs: [`${WT}/node_modules`]
+    });
+    return resolveDepsProvision(base({
+      launcher: 'docker',
+      mounts: bindMounts({ shadow: anonymousShadow }),
+      exists,
+      readFile
+    }));
+  }
+
+  test('a self-starting launcher over a shadowed node_modules reconciles instead of trusting the image', () => {
+    const p = imagePlan();
+    assert.equal(p.source, 'image');
+    assert.equal(p.satisfied, false);
+    assert.equal(p.install.runs_in, 'container');
+    assert.equal(p.install.cwd, '/app');
+    assert.match(p.install.cmd, /pnpm install --frozen-lockfile/);
+  });
+
+  test('the reconcile install is marker-guarded, so a warm boot stays a no-op', () => {
+    assert.match(imagePlan().install.cmd, new RegExp(`${DEPS_MARKER_ESCAPED}.*${LOCK_HASH}`));
+  });
+
+  test('no provisioning decision carries an unverified escape hatch any more', () => {
+    assert.equal('unverified' in imagePlan(), false);
+  });
+});

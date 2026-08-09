@@ -5,6 +5,7 @@
 // the agent.
 
 import { readFileSync, existsSync } from 'node:fs';
+import { commandManager, lockfileForManager } from '../registry/package-manager.mjs';
 
 const DEFAULT_TEMPLATE = ['docker compose -f {compose_file}', 'exec', '{compose_service} {cmd}'].join(' ');
 
@@ -32,6 +33,8 @@ export function buildDiagnoseInput({ service, events, capture, allServices, os, 
     events,
     capture,
     depends_on_resolved: resolved,
+    package_manager: service.package_manager || null,
+    lock_file: lockfileForManager(service.package_manager) || null,
     os,
     workspaceRoot
   };
@@ -49,12 +52,23 @@ export function parseDiagnoseOutput(raw) {
   return parsed;
 }
 
+export function packageManagerMismatch({ service, fix }) {
+  const declared = service && service.package_manager;
+  if (!declared || !fix) return null;
+  const used = commandManager(fix.command);
+  if (!used || used === declared) return null;
+  return { declared, used };
+}
+
 export function substituteFix({ service, fix }) {
   if (!fix) return null;
   const isContainerized = service && service.runtime && service.runtime.type === 'docker-compose';
   // Inconsistency guard: refuse host commands for containerized services. The
   // diagnoser agent is expected to always set runs_in: 'container' for these.
   if (isContainerized && fix.runs_in !== 'container') return null;
+  // The registry declares the package manager; a fix that reaches for a different
+  // one is rejected rather than run.
+  if (packageManagerMismatch({ service, fix })) return null;
   if (fix.runs_in !== 'container') return fix.command;
   const r = service.runtime || {};
   const tmpl = r.exec_template || DEFAULT_TEMPLATE;
