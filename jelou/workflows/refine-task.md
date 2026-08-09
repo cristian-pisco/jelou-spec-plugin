@@ -22,7 +22,7 @@ never rewriting it. Create the section if the spec has none.
 
 | Gate | Site | Autonomous default |
 |---|---|---|
-| SUGGEST block review | Step 0b (suggester output) | Apply no suggestion. Suggestions are optional extras; adopting one silently widens the change the caller asked for. Assumption line lists the skipped suggestions. |
+| SUGGEST block review | Step 1b (suggester output) | Apply no suggestion. Suggestions are optional extras; adopting one silently widens the change the caller asked for. Assumption line lists the skipped suggestions. |
 | Ambiguous target task | Step 1 — Resolve Task (2c confirmation) | Accept the single most recent matching task. If more than one matches equally, **abort** — refining the wrong spec is unrecoverable. |
 | Missing change description | Step 2 — Get Change Request (the `question` fallback) | **Abort** (`reason: no_change_description`). There is nothing to apply and no one to ask. |
 | Changed requirement maps to no phase | Phase-delta propagation, and the Edge Cases table | Assign to the **last** phase of the owning service — the change lands after everything it might depend on. Assumption line names the FR and the phase that absorbed it. Never create a new phase autonomously; that restructures the plan. |
@@ -46,7 +46,7 @@ requested change, create a new phase, or flip the task's status out of
 - `TRACE_DISABLED=1` forces `TRACING_ON = false`, whatever `JLU_TRACE` says (back-compat hard kill).
 - Default, with neither set: **false**. Tracing is OFF for normal runs; the `jlu-bench` evaluation harness is what turns it on.
 
-**When `TRACING_ON = false`, emit no trace Bash call at all** — not `trace-reconcile`, not `trace-start-span`, not `trace-suggest`, not `trace-end-span`. Skip the rest of Step 0, skip Step 0b entirely (no suggestion surfacing, since it shells out), leave `WORKFLOW_SPAN_ID` / `WORKFLOW_TRACE_ID` unset, and skip "Step N — Close workflow span". The cost being avoided is the Bash call itself — the process spawn plus the agent-turn roundtrip — which is paid even when the script short-circuits internally, so the gate lives here and never inside the script.
+**When `TRACING_ON = false`, emit no trace Bash call at all** — not `trace-reconcile`, not `trace-start-span`, not `trace-suggest`, not `trace-end-span`. Skip the rest of Step 0, skip Steps 1a and 1b entirely (no span open, no suggestion surfacing, since both shell out), leave `WORKFLOW_SPAN_ID` / `WORKFLOW_TRACE_ID` unset, and skip "Step N — Close workflow span". The cost being avoided is the Bash call itself — the process spawn plus the agent-turn roundtrip — which is paid even when the script short-circuits internally, so the gate lives here and never inside the script.
 
 **When `TRACING_ON = true`**, proceed with the rest of this step exactly as written:
 
@@ -56,15 +56,38 @@ requested change, create a new phase, or flip the task's status out of
    ```
    The `reconciled: <N>` output is informational. Do not fail the workflow if this script exits non-zero — tracing is best-effort.
 
-2. **Open the workflow-level span**:
-   ```bash
-   WF_OUT=$(node "<root>/bin/trace-start-span.mjs" \
-     --name refine_task --scope task --task "$TASK_SLUG")
-   WORKFLOW_SPAN_ID=$(echo "$WF_OUT" | jq -r '.span_id // ""')
-   WORKFLOW_TRACE_ID=$(echo "$WF_OUT" | jq -r '.trace_id // ""')
-   ```
+The workflow span and the suggester both need `TASK_SLUG`, which does not exist until Step 1 resolves the target task. They therefore run as Steps 1a and 1b, immediately after Step 1 — never here, where the slug would expand to the empty string and silently unscope both.
 
-### Step 0b — Surface suggestions from prior runs
+---
+
+## Step 1 — Resolve Task
+
+1. If a `task-slug` is provided as a command argument:
+   a. Read `.spec-workspace.json` from the current directory to get the `workspace` path.
+   b. Search `<WORKSPACE_PATH>/specs/` across all date folders for a folder matching the slug (slug should be unique).
+2. If no `task-slug` provided (or the argument looks like a change description rather than a slug):
+   a. Read `.spec-workspace.json` to get the workspace path.
+   b. List date folders in `<WORKSPACE_PATH>/specs/` sorted descending. Within the most recent date folder, pick the most recently modified task folder.
+   c. Confirm via `question`: "Found task `<task-slug>` from `<date>`. Apply changes to this one?" Autonomous → accept it without asking; abort if two tasks match equally (gate table).
+
+**Error gate**: If no task can be resolved, stop: "No task found. Run `/jlu-new-task` first to create one."
+
+**Store**: `TASK_DIR`, `TASK_SLUG`, `WORKSPACE_PATH`
+
+### Step 1a — Open the workflow span
+
+Skip this entire step when `TRACING_ON = false` (Step 0) — it shells out, so it is never emitted with tracing off.
+
+`TASK_SLUG` is bound now, so the span is scoped to the real task:
+
+```bash
+WF_OUT=$(node "<root>/bin/trace-start-span.mjs" \
+  --name refine_task --scope task --task "$TASK_SLUG")
+WORKFLOW_SPAN_ID=$(echo "$WF_OUT" | jq -r '.span_id // ""')
+WORKFLOW_TRACE_ID=$(echo "$WF_OUT" | jq -r '.trace_id // ""')
+```
+
+### Step 1b — Surface suggestions from prior runs
 
 Skip this entire step when `TRACING_ON = false` (Step 0) — it shells out, so it is never emitted with tracing off.
 
@@ -91,22 +114,6 @@ Autonomous → skip this block entirely: display nothing and apply no suggestion
 If `SUGGESTIONS` is empty, continue silently — no findings means no friction.
 
 Tracing is best-effort: if `bin/trace-suggest.mjs` errors out, the empty `SUGGESTIONS` variable means the workflow simply continues without prompts.
-
----
-
-## Step 1 — Resolve Task
-
-1. If a `task-slug` is provided as a command argument:
-   a. Read `.spec-workspace.json` from the current directory to get the `workspace` path.
-   b. Search `<WORKSPACE_PATH>/specs/` across all date folders for a folder matching the slug (slug should be unique).
-2. If no `task-slug` provided (or the argument looks like a change description rather than a slug):
-   a. Read `.spec-workspace.json` to get the workspace path.
-   b. List date folders in `<WORKSPACE_PATH>/specs/` sorted descending. Within the most recent date folder, pick the most recently modified task folder.
-   c. Confirm via `question`: "Found task `<task-slug>` from `<date>`. Apply changes to this one?" Autonomous → accept it without asking; abort if two tasks match equally (gate table).
-
-**Error gate**: If no task can be resolved, stop: "No task found. Run `/jlu-new-task` first to create one."
-
-**Store**: `TASK_DIR`, `TASK_SLUG`, `WORKSPACE_PATH`
 
 ---
 
@@ -328,7 +335,7 @@ Otherwise, propagate the delta so execute-task only re-runs affected phases:
    - Record in `EXTENDED_PHASES` or `ADDED_PHASES`.
 
 5. **Apply Removed** — for each Removed item in `DELTA`:
-   - Look up its phase. Append a `## Removed (added <date>)` note documenting the removal. Do NOT delete the original immutable line — Decision #15 (preserve baseline).
+   - Look up its phase. Append a `## Removed (added <date>)` note documenting the removal. Do NOT delete the original immutable line — preserve the baseline.
    - Phase status is unchanged.
 
 6. **Update PROPOSAL.md**:
@@ -388,7 +395,8 @@ Spec change: <CHANGE_REQUEST first 100 chars>
 </if>
 ```
 
-**ClickUp sync & auto-chain handoff (after the spec is back in `planned`):**
+**ClickUp sync & auto-chain handoff (after 6c has written the status transition —
+`implementing` when phases were reopened, otherwise the task's existing status):**
 follow the shared recipe in
 `{plugin-root}/jelou/references/autochain-handoff.md`.
 
@@ -458,7 +466,7 @@ follow the shared recipe in
 Skip this entire step when `TRACING_ON = false` (Step 0).
 
 Determine `$WORKFLOW_OUTCOME`:
-- `ok` — refinement applied, spec moved back to `planned`
+- `ok` — refinement applied, SPEC/stories re-synced and TASKS.md updated per 6c
 - `blocked` — refinement halted (user aborted or required input missing)
 - `failed` — irrecoverable error
 

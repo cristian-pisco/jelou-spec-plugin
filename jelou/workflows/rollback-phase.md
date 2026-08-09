@@ -67,7 +67,7 @@ Apply the **mode-driven** worktree resolution algorithm from `references/worktre
 2. Resolve based on `SETUP_MODE`:
    - `Mode: worktree`: `SERVICE_CWD = <service-repo>/.worktrees/<TASK_SLUG>`. If that path is missing, fall back to the main repo and warn: `Worktree missing for <service-id> despite Mode: worktree — using main repo.`
    - `Mode: branch`: `SERVICE_CWD = <service-repo>` (main repo root). Ignore any leftover `.worktrees/<TASK_SLUG>/` that may exist. If detected, log: `Branch-mode task has a leftover worktree at <path>. Ignoring it.`
-   - `## Branching` section absent (legacy): fall back to `references/worktree-resolution.md` §3c.
+   - `## Branching` section absent (legacy): fall back to the legacy rule in `references/worktree-resolution.md` → `## Resolution Algorithm`, bullet `3.c` (use `.worktrees/<TASK_SLUG>/` if it exists, else the repo root, and warn that this is a legacy `spec/<slug>` task).
 
 ### 4b. Safety Check
 
@@ -153,7 +153,11 @@ Log to terminal: "Rolled back `<service-id>` to commit `<TARGET_COMMIT>`."
 ## Step 5 — Update TASKS.md
 
 1. For each phase in `PHASES_TO_ROLLBACK`:
-   - Change status from `done`, `in_progress`, or `failed` to `rolled_back`
+   - Change status from `done` or `in_progress` back to `pending`. `pending` is the only valid
+     "not yet executed" value in the phase-status vocabulary (`pending | in_progress | done |
+     blocked`), and it is what Step 6 writes into the phase file — TASKS.md and the phase file
+     MUST agree. Do NOT invent a `rolled_back` status; the rollback fact is recorded in the
+     Lifecycle entry below, not as a status value.
 2. Add a rollback entry to the Lifecycle section:
    ```markdown
    - Rolled back: <ISO datetime> — Target: <TARGET_PHASE_LABEL> (commit <TARGET_COMMIT>), Phases rolled back: <phase list>
@@ -192,7 +196,7 @@ For each phase in `PHASES_TO_ROLLBACK`, for each affected service:
 ### Phases Reset
 | Phase | Previous Status | New Status |
 |-------|----------------|------------|
-| Phase <NN>: <name> | done | rolled_back |
+| Phase <NN>: <name> | done | pending (rolled back — see Lifecycle) |
 
 ### Next Steps
 - Re-run `/jlu-execute-task <TASK_SLUG>` to retry from the first rolled-back phase

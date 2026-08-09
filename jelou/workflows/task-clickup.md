@@ -63,7 +63,11 @@ If MCP is already configured, this may be a transient ClickUp API error. Try re-
 
 ## Step 3 — Discover Custom Fields
 
-1. Use `clickup_get_list` with the target list ID to get list details including custom field definitions.
+1. Use `clickup_get_custom_fields` with `list_id: "<list-id>"` to get the field
+   definitions (`id`, `type`, and `type_config.options` for drop_down/labels).
+   `clickup_get_list` returns only the list's id, name, content, space and
+   configured statuses — it does **not** return custom field definitions, so it
+   cannot be used for this step.
 2. Auto-map fields by name (case-insensitive, trims whitespace, removes diacritics for matching):
 
 | Plugin Field | ClickUp Field Name | Type | Required | Notes |
@@ -91,15 +95,29 @@ If MCP is already configured, this may be a transient ClickUp API error. Try re-
    entire sync. If a **conditional** or **opt-in** field is missing, skip
    silently. The following fields are **NEVER** auto-set by the workflow
    (human-only): `Fecha límite modificada`, `Fecha de entrega al Cliente`.
-5. **Sprint Points / Story Points are NOT custom fields.** Per the ClickUp
-   REST API v2
-   ([`/reference/createtask`](https://developer.clickup.com/reference/createtask),
-   [`/reference/updatetask`](https://developer.clickup.com/reference/updatetask)),
-   they are exposed as a top-level `points` (number) parameter on both
-   create and update bodies. The Sprint Points ClickApp must be enabled in
-   the workspace ([help.clickup.com — Use Sprint Points](https://help.clickup.com/hc/en-us/articles/6303883602327-Use-Sprint-Points)).
-   Do not search the list's custom fields for "Sprint points" / "Story
-   points" — they will not be there.
+5. **Sprint Points / Story Points are NOT writable through this MCP server.**
+   Two things are true at once and both were verified against the live
+   workspace:
+   - They are **not custom fields**. `clickup_get_custom_fields` on the target
+     list returns no "Sprint points" / "Story points" field, so do not search
+     for one — it will not be there.
+   - They are **not a parameter on the MCP tools either**. Neither
+     `clickup_create_task` nor `clickup_update_task` declares a `points`
+     parameter in its JSONSchema, and `clickup_get_task` does not return a
+     `points` key. The top-level `points` field documented in the ClickUp
+     REST API v2 ([`/reference/createtask`](https://developer.clickup.com/reference/createtask))
+     is simply not surfaced by this MCP server.
+
+   Consequence: **never pass `points` to any MCP call** — it is not in the
+   schema and is silently dropped. The Story Points value computed in Step 4b
+   is still used for **Talla** (the `drop_down` custom field, which *is*
+   writable) and is reported to the user in Step 8, but the numeric SP itself
+   cannot be persisted to ClickUp on this tooling. If a human needs the number
+   in ClickUp, they must set it in the UI.
+
+   `time_estimate` (minutes, as a string) *is* a parameter on both MCP tools,
+   but it means work hours, not relative size — this workflow never sets it
+   (see Step 4b and the Rules section). Do not substitute it for Story Points.
 
 ## Step 4 — Infer Fields
 
@@ -139,13 +157,17 @@ Read `<plugin-root>/jelou/references/story-points-estimation.md` and apply the
    split.
 4. Add QA-modifier: +1 for QA de seguridad; +1–2 for QA cross-equipo. Other
    QA flavors do not move the SP.
-5. **Talla** is the size column from the same table (XS, S, M, L, XL).
-6. **Sprint Points = Story Points** (always equal). Both fields take the same
-   integer.
+5. **Talla** is the size column from the same table (XS, S, M, L, XL). This is
+   the **only** size signal this workflow can actually write to ClickUp — it
+   is a `drop_down` custom field, set via `custom_fields` with the option
+   UUID.
+6. **Sprint Points = Story Points** (always equal) conceptually, but neither is
+   writable through the ClickUp MCP server — see Step 3 note 5. Compute the SP
+   value anyway: it drives the Talla choice and the Step 8 report.
 
 Story Points measure relative size, not work hours. This workflow does **not**
 set a `time_estimate` on any task — never pass `time_estimate` to any ClickUp
-create or update call.
+create or update call, even though the MCP schema accepts it.
 
 ### Step 4d — Other fields
 
@@ -156,9 +178,9 @@ create or update call.
 | **Front** | "Reliability" for Issues, else "Enhancement" or "AI" |
 | **Necesita Diseno** | "Si" for frontend tasks, "No" for backend |
 | **Equipo, Solicitante** | From config defaults — ask user on first run via question, persist in CLICKUP_TASK.json |
-| **Responsable** | From config defaults. **Dual destination**: write the user ID to (a) the top-level `assignees` field on Create Task / Update Task, and (b) the `Responsable` custom field (type `users`) using the documented `{add, rem}` shape. See Step 5b/5c — skipping (a) leaves `assignees: []` on the task, which is what hides it from boards and "assigned to me" filters. |
+| **Responsable** | From config defaults. Resolve the identity to a numeric user ID first with `clickup_resolve_assignees(assignees: ["<email-or-name-or-me>"])` → `{ "userIds": ["89213205"] }`. **Dual destination**: write that ID to (a) the top-level `assignees` parameter on `clickup_create_task` / `clickup_update_task` — a **flat array of ID strings** on both, and (b) the `Responsable` custom field (type `users`) as a JSON **string** `'{"add":["<user-id>"],"rem":[]}'`. See Step 5b/5c/5e — skipping (a) leaves `assignees: []` on the task, which is what hides it from boards and "assigned to me" filters. |
 | **Sprint** | From TASKS.md sprint number |
-| **OKR (Tech)** | From Step 4a's selected KR. Resolve the option UUID by matching the KR-code prefix against the `OKR (Tech)` field's option labels — see `references/okr-mapping.md`. Pass as a single-element array (labels shape). Never hardcode UUIDs. |
+| **OKR (Tech)** | From Step 4a's selected KR. Resolve the option UUID by matching the KR-code prefix against the `OKR (Tech)` field's option labels — see `references/okr-mapping.md`. Pass as a single-element JSON array **string** (labels encoding, Step 5e): `"[\"<option-uuid>\"]"`. Never hardcode UUIDs. |
 | **Estado del diseño** | Conditional. If `Necesita Diseno = Si` and no prior design state is recorded → set to `Solicitado`. If `Necesita Diseno = No` → leave empty. On subsequent updates, do **not** overwrite an existing value (humans curate this field). |
 | **Proyecto** | Inferred from the affected services in TASKS.md or the SPEC.md context. Use the following best-effort match against the `Proyecto` field options: service `chatbot-server` / runtime concerns → `Brain`; UI editor work → `Builder` (or `Builder (Legacy)` if pre-V3); marketplace features → `Marketplace`; module-specific tasks (e.g., "Nodo API", "AI Agent") → the matching option. If no confident match (single clear hit), skip — do not guess. |
 | **QA Asignado** | Opt-in. Only set when a QA assignee is explicitly provided (via question on hand-off, or via a `qa_assignee` default in `CLICKUP_TASK.json`). Same dual-write contract as Responsable is **not** needed — QA Asignado is the custom field only, not the top-level `assignees`. |
@@ -167,29 +189,44 @@ create or update call.
 ### Step 4e — Task dates (start_date / due_date, REQUIRED)
 
 Set the two **built-in** ClickUp task dates — the top-level `start_date` and
-`due_date`, both Unix time in **milliseconds** (integers). These are the
-task's schedule fields and are distinct from the human-curated custom date
-fields `Fecha límite modificada` / `Fecha de entrega al Cliente`, which are
-NEVER auto-set.
+`due_date`. These are the task's schedule fields and are distinct from the
+human-curated custom date fields `Fecha límite modificada` / `Fecha de entrega
+al Cliente`, which are NEVER auto-set.
 
-- **`start_date`** = today at local midnight (the day work starts). Compute
-  it deterministically with Bash: `date -d 'today 00:00' +%s%3N` (epoch ms).
-- **`due_date`** = end of the destination sprint (that day at 23:59).
-  Resolve the sprint end date in this order:
-  1. The target list's own `due_date` from the `clickup_get_list` response
-     (Step 3), when present — use it as-is.
-  2. Else parse it from the sprint list name — sprint lists are named like
-     `Sprint 60 (6/22 - 7/5)`; take the **second** date, interpret its
-     month/day in the current year (roll to next year only if the end month
-     is earlier than the start month), then compute ms with Bash:
-     `date -d '<YYYY-MM-DD> 23:59' +%s%3N`.
-  3. Else fall back to `start_date` + 5 business days (one working week) so
+**Format — MCP contract, not REST.** On `clickup_create_task` and
+`clickup_update_task`, `start_date` and `due_date` are **strings** in
+`YYYY-MM-DD` or `YYYY-MM-DD HH:MM` format (the create tool enforces the
+pattern `^\d{4}-\d{2}-\d{2}( \d{2}:\d{2})?$`). They are **NOT** Unix
+milliseconds — passing an epoch integer is a schema violation. There is
+**no** `start_date_time` / `due_date_time` parameter on either tool; the
+presence or absence of the ` HH:MM` suffix is what selects date-only vs
+date-and-time. On `clickup_update_task` only, passing the literal `'none'`
+clears a date; omitting the key leaves it unchanged. The raw REST API takes
+epoch ms plus the `*_date_time` booleans — that is a different contract, do
+not port it back here.
+
+- **`start_date`** = today, date-only (the day work starts). Compute it
+  deterministically with Bash: `date -d 'today 00:00' +%F` → `YYYY-MM-DD`.
+- **`due_date`** = last day of the destination sprint, written as
+  `<YYYY-MM-DD> 23:59` so it lands at end of day. Resolve the sprint end date
+  in this order:
+  1. Parse it from the sprint list name returned by `clickup_get_list` —
+     sprint lists are named like `Sprint 68 (8/3-8/16)`; take the **second**
+     date, interpret its month/day in the current year (roll to next year only
+     if the end month is earlier than the start month), then format it with
+     Bash: `date -d '<parsed-date>' +%F`. (`clickup_get_list` returns no
+     `due_date` of its own — do not look for one.)
+  2. Else fall back to `start_date` + 5 business days (one working week) so
      `due_date` is never empty.
-- Set `start_date_time` and `due_date_time` to `false` (date-only, no
-  time-of-day component).
 - On **update** of an existing macro task, do NOT overwrite a `start_date`
   already persisted from a prior sync (`macroTask.start_date_ms` in
-  `CLICKUP_TASK.json`); only refresh `due_date` when the sprint changed.
+  `CLICKUP_TASK.json`); omit the key entirely. Only refresh `due_date` when
+  the sprint changed.
+- **Reads come back as ms.** `clickup_get_task` returns `start_date` /
+  `due_date` as epoch-millisecond strings even though writes are
+  `YYYY-MM-DD`. That is where `macroTask.start_date_ms` / `due_date_ms` in
+  Step 7 come from — persist the values as returned by the read, and convert
+  back to `YYYY-MM-DD` before any subsequent write.
 
 ## Step 5 — Create or Update Macro Task
 
@@ -210,38 +247,49 @@ Compose the description from the artifacts in this order:
 
 ### 5b. Create (no existing macro task in CLICKUP_TASK.json)
 
+First resolve the Responsable to a numeric user ID (Step 4d):
+
+```
+clickup_resolve_assignees(assignees: ["<email | username | me>"])
+→ { "userIds": ["<user-id-str>"] }
+```
+
+Then create:
+
 ```
 clickup_create_task(
   list_id: "<list-id>",
   name: "<task title>",
   markdown_description: "<from 5a>",
-  assignees: [<user-id-int>],          # top-level, flat array of integers
-  priority: <1-4>,
+  assignees: ["<user-id-str>"],           # flat array of ID strings
+  priority: "<urgent|high|normal|low>",   # enum string, not 1-4
   task_type: "<inferred type>",
-  start_date: <ms-from-step-4e>,       # built-in task date (today)
-  due_date: <ms-from-step-4e>,         # built-in task date (sprint end)
-  start_date_time: false,
-  due_date_time: false,
-  points: <story-points-from-step-4b>,
-  custom_fields: [<all mapped fields from Step 3-4>]
+  start_date: "<YYYY-MM-DD from step 4e>",
+  due_date: "<YYYY-MM-DD HH:MM from step 4e>",
+  custom_fields: [<all mapped fields from Step 3-4, values as strings — see 5e>]
 )
 ```
 
 Never pass `time_estimate` — this workflow does not set work hours on tasks.
 
-`points` is the documented top-level Sprint Points / Story Points field
-(see Step 3 note 5). Same numeric value used for both — do not duplicate it
-into `custom_fields`.
+Never pass `points` — the MCP tool has no such parameter (Step 3 note 5).
+The Story Points value from Step 4b reaches ClickUp only as **Talla**, a
+`drop_down` entry inside `custom_fields`.
 
-`assignees` on **Create Task** is a flat array of integer user IDs per
-[`/reference/createtask`](https://developer.clickup.com/reference/createtask).
+There is no `start_date_time` / `due_date_time` parameter — the ` HH:MM`
+suffix on the date string is what carries the time-of-day.
+
+`assignees` is a **flat array of user-ID strings** (`items: {type: "string"}`)
+— not `{add, rem}`, not integers. Use the IDs returned by
+`clickup_resolve_assignees`; never guess or hardcode them.
+
 The Responsable custom field (type `users`) is set in the same call inside
-`custom_fields` using the documented `{add, rem}` shape — see
-[`/docs/customfields`](https://developer.clickup.com/docs/customfields):
+`custom_fields`, and on this MCP server its `value` is a **JSON string**, not
+a nested object:
 
 ```
 { "id": "<responsable-field-id>",
-  "value": { "add": ["<user-id-str>"], "rem": [] } }
+  "value": "{\"add\":[\"<user-id-str>\"],\"rem\":[]}" }
 ```
 
 Both writes are mandatory. Skipping the top-level `assignees` is what
@@ -250,74 +298,86 @@ set.
 
 ### 5c. Update (existing macro task)
 
-On **Update Task**, the `assignees`, `watchers`, and `group_assignees`
-shapes change to `{add, rem}` per
-[`/reference/updatetask`](https://developer.clickup.com/reference/updatetask)
-— this is documented as different from Create. **`custom_fields` is NOT a
-valid parameter of the Update Task body** — the docs explicitly direct
+**Update takes the same shapes as Create on this MCP server.** The raw REST
+Update Task body differs from Create — it switches `assignees` / `watchers` /
+`group_assignees` to `{add, rem}` and rejects `custom_fields`, directing
 custom-field writes to a separate endpoint
 ([`/reference/setcustomfieldvalue`](https://developer.clickup.com/reference/setcustomfieldvalue),
-`POST /api/v2/task/{task_id}/field/{field_id}`).
+`POST /api/v2/task/{task_id}/field/{field_id}`). **None of that applies
+here.** `clickup_update_task` declares `assignees` as a flat `string[]`
+exactly like Create, declares no `watchers` / `group_assignees` at all, and
+*does* accept a `custom_fields` array of `{ id, value }` which the server fans
+out to the per-field endpoint for you. There is no
+`clickup_set_task_custom_field_value` tool and none is needed.
 
 ```
 clickup_update_task(
   task_id: "<macro-task-id>",
-  start_date: <ms-from-step-4e>,        # omit if macroTask.start_date_ms already set
-  due_date: <ms-from-step-4e>,          # refresh when the sprint changed
-  start_date_time: false,
-  due_date_time: false,
-  points: <story-points-from-step-4b>,
+  start_date: "<YYYY-MM-DD from step 4e>",       # omit if macroTask.start_date_ms already set
+  due_date: "<YYYY-MM-DD HH:MM from step 4e>",   # refresh when the sprint changed
   status: "<mapped-status>",
-  assignees: { "add": [<user-id-int>], "rem": [] },   # NOT a flat array on Update
-  ...other changed fields                              # NO custom_fields here
+  assignees: ["<user-id-str>"],                  # flat array, same as Create
+  custom_fields: [ { id: "<custom-field-uuid>", value: "<string — see Step 5e>" }, ... ],
+  ...other changed fields
 )
 ```
 
 Never pass `time_estimate` — this workflow does not set work hours on tasks.
 
-For each custom field that changed, issue a separate call:
+Never pass `points` — not a parameter on this tool (Step 3 note 5).
 
-```
-clickup_set_task_custom_field_value(
-  task_id: "<macro-task-id>",
-  field_id: "<custom-field-uuid>",
-  value: <type-specific value, see Step 5e>
-)
-```
+There is no `start_date_time` / `due_date_time` parameter here either. To
+*clear* a date pass the literal string `'none'`; to leave it unchanged omit
+the key. The same `'none'` convention applies to `priority` and `task_type`.
 
-### 5e. Custom-field value shapes (per `/docs/customfields`)
+Include in `custom_fields` only the fields that actually changed. Do **not**
+reach for a per-field setter tool — none exists on this MCP server.
 
-When passing custom fields via `custom_fields` on Create Task or via the
-dedicated Set Custom Field Value endpoint on Update Task, the `value` shape
-depends on the field type. Use the documented shapes literally:
+### 5e. Custom-field value encodings (MCP tool contract)
 
-| Type | `value` shape |
-|------|---------------|
-| `text`, `short_text`, `email`, `phone`, `url`, `location` | string |
-| `number`, `currency`, `rating`, `manual_progress` | number |
-| `checkbox` | boolean |
-| `date` | integer Unix ms, or `{ "date": <ms>, "time": true/false }` |
-| `drop_down` | string — the option **UUID** (`type_config.options[].id`), not the index |
-| `labels` | array of strings (option UUIDs) — overwrites |
-| `users` | `{ "add": ["<user-id-str>"], "rem": ["<user-id-str>"] }` |
-| `tasks` | `{ "add": ["<task-id>"], "rem": ["<task-id>"] }` |
-| `formula`, `automatic_progress` | read-only — do not attempt to set |
+> **This table documents the ClickUp MCP tool's contract, which is NOT the raw
+> REST API's.** On `clickup_create_task` / `clickup_update_task` the
+> `custom_fields[].value` property is declared as `type: "string"` — **every**
+> value is a string, including numbers, booleans, arrays and objects, which are
+> passed as their JSON text. The REST API `/docs/customfields` page documents
+> native JSON types (real numbers, real booleans, real arrays/objects) for the
+> per-field endpoint. Both are correct for their own transport. Do **not**
+> "fix" this table back to the REST shapes — the MCP server rejects or
+> mis-parses them.
+
+| Type | `value` encoding (string) | Example |
+|------|---------------------------|---------|
+| `text`, `short_text`, `email`, `url` | the value directly | `"hello"` |
+| `phone` | international format | `"+1 234 567 8901"` |
+| `number`, `currency`/`money`, `rating` | the number **as a string** | `"42"` |
+| `checkbox`, `button` | `'true'` / `'false'` | `"true"` |
+| `date` | `YYYY-MM-DD` or `YYYY-MM-DD HH:MM` (auto-converted to a timestamp) | `"2026-08-16"` |
+| `drop_down` | the option **UUID** (`type_config.options[].id`), not the index | `"a1b2…"` |
+| `labels` | JSON **array string** of option UUIDs — overwrites | `"[\"uuid1\",\"uuid2\"]"` |
+| `users`, `relationships`/`tasks`, `files` | JSON **object string** with add/rem arrays | `"{\"add\":[\"89213205\"],\"rem\":[]}"` |
+| `progress` | JSON object string with `current` | `"{\"current\":50}"` |
+| `location` | JSON object string with `location` + `formatted_address` | `"{\"location\":{\"lat\":-28,\"lng\":153},\"formatted_address\":\"…\"}"` |
+| `formula`, `automatic_progress` | read-only — do not attempt to set | — |
 
 The Responsable custom field is type `users`; the Equipo and OKR (Tech)
 fields are `labels`; Talla, Riesgo, Tipo proyecto, Front, Necesita Diseno,
 Solicitante, Estado del diseño, Proyecto, Cliente are `drop_down`; QA
-Asignado is `users` (same `{add, rem}` shape as Responsable, but written to
-the custom field only — no top-level `assignees` dual-write); Sprint is
-`number`. Use the right shape for each.
+Asignado is `users` (same add/rem object-string encoding as Responsable, but
+written to the custom field only — no top-level `assignees` dual-write);
+Sprint is `number`, so it is written as a quoted digit string. Use the right
+encoding for each.
 
-Example payload covering the extended field set:
+Example payload covering the extended field set — note every `value` is a
+string:
 
 ```json
 "custom_fields": [
-  { "id": "<equipo-field-id>",              "value": ["<team-label-uuid>"] },
-  { "id": "<okr-tech-field-id>",            "value": ["<okr-option-uuid-matching-KR-code>"] },
-  { "id": "<responsable-field-id>",         "value": { "add": ["<user-id-str>"], "rem": [] } },
-  { "id": "<qa-asignado-field-id>",         "value": { "add": ["<qa-user-id-str>"], "rem": [] } },
+  { "id": "<equipo-field-id>",              "value": "[\"<team-label-uuid>\"]" },
+  { "id": "<okr-tech-field-id>",            "value": "[\"<okr-option-uuid-matching-KR-code>\"]" },
+  { "id": "<responsable-field-id>",         "value": "{\"add\":[\"<user-id-str>\"],\"rem\":[]}" },
+  { "id": "<qa-asignado-field-id>",         "value": "{\"add\":[\"<qa-user-id-str>\"],\"rem\":[]}" },
+  { "id": "<talla-field-id>",               "value": "<talla-option-uuid>" },
+  { "id": "<sprint-field-id>",              "value": "<sprint-number-as-string>" },
   { "id": "<estado-del-diseno-field-id>",   "value": "<solicitado-option-uuid>" },
   { "id": "<proyecto-field-id>",            "value": "<proyecto-option-uuid>" },
   { "id": "<cliente-field-id>",             "value": "<cliente-option-uuid>" }
@@ -360,7 +420,7 @@ than nothing.
 ## Step 6 — Attach PR Links as Task Comment
 
 1. Read PR URLs from TASKS.md "External Links" section or CLICKUP_TASK.json `pr` field.
-2. If PRs exist: Use `clickup_create_task_comment` on the macro task with formatted PR links.
+2. If PRs exist: Use `clickup_create_comment(entity_type="task", entity_id=<macro-task-id>, comment_text=<formatted PR links>)`.
 3. Format:
    ```
    Pull Requests:
@@ -436,7 +496,8 @@ Present the sync results to the user:
 ### Macro Task
 - Action: created / updated
 - URL: <clickup-url>
-- Story Points: <SP> (Talla: <talla>)
+- Story Points: <SP> (Talla: <talla>) — SP is reported here only; it is not
+  writable via the ClickUp MCP server, only Talla is synced
 - OKR: KR <n.n> — <description>
 - Dates: <start YYYY-MM-DD> → <due YYYY-MM-DD> (sprint end)
 - Client: <Cliente option chosen, or "asked user">
@@ -459,8 +520,18 @@ Present the sync results to the user:
   subtasks and never derives user stories for ClickUp. One task per spec.
 - Never delete ClickUp tasks. Only create and update.
 - **Never set `time_estimate` (work hours)** on any task. Story Points / Talla
-  (the `points` field) express relative size; do not translate them into an
-  hour estimate and never pass `time_estimate` to any create or update call.
+  express relative size; do not translate them into an hour estimate and never
+  pass `time_estimate` to any create or update call, even though the MCP
+  schema accepts it (minutes, as a string).
+- **Never pass `points`.** The ClickUp MCP tools declare no `points`
+  parameter and there is no Sprint/Story Points custom field on the target
+  list — the number cannot be written from this workflow. Talla is the only
+  size field that syncs. See Step 3 note 5.
+- **Payload shapes follow the MCP tool schemas, not the ClickUp REST docs.**
+  Dates are `YYYY-MM-DD` strings (no `*_date_time` booleans, no epoch ms),
+  `assignees` is a flat array of ID strings on **both** create and update, and
+  every `custom_fields[].value` is a **string** with the per-type encoding in
+  Step 5e. If a ClickUp REST doc disagrees, the tool schema wins.
 - **OKR is mandatory** in **both** the macro task description **and** the
   `OKR (Tech)` custom field. Pick exactly one KR from
   `jelou/references/okr-mapping.md` per Step 4a; resolve its option UUID by

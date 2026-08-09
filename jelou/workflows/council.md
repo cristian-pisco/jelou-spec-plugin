@@ -68,7 +68,8 @@ launch any judges.
    - no workspace → `<cwd>/council-runs/<slug>/`
 
    This is the SAME `<SPEC_WS_DIR>/council/` (or `<cwd>/council-runs/`) location new-task globs
-   for the seed in Step 6 — keep the two in lockstep. `<slug>` is the script's slug of the idea.
+   for the seed in its **Step 3 — Prompt for Task Details**, under "Council seed detection (run
+   first)" — keep the two in lockstep (cite the step by name; new-task's numbering shifts). `<slug>` is the script's slug of the idea.
    If that directory already exists, append `-<short-timestamp>` so a new session never clobbers
    an old one. This is the `--session-dir` you pass to the script; each round writes into
    `round-<n>/` inside it.

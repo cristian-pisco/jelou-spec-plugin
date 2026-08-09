@@ -273,7 +273,8 @@ Present a final summary:
 |---|---|---|---|---|---|
 | <service-id> | <SOURCE_ROOT> | mapped / skipped / failed | <REGISTRY_ACTION> | <CERTIFICATION> | <notes> |
 
-Certification states: `derived+verified` | `derived-unverified(<cause>)` |
+Certification states — the authoritative enum, defined once in B6b step 4 and referenced
+by the single-service report in Step 9: `derived+verified` | `derived-unverified(<cause>)` |
 `pre-existing-verified` | `pre-existing-unverified(<cause>)` | `green-preexisting` |
 `exit-3(<reason>)` | `already-verified`.
 
@@ -412,7 +413,7 @@ Build `DOCS_TO_UPDATE` = set of doc names that need updating.
 
 ### Full Mode (ANALYSIS_MODE = full)
 
-Spawn both agents using the task tool. Honor `JLU_PHASE_PARALLELISM` from the environment (default `1`): when `> 1`, fan out the two analyzers in a single orchestrator message; when `= 1`, run them sequentially (structural first, then operational, so the operational analyzer can re-use STRUCTURE.md context when it's already on disk). Each agent receives the same base context:
+Spawn both agents with the dispatch tool (`Agent` on Claude Code, `task` on runtimes that name it that way — the same "task/Agent" pairing B4's constraint block uses). Honor `JLU_PHASE_PARALLELISM` from the environment (default `1`): when `> 1`, fan out the two analyzers in a single orchestrator message; when `= 1`, run them sequentially (structural first, then operational, so the operational analyzer can re-use STRUCTURE.md context when it's already on disk). Each agent receives the same base context:
 - `SOURCE_ROOT`: the service's source code path
 - `OUTPUT_DIR`: where to write output files
 - `service-id`: the service identifier
@@ -437,9 +438,9 @@ Spawn both agents using the task tool. Honor `JLU_PHASE_PARALLELISM` from the en
   Safety: Scope all file operations and Bash commands to <SOURCE_ROOT>. Never scan /, /proc, /sys, /dev, /run, or home-level container storage paths.
   ```
 - **Output**: `<OUTPUT_DIR>/CONVENTIONS.md`, `<OUTPUT_DIR>/INTEGRATIONS.md`, `<OUTPUT_DIR>/CONCERNS.md`
-- **Note**: This agent combines automated code analysis with a user interview. It will use `question` to gather concerns not visible in the code (planned deprecations, scaling limits, tribal knowledge). See Decision #30.
+- **Note**: This agent combines automated code analysis with a user interview. It will use `question` to gather concerns not visible in the code (planned deprecations, scaling limits, tribal knowledge). Rationale: CONCERNS.md is the one doc whose content is not derivable from the code, so it is the only place the operational analyzer is allowed to ask the user.
 
-**Parallel dispatch**: when `JLU_PHASE_PARALLELISM > 1`, spawn both agents in one orchestrator response (2 task tool calls). Otherwise run them sequentially. Sequential is the default — predictable local CPU/RAM beats theoretical speedup that can crash the developer's machine.
+**Parallel dispatch**: when `JLU_PHASE_PARALLELISM > 1`, spawn both agents in one orchestrator response (2 task/Agent dispatch calls). Otherwise run them sequentially. Sequential is the default — predictable local CPU/RAM beats theoretical speedup that can crash the developer's machine.
 
 ### Incremental Mode (ANALYSIS_MODE = incremental)
 
@@ -549,7 +550,14 @@ Mapping a service is an explicit statement that it belongs to the workspace, so 
        port_env: APP_PORT
    ```
 5. Set `REGISTRY_ACTION` = `registered`.
-6. **Certify the `dev` block (fail-soft — nothing in this sub-step may block the docs deliverable).** After the entry is ensured — freshly registered, path-updated, or already registered — check whether it carries a `dev` block. Re-runs heal here too: an entry registered by an earlier run without a `dev` block gets one now, exactly as re-runs heal a missing registry entry. When the block is missing:
+6. **Certify the `dev` block (fail-soft — nothing in this sub-step may block the docs deliverable).** After the entry is ensured — freshly registered, path-updated, or already registered — check whether it carries a `dev` block. Re-runs heal here too: an entry registered by an earlier run without a `dev` block gets one now, exactly as re-runs heal a missing registry entry.
+
+   **Trigger — identical to B6b step 1.** Run the chain below when the block is **missing**, OR when the block exists but is **unmarked** — no `verified` mark at all, OR a `verified.block_hash` that no longer matches the current block per
+   `node <plugin-root>/bin/verify-dev-block.mjs --hash --workspace <WORKSPACE_PATH> --service <service-id>`
+   (a mismatch means the block was hand-edited after marking and counts as unmarked). A pre-existing hand-authored block that was never certified is therefore certified here too — the single-service entry point and the batch entry point must not diverge on the same registry. A block whose mark is current is `already-verified` — skip the chain; already-marked blocks are never re-verified.
+
+   When the block already exists, skip (a) and (b) — there is nothing to derive or persist — and go straight to (c).
+
    a. **Derive** a candidate: `node <plugin-root>/bin/derive-dev-block.mjs <SOURCE_ROOT> --stack <stack>` — append `--compose-file <docker.compose_file>` when the entry already declares one, so the derivation uses the registry's compose file instead of re-discovering it.
       On exit `3` (not derivable — a library with no dev script and no compose file is the legitimate case), record `CERTIFICATION` = `exit-3(<reason>)` for the Step 9 report and continue. This is an informative note, not an error.
    b. **Persist first** (persist-then-verify): pipe the derived block JSON to
@@ -557,9 +565,9 @@ Mapping a service is an explicit statement that it belongs to the workspace, so 
    c. **Verify** with ONE dispatch of `jlu-dev-block-verifier` (subagent_type `jlu:jlu-dev-block-verifier`, bare `jlu-dev-block-verifier` fallback), passing `SERVICE_ID=<service-id>`, `WORKSPACE_PATH=<WORKSPACE_PATH>`, `CHECKOUT_PATH=<SOURCE_ROOT>` (the canonical `svc.path`), `PLUGIN_ROOT=<plugin-root>`. The verifier's only execution surface is
       `node <plugin-root>/bin/verify-dev-block.mjs --workspace <WORKSPACE_PATH> --service <service-id> --checkout <SOURCE_ROOT>` (real boot → readiness poll → launcher-specific teardown) and returns the verdict envelope. Exit codes, verdict JSON, and the envelope are defined ONCE in `jelou/references/dev-block-schema.md` → "verify-dev-block.mjs — CLI contract". The verifier never edits the registry — it reports, the orchestrator persists.
    d. `VERDICT: GREEN` with `COMMAND_EXECUTED: true` → **write the mark**:
-      `node <plugin-root>/bin/verify-dev-block.mjs --write-mark --workspace <WORKSPACE_PATH> --service <service-id> --commit <short sha from COMMIT>` (same exit-`5` re-read-and-retry-once rule). The mark lands as `verified: { date, commit, block_hash }` under the `dev` block. Set `CERTIFICATION` = `derived+verified`.
+      `node <plugin-root>/bin/verify-dev-block.mjs --write-mark --workspace <WORKSPACE_PATH> --service <service-id> --commit <short sha from COMMIT>` (same exit-`5` re-read-and-retry-once rule). The mark lands as `verified: { date, commit, block_hash }` under the `dev` block. Set `CERTIFICATION` = `derived+verified` when this run derived the block, or `pre-existing-verified` when the block was hand-authored and merely unmarked.
    e. `VERDICT: GREEN_PREEXISTING` → NO mark: the service was already serving, so the derived command never executed — certifying a command that never ran would be theater. Set `CERTIFICATION` = `green-preexisting` and note it in the report. map-codebase NEVER stops a running dev process to force a verification — an already-serving service is left intact.
-   f. `VERDICT: FAILED` or `ERROR` → NO mark; WARN with the returned `CAUSE`. The block stays persisted as an unverified hypothesis — the next `/jlu-goal` run's own boot re-verifies it. Set `CERTIFICATION` = `derived-unverified(<CAUSE>)`.
+   f. `VERDICT: FAILED` or `ERROR` → NO mark; WARN with the returned `CAUSE`. The block stays persisted as an unverified hypothesis — the next `/jlu-goal` run's own boot re-verifies it. Set `CERTIFICATION` = `derived-unverified(<CAUSE>)` when this run derived the block, or `pre-existing-unverified(<CAUSE>)` when the block was hand-authored or carried a stale mark whose hash no longer matched.
 
 **Store**: `REGISTRY_ACTION`, `CERTIFICATION`
 
@@ -629,7 +637,7 @@ Present a final summary to the user:
 
 ### Registry
 - <service-id>: <REGISTRY_ACTION — e.g., "registered in registry/services.yaml (stack: nestjs)", "already registered", "path updated", "skipped (<reason>)">
-- Dev block: <CERTIFICATION — derived+verified | derived-unverified(<cause>) | green-preexisting | exit-3(<reason>) | already present>
+- Dev block: <CERTIFICATION — the enum defined once in B6b step 4: `derived+verified` | `derived-unverified(<cause>)` | `pre-existing-verified` | `pre-existing-unverified(<cause>)` | `green-preexisting` | `exit-3(<reason>)` | `already-verified`>
 - <if docker block was omitted as ambiguous: note which Compose services were found and suggest editing services.yaml>
 
 ### Glossary

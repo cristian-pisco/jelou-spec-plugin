@@ -69,7 +69,7 @@ via `bin/validate-stories.mjs` before dispatching you; this is your in-agent bac
 
 If a path doesn't resolve, skip silently and proceed with whatever is available. Don't abort for missing codebase files — the orchestrator already validated SPEC.md exists, which is the only required input.
 
-## Two-Pass Generation (Decision #21)
+## Two-Pass Generation
 
 ### Pass 1: Global Strategy
 
@@ -182,7 +182,7 @@ Any `after <service>` entry in the Dependency Order column, and any absent or am
 ### 2. Phase Files
 Write to: `.spec-workspace/specs/<date>/<task>/services/<service-id>/phases/01-<phase-slug>.md`
 
-Each phase file follows the Decision #19 format:
+Each phase file follows this format:
 
 ```markdown
 # Phase 01: <Phase Name>

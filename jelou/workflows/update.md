@@ -40,7 +40,7 @@ The updater lives in the plugin's `bin/` directory. Find the first path that exi
 3. Starting from the resolved `jelou/workflows/update.md`, go up two directories from
    `workflows/` and use `bin/jlu-update.sh` (the source or marketplace plugin checkout)
 
-If neither exists, the plugin was not installed via the standard installer. Report this and
+If none of the three exists, the plugin was not installed via the standard installer. Report this and
 tell the user to (re)install with the one-liner:
 
 ```
@@ -51,10 +51,17 @@ curl -fsSL https://github.com/cristian-pisco/jelou-spec-plugin/raw/main/install.
 
 ## Step 3 — Run the updater
 
-Run, passing your host from Step 1 and forwarding a `--ref <ref>` only if the user supplied one:
+Run, passing your host from Step 1:
 
 ```bash
 <resolved-script> --host <your-host>
+```
+
+Append `--ref <ref>` **only** if the user supplied a ref (a tag, branch, or commit to pin to);
+omit the flag entirely otherwise, so the updater resolves the latest release itself:
+
+```bash
+<resolved-script> --host <your-host> --ref <ref>
 ```
 
 On Codex/OpenCode the script pulls the shared cache to the latest release, uses the repo

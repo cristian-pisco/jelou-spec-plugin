@@ -46,7 +46,7 @@
 
 ---
 
-## Step 3 — Mini Interview (Decision #24)
+## Step 3 — Mini Interview
 
 Conduct at most the three rounds below. Ask only the six listed questions and applicable follow-ups needed to identify an FR/NFR, service, constraint, or completed phase.
 
@@ -139,7 +139,7 @@ If the extension MODIFIES requirements that have already been implemented:
 2. Reopen the task status:
    - If the modification requires spec-level changes: transition to `refining` and recommend re-running `/jlu-refine-task`.
    - If the modification is implementation-level only: transition to `planned` and mark affected phases for re-execution.
-3. Existing code is preserved as the baseline (Decision #15) — changes build on top, not replace.
+3. Existing code is preserved as the baseline — changes build on top, not replace.
 
 Present the strategy to the user for confirmation:
 ```
@@ -191,13 +191,15 @@ Proceed? (yes / adjust)
      - Tests: <list of test files to re-run>
      - Phases: <list of phase numbers to re-validate>
      ```
-2. Reset affected phase statuses to `planned` (for re-execution).
+2. Reset affected phase statuses to `pending` (for re-execution). `pending` is the phase-status
+   vocabulary (`pending | in_progress | done | blocked`) and is what execute-task's resume logic
+   matches; `planned` is a TASK lifecycle state and must never be written as a phase status.
 
 ---
 
 ## Step 7 — Re-Run Affected Tests
 
-1. For each affected phase (Decision #15 — preserve existing code as baseline):
+1. For each affected phase (preserve existing code as baseline):
    - Run ONLY the tests that are affected by the extension.
    - Do NOT re-run the entire test suite at this point.
 2. Report test results:

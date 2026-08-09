@@ -48,7 +48,7 @@ against the union of the task's `Refactor Candidates`, guided by `tdd-principles
 
 **Critical rule**: Tests must remain green after every refactor step. If a refactor breaks a test, it is rolled back.
 
-## The Authoring Agent (Decision #4)
+## The Authoring Agent
 
 Every TDD phase is authored by a single agent, `jlu-tdd-cycle`, which drives the
 RED→GREEN loop per requirement in one session. Multi-service phases fan out one

@@ -20,11 +20,11 @@ one `SPEC_ASSUMPTIONS` line recording what was decided and why, and continues.
 
 | Gate | Site | Autonomous default |
 |---|---|---|
-| Pending council seed exists | Step 12 (183c) | Do **not** consume it. Seeds change what gets built; only a seed named explicitly in the command argument is read. Assumption line names the skipped seed. |
+| Pending council seed exists | Step 3.1 (council seed detection) | Do **not** consume it. Seeds change what gets built; only a seed named explicitly in the command argument is read. Assumption line names the skipped seed. |
 | Dual-PR intent | Step 8b | `DUAL_PR = false` — the workflow's own documented default. Assumption line states no staging PR was requested. |
 | Open interview gaps | Step 14b | Resolve per the shared contract's resolution order (inputs → `<ANSWERS_FILE>` → conservative default). One assumption line per gap resolved at the third level. See 14b-auto below. |
-| Spec approval | Step 15 | Approve — set `status=planned`. The assumption list IS the disclosure; a caller with no human cannot review prose. Never auto-approve a spec that tripped the abort floor (there is no spec to approve). |
-| Setup mode | Step 16 | `worktree` when the task touches more than one service or any affected service has a Docker dev block; `branch` otherwise. Assumption line states which rule fired. |
+| Spec approval | Step 14d | Approve — set `status=planned`. The assumption list IS the disclosure; a caller with no human cannot review prose. Never auto-approve a spec that tripped the abort floor (there is no spec to approve). |
+| Setup mode | Step 15b | `worktree` when the task touches more than one service or any affected service has a Docker dev block; `branch` otherwise. Assumption line states which rule fired. |
 
 **Abort floor (shared contract).** If Step 14a finds no concrete functional
 requirement derivable from `TASK_DESCRIPTION` — a want with no contract, e.g.
@@ -326,7 +326,7 @@ Note: The `## Branching` section is NOT written here. It is appended to TASKS.md
    - Cross-reference with known integrations from INTEGRATIONS.md.
    - Cross-reference with services registered in `services.yaml`.
 4. Build a proposed list of affected services (always including the primary `SERVICE_ID`).
-5. Check for references to services NOT in the registry (Decision #39):
+5. Check for references to services NOT in the registry:
    - If found, warn: "The task references `<name>` which is not registered in `services.yaml`. Would you like to register it?"
 
 **Store**: `PROPOSED_SERVICES` = list of affected service IDs
@@ -355,8 +355,9 @@ Create the per-service directories in the task folder:
 ```
 <TASK_DIR>/services/<service-id>/
   phases/
-  uh/
 ```
+
+User-story files are NOT per-service: 14c-2 writes them to `<TASK_DIR>/stories/`, which is where `bin/validate-stories.mjs`, `jlu-proposal-agent` and `/jlu-execute-task` read them.
 
 Update `TASKS.md` with the confirmed affected services list.
 
@@ -629,7 +630,7 @@ Rules for writing:
 - If `CANONICAL_TERMS` is empty (no glossary exists), OMIT the `## Terms introduced by this spec` section entirely from `SPEC.md`.
 - If `CANONICAL_TERMS` is non-empty, populate the `## Terms introduced by this spec` section with every domain term used in `SPEC.md` that is NOT in `CANONICAL_TERMS`. Apply the same domain-specificity filter as `agents/jlu-glossary-extractor.md` — skip generic programming nouns. If no terms qualify, write the section header followed by `<!-- No new domain terms introduced. -->`.
 
-**Case-Coverage self-check (before the spec may reach `status=planned`).** For every FR that validates or types input — request body, typed query parameters, or a cross-field reference — confirm the Success Criteria include at least one `[rejection]` criterion per validation rule and at least one `[realistic]` populated-reference criterion. The "that's enough" / "1-2 rounds" escape hatches (Principles, lines 17 and 20) do NOT waive this floor for a validated-input FR — if the user stops the interview early, write the missing `[rejection]` / `[realistic]` criteria from the validation rules you already gathered rather than shipping a happy-path-only spec. This is the spec-side expression of the case-matrix floor that `jlu-test-writer` and `jlu-tdd-cycle` enforce at the test layer.
+**Case-Coverage self-check (before the spec may reach `status=planned`).** For every FR that validates or types input — request body, typed query parameters, or a cross-field reference — confirm the Success Criteria include at least one `[rejection]` criterion per validation rule and at least one `[realistic]` populated-reference criterion. The early-stop escape hatches — "that's enough" / "move on" (see **Interview Limits and Completion** above, and 14b's "Respect the user" bullet) and finishing after round 1 when no gap is unresolved — do NOT waive this floor for a validated-input FR — if the user stops the interview early, write the missing `[rejection]` / `[realistic]` criteria from the validation rules you already gathered rather than shipping a happy-path-only spec. This is the spec-side expression of the case-matrix floor that `jlu-test-writer` and `jlu-tdd-cycle` enforce at the test layer.
 
 ### 14c-2 — Author user-story files (decentralized specs)
 
@@ -980,7 +981,7 @@ If `DUAL_PR = yes`: append to the report:
 | Task tracker | `.spec-workspace/specs/<dd-mm-yyyy>/<task-slug>/TASKS.md` |
 | Per-service dir | `.spec-workspace/specs/<dd-mm-yyyy>/<task-slug>/services/<service-id>/` |
 | Phase dir | `.spec-workspace/specs/<dd-mm-yyyy>/<task-slug>/services/<service-id>/phases/` |
-| User stories dir | `.spec-workspace/specs/<dd-mm-yyyy>/<task-slug>/services/<service-id>/uh/` |
+| User stories dir | `.spec-workspace/specs/<dd-mm-yyyy>/<task-slug>/stories/` (written by 14c-2; one `<NN>-<slug>.story.md` per story) |
 | Worktree | `<service-repo>/.worktrees/<task-slug>` |
 | Branch (primary) | `production/<task-slug>` (in each affected service repo) |
 | Branch (alpha, opt-in) | `staging/<task-slug>` (created from `origin/alpha` and pushed at `/jlu-new-task` Step 15c when Dual PR = yes; commits cherry-picked at `/jlu-ship`) |

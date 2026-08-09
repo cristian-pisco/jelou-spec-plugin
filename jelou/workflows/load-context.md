@@ -76,10 +76,10 @@ Glob for all task artifacts and organize them by category. Use the task director
 
 **Core artifacts:**
 - `SPEC.md`, `TASKS.md`, `PROPOSAL.md`, `CLICKUP_TASK.json`
+- `stories/*.story.md` — user story files (task-level, not per-service)
 
 **Per-service artifacts** (under `services/<service-id>/`):
 - `phases/*.md` — phase execution files (Red/Green/Refactor details)
-- `uh/*.md` — user story files
 
 **Codebase knowledge** (under `<workspace>/services/<service-id>/codebase/`):
 - `ARCHITECTURE.md`, `CONVENTIONS.md`, `STACK.md`, `STRUCTURE.md`, `INTEGRATIONS.md`, `CONCERNS.md`
@@ -123,7 +123,7 @@ Resolve the correct source paths for all affected services so the assistant uses
    b. Resolve the source path based on `SETUP_MODE`:
       - `Mode: worktree`: source path = `<service-repo>/.worktrees/<TASK_SLUG>/`. If that path is missing, fall back to the main repo and warn: `Worktree missing for <service-id> despite Mode: worktree — using main repo.`
       - `Mode: branch`: source path = `<service-repo>` (main repo root). Ignore any leftover `.worktrees/<TASK_SLUG>/` that may exist. If detected, log: `Branch-mode task has a leftover worktree at <path>. Ignoring it.`
-      - `## Branching` section absent (legacy): fall back to `references/worktree-resolution.md` §3c.
+      - `## Branching` section absent (legacy): fall back to the legacy rule in `references/worktree-resolution.md` → `## Resolution Algorithm`, bullet `3.c` (use `.worktrees/<TASK_SLUG>/` if it exists, else the repo root, and warn that this is a legacy `spec/<slug>` task).
 4. Store the Worktree Map for use in Step 8.
 
 ## Step 8 — Present Context Block

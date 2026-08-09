@@ -1,6 +1,6 @@
 # CONCERNS: {{service-id}}
 
-> Known concerns for this service. Combines automated code analysis with user-reported tribal knowledge (Decision #30). Updated by the concerns agent during `/jlu:map-codebase` and manually by the team as concerns evolve.
+> Known concerns for this service. Combines automated code analysis with user-reported tribal knowledge. Updated by the concerns agent during `/jlu:map-codebase` and manually by the team as concerns evolve.
 
 ## 1. Tech Debt
 <!-- Accumulated technical debt: shortcuts taken, deprecated patterns still in use,

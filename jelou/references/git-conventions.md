@@ -34,7 +34,7 @@ Branch-only mode: no task worktree. The user works on `production/<task-slug>` i
 
 Dual-PR synthesis: `<repo-root>/.worktrees/<task-slug>-staging-tmp` (temporary worktree, created by `/jlu-ship` for the cherry-pick and removed before the workflow returns).
 
-### Stale Detection (Decision #17)
+### Stale Detection
 
 No automatic worktree cleanup. `/jlu-report-task` identifies:
 - Stale task worktrees (task is `done` or `closed`).

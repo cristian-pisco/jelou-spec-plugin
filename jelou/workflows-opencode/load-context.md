@@ -97,10 +97,10 @@ Collect and list paths grouped by category.
 
 Core artifacts in `TASK_DIR`:
 - `SPEC.md`, `TASKS.md`, `PROPOSAL.md`, `CLICKUP_TASK.json`
+- `stories/*.story.md`
 
 Per-service artifacts under `TASK_DIR/services/<service-id>/`:
 - `phases/*.md`
-- `uh/*.md`
 
 Codebase knowledge under `<WORKSPACE_PATH>/services/<service-id>/codebase/`:
 - `ARCHITECTURE.md`

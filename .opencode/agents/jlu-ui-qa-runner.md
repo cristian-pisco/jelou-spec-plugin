@@ -19,10 +19,13 @@ perform the auth gate, never boot/teardown, and never ask the user directly.
 
 ## What you do
 
-Follow `jelou/workflows/ui-qa-run.md` steps 15–22 (the execution body only):
+Follow `jelou/workflows/ui-qa-run.md` steps 15–18 and 20 (the execution body only).
+Steps 19 (teardown / lock release) and 21 (TASKS.md timeline) are the orchestrator's —
+never run them:
 
 1. Run Playwright in `<UI_SERVICE_WORKTREE>` with the env contract of step 15
-   (source `.env` then `.env.e2e`; `E2E_BASE_URL` required; anti-prod gate via
+   (NEVER `source` `.env`/`.env.e2e` — Playwright loads them via `playwright.config.ts`
+   dotenv and the bin tools via `bin/lib/env-files.mjs`; `E2E_BASE_URL` required; anti-prod gate via
    `bin/classify-e2e-target.mjs` unless `<ALLOW_PROD_TARGET>`; `--trace=retain-on-failure`;
    `export JLU_E2E_VIDEO` from `bin/seed-e2e-settings.mjs --print-video` so the consumer config
    records video for every run, default `on`). Do NOT boot — the stack is up.
@@ -40,7 +43,7 @@ Follow `jelou/workflows/ui-qa-run.md` steps 15–22 (the execution body only):
 4. Own the bounded fix-loop (step 18): arm the 15-min / 10-dispatch circuit breaker,
    `bin/extract-trace.mjs` per failure, dispatch `jlu-ui-fix-loop` per failing
    assertion (3 attempts), re-run only the failing spec on `DONE`. On the loop's
-   `NEEDS_CONTEXT` (step 18c selector question), do NOT ask the user yourself —
+   `NEEDS_CONTEXT` (step 18e selector question), do NOT ask the user yourself —
    return `STATUS: NEEDS_CONTEXT` to the caller, which brokers it and re-dispatches
    you with `USER_FEEDBACK`.
 5. Run the full suite exactly once as a confirmation pass when every failure is green

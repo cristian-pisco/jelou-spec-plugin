@@ -864,10 +864,11 @@ The plugin uses `.spec-workspace/` in the parent directory of your services as t
         SPEC.md
         PROPOSAL.md
         TASKS.md           # YAML frontmatter exposes affected_services as structured data
+        stories/
+          <NN>-<slug>.story.md   # User stories — task-level, not per-service
         services/
           <service-id>/
             phases/
-            uh/
 ```
 
 Each service repo only stores a minimal `.spec-workspace.json` pointer:

@@ -226,7 +226,7 @@ This overrides `## CONTEXT`, which omits the row: <branch-mode | worktree missin
 
 ---
 
-## Step 3 — Session Recovery (Decision #35)
+## Step 3 — Session Recovery
 
 **Already-complete resume (status is `ready_to_publish`).** Implementation is
 finished and committed on `production/<TASK_SLUG>`, but the ship+green chain did
@@ -369,7 +369,7 @@ Read in a single orchestrator message:
 
 Do NOT preload codebase files or `ENGINEERING_PRINCIPLES.md` into the orchestrator. The proposal-agent has `Read` access and pulls them itself. Preloading would balloon every subsequent agent dispatch in the task with 30–80k tokens of context the orchestrator does not need.
 
-### 4b. Global Strategy Pass (Decision #21)
+### 4b. Global Strategy Pass
 
 Build the prompt per §2c with `--agent=proposal-agent --service=<the `primary` service
 in `TASK_JSON.services`, else the first in `AFFECTED_SERVICES`>` and dispatch with
@@ -1600,7 +1600,7 @@ If validation fails or phases have unresolved issues:
 | Task not in `planned` or `implementing` state | Stop with status message |
 | SPEC.md missing | Stop — cannot execute without spec |
 | Codebase files missing | Warn, proceed (agents will have less context) |
-| TDD cycle agent fails | Kill, spawn fresh with failure context — up to 5 attempts (Decision #1) |
+| TDD cycle agent fails | Kill, spawn fresh with failure context — up to 5 attempts |
 | Tests never go green after 5 retries | Pause and notify user (see Escalation Format) |
 | QA auto-fix fails after 5 retries | Pause and notify user (see Escalation Format) |
 | Git commit fails | Report error, do not block phase execution |
