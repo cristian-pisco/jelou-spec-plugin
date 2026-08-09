@@ -175,6 +175,69 @@ For each story, write `<TASK_DIR>/stories/<NN>-<slug>.story.md` from `templates/
 `covers`, not prose); no story covers an FR SPEC.md does not define. A coherence gate
 (`bin/validate-stories.mjs`) enforces this in `new-task`/`refine-task` before `status=planned`.
 
+### Story fusion criterion (mandatory — apply before writing any story file)
+
+Story count decides phase count downstream: the proposal agent derives one phase per story
+(and one phase per service inside a story), and every phase costs a full TDD cycle. Splitting
+per HTTP verb buys nothing — it produces phases that each pass on the first attempt and pay
+fixed per-phase overhead for the privilege.
+
+**The fusion test.** For any two candidate stories A and B, answer three yes/no questions:
+
+1. Do they operate on the **same domain entity** (same aggregate root / same primary table or
+   collection)?
+2. Do they go through the **same persistence layer** (same repository / same datastore)?
+3. Do they live in the **same service**?
+
+If all three are **yes**, they are ONE story. Do not author them separately. There is no
+"but they are different verbs" exemption, no "but they are different endpoints" exemption,
+and no "but one is a read and one is a write" exemption beyond the single split allowed below.
+
+**Only permitted split under all-yes:** write-side vs read-side, and only when the read side
+has non-trivial behavior of its own (pagination, filtering, sorting, projection, or a
+different authorization rule). A plain CRUD is ONE story. Never more than two.
+
+If any of the three answers is **no**, keep them separate — different entities, different
+persistence layers, or different services are genuinely different stories.
+
+**Worked example — 5-endpoint CRUD over one entity, one service:**
+
+❌ Wrong (five stories → five phases → five TDD cycles, zero robustness gained):
+```
+stories/01-create-widget.story.md     us-1  POST   /widgets
+stories/02-list-widgets.story.md      us-2  GET    /widgets
+stories/03-get-widget.story.md        us-3  GET    /widgets/:id
+stories/04-update-widget.story.md     us-4  PUT    /widgets/:id
+stories/05-delete-widget.story.md     us-5  DELETE /widgets/:id
+```
+All five: same entity (`Widget`), same repository, same service → all-yes → fuse.
+
+✅ Correct (one story, `covers: [FR-1, FR-2, FR-3, FR-4, FR-5]`):
+```
+stories/01-manage-widgets.story.md    us-1  full Widget lifecycle
+```
+with one `## Acceptance Criteria` list carrying the **union** of what the five would have
+carried — the `[success]` for each of the five operations, every `[rejection]` for each
+validation rule on the create/update payloads, the `[realistic]` populated-reference case,
+and the `[boundary]` cases (empty list AND populated list, missing optional, min/max).
+
+✅ Also correct, when the list endpoint has pagination + filtering of its own:
+```
+stories/01-widget-writes.story.md     us-1  POST / PUT / DELETE   covers [FR-1, FR-4, FR-5]
+stories/02-widget-reads.story.md      us-2  GET list + GET by id  covers [FR-2, FR-3]
+```
+
+**Fusion never loses acceptance.** The fused story carries the **union** of the acceptance
+criteria of the stories it replaces and the union of their `covers` FR ids — nothing is
+dropped, merged into a vaguer bullet, or deferred. If fusing would force you to weaken a
+criterion, you fused across a `no` answer; re-run the three questions.
+
+**Fusion is not phase-count laundering.** A story that legitimately spans multiple services
+still lists all of them in `services`, and the proposal agent still splits it into one phase
+per service. The rule collapses per-operation stories inside one service; it never collapses
+service boundaries. And a story remains single-source-of-truth for its own acceptance — a
+fused story is self-contained exactly like the ones it replaced.
+
 ## Step 4 — Present for Approval
 
 After writing, print the SPEC.md location on its own line as an absolute path (terminals render it clickable), then ask for review using AskUserQuestion. **Never print the SPEC.md content in the terminal** — the user reviews the spec by opening the file in their editor. The user must explicitly approve before the task transitions to `planned` state. If the user wants changes, make them and re-present (print the path line again after each rewrite).
