@@ -23,4 +23,17 @@ describe('resolveAuthUrls', () => {
     assert.equal(out.verifyMfaUrl, 'http://localhost:18484/api/v1/auth/login/verify_mfa');
     assert.deepEqual(out.verifyUrls, ['http://localhost:18383/v1/company', 'http://localhost:18484/api/v1/auth/me']);
   });
+
+  test('resolves the dashboard identity URL used for the authorization assertion', () => {
+    const out = resolveAuthUrls({ auth, hostByService });
+    assert.equal(out.identityUrl, 'http://localhost:18484/api/v1/auth/me');
+  });
+
+  test('leaves the identity URL null when the dashboard service has no verify entry', () => {
+    const out = resolveAuthUrls({
+      auth: { ...auth, verify: [{ service: 'jelou-api', path: '/v1/company' }] },
+      hostByService,
+    });
+    assert.equal(out.identityUrl, null);
+  });
 });

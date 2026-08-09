@@ -560,21 +560,25 @@ Emit the provisioning lifecycle outcome through the existing redacted lifecycle 
 
 ### Step G — Establish the genuine authenticated session
 
-The `auth` block and `hostByService` come from Step A and Step C. Resolve `loginUrl`, `verifyMfaUrl`, `cookieName`, and `verifyUrls` with `resolveAuthUrls`. Read `localAuthProfile` from the task stack state and stop if the profile or its `keyringIdentity` is missing. Credentials come only from `createOsKeyring`; do not read an environment credential file or place the password or cookie in arguments, environment variables, stdout, stderr, snapshots, traces, pane output, or reports.
+The `auth` block and `hostByService` come from Step A and Step C. Resolve `loginUrl`, `verifyMfaUrl`, `cookieName`, `verifyUrls`, and `identityUrl` with `resolveAuthUrls`. Read `localAuthProfile` from the task stack state and stop if the profile or its `keyringIdentity` is missing. Credentials come only from `createOsKeyring`; do not read an environment credential file or place the password or cookie in arguments, environment variables, stdout, stderr, snapshots, traces, pane output, or reports.
 
-Resolve Playwright from `registry.frontend.path` so the browser runtime is the one owned by `jelou-apps`. Launch Chromium and pass `createBrowserContext: () => browser.newContext()` into `establishAuthenticatedSession`. Pass the task state identity, the keyring-backed profile, the resolved dashboard login contract, every protected API URL, `appUrl: http://localhost:{frontendPort}/`, and `protectedPath: registry.frontend.protectedPath || '/home'`.
+Resolve Playwright from `registry.frontend.path` so the browser runtime is the one owned by `jelou-apps`. Launch Chromium and pass `createBrowserContext: () => browser.newContext()` into `establishAuthenticatedSession`. Pass the task state identity, the keyring-backed profile, the resolved dashboard login contract, every protected API URL, the resolved `identityUrl`, `appUrl: http://localhost:{frontendPort}/`, and `protectedPath: registry.frontend.protectedPath || '/home'`. `request` must be a `fetch` whose responses still expose `json()` — the authorization assertion in Step H reads the identity payload from that same response.
 
 Pass `postJson` and `readOtpFromRedis(auth.otpFallback)` from `auth-runtime.mjs`, `request: fetch`, and an `onLifecycle` adapter that calls `appendLifecycleEvent(eventsLogPath({ workspaceId, slug }), { ...event, taskSlug: slug })`. Close Chromium in `finally`.
 
 `establishAuthenticatedSession` first probes a stored task cookie. A valid cookie is reused without a credential lookup. A missing, expired, redirected, or rejected cookie permits exactly one keyring-backed login against the configured dashboard. Only a genuine `jelou_auth` response is eligible for verification and atomic `0600` persistence. Invalid credentials, a missing expected cookie, or a rejected refreshed cookie clears rejected task state, never injects the stale value, and returns the actionable `--reconfigure` failure.
 
-### Step H — Verify protected browser and API access
+### Step H — Verify protected browser and API access, then authorization
 
-The session module injects the genuine cookie directly through the Playwright browser context for the `jelou-apps` origin. It requests every configured protected API with manual redirect handling, then opens the configured protected route. Authentication succeeds only when every API returns HTTP `200` and the final browser URL remains outside `/login`. The returned result contains status, source, API statuses, and final URL only; it never contains the password or cookie.
+The session module injects the genuine cookie directly through the Playwright browser context for the `jelou-apps` origin. It requests every configured protected API with manual redirect handling, then opens the configured protected route. Authentication succeeds only when every API returns HTTP `200` and the final browser URL remains outside `/login`. The returned result contains status, source, API statuses, final URL, and permission count only; it never contains the password or cookie.
+
+Authentication is not authorization. A session for an account with no roles answers every protected API with `200` and never redirects to `/login`, yet renders a fully greyed-out `jelou-apps` sidebar — the routes are built from `userSession.permissions`. So when `identityUrl` is resolved, the module also reads the permission set from that identity response and refuses the session before opening the browser: an empty set fails as `no-permissions`, a payload exposing no permission array at all fails as `identity-unreadable`. Neither is retried with a second login — a fresh login for the same account returns the same empty set — and both failures name the account so the fix is unambiguous. Never report a permission-less session as a green stack.
 
 ### Step I — Report the authenticated stack
 
-Report whether the session source was `stored`, `login`, or `refreshed`, together with the protected API statuses and final non-login route. Do not include request headers, browser storage, the keyring value, or the cookie file contents.
+Report whether the session source was `stored`, `login`, or `refreshed`, together with the protected API statuses, the final non-login route, and the permission count. Do not include request headers, browser storage, the keyring value, or the cookie file contents.
+
+Whenever the auth steps do not finish green — blocked, skipped, or failed — the report MUST state the email of the account the stack expects (`localAuthProfile.user.email`) and warn that logging in manually with any other account renders the sidebar without permissions. Never leave the user with an open browser and no indication of which account to use.
 
 ### Notes — frontend + auth
 
