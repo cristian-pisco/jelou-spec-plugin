@@ -39,6 +39,17 @@ const PHASE_BODY = `# Phase 01: Seed
 ### Status: in_progress
 `;
 
+const FORMAT_SCRIPT = 'node -e "for (const f of process.argv.slice(1)) if (f.endsWith(\'.ts\')) require(\'fs\').writeFileSync(f, \'formatted\\n\')"';
+const RED_RECHECK_COMMAND = 'node -e "process.exit(1)"';
+
+function writeFormattingProject(repo) {
+  writeFileSync(join(repo, 'package.json'), JSON.stringify({
+    name: 'fx',
+    scripts: { format: FORMAT_SCRIPT },
+  }, null, 2));
+  writeFileSync(join(repo, 'a.ts'), 'export const a = 1;\n');
+}
+
 function makeFixture({ phaseBody = PHASE_BODY, branch = `production/${TASK_SLUG}` } = {}) {
   const taskDir = mkdtempSync(join(tmpdir(), 'phase-close-task-'));
   created.push(taskDir);
@@ -218,11 +229,7 @@ describe('phase-close.mjs — docs mode', () => {
 describe('phase-close.mjs — Green re-check gate', () => {
   test('refuses a re-check command the resource guard denies', () => {
     const fx = makeFixture();
-    writeFileSync(join(fx.repo, 'package.json'), JSON.stringify({
-      name: 'fx',
-      scripts: { format: 'node -e "require(\'fs\').writeFileSync(process.argv[1], \'formatted\\n\')" --' },
-    }, null, 2));
-    writeFileSync(join(fx.repo, 'a.ts'), 'export const a = 1;\n');
+    writeFormattingProject(fx.repo);
 
     const r = runClose([
       ...baseArgs(fx),
@@ -239,17 +246,13 @@ describe('phase-close.mjs — Green re-check gate', () => {
 
   test('a red re-check after formatting aborts before the commit', () => {
     const fx = makeFixture();
-    writeFileSync(join(fx.repo, 'package.json'), JSON.stringify({
-      name: 'fx',
-      scripts: { format: 'node -e "require(\'fs\').writeFileSync(process.argv[1], \'formatted\\n\')" --' },
-    }, null, 2));
-    writeFileSync(join(fx.repo, 'a.ts'), 'export const a = 1;\n');
+    writeFormattingProject(fx.repo);
 
     const r = runClose([
       ...baseArgs(fx),
       '--commit-type=feat',
       '--changed-files=a.ts,package.json',
-      '--green-recheck-command=node --test /nonexistent-spec.test.mjs',
+      `--green-recheck-command=${RED_RECHECK_COMMAND}`,
     ]);
 
     assert.equal(r.code, 5);
