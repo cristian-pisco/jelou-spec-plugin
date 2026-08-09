@@ -12,11 +12,13 @@ Run inline (single bash call):
 ```bash
 node -e "
 import('{plugin-root}/bin/lib/dev-orchestrator/workspace.mjs').then(({ resolveWorkspace }) => {
-  const r = resolveWorkspace(process.argv[1]);
+  const r = resolveWorkspace(process.argv[1], { allowGitFallback: true });
   process.stdout.write(JSON.stringify(r) + '\n');
 }).catch(e => { console.error(e.message); process.exit(2); });
 " "{cwd}"
 ```
+
+`allowGitFallback: true` is exclusive to this command: registering the first service is the one moment a workspace legitimately has no marker yet, so falling back to the git toplevel is the intended bootstrap. Every other command resolves strictly and fails with `NO_WORKSPACE` rather than booting against a plausible-but-wrong root.
 
 If the script exits non-zero with `NO_WORKSPACE`, surface this message to the user verbatim and stop:
 > `No workspace root found in {cwd}. Run /jlu:register-service from inside a project directory.`
