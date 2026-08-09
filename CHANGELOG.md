@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.348] — 2026-08-09
+
+### Internal
+- move orchestrator prose decisions to deterministic scripts (#82)
+
 ## [0.3.347] — 2026-08-09
 
 ### Added
