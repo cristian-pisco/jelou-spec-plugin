@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.358] — 2026-08-09
+
+### Fixed
+- start-dev could not leave a usable local stack without manual intervention: the boot loop only existed as prose, peer wiring addressed services by registry id and put `http://` in gRPC vars, readiness and the host map used allocated instead of published ports, and the browser handoff reported green with no session in the app
+- goal transcribed the same task-isolated boot loop by hand and read `ready_timeout_s` as 30s for every service; both now go through `bin/boot-stack.mjs`
+
 ## [0.3.357] — 2026-08-09
 
 ### Fixed

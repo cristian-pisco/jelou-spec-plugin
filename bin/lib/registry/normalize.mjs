@@ -70,27 +70,51 @@ function normalizeAuth(auth, resolve) {
 
 export { DEFAULT_PROVISIONING_ADAPTER };
 
+export function localDatabaseBlock(registry) {
+  return (registry && (registry.localDatabase || registry.database)) || null;
+}
+
 export function resolveProvisioningAdapter(registry) {
   const auth = registry && registry.auth;
   if (!auth) return { required: false, adapter: null, ok: true, reason: null };
-  if (auth.localProvisioningAdapter) {
-    return { required: true, adapter: auth.localProvisioningAdapter, ok: true, reason: null };
+  if (!auth.localProvisioningAdapter) {
+    return {
+      required: true,
+      adapter: null,
+      ok: false,
+      reason: 'the registry carries an auth block but no localProvisioningAdapter — this value is applied by normalizeRegistry, so the caller is reading the raw registry instead of the normalized one'
+    };
   }
+  if (!localDatabaseBlock(registry)) {
+    return {
+      required: true,
+      adapter: auth.localProvisioningAdapter,
+      ok: false,
+      reason: `the registry declares auth (adapter ${auth.localProvisioningAdapter}) but no local_database block, so the adapter cannot prove a local provisioning target and onboarding stops before it starts — declare local_database in registry/jelou-registry.yaml (host, port, and the docker service that serves it) and recompile`
+    };
+  }
+  return { required: true, adapter: auth.localProvisioningAdapter, ok: true, reason: null };
+}
+
+function normalizeLocalDatabase(raw) {
+  const declared = raw.local_database || raw.localDatabase || raw.database || null;
+  if (!declared) return null;
+  const target = declared.target || declared;
   return {
-    required: true,
-    adapter: null,
-    ok: false,
-    reason: 'the registry carries an auth block but no localProvisioningAdapter — this value is applied by normalizeRegistry, so the caller is reading the raw registry instead of the normalized one'
+    ...declared,
+    target: { ...target, port: Number(target.port) },
   };
 }
 
 export function normalizeRegistry(raw, { resolve }) {
   const services = Object.entries(raw.services || {}).map(([id, svc]) => normalizeService(id, svc, resolve));
   const frontend = raw.frontend ? { ...raw.frontend, path: resolve(raw.frontend.path) } : null;
+  const localDatabase = normalizeLocalDatabase(raw);
   return ensureFrontendService({
     services,
     auth: normalizeAuth(raw.auth, resolve),
     frontend,
+    ...(localDatabase ? { localDatabase } : {}),
     network: {
       composeNetworkAlias: raw.compose_network_alias || null,
       basePort: raw.base_port || null,

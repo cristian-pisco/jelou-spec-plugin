@@ -30,6 +30,20 @@ function environmentDescriptor(entry, readiness) {
   };
 }
 
+function migrateDescriptor(entry, container) {
+  const migrate = entry.migrate;
+  if (!migrate || !migrate.command) return null;
+  const runsIn = migrate.runs_in || 'container';
+  return {
+    command: migrate.command,
+    runsIn,
+    blocking: migrate.blocking !== false,
+    timeoutMs: migrate.timeout_ms ?? 300000,
+    exec: runsIn === 'container' ? ['exec', container, 'sh', '-lc', migrate.command] : null,
+    cwd: runsIn === 'container' ? null : entry.cwd,
+  };
+}
+
 function taskIsolated(entry) {
   const logPath = `/tmp/${entry.projectName}.dev.log`;
   const selfStarting = startsDevOnUp(entry.launcher);
@@ -50,6 +64,7 @@ function taskIsolated(entry) {
     files,
     up: ['compose', '-p', entry.projectName, '-f', entry.composeFile, '-f', 'docker-compose.jlu.yml', 'up', '-d'],
     install,
+    migrate: migrateDescriptor(entry, entry.projectName),
     exec,
     restart: selfStarting && install ? ['compose', '-p', entry.projectName, 'restart'] : null,
     environmentFiles: environment.environmentFiles,
@@ -75,6 +90,7 @@ function sharedReuse(entry) {
     environmentFiles: environment.environmentFiles,
     restartRequired: environment.restartRequired,
     readiness: environment.readiness,
+    migrate: migrateDescriptor(entry, entry.dockerService),
     teardown: entry.teardownCmd || null
   };
 }

@@ -12,11 +12,16 @@ function keyringFailure(action) {
   return new Error(`operating-system keyring ${action} failed; install and unlock a Secret Service keyring, then retry`);
 }
 
+const AVAILABILITY_PROBE_IDENTITY = 'jlu-keyring-availability-probe';
+
 export function createOsKeyring({ run = defaultRun } = {}) {
   return {
     isAvailable() {
-      const result = run('secret-tool', ['--version'], { encoding: 'utf8' });
-      return result.status === 0;
+      const result = run('secret-tool', ['lookup', ...keyArgs(AVAILABILITY_PROBE_IDENTITY)], { encoding: 'utf8' });
+      if (!result || result.error) return false;
+      if (result.status === 0) return true;
+      if (result.status !== 1) return false;
+      return String(result.stderr || '').trim().length === 0;
     },
     read(identity) {
       const result = run('secret-tool', ['lookup', ...keyArgs(identity)], { encoding: 'utf8' });

@@ -29,6 +29,7 @@ export const LIFECYCLE_STAGES = Object.freeze({
   boot: 'boot',
   provisioning: 'provisioning',
   login: 'login',
+  authorization: 'authorization',
   browser: 'browser_verification',
   cleanup: 'cleanup',
 });

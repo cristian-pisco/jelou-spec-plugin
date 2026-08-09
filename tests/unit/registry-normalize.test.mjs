@@ -176,6 +176,8 @@ describe('normalizeRegistry', () => {
   });
 });
 
+const LOCAL_DATABASE = { host: 'localhost', port: 3306, service: 'db' };
+
 describe('resolveProvisioningAdapter', () => {
   test('an unauthenticated registry needs no adapter at all', () => {
     const decision = resolveProvisioningAdapter(normalizeRegistry({ services: {} }, { resolve }));
@@ -184,7 +186,7 @@ describe('resolveProvisioningAdapter', () => {
   });
 
   test('a normalized registry always resolves, even when the raw one omitted the adapter', () => {
-    const decision = resolveProvisioningAdapter(normalizeRegistry({ services: {}, auth: { cookieName: 'jelou_auth' } }, { resolve }));
+    const decision = resolveProvisioningAdapter(normalizeRegistry({ services: {}, auth: { cookieName: 'jelou_auth' }, local_database: LOCAL_DATABASE }, { resolve }));
 
     assert.deepEqual(decision, { required: true, adapter: DEFAULT_PROVISIONING_ADAPTER, ok: true, reason: null });
   });
@@ -192,11 +194,25 @@ describe('resolveProvisioningAdapter', () => {
   test('a declared adapter survives normalization and is the one handed back', () => {
     const decision = resolveProvisioningAdapter(normalizeRegistry({
       services: {},
-      auth: { cookieName: 'jelou_auth', localProvisioningAdapter: '../jelou-api/tools/local-auth.mjs' }
+      auth: { cookieName: 'jelou_auth', localProvisioningAdapter: '../jelou-api/tools/local-auth.mjs' },
+      local_database: LOCAL_DATABASE
     }, { resolve }));
 
     assert.equal(decision.adapter, '/ws/jelou-api/tools/local-auth.mjs');
     assert.equal(decision.ok, true);
+  });
+
+  test('an auth block without a local_database refuses instead of promising a target the adapter cannot prove', () => {
+    const decision = resolveProvisioningAdapter(normalizeRegistry({ services: {}, auth: { cookieName: 'jelou_auth' } }, { resolve }));
+
+    assert.equal(decision.ok, false);
+    assert.match(decision.reason, /local_database/);
+  });
+
+  test('a declared local_database survives normalization with a numeric port', () => {
+    const registry = normalizeRegistry({ services: {}, auth: { cookieName: 'jelou_auth' }, local_database: { host: 'localhost', port: '3306', service: 'db' } }, { resolve });
+
+    assert.deepEqual(registry.localDatabase.target, { host: 'localhost', port: 3306, service: 'db' });
   });
 
   test('a raw registry reaching this check fails and names the unnormalized caller as the bug', () => {

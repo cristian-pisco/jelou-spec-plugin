@@ -34,10 +34,25 @@ describe('start-dev source selection', () => {
   test('threads one run identity through lifecycle events execution descriptors and owned mutation journaling', () => {
     assert.match(workflow, /randomUUID/);
     assert.match(workflow, /runIdentity\s*=\s*\{\s*workspaceId[\s\S]*taskSlug:\s*slug[\s\S]*runId/);
-    assert.match(workflow, /planEntryToCommands\([^)]*\{\s*runIdentity\s*\}/);
+    assert.match(workflow, /boot-stack\.mjs[^\n]*--run-id \{runId\}/);
     assert.match(workflow, /recordOwnedMutation/);
     assert.match(workflow, /appendLifecycleEvent[\s\S]*eventsLogPath/);
-    assert.match(workflow, /policy\s*!==\s*'task-isolated'\)\s*continue/);
+  });
+
+  test('the boot loop is a shipped executable, never prose the orchestrator reimplements', () => {
+    const boot = workflow.slice(workflow.indexOf('### Step B —'), workflow.indexOf('### Step B1'));
+
+    assert.match(boot, /bin\/boot-stack\.mjs/);
+    assert.match(boot, /Do NOT reimplement the boot loop/);
+    assert.match(boot, /Never use `verifySharedReuse` to boot/);
+    assert.doesNotMatch(boot, /obtain its descriptor with `planEntryToCommands`/);
+  });
+
+  test('compose-project teardown records come from what the runner created, not from the plan', () => {
+    const record = workflow.slice(workflow.indexOf('### Step C1'), workflow.indexOf('### Precondition'));
+
+    assert.match(record, /bootMutationsJson/);
+    assert.doesNotMatch(record, /policy\s*!==\s*'task-isolated'\)\s*continue/);
   });
 
   test('runs keyring-backed local onboarding before login and journals only returned owned resources', () => {
@@ -105,5 +120,58 @@ describe('start-dev source selection', () => {
     const notes = workflow.slice(workflow.indexOf('### Notes — frontend + auth'));
     assert.match(notes, /Do not substitute an HTML cookie injector/);
     assert.match(notes, /establishing or verifying the session/);
+  });
+});
+
+describe('start-dev boot frictions', () => {
+  test('an explicit slug argument overrides every cwd heuristic', () => {
+    assert.match(workflow, /taskSlugArgument/);
+    assert.match(workflow, /resolveTaskSlug\(\{[^}]*override: process\.argv\[3\] \|\| undefined/);
+    assert.equal(workflow.split('resolveTaskSlug({').length - 1, workflow.split('override: process.argv[3]').length - 1);
+  });
+
+  test('the router explains that an empty jlu-services.json is not a tmux workspace', () => {
+    const step = workflow.slice(workflow.indexOf('## Step 0'), workflow.indexOf('## Step 1'));
+
+    assert.match(step, /registers \*\*zero\*\* services routes to `jelou-stack`/);
+  });
+
+  test('an orphaned previous run is reconciled before the plan is built', () => {
+    const reconcile = workflow.indexOf('### Step A0');
+    const firstWrite = workflow.indexOf('### Step B0');
+
+    assert.ok(reconcile > -1 && reconcile < firstWrite);
+    assert.match(workflow.slice(workflow.indexOf('### Step A —'), reconcile), /Then run Step A0, and only then build and validate the plan/);
+    assert.match(workflow.slice(reconcile, firstWrite), /has an unrelated live owner/);
+    const step = workflow.slice(reconcile, firstWrite);
+    assert.match(step, /reconcile-stack-run\.mjs/);
+    assert.match(step, /"status":"reconciled"/);
+    assert.match(step, /"status":"active"/);
+    assert.match(step, /jlu:stop-dev/);
+  });
+
+  test('the browser handoff is confirmed against the app session marker, not the url alone', () => {
+    const step = workflow.slice(workflow.indexOf('### Step I.5'), workflow.indexOf('### Notes — frontend + auth'));
+
+    assert.match(step, /markerScript/);
+    assert.match(step, /probeScript/);
+    assert.match(step, /handoffSucceeded\(\{ finalUrl: result\.url, sessionMarkers: plan\.sessionMarkers, observedStorage: result\.storage \}\)/);
+    assert.match(step, /httpOnly/);
+    assert.match(step, /never report the stack green on the strength of\n?Step H, or of the final URL alone/);
+  });
+
+  test('the port report distinguishes a published port from one that actually answers', () => {
+    const step = workflow.slice(workflow.indexOf('### Step C —'), workflow.indexOf('### Step C1'));
+
+    assert.match(step, /probeHostPort/);
+    assert.match(step, /corrected/);
+    assert.match(step, /fix dev\.ports in registry\/services\.yaml/);
+  });
+
+  test('a missing local_database is named as its own onboarding failure', () => {
+    const step = workflow.slice(workflow.indexOf('### Step F0'), workflow.indexOf('### Step G'));
+
+    assert.match(step, /local_database/);
+    assert.match(step, /proveLocalDatabaseTarget/);
   });
 });

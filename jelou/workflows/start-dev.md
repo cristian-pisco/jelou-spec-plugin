@@ -2,10 +2,14 @@
 
 > Purpose: Launch all registered services in a TMUX window dedicated to the active task slug.
 
-> **Deprecated:** the tmux path (Steps 1–6 below) is deprecated in favor of the plan-driven `--jelou-stack` boot (see "Task-aware Jelou-stack boot" below), which reuses the developer's docker containers and wires task worktrees. The tmux path runs ONLY in a workspace whose root holds a `jlu-services.json`; a workspace on the unified registry has no such file and MUST use `--jelou-stack`. Step 0 routes this for you — never offer the tmux path to a registry-based workspace.
+> **Deprecated:** the tmux path (Steps 1–6 below) is deprecated in favor of the plan-driven `--jelou-stack` boot (see "Task-aware Jelou-stack boot" below), which reuses the developer's docker containers and wires task worktrees. The tmux path runs ONLY in a workspace whose `jlu-services.json` actually registers services and that has no unified registry; every registry-based workspace MUST use `--jelou-stack`, including one that still carries a leftover empty `jlu-services.json`. Step 0 routes this for you — never offer the tmux path to a registry-based workspace.
 
 Inputs:
 - `cwd`: the user's current working directory.
+- `taskSlugArgument`: the first non-flag argument the user passed to `/jlu:start-dev`, if any
+  (e.g. `/jlu:start-dev restore-agent-execution-feedback-after-reload`). It is an EXPLICIT slug
+  override and outranks every cwd/branch heuristic — carry it into every `resolveTaskSlug` call
+  below as `override`. Empty when the user passed no slug.
 
 ## Step 0 — Route to the boot path
 
@@ -22,8 +26,10 @@ If the script exits non-zero, surface its message verbatim and stop — do NOT g
 
 Capture `{ root, configPath, workspaceId, bootPath }`. This is the ONLY workspace resolution in this workflow; every later step reuses these values. Then route on `bootPath`:
 
-- `jelou-stack` → skip Steps 1–6 entirely and go straight to "Task-aware Jelou-stack boot" below. This is not a question for the user; the workspace has no `jlu-services.json`, so the tmux path cannot run at all.
+- `jelou-stack` → skip Steps 1–6 entirely and go straight to "Task-aware Jelou-stack boot" below. This is not a question for the user; the tmux path cannot boot this workspace at all.
 - `tmux` → continue with Step 1. If the user passed `--jelou-stack` explicitly, honor that and jump to the Jelou-stack section instead.
+
+`bootPathFor` routes on what the workspace can actually boot, not on which files happen to exist: a `registry/` (unified registry) always wins, and a `jlu-services.json` that registers **zero** services routes to `jelou-stack` too. A registry workspace that also carries an empty `jlu-services.json` — the common shape after migrating off the tmux path — used to take the tmux branch and boot nothing.
 
 ## Step 1 — Read the tmux-path config
 
@@ -42,10 +48,10 @@ If `readConfig` throws (file missing), surface: `No services registered yet. Run
 ```bash
 node -e "
 import('{plugin-root}/bin/lib/dev-orchestrator/task-context.mjs').then(({ resolveTaskSlug }) => {
-  const slug = resolveTaskSlug({ workspaceRoot: process.argv[1], cwd: process.argv[2] });
+  const slug = resolveTaskSlug({ workspaceRoot: process.argv[1], cwd: process.argv[2], override: process.argv[3] || undefined });
   process.stdout.write(slug);
 });
-" "{root}" "{cwd}"
+" "{root}" "{cwd}" "{taskSlugArgument}"
 ```
 
 If output starts with `AMBIGUOUS:`, parse the comma-separated list and use `question` (single-choice) to ask the user which task to use. Append `_global` as a "no task" option.
@@ -192,11 +198,13 @@ Then resolve the slug:
 ```bash
 node -e "
 import('{plugin-root}/bin/lib/dev-orchestrator/task-context.mjs').then(({ resolveTaskSlug }) => {
-  const slug = resolveTaskSlug({ workspaceRoot: process.argv[1], cwd: process.argv[2] });
+  const slug = resolveTaskSlug({ workspaceRoot: process.argv[1], cwd: process.argv[2], override: process.argv[3] || undefined });
   process.stdout.write(slug);
 });
-" "{root}" "{cwd}"
+" "{root}" "{cwd}" "{taskSlugArgument}"
 ```
+
+Pass `{taskSlugArgument}` verbatim. When the user names the slug on the command line, that IS the answer — the cwd/branch heuristics only run when they did not. Invoking from a canonical checkout (not a worktree) on `main` is the normal case for a multi-service task, and without the override it resolves to `_global`, which boots the wrong stack silently.
 
 If the output starts with `AMBIGUOUS:`, prompt the user the same way as Step 2 of the generic path above.
 
@@ -222,7 +230,19 @@ import('node:crypto').then(({ randomUUID }) => process.stdout.write(randomUUID()
 
 Capture the output as `{runId}` and reuse it — with `runIdentity = { workspaceId, taskSlug: slug, runId }` — for every lifecycle emitter, execution descriptor, journal write, and cleanup call below.
 
-Build and validate the plan with the Step B command before continuing. Report every selected source before any runtime mutation as a table with `serviceId`, `sourcePath`, and `commit` from each entry's source descriptor. If validation fails, stop without entering Step B0 or writing stack state.
+Then run Step A0, and only then build and validate the plan with the Step B command. Report every selected source before any runtime mutation as a table with `serviceId`, `sourcePath`, and `commit` from each entry's source descriptor. If validation fails, stop without entering Step B0 or writing stack state.
+
+### Step A0 — Reconcile a previous run that never closed
+
+`stack-state.json` carries a `currentRun` marker plus that run's persisted port allocations. A boot that was interrupted (the session ended, the machine slept, the orchestrator crashed) leaves both behind with dead PIDs and live containers, and the next boot then fails twice over: `build-boot-plan.mjs` refuses with `<service> persisted port <n> has an unrelated live owner`, and every stack-state write throws `RUN_MARKER_MISMATCH`. Reconcile it BEFORE building the plan:
+
+```bash
+node {plugin-root}/bin/reconcile-stack-run.mjs --workspace-id {workspaceId} --slug {slug}
+```
+
+- `{"status":"clean"}` (exit 0) → nothing to do; continue.
+- `{"status":"reconciled",...}` (exit 0) → the previous run's processes were all dead, so it was torn down for you (containers down, `.env`s restored, overlays removed). Report the `teardown` summary and continue with the fresh `{runId}`.
+- `{"status":"active",...}` (exit 1) → the previous run still has live processes. Do NOT take it over. Tell the user to run `/jlu:stop-dev` for this slug first, and stop.
 
 ### Step B0 — Back up the `.env`s of shared-reuse services that get a wiredEnv
 
@@ -268,16 +288,22 @@ node {plugin-root}/bin/build-boot-plan.mjs --workspace {root} --slug {slug} --so
 
 This prints `{ services: [entry], network, slug }` — capture it as `{planJson}` (also used by Steps B0, C, C1, D, and the observer). Each `entry` has a `policy` of `task-isolated` or `shared-reuse`.
 
-**Skip any entry whose `dev.launcher` is neither `docker` nor `docker-exec`** (check with `isContainerLauncher(entry.launcher)`, `{plugin-root}/bin/lib/boot-engine/launcher.mjs`) before this loop. A host-launched entry (e.g. `npm`) can show up here with `policy: 'task-isolated'` when its worktree exists — `compile-registry.mjs` includes any `services.yaml` dev block even when `jelou-registry.yaml` never declared it, which is how the frontend's own entry (`jelou-apps`) ends up in `plan.services` alongside its dedicated `plan.frontend` block. `planEntryToCommands` never throws on it (every field just interpolates as `undefined`), so the failure mode is a `docker compose -p undefined ... up -d` invocation, not a clean error — skip it before that happens. This loop is for the Docker-based backend boot only; a host-launched frontend entry belongs to Steps D–H (`plan.frontend`), never to this one.
+Then execute the plan. **Do NOT reimplement the boot loop.** `bin/boot-stack.mjs` is the executable form of the `## Plan-driven boot` contract in `jelou/references/env-lifecycle.md` — it calls `planEntryToCommands` per entry, writes `descriptor.files[]` (the field is `content`, singular), runs `up` → `install` → `exec`/`restart`, polls `descriptor.readiness`, and **leaves everything it started running**:
 
-Then boot each remaining entry by following the `## Plan-driven boot` contract in `jelou/references/env-lifecycle.md`: for each entry, obtain its descriptor with `planEntryToCommands(entry, { runIdentity })` and execute it —
+```bash
+node {plugin-root}/bin/boot-stack.mjs --workspace-id {workspaceId} --slug {slug} --run-id {runId} --plan-file {planFile}
+```
 
-- **task-isolated**: write `descriptor.files[]` → `docker <descriptor.up>` (image reused, no rebuild) → if `descriptor.install` non-null run it per step 4b of the boot contract (blocking, bounded by `install.timeoutMs`; a non-zero exit means this entry is `down` with cause `deps_install_failed` and its dev command is never started) → if `descriptor.exec` non-null `docker <descriptor.exec>`, else if `descriptor.restart` non-null `docker <descriptor.restart>` → poll `descriptor.readiness` (http/port on the allocated host port; stdout_match reads the log source below) → register `docker <descriptor.teardown>` (ALWAYS). WARN if `descriptor.imageResolved` is false.
+Write `{planJson}` to a file first and pass it with `--plan-file` (it also accepts the plan on stdin). It prints `{ services, skipped, green, degraded, down, mutations, lifecycle }` and exits 0 only when `down` is empty.
 
-  Whether the entry is idle-then-exec'd or self-starting is decided by its `dev.launcher`, and `planEntryToCommands` has already resolved it: `docker-exec` yields a `descriptor.exec` (the override makes the container idle, the dev command is exec'd into it and redirected to `descriptor.readiness.logPath`); `docker` yields `exec: null` because the image's own CMD starts the dev command when the container comes up — there is no `logPath`, and a deps install has to be followed by `descriptor.restart` so the CMD re-runs against the installed dependencies. Never assume a `/tmp/<projectName>.dev.log` exists: read `descriptor.readiness.logSource`, which is `{ mode: 'exec-file', container, path }` or `{ mode: 'docker-logs', container }`, and tail with `docker exec <container> tail -n 30 <path>` or `docker logs --tail 30 <container>` accordingly.
-- **shared-reuse**: write `descriptor.files[]` (the `wiredEnv` `.env`) if present → the existing reuse-or-reboot path (`descriptor.launcher`/`command`/`cwd`): probe the developer's container, reuse if healthy, reboot only if unhealthy/stale → poll `descriptor.readiness` (the service's normal dev port) → register `descriptor.teardown` (kill-what-started) ONLY if this run rebooted it.
+- `green` / `down` are the lists this workflow tracks from here on; `degraded` names services that answered on their port but never matched their declared `ready_signal` — report each one as `⚠ <service>: serving, but its registry ready_signal is stale (fix `ready_signal` in registry/services.yaml)`.
+- `skipped` names entries the runner refused to boot and why. A host-launched entry (e.g. `npm`) shows up in `plan.services` with `policy: 'task-isolated'` when its worktree exists — `compile-registry.mjs` includes any `services.yaml` dev block even when `jelou-registry.yaml` never declared it, which is how the frontend's own entry (`jelou-apps`) lands there alongside its dedicated `plan.frontend` block. It belongs to Steps D–H, never to this one, and the runner drops it instead of issuing `docker compose -p undefined … up -d`.
+- `mutations` are the container teardown records for Step C1 — do not derive them yourself.
+- For a `down` entry, surface its log: task-isolated reads `descriptor.readiness.logSource`, which is `{ mode: 'exec-file', container, path }` or `{ mode: 'docker-logs', container }` (`docker exec <container> tail -n 30 <path>` or `docker logs --tail 30 <container>`); the runner already returns the last error lines in `services[].error_hints`.
 
-Track `green` (every entry reached readiness) and `down` (the entries that did not). For each `shared-reuse` entry, resolve its dev container id for the observer (Step below) by running, in the service `cwd`:
+**Never use `verifySharedReuse` to boot.** It is a *verifier*: it tears down in a `finally` everything it started, so a stack booted through it is down the moment it returns. The booting entry point is `bootSharedReuse` (same module), and `boot-stack.mjs` is the thing that calls it.
+
+For each `shared-reuse` entry, resolve its dev container id for the observer (Step below) by running, in the service `cwd`:
 
 ```bash
 docker compose -f <dev.docker.compose_file> ps -q <dev.docker.service>
@@ -318,45 +344,54 @@ Compute the policy-aware reachable host for each service:
 node -e "
 Promise.all([
   import('{plugin-root}/bin/lib/boot-engine/host-map.mjs'),
+  import('{plugin-root}/bin/lib/dev-orchestrator/readiness.mjs'),
   import('node:child_process')
-]).then(([{ hostByService }, { spawnSync }]) => {
+]).then(([{ hostByService }, { probeTcp }, { spawnSync }]) => {
   const plan = JSON.parse(process.argv[1]);
   const registry = JSON.parse(process.argv[2]);
   const ps = spawnSync('docker', ['ps', '--format', '{{.Ports}}'], { encoding: 'utf8' }).stdout || '';
   const occupiedOnHost = [...new Set([...ps.matchAll(/0\.0\.0\.0:(\d+)->/g)].map((m) => Number(m[1])))];
-  process.stdout.write(JSON.stringify(hostByService({ plan, registry, occupiedOnHost })));
+  const live = new Map();
+  const probeHostPort = (port) => live.get(port);
+  const ports = new Set(occupiedOnHost);
+  Promise.all([...ports].map((port) => probeTcp({ host: 'localhost', port }).then((r) => live.set(port, Boolean(r && r.ok)))))
+    .then(() => process.stdout.write(JSON.stringify(hostByService({ plan, registry, occupiedOnHost, probeHostPort }))));
 });
 " '{planJson}' '{registryJson}'
 ```
 
-This returns `{ hostByService: { <id>: host }, occupied: [host…], unresolved: [id…] }` — `hostByService[id]` is the allocated primary host for a task-isolated service, and for a shared-reuse service the **published** host port read from its running container (`docker compose port`), which is not the same number as the registry's internal port: the registry records what the process listens on inside the container (`8080` for nearly every Jelou service), while the developer's container publishes it on a distinct host port (`8383`, `8229`, `8902`…). Reporting or injecting the internal port would point the whole frontend at one wrong port. Run this step only AFTER Step B, so every shared-reuse container is already up and its port is resolvable.
+This returns `{ hostByService: { <id>: host }, occupied: [host…], unresolved: [id…], corrected: [{id,declaredInternal,servingInternal,host}…] }` — `hostByService[id]` is the allocated primary host for a task-isolated service, and for a shared-reuse service the **published** host port read from its running container (`docker compose port`), which is not the same number as the registry's internal port: the registry records what the process listens on inside the container (`8080` for nearly every Jelou service), while the developer's container publishes it on a distinct host port (`8383`, `8229`, `8902`…). Reporting or injecting the internal port would point the whole frontend at one wrong port. Run this step only AFTER Step B, so every shared-reuse container is already up and its port is resolvable.
 
-`occupied` includes every host port docker has published, not just this plan's allocations, so Step D cannot hand the frontend a port a leftover task container from another slug is already holding. For each id in `unresolved`, warn: `⚠ <service>: no published host port — its container is not running, falling back to the internal port <n>, which is almost certainly not reachable from the host.` Treat an unresolved `frontend.envLocal` target as a boot failure rather than writing a wrong URL into the frontend `.env`.
+`occupied` includes every host port docker has published, not just this plan's allocations, so Step D cannot hand the frontend a port a leftover task container from another slug is already holding.
+
+For each id in `unresolved`, warn: `⚠ <service>: no published host port answers — falling back to the internal port <n>, which is almost certainly not reachable from the host.` Treat an unresolved `frontend.envLocal` target as a boot failure rather than writing a wrong URL into the frontend `.env`.
+
+For each entry in `corrected`, warn: `⚠ <service>: registry declares internal port <declaredInternal>, but the container serves on <servingInternal> (published <host>) — fix dev.ports in registry/services.yaml.` The map already carries the port that answers; the warning exists so the registry gets fixed instead of the mismatch being re-diagnosed every boot. Without the probe, `docker compose port` happily returns a mapping for a port nothing listens on, and the whole run reports a dead port as the service's address.
 
 - If `green`: report each service as `<service>: http://localhost:<hostByService[service]>`.
 - For each `down` service, surface its log before failing: task-isolated → the command implied by its `descriptor.readiness.logSource` (Step B); shared-reuse → `docker logs --tail 30 <resolved dev container id from Step B>`.
 
 ### Step C1 — Record booted task projects
 
-For each `task-isolated` plan entry, append one `project` mutation so `/jlu:stop-dev` tears down its compose project. The fields come straight from the plan entry (no `buildTaskStack`). Shared-reuse services are not compose projects and record nothing (their reused container belongs to the developer).
+Record the `mutations` the Step B runner returned — one per compose project it actually created. Do NOT re-derive them from `plan.services`: a `task-isolated` entry with a host launcher has no `projectName`, and recording it writes a `null` project that `/jlu:stop-dev` later tries to `compose down`. Shared-reuse services are not compose projects and record nothing (their reused container belongs to the developer).
 
 ```bash
 node -e "
 import('{plugin-root}/bin/lib/dev-orchestrator/stack/stack-state.mjs').then((ss) => {
-  const plan = JSON.parse(process.argv[3]);
+  const mutations = JSON.parse(process.argv[3]);
   const opts = { workspaceId: process.argv[1], slug: process.argv[2] };
   const runIdentity = { workspaceId: process.argv[1], taskSlug: process.argv[2], runId: process.argv[4] };
   let s = ss.readStackState(opts);
-  for (const e of plan.services) {
-    if (e.policy !== 'task-isolated') continue;
-    const resource = { projectName: e.projectName, cwd: e.cwd, composeFile: e.composeFile, overrideFile: 'docker-compose.jlu.yml' };
-    s = ss.addProject(s, resource);
-    s = ss.recordOwnedMutation(s, runIdentity, { kind: 'container', resource });
+  for (const mutation of mutations) {
+    s = ss.addProject(s, mutation.resource);
+    s = ss.recordOwnedMutation(s, runIdentity, mutation);
   }
   ss.writeStackState(opts, s);
 });
-" "{workspaceId}" "{slug}" '{planJson}' "{runId}"
+" "{workspaceId}" "{slug}" '{bootMutationsJson}' "{runId}"
 ```
+
+`{bootMutationsJson}` is `JSON.stringify(bootResult.mutations)` from Step B.
 
 `{registryJson}` is `JSON.stringify(registry)` (the full normalized registry from Step A); `{planJson}` is the plan JSON from Step B.
 
@@ -544,11 +579,24 @@ import('{plugin-root}/bin/lib/registry/normalize.mjs').then(({ resolveProvisioni
 ```
 
 `required: false` → no auth block; skip to the frontend report. `ok: true` → use `adapter`.
-`ok: false` → **stop** and print the returned `reason`. Note what that reason says:
-`normalizeRegistry` applies `plugin:local-jelou-provisioning` whenever the registry omits it,
-so a normalized registry can never fail this check. If it fails, the bug is that an unnormalized
-registry reached this step — do NOT tell the user to register an adapter that is already
-defaulted, and never skip into credential lookup. Read `localAuthProfile` from task stack state. A complete profile is offered for reuse; an incomplete profile requests only missing company or user fields; `--reconfigure` requests replacements for every selected field. Existing-company selection defaults to ID `135`. New-company plan choices are exactly `ENTERPRISE` and `SELF_SERVICE`.
+`ok: false` → **stop** and print the returned `reason`. There are exactly two ways to fail here:
+
+- **no `localProvisioningAdapter`** — `normalizeRegistry` defaults it to `plugin:local-jelou-provisioning`, so a normalized registry can never hit this. The bug is that an unnormalized registry reached this step; do NOT tell the user to register an adapter that is already defaulted.
+- **no `local_database` block** — the adapter exists but has no target to prove. This gate is exactly why the check runs here: `proveLocalDatabaseTarget` refuses an unproven target, so without the block onboarding cannot start no matter what the adapter says. Tell the user to declare it in `registry/jelou-registry.yaml` and rerun `compile-registry.mjs`:
+
+  ```yaml
+  local_database:
+      host: localhost
+      port: 3306
+      service: db
+      dockerServiceId: dashboard-server
+      composeProject: dashboard-server
+      composeFile: docker-compose.yml
+  ```
+
+  `host`/`port` are enough for a loopback target; the `dockerServiceId`/`composeProject`/`composeFile`/`service` quartet is required only when the database is reached at a non-loopback host, so `proveLocalDatabaseTarget` can match it against a registered docker service.
+
+On `ok: false` the run stops, and never skip into credential lookup. Read `localAuthProfile` from task stack state. A complete profile is offered for reuse; an incomplete profile requests only missing company or user fields; `--reconfigure` requests replacements for every selected field. Existing-company selection defaults to ID `135`. New-company plan choices are exactly `ENTERPRISE` and `SELF_SERVICE`.
 
 Invoke the onboarding CLI with the registered adapter module path and send one JSON request through stdin. The request contains `{ workspaceId, taskSlug, runId, target, topology, storedProfile, input }`. The password is entered through stdin and must never appear in arguments, environment variables, runtime files, generated overlays, lifecycle events, or displayed command text. Forward the invocation's `--reconfigure` option to this CLI only when selected.
 
@@ -616,11 +664,12 @@ Promise.all([
     appUrl: process.argv[3],
     account: process.argv[4],
     port: Number(process.argv[5]),
-    sessionVerified: true
+    sessionVerified: true,
+    frontend: JSON.parse(process.argv[6])
   });
-  process.stdout.write(JSON.stringify({ ok: plan.ok, reason: plan.reason, entryUrl: plan.entryUrl }));
+  process.stdout.write(JSON.stringify({ ok: plan.ok, reason: plan.reason, entryUrl: plan.entryUrl, sessionMarkers: plan.sessionMarkers, markerScript: plan.markerScript, probeScript: plan.probeScript }));
 });
-" "{workspaceId}" "{slug}" "http://localhost:{frontendPort}{protectedPath}" "{localAuthProfile.user.email}" "{handoffPort}"
+" "{workspaceId}" "{slug}" "http://localhost:{frontendPort}{protectedPath}" "{localAuthProfile.user.email}" "{handoffPort}" '{JSON.stringify(registry.frontend)}'
 ```
 
 `handoffPort` is any free loopback port; it serves one page and is closed at the end of this step.
@@ -634,10 +683,34 @@ It is built on `localhost`, not `127.0.0.1`: the injector page sets the cookie f
 address bar, and a cookie set for `127.0.0.1` is not sent to `http://localhost:{frontendPort}`.
 Substituting the loopback literal reintroduces the redirect this step exists to remove.
 
-The page sets the cookie and redirects itself to `appUrl`. Read the resulting URL with
-`mcp__chrome-devtools__list_pages` and confirm it with `handoffSucceeded(finalUrl)`. `false`
-means the browser still landed on `/login` — report it as a handoff failure and say the verified
-session did not transfer; never report the stack green on the strength of Step H alone.
+The page sets the cookie and redirects itself to `appUrl`.
+
+**A cookie alone does not authenticate `jelou-apps`.** The app routes on a `localStorage` marker
+(`isLogin`), and its own recovery branch reads `document.cookie` — which can never see the
+httpOnly `jelou_auth`. So a run that stops at "the cookie is set" leaves a browser sitting on
+`/login` while every protected API answers `200`. The marker is per-origin, so the injector page
+(served on `localhost:{handoffPort}`) cannot write it for the app origin
+(`localhost:{frontendPort}`); it has to be written in the app page itself, after the redirect:
+
+1. Run `plan.markerScript` with `mcp__chrome-devtools__evaluate_script` on the app page. It sets
+   every marker in `plan.sessionMarkers` and reloads, so the app re-routes with the session it now has.
+2. Read the result with `mcp__chrome-devtools__evaluate_script` and `plan.probeScript`. It returns
+   `{ url, storage }` — the app's own view of its session, not the orchestrator's.
+3. Confirm with `handoffSucceeded({ finalUrl: result.url, sessionMarkers: plan.sessionMarkers, observedStorage: result.storage })`.
+
+`handoffSucceeded` returns `{ ok, reason }`. `ok: false` means the session did NOT transfer:
+`browser-on-login` (the app bounced back), `session-markers-missing:<keys>` (the marker did not
+stick — usually a 401 from a protected API, whose axios interceptor clears `isLogin` on every
+401), or `session-markers-unobserved` (you did not run the probe). Report it as a handoff failure
+and say the verified session did not transfer; **never report the stack green on the strength of
+Step H, or of the final URL alone.** A URL check by itself passes on an app that is about to
+bounce back to `/login` one request later.
+
+When the reason is `session-markers-missing`, the next thing to check is the peer wiring of the
+API gateway: a `GRPC_*` variable carrying an `http://` URL or a service id that is not a docker
+network alias makes the gateway's cookie guard fail closed, every `platform/v1/*` answer 401, and
+the frontend clear its own session marker in a loop. The overlay generator addresses providers by
+their compose `container_name` and strips the scheme from `GRPC_*` variables for exactly that reason.
 
 Close the inject server in a `finally`, whatever the outcome. Leave the browser open — it is the
 deliverable. Never print the cookie value, the page HTML, or the entry URL's query.

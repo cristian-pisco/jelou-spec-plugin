@@ -35,6 +35,7 @@ function cleanupIdentity(opts) {
 function cleanupOwnedAction(entry, deps, result) {
   const resource = entry.resource || {};
   if (entry.kind === 'container') {
+    if (!resource.projectName) return false;
     deps.run('docker', composeDownArgs(resource), { cwd: resource.cwd });
     result.projects.push(resource.projectName);
     return true;

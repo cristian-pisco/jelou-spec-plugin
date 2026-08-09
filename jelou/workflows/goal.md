@@ -265,11 +265,30 @@ Capture this as `{planJson}`. `{eligibleWorktreePathsJson}` is `{ <id>: <worktre
 `policy: 'shared-reuse'` (another unified-registry backend, carrying a non-null `wiredEnv` only when it
 peers an eligible service).
 
+Then capture the two identifiers step 10 needs to execute the plan — the workspace id and one run id
+for this whole `/jlu-goal` invocation:
+
+```bash
+node -e "
+Promise.all([
+  import('{plugin-root}/bin/lib/dev-orchestrator/workspace.mjs'),
+  import('node:crypto')
+]).then(([{ computeWorkspaceId }, { randomUUID }]) => {
+  process.stdout.write(JSON.stringify({ workspaceId: computeWorkspaceId(process.argv[1]), runId: randomUUID() }));
+});
+" "{root}"
+```
+
+Capture as `{workspaceId}` and `{goalRunId}`, and reuse both verbatim for every step-10 boot.
+
+Persist `{planJson}` to `$TASK_DIR/.goal/boot-plan.json` now, unconditionally — step 10 boots every
+task-isolated entry from that file, so it is not a UI-only artifact.
+
 **Frontend→backend wiring.** If `eligible` is non-empty AND `ui_services` is non-empty, the UI must
 be pointed at the **allocated** hosts of the task-isolated backends, not at their main dev ports.
-Persist `{planJson}` to `$TASK_DIR/.goal/boot-plan.json` and, for each UI service, rewrite its E2E
-overlay BEFORE the frontend boots (step 10 always reboots a frontend fresh, so the bundle bakes
-these values):
+For each UI service, rewrite its E2E overlay from the already-persisted
+`$TASK_DIR/.goal/boot-plan.json` BEFORE the frontend boots (step 10 always reboots a frontend
+fresh, so the bundle bakes these values):
 
 ```bash
 node "{plugin-root}/bin/rewrite-e2e-env.mjs" \
@@ -303,43 +322,46 @@ Never hardcode a port in the overlay: allocation shifts run to run as the eligib
     `$TASK_DIR/.goal/launch-<service>.log`.
     **Per-service plan branch (from Phase 2.0).** Before the reuse-or-reboot decision below, check
     the service's entry in `{planJson}` (match by `id`):
-    - **Task-isolated entry** (`policy: 'task-isolated'`): boot it via the `## Plan-driven boot`
-      **task-isolated** steps in `jelou/references/env-lifecycle.md`, running what
-      `descriptor = planEntryToCommands(entry)` emits **verbatim**. Never transcribe a
-      remembered variant of these commands: the emission carries `--env-file` args from
-      `environmentFiles` (real for any peered service whose overlay was written) and a
-      `restart` step, and a hand-written `docker exec -d … sh -lc` drops both.
-      1. Write every `descriptor.files[]` entry verbatim to `<entry.cwd>` (the
-         `docker-compose.jlu.yml` override and, when `wiredEnv` is present, the de-obfuscated
-         `.env`), **and persist every overlay file named in `descriptor.environmentFiles[]`
-         before any exec** — an `--env-file` pointing at a file that is not on disk yet fails
-         the exec outright.
-      2. `docker <descriptor.up>` (`compose -p <entry.projectName> -f <entry.composeFile> -f
-         docker-compose.jlu.yml up -d`).
-      3. **Then the `env-lifecycle.md` step 4b dependency-provisioning step** — when
-         `descriptor.install` is non-null, run it BEFORE the dev command and outside the
-         readiness clock (see below).
-      4. When `descriptor.exec` is non-null, `docker <descriptor.exec>` — it already includes
-         the `--env-file <path>` pair per `environmentFiles[]` entry and the
-         `-d <projectName> sh -lc "cd /app && <command> > /tmp/<projectName>.dev.log 2>&1"`
-         tail. `exec` is null for a launcher that starts the dev command from its own
-         entrypoint (`startsDevOnUp`) — that is not an error, do NOT substitute one.
-      5. When `descriptor.restart` is non-null, `docker <descriptor.restart>` (`compose -p
-         <entry.projectName> restart`) — a self-starting launcher booted before its
-         dependencies were installed, so the restart is what makes them take effect. Skipping
-         it leaves the container running against the pre-install state.
-      6. Wait readiness per `descriptor.readiness` on the allocated host port
-         (`entry.readiness.port`); register `BOOTED+=(<service>)` and
-         `TEARDOWN_CMD[<service>]="docker <descriptor.teardown>"` (`compose -p
-         <entry.projectName> down`).
-      WARN if `entry.imageResolved` is false. Then SKIP the reuse-or-reboot decision below for this
-      service (it is fully booted).
-      **Dependency provisioning is a gate, not a WARN.** A non-zero `descriptor.install` exit
-      means the service is not bootable this run: do NOT exec the dev command, do NOT burn the
-      readiness budget. Report the cause from `install.logPath` and apply the step 8b.6
-      `--skip-unbootable` decision table (backend → informative refuse, or auto-skip + WARN with
-      the flag; UI → always refuse). Record it in `GOALS.md`'s environment notes as
-      `deps_install_failed` with the service, `depsProvision.source` and `depsProvision.lockFile`.
+    - **Task-isolated entry** (`policy: 'task-isolated'`): boot it with `bin/boot-stack.mjs`, the
+      executable form of the `## Plan-driven boot` **task-isolated** contract in
+      `jelou/references/env-lifecycle.md`. **Do NOT transcribe those steps here.** The runner
+      writes `descriptor.files[]` (the field is `content`, singular), persists nothing it did not
+      emit, runs `up` → `install` → `migrate` → `exec`/`restart`, carries the `--env-file` args
+      from `environmentFiles` and the `restart` step that a hand-written
+      `docker exec -d … sh -lc` silently drops, polls `descriptor.readiness` on the allocated host
+      port for the service's own `ready_timeout_s`, and **leaves what it started running**:
+
+      ```bash
+      node "{plugin-root}/bin/boot-stack.mjs" \
+        --workspace-id "{workspaceId}" --slug "{slug}" --run-id "{goalRunId}" \
+        --plan-file "$TASK_DIR/.goal/boot-plan.json" --only "<service>"
+      ```
+
+      It prints `{ services, skipped, green, degraded, down, mutations }` and exits 0 only when
+      `down` is empty. Then:
+      - `green` → register `BOOTED+=(<service>)` and `TEARDOWN_CMD[<service>]="docker compose -p
+        <mutations[].resource.projectName> down"` from the returned `mutations`, and SKIP the
+        reuse-or-reboot decision below for this service (it is fully booted).
+      - `degraded` → the service answers on its port but never matched its declared
+        `ready_signal`. Treat it as booted, register it the same way, and WARN
+        `⚠ <service>: serving, but its registry ready_signal is stale`.
+      - `down` → read `services[].cause` and `services[].error_hints` and apply the failure
+        table below. WARN if `entry.imageResolved` is false.
+
+      **Never boot with `verifySharedReuse`** — it tears down in a `finally` everything it
+      started, so a stack booted through it is down the moment it returns. `boot-stack.mjs` calls
+      `bootSharedReuse`, which does not.
+
+      **Dependency provisioning is a gate, not a WARN.** The runner returns
+      `cause: 'deps_install_failed: …'` and never execs the dev command, so no readiness budget is
+      burned. Report the cause and apply the step 8b.6 `--skip-unbootable` decision table
+      (backend → informative refuse, or auto-skip + WARN with the flag; UI → always refuse).
+      Record it in `GOALS.md`'s environment notes as `deps_install_failed` with the service,
+      `depsProvision.source` and `depsProvision.lockFile`.
+
+      **A declared `dev.migrate` is a gate too.** `cause: 'migrate_failed: …'` means the service
+      booted against a schema its code does not expect — the same decision table applies. A
+      non-blocking migration failure surfaces in `error_hints` instead and the service still boots.
     - **Shared-reuse entry with a non-null `entry.wiredEnv`** (a main-branch backend peering an
       eligible one): back up `<entry.cwd>/.env` first (`bin/lib/dev-orchestrator/stack/backend-env-backup.mjs`,
       recorded so teardown restores it), write the `.env` from `planEntryToCommands(entry).files` (de-obfuscated), THEN fall through
@@ -374,7 +396,9 @@ Never hardcode a port in the overlay: allocation shifts run to run as the eligib
 
     On `ready_timeout` → `STATUS: BLOCKED` (teardown still runs via the trap). Print the
     readiness log's error-shaped lines with the verdict — a bare "readiness timed out after N
-    seconds" makes the next agent re-read the log by hand. Extract them with the same helper the
+    seconds" makes the next agent re-read the log by hand. For a task-isolated entry those lines
+    are already in the runner's `services[].error_hints`; print those instead of re-deriving them.
+    For anything else, extract them with the same helper the
     dev-block verifier uses, never by hand-rolling a grep. **Read the log through
     `descriptor.readiness.logSource`, never with `node:fs` against a `/tmp` path.** On a
     task-isolated boot that path lives INSIDE the container, so a host `readFile` returns

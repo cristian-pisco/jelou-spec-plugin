@@ -51,6 +51,63 @@ describe('buildTopologyOverlays', () => {
     );
   });
 
+  test('a shared-reuse provider is addressed by its docker network alias, never by its registry id', () => {
+    const overlays = buildTopologyOverlays({
+      slug: 'task-a',
+      aliasByService: { 'auth-service': 'jelou-auth-service' },
+      services: [
+        service({ id: 'gateway', runtime: 'container', peers: { 'auth-service': 'AUTH_URL' }, host: 4302 }),
+        service({ id: 'auth-service', runtime: 'container', host: 8229, policy: 'shared-reuse' }),
+      ],
+    });
+
+    assert.equal(overlays.get('gateway').content, 'AUTH_URL=http://jelou-auth-service:8080\n');
+  });
+
+  test('an entry-carried networkAlias wins over the alias map', () => {
+    const provider = service({ id: 'chatbot-server', runtime: 'container', host: 9090, policy: 'shared-reuse' });
+    const overlays = buildTopologyOverlays({
+      slug: 'task-a',
+      aliasByService: { 'chatbot-server': 'wrong' },
+      services: [
+        service({ id: 'gateway', runtime: 'container', peers: { 'chatbot-server': 'CHATBOT_SERVER_URL' }, host: 4302 }),
+        { ...provider, networkAlias: 'chatbot_server' },
+      ],
+    });
+
+    assert.equal(overlays.get('gateway').content, 'CHATBOT_SERVER_URL=http://chatbot_server:8080\n');
+  });
+
+  test('a GRPC_ variable gets the provider gRPC port and no http scheme', () => {
+    const provider = service({ id: 'auth-service', runtime: 'container', host: 8229, policy: 'shared-reuse' });
+    provider.ports.push({ host: 50051, internal: 50051, portEnv: 'GRPC_PORT', primary: false });
+    provider.ports[0].portEnv = 'APP_PORT';
+    const overlays = buildTopologyOverlays({
+      slug: 'task-a',
+      aliasByService: { 'auth-service': 'jelou-auth-service' },
+      services: [
+        service({ id: 'gateway', runtime: 'container', peers: { 'auth-service': 'GRPC_AUTH_SERVER_URL' }, host: 4302 }),
+        provider,
+      ],
+    });
+
+    assert.equal(overlays.get('gateway').content, 'GRPC_AUTH_SERVER_URL=jelou-auth-service:50051\n');
+  });
+
+  test('a host consumer reaching a gRPC provider still drops the http scheme', () => {
+    const provider = service({ id: 'auth-service', runtime: 'container', host: 8229, policy: 'shared-reuse' });
+    provider.ports.push({ host: 50051, internal: 50051, portEnv: 'GRPC_PORT', primary: false });
+    const overlays = buildTopologyOverlays({
+      slug: 'task-a',
+      services: [
+        service({ id: 'cli', runtime: 'host', peers: { 'auth-service': 'GRPC_AUTH_SERVER_URL' }, host: 4302 }),
+        provider,
+      ],
+    });
+
+    assert.equal(overlays.get('cli').content, 'GRPC_AUTH_SERVER_URL=localhost:50051\n');
+  });
+
   test('a consumer with no routed variables receives no overlay', () => {
     const overlays = buildTopologyOverlays({
       slug: 'task-a',

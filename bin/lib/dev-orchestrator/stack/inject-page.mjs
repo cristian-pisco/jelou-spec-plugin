@@ -1,5 +1,13 @@
 import { createServer } from 'node:http';
 
+export const DEFAULT_SESSION_MARKERS = Object.freeze({ isLogin: 'true' });
+
+export function sessionMarkersFor(frontend) {
+  const declared = frontend && (frontend.sessionMarkers || frontend.session_markers);
+  if (declared && Object.keys(declared).length > 0) return { ...declared };
+  return { ...DEFAULT_SESSION_MARKERS };
+}
+
 export function renderInjectPage({ cookieName, cookieValue, appUrl, account }) {
   return `<!doctype html><html><head><meta charset="utf-8"><title>Jelou local auth</title></head>`
     + `<body><div><h2>Authenticating local Jelou…</h2>`

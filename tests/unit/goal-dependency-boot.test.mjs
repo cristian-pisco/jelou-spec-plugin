@@ -67,3 +67,48 @@ describe('goal — reuse-or-reboot rejects a stale frontend', () => {
     assert.match(env, /stale|newer than|mtime/i);
   });
 });
+
+describe('goal — the task-isolated boot is executed, not transcribed', () => {
+  const step10 = wf.slice(wf.indexOf('### Phase 2 — Boot once'), wf.indexOf('10b.'));
+
+  test('the task-isolated branch drives boot-stack.mjs through the plugin-root placeholder', () => {
+    assert.match(step10, /\{plugin-root\}\/bin\/boot-stack\.mjs/);
+    assert.match(step10, /--plan-file "\$TASK_DIR\/\.goal\/boot-plan\.json"/);
+    assert.match(step10, /--only "<service>"/);
+  });
+
+  test('it no longer hand-writes the up/install/exec/restart sequence', () => {
+    assert.doesNotMatch(step10, /`docker <descriptor\.up>`/);
+    assert.doesNotMatch(step10, /`docker <descriptor\.exec>`/);
+    assert.doesNotMatch(step10, /`docker <descriptor\.restart>`/);
+    assert.match(step10, /Do NOT transcribe those steps here/);
+  });
+
+  test('it bans the verifier as a booter', () => {
+    assert.match(step10, /Never boot with `verifySharedReuse`/);
+  });
+
+  test('teardown is registered from what the runner actually created', () => {
+    assert.match(step10, /mutations\[\]\.resource\.projectName/);
+    assert.match(step10, /BOOTED\+=\(<service>\)/);
+  });
+
+  test('the deps gate and the migrate gate are both failure causes, not warnings', () => {
+    assert.match(step10, /deps_install_failed/);
+    assert.match(step10, /migrate_failed/);
+    assert.match(step10, /Dependency provisioning is a gate, not a WARN/);
+  });
+
+  test('a degraded readiness signal boots the service and names the stale registry signal', () => {
+    assert.match(step10, /degraded/);
+    assert.match(step10, /ready_signal is stale/);
+  });
+
+  test('the run identity and workspace id the runner needs are captured before Phase 2', () => {
+    const setup = wf.slice(0, wf.indexOf('### Phase 2 — Boot once'));
+
+    assert.match(setup, /computeWorkspaceId/);
+    assert.match(setup, /\{goalRunId\}/);
+    assert.match(setup, /Persist `\{planJson\}` to `\$TASK_DIR\/\.goal\/boot-plan\.json` now, unconditionally/);
+  });
+});

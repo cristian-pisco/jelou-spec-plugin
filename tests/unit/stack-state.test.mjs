@@ -65,7 +65,7 @@ describe('stack-state pure helpers', () => {
 
     assert.throws(
       () => recordOwnedMutation(state, { ...marker, runId: 'run-18' }, { kind: 'process', resource: { pid: 42 } }),
-      /current run marker mismatch/,
+      (error) => error.code === 'RUN_MARKER_MISMATCH' && /reconcile-stack-run/.test(error.message) && error.currentRun.runId === 'run-17',
     );
     assert.throws(
       () => recordOwnedMutation(emptyStackState(), { workspaceId: 'workspace-1', taskSlug: 'task-a' }, { kind: 'process', resource: { pid: 42 } }),

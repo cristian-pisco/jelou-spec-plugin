@@ -14,14 +14,22 @@ function authorizationFailure(reason, email) {
   return new Error(`Local session for ${account} could not be authorized: the dashboard identity endpoint exposed no permission set; confirm the dashboard-server verify path returns the authenticated user`);
 }
 
+const IDENTITY_ENVELOPES = ['data', 'result', 'payload'];
+const IDENTITY_HOLDERS = ['User', 'user'];
+
+function permissionCandidates(root) {
+  const scopes = [root, ...IDENTITY_ENVELOPES.map((key) => root?.[key])];
+  const out = [];
+  for (const scope of scopes) {
+    if (!scope || typeof scope !== 'object') continue;
+    out.push(scope.permissions);
+    for (const holder of IDENTITY_HOLDERS) out.push(scope[holder]?.permissions);
+  }
+  return out;
+}
+
 function readPermissions(payload) {
-  const candidates = [
-    payload?.data?.User?.permissions,
-    payload?.data?.user?.permissions,
-    payload?.User?.permissions,
-    payload?.permissions,
-  ];
-  return candidates.find((value) => Array.isArray(value)) || null;
+  return permissionCandidates(payload).find((value) => Array.isArray(value)) || null;
 }
 
 export async function verifyProtectedSession({ cookie, verifyUrls, identityUrl, appUrl, protectedPath }, { request, createBrowserContext }) {
