@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.356] — 2026-08-09
+
+### Fixed
+- a declared frontend service silently lost its peer path suffixes (#90)
+
 ## [0.3.355] — 2026-08-09
 
 ### Changed
