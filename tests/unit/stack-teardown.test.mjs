@@ -4,6 +4,9 @@
 
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
+import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { tearDownStack } from '../../bin/lib/dev-orchestrator/stack/stack-teardown.mjs';
 
 function fixtureState() {
@@ -60,5 +63,231 @@ describe('tearDownStack', () => {
       fs: { exists: () => false, copy: () => { throw new Error('should not copy'); }, remove: () => { throw new Error('should not remove'); } }
     });
     assert.deepEqual(out, { projects: [], killed: [], missing: [7], restored: [] });
+  });
+
+  test('cleans only current-run mutations in reverse journal order and preserves reused resources', () => {
+    const marker = { workspaceId: 'workspace-1', taskSlug: 'task-a', runId: 'run-17' };
+    const reusedProject = { projectName: 'shared-main', cwd: '/repo/main', composeFile: 'compose.yml', overrideFile: 'override.yml' };
+    const ownedProject = { projectName: 'api-task-a', cwd: '/repo/api', composeFile: 'compose.yml', overrideFile: 'override.yml' };
+    const actions = [];
+    const lifecycle = [];
+    let cleared = false;
+    const state = {
+      projects: [reusedProject, ownedProject],
+      hostPids: [{ role: 'preexisting', pid: 8 }, { role: 'owned', pid: 41 }],
+      currentRun: marker,
+      mutationJournal: [
+        { marker, kind: 'container', resource: ownedProject },
+        { marker, kind: 'process', resource: { pid: 41 } },
+        { marker, kind: 'overlay', resource: { path: '/runtime/api.env' } },
+        { marker, kind: 'credential', resource: { id: 'workspace-1/task-a' } },
+        { marker, kind: 'testData', resource: { id: 'company-17' } },
+      ],
+    };
+
+    const out = tearDownStack({ ...marker, slug: marker.taskSlug }, {
+      readState: () => state,
+      clearState: () => { cleared = true; },
+      writeState: () => {},
+      run: (_bin, args) => { actions.push(`container:${args[2]}`); return { status: 0 }; },
+      kill: (pid) => { actions.push(`process:${pid}`); return true; },
+      fs: {
+        exists: () => true,
+        copy: () => {},
+        remove: (path) => actions.push(`overlay:${path}`),
+      },
+      removeCredential: ({ id }) => actions.push(`credential:${id}`),
+      removeTestData: ({ id }) => actions.push(`testData:${id}`),
+      onLifecycle: (event) => lifecycle.push(event),
+    });
+
+    assert.deepEqual(actions, [
+      'testData:company-17',
+      'credential:workspace-1/task-a',
+      'overlay:/runtime/api.env',
+      'process:41',
+      'container:api-task-a',
+    ]);
+    assert.equal(actions.includes('container:shared-main'), false);
+    assert.equal(actions.includes('process:8'), false);
+    assert.equal(cleared, true);
+    assert.deepEqual(out.refused, []);
+    assert.deepEqual(lifecycle, [
+      { stage: 'cleanup', outcome: 'started' },
+      { stage: 'cleanup', outcome: 'succeeded' },
+    ]);
+  });
+
+  test('refuses resources with missing or mismatched workspace task or run markers', () => {
+    const marker = { workspaceId: 'workspace-1', taskSlug: 'task-a', runId: 'run-17' };
+    const state = {
+      currentRun: marker,
+      mutationJournal: [
+        { marker: { ...marker, workspaceId: 'workspace-2' }, kind: 'process', resource: { pid: 1 } },
+        { marker: { ...marker, taskSlug: 'task-b' }, kind: 'process', resource: { pid: 2 } },
+        { marker: { ...marker, runId: 'run-18' }, kind: 'process', resource: { pid: 3 } },
+        { kind: 'process', resource: { pid: 4 } },
+      ],
+    };
+    const killed = [];
+    let cleared = false;
+
+    const out = tearDownStack({ ...marker, slug: marker.taskSlug }, {
+      readState: () => state,
+      clearState: () => { cleared = true; },
+      writeState: () => {},
+      kill: (pid) => { killed.push(pid); return true; },
+      run: () => ({ status: 0 }),
+      fs: { exists: () => false, copy: () => {}, remove: () => {} },
+    });
+
+    assert.deepEqual(killed, []);
+    assert.equal(cleared, false);
+    assert.deepEqual(out.refused.map(({ resource }) => resource.pid).sort(), [1, 2, 3, 4]);
+    assert.deepEqual(new Set(out.refused.map(({ reason }) => reason)), new Set(['ownership-marker-mismatch', 'ownership-marker-missing']));
+  });
+
+  test('refuses the journal when the requested current run does not match persisted state', () => {
+    const stateMarker = { workspaceId: 'workspace-1', taskSlug: 'task-a', runId: 'run-17' };
+    let killed = false;
+
+    const out = tearDownStack({ workspaceId: 'workspace-1', slug: 'task-a', runId: 'run-18' }, {
+      readState: () => ({
+        currentRun: stateMarker,
+        mutationJournal: [{ marker: stateMarker, kind: 'process', resource: { pid: 41 } }],
+      }),
+      clearState: () => { throw new Error('must preserve refused state'); },
+      writeState: () => {},
+      kill: () => { killed = true; return true; },
+      run: () => ({ status: 0 }),
+      fs: { exists: () => false, copy: () => {}, remove: () => {} },
+    });
+
+    assert.equal(killed, false);
+    assert.deepEqual(out.refused, [{
+      kind: 'process',
+      resource: { pid: 41 },
+      reason: 'current-run-marker-mismatch',
+    }]);
+  });
+
+  test('persists only refused entries after a partial cleanup', () => {
+    const marker = { workspaceId: 'workspace-1', taskSlug: 'task-a', runId: 'run-17' };
+    const refusedEntry = { marker: { ...marker, runId: 'run-18' }, kind: 'process', resource: { pid: 42 } };
+    const ownedEntry = { marker, kind: 'process', resource: { pid: 41 } };
+    const written = [];
+    const killed = [];
+
+    const out = tearDownStack({ ...marker, slug: marker.taskSlug }, {
+      readState: () => ({ currentRun: marker, mutationJournal: [ownedEntry, refusedEntry] }),
+      clearState: () => { throw new Error('refused state must remain'); },
+      writeState: (_opts, state) => written.push(state),
+      kill: (pid) => { killed.push(pid); return true; },
+      run: () => ({ status: 0 }),
+      fs: { exists: () => false, copy: () => {}, remove: () => {} },
+    });
+
+    assert.deepEqual(killed, [41]);
+    assert.deepEqual(out.refused, [{ kind: 'process', resource: { pid: 42 }, reason: 'ownership-marker-mismatch' }]);
+    assert.deepEqual(written[0].mutationJournal, [refusedEntry]);
+  });
+
+  test('default owned teardown removes process container file credential and test data resources', (t) => {
+    const root = mkdtempSync(join(tmpdir(), 'stack-default-cleanup-'));
+    t.after(() => rmSync(root, { recursive: true, force: true }));
+    const fakeBin = join(root, 'bin');
+    const credentialLog = join(root, 'credentials.log');
+    const testDataLog = join(root, 'test-data.log');
+    const boundaryPath = join(root, 'boundary.mjs');
+    mkdirSync(fakeBin);
+    writeFileSync(join(fakeBin, 'secret-tool'), '#!/bin/sh\nprintf \'%s\\n\' "$*" >> "$JLU_FAKE_KEYRING_LOG"\n');
+    chmodSync(join(fakeBin, 'secret-tool'), 0o755);
+    writeFileSync(boundaryPath, [
+      "import { appendFileSync } from 'node:fs';",
+      'export async function createLocalJelouBoundary() {',
+      '  return { database: { async removeOwnedRecord(resource) {',
+      "    appendFileSync(resource.proofPath, `${resource.entity}:${resource.id}\\n`);",
+      '    return true;',
+      '  } } };',
+      '}',
+      '',
+    ].join('\n'));
+    const previousPath = process.env.PATH;
+    const previousLog = process.env.JLU_FAKE_KEYRING_LOG;
+    process.env.PATH = `${fakeBin}:${previousPath}`;
+    process.env.JLU_FAKE_KEYRING_LOG = credentialLog;
+    t.after(() => {
+      process.env.PATH = previousPath;
+      if (previousLog === undefined) delete process.env.JLU_FAKE_KEYRING_LOG;
+      else process.env.JLU_FAKE_KEYRING_LOG = previousLog;
+    });
+    const marker = { workspaceId: 'workspace-1', taskSlug: 'task-a', runId: 'run-17' };
+    const profileIdentity = 'jlu-local-auth:workspace-1:task-a';
+    const actions = [];
+    let cleared = false;
+    const result = tearDownStack({ ...marker, slug: marker.taskSlug }, {
+      readState: () => ({
+        currentRun: marker,
+        mutationJournal: [
+          { marker, kind: 'container', resource: { projectName: 'api-task-a', cwd: '/repo/api', composeFile: 'compose.yml' } },
+          { marker, kind: 'process', resource: { pid: 41 } },
+          { marker, kind: 'file', resource: { path: '/runtime/owned.json' } },
+          { marker, kind: 'credential', resource: { identity: profileIdentity, profileIdentity, owner: { profileIdentity } } },
+          {
+            marker,
+            kind: 'testData',
+            resource: {
+              entity: 'user',
+              id: 'user-17',
+              profileIdentity,
+              owner: { profileIdentity },
+              target: { host: '127.0.0.1', port: 5432 },
+              topology: {},
+              provisioningBoundaryPath: boundaryPath,
+              proofPath: testDataLog,
+            },
+          },
+        ],
+      }),
+      clearState: () => { cleared = true; },
+      writeState: () => {},
+      run: (_binary, args) => { actions.push(`container:${args[2]}`); return { status: 0 }; },
+      kill: (pid) => { actions.push(`process:${pid}`); return true; },
+      fs: {
+        exists: () => false,
+        copy: () => {},
+        remove: (path) => actions.push(`file:${path}`),
+      },
+    });
+
+    assert.deepEqual(result.refused, []);
+    assert.equal(cleared, true);
+    assert.deepEqual(actions, ['file:/runtime/owned.json', 'process:41', 'container:api-task-a']);
+    assert.match(readFileSync(credentialLog, 'utf8'), new RegExp(`clear service jlu-local-auth account ${profileIdentity}`));
+    assert.equal(readFileSync(testDataLog, 'utf8'), 'user:user-17\n');
+  });
+
+  test('refuses every foreign resource kind before invoking any cleanup boundary', () => {
+    const marker = { workspaceId: 'workspace-1', taskSlug: 'task-a', runId: 'run-17' };
+    const foreign = { ...marker, runId: 'run-18' };
+    const kinds = ['process', 'container', 'file', 'credential', 'testData'];
+    const invoked = [];
+    const result = tearDownStack({ ...marker, slug: marker.taskSlug }, {
+      readState: () => ({
+        currentRun: marker,
+        mutationJournal: kinds.map((kind) => ({ marker: foreign, kind, resource: { id: kind, pid: 41, path: `/runtime/${kind}` } })),
+      }),
+      clearState: () => { throw new Error('foreign state must remain'); },
+      writeState: () => {},
+      run: () => { invoked.push('container'); return { status: 0 }; },
+      kill: () => { invoked.push('process'); return true; },
+      fs: { exists: () => false, copy: () => {}, remove: () => invoked.push('file') },
+      removeCredential: () => invoked.push('credential'),
+      removeTestData: () => invoked.push('testData'),
+    });
+
+    assert.deepEqual(invoked, []);
+    assert.deepEqual(result.refused.map(({ kind }) => kind).sort(), [...kinds].sort());
+    assert.equal(result.refused.every(({ reason }) => reason === 'ownership-marker-mismatch'), true);
   });
 });

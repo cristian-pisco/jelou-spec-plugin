@@ -5,6 +5,7 @@
 import { findWindow, listPanes, splitWindow, sendKeys, selectLayout, selectPane, selectPaneTitle, setPaneStyle } from './tmux.mjs';
 import { buildPaneCommand } from './start.mjs';
 import { isAbsolute, resolve } from 'node:path';
+import { LIFECYCLE_STAGES } from './events.mjs';
 
 function paneCwdFor(workspaceRoot, service) {
   const rel = service.path || '.';
@@ -13,7 +14,7 @@ function paneCwdFor(workspaceRoot, service) {
 
 function windowNameFor(slug) { return `jlu-dev-${slug || '_global'}`; }
 
-export function addService({ config, workspaceRoot, slug, serviceName, runner }) {
+export function addService({ config, workspaceRoot, slug, serviceName, runner, onLifecycle = () => {} }) {
   const services = config.services || [];
   const svc = services.find(s => s.name === serviceName);
   if (!svc) return { status: 'not-registered' };
@@ -27,6 +28,7 @@ export function addService({ config, workspaceRoot, slug, serviceName, runner })
   const desiredTitle = (svc.panel && svc.panel.title) || svc.name;
   if (panes.find(p => p.title === desiredTitle)) return { status: 'pane-exists' };
 
+  onLifecycle({ stage: LIFECYCLE_STAGES.boot, outcome: 'started', taskSlug: slug, service: serviceName });
   splitWindow({ target }, runner);
 
   // After split, the new pane is the last index.
@@ -42,6 +44,7 @@ export function addService({ config, workspaceRoot, slug, serviceName, runner })
 
   selectLayout({ target, layout: 'tiled' }, runner);
   selectPane({ target: paneTarget }, runner);
+  onLifecycle({ stage: LIFECYCLE_STAGES.boot, outcome: 'succeeded', taskSlug: slug, service: serviceName });
 
   return { status: 'added', paneIndex: newIdx };
 }

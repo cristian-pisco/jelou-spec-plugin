@@ -39,7 +39,7 @@ done
 
 [ -z "$HOST" ] && { echo "Error: --host is required (claude, codex, or opencode)" >&2; exit 2; }
 
-is_git_repo() { [ -d "$1/.git" ]; }
+is_git_repo() { [ -e "$1/.git" ]; }
 
 read_version() {
   grep -o '"version": "[^"]*"' "$1/package.json" 2>/dev/null | head -1 | grep -o '[0-9]*\.[0-9]*\.[0-9]*' || true

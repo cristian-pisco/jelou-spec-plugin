@@ -34,14 +34,24 @@ If the chosen service is not in the config, ask via `question` whether to invoke
 
 ```bash
 node -e "
-import('{plugin-root}/bin/lib/dev-orchestrator/add.mjs').then(({ addService }) => {
+Promise.all([
+  import('{plugin-root}/bin/lib/dev-orchestrator/add.mjs'),
+  import('{plugin-root}/bin/lib/dev-orchestrator/events.mjs'),
+  import('{plugin-root}/bin/lib/dev-orchestrator/state-daemon.mjs')
+]).then(([{ addService }, events, daemonState]) => {
   const cfg = JSON.parse(process.argv[1]);
+  const slug = process.argv[3];
+  const workspaceId = process.argv[5];
   const out = addService({
-    config: cfg, workspaceRoot: process.argv[2], slug: process.argv[3], serviceName: process.argv[4]
+    config: cfg,
+    workspaceRoot: process.argv[2],
+    slug,
+    serviceName: process.argv[4],
+    onLifecycle: (event) => events.appendLifecycleEvent(daemonState.eventsLogPath({ workspaceId, slug }), event)
   });
   process.stdout.write(JSON.stringify(out));
 });
-" '{cfg-json}' "{root}" "{slug}" "{service}"
+" '{cfg-json}' "{root}" "{slug}" "{service}" "{workspaceId}"
 ```
 
 ## Step 4 — Report

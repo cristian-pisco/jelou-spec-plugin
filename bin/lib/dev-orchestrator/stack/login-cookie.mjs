@@ -16,7 +16,7 @@ export async function loginForCookie({ loginUrl, verifyMfaUrl, cookieName, email
     setCookies = verify.setCookies;
   }
 
-  const cookie = extractAuthCookie(setCookies, { domain: 'localhost' });
+  const cookie = extractAuthCookie(setCookies, { domain: new URL(loginUrl).hostname });
   if (!cookie || cookie.name !== cookieName) return { status: 'rejected', cookieValue: null };
-  return { status: 'ok', cookieValue: cookie.value };
+  return { status: 'ok', cookieValue: cookie.value, cookie };
 }

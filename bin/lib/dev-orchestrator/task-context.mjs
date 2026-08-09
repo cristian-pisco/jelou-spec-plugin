@@ -12,9 +12,11 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { deriveTask, listTaskLocations } from '../task-index/scan.mjs';
+import { resolveSpecWorkspace } from './workspace.mjs';
 
 const WORKTREE_RE = /\/\.worktrees\/([a-z0-9][a-z0-9-]*)(?:\/|$)/;
-const BRANCH_PREFIXED_RE = /^(?:task|spec)\/([a-z0-9][a-z0-9-]*)$/;
+const BRANCH_PREFIXED_RE = /^(?:task|spec|production)\/([a-z0-9][a-z0-9-]*)$/;
 const BRANCH_BARE_RE = /^[a-z0-9][a-z0-9-]*$/;
 const STATE_RE = /State:\s*(implementing|validating)/i;
 
@@ -68,4 +70,46 @@ export function resolveTaskSlug({ workspaceRoot, cwd, branch, override }) {
   if (inflight.length > 1) return `AMBIGUOUS:${inflight.join(',')}`;
 
   return '_global';
+}
+
+function affectedServicesFromTasks(tasksText) {
+  const frontmatter = tasksText.match(/^---\n([\s\S]*?)\n---/);
+  if (!frontmatter) return [];
+  const services = [];
+  let current = null;
+  for (const line of frontmatter[1].split('\n')) {
+    const id = line.match(/^\s*-\s+id:\s*(\S+)/);
+    if (id) {
+      current = { id: id[1], branch: null };
+      services.push(current);
+      continue;
+    }
+    const branch = line.match(/^\s+branch:\s*(\S+)/);
+    if (branch && current) current.branch = branch[1];
+  }
+  return services;
+}
+
+export function resolveTaskContext({ projectRoot, workspaceRoot, cwd, branch, slug }) {
+  const sharedRoot = workspaceRoot || resolveSpecWorkspace(projectRoot || cwd);
+  if (!sharedRoot) return null;
+  const selectedSlug = slug || resolveTaskSlug({ workspaceRoot: sharedRoot, cwd, branch });
+  if (selectedSlug === '_global') return null;
+  if (selectedSlug.startsWith('AMBIGUOUS:')) throw new Error(`active task is ambiguous: ${selectedSlug.slice('AMBIGUOUS:'.length)}`);
+  const matches = listTaskLocations(sharedRoot).filter((candidate) => candidate.slug === selectedSlug);
+  if (matches.length !== 1) throw new Error(`active task ${selectedSlug} does not resolve to one TASKS.md in ${sharedRoot}`);
+  const task = deriveTask(sharedRoot, matches[0].date_on_disk, selectedSlug);
+  const taskRoot = join(sharedRoot, task.root_path);
+  const tasksPath = join(sharedRoot, task.sources.tasks.path);
+  const tasksText = readFileSync(tasksPath, 'utf8');
+  return {
+    workspaceRoot: sharedRoot,
+    registryPath: join(sharedRoot, 'registry', 'registry.json'),
+    taskRoot,
+    tasksPath,
+    slug: selectedSlug,
+    status: task.status,
+    mode: task.setup_mode,
+    affectedServices: affectedServicesFromTasks(tasksText),
+  };
 }

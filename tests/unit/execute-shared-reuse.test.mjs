@@ -124,6 +124,26 @@ describe('verifySharedReuse — docker-exec', () => {
     assertNeverComposeDown(calls);
   });
 
+  test('applies generated overlays to Compose and the in-container dev process', async () => {
+    const overlayPath = '/runtime/overlays/task-aware/alpha-service.env';
+    const { calls, runner } = makeRunner([
+      { when: 'ps --services --status running', results: [ok(''), ok(''), ok('app\n')] },
+      { when: 'cat /tmp/app.verify.', results: ok('Nest application successfully started') },
+    ]);
+    const result = await verifySharedReuse(
+      dockerExecEntry({ environmentFiles: [overlayPath] }),
+      baseDeps(runner, { readEnvironmentFile: () => 'API_URL=http://api-service:8080\nFEATURE_FLAG=enabled\n' }),
+    );
+
+    assert.equal(result.status, 'green');
+    assert.ok(calls.some((call) => call.key === `docker compose --env-file ${overlayPath} -f docker-compose.yml up -d app`));
+    const launch = findExecLaunch(calls);
+    assert.deepEqual(launch.args.slice(0, 12), [
+      'compose', '--env-file', overlayPath, '-f', 'docker-compose.yml', 'exec', '-T',
+      '-e', 'API_URL=http://api-service:8080', '-e', 'FEATURE_FLAG=enabled', 'app',
+    ]);
+  });
+
   test('in-container pgrep probe escapes ERE metacharacters in the command', async () => {
     const { calls, runner } = makeRunner([
       { when: 'ps --services --status running', results: ok('app\n') },
@@ -310,6 +330,32 @@ describe('verifySharedReuse — docker', () => {
     assertNeverComposeDown(calls);
   });
 
+  test('passes the generated overlay to every Compose operation', async () => {
+    const overlayPath = '/runtime/overlays/main/alpha-service.env';
+    const { calls, runner } = makeRunner([
+      { when: 'ps --services --status running', results: [ok(''), ok(''), ok('app\n')] },
+      { when: 'logs --no-color', results: [ok(''), ok('Nest application successfully started')] },
+    ]);
+    const result = await verifySharedReuse(dockerEntry({ environmentFiles: [overlayPath] }), baseDeps(runner));
+
+    assert.equal(result.status, 'green');
+    assert.equal(calls.filter((call) => call.cmd === 'docker').every((call) => (
+      call.args[0] === 'compose' && call.args[1] === '--env-file' && call.args[2] === overlayPath
+    )), true);
+  });
+
+  test('restartRequired recreates a healthy Compose service before readiness can succeed', async () => {
+    const { calls, runner } = makeRunner([
+      { when: 'ps --services --status running', results: ok('app\n') },
+      { when: 'logs --no-color', results: ok('Nest application successfully started') },
+    ]);
+    const result = await verifySharedReuse(dockerEntry({ restartRequired: true }), baseDeps(runner));
+
+    assert.equal(result.status, 'green');
+    assert.equal(result.command_executed, true);
+    assert.ok(calls.some((call) => call.key === 'docker compose -f docker-compose.yml up -d --force-recreate app'));
+  });
+
   test('logs are snapshotted before up -d so a pre-boot ready line never turns green', async () => {
     const { calls, runner } = makeRunner([
       { when: 'ps --services --status running', results: [ok(''), ok(''), ok('app\n')] },
@@ -368,6 +414,48 @@ describe('verifySharedReuse — host launchers (npm/make/shell)', () => {
     assert.equal(calls.length, 1);
     assert.equal(calls.some((c) => c.key.includes('kill')), false);
     assert.equal(calls.some((c) => c.key.includes('pkill')), false);
+  });
+
+  test('launches a host consumer with values from its generated overlay', async () => {
+    const overlayPath = '/runtime/overlays/main/beta-ui.env';
+    const { calls, runner } = makeRunner([
+      { when: 'pgrep -f', results: { code: 1, stdout: '', stderr: '' } },
+      { when: 'echo $!', results: ok('4242\n') },
+    ]);
+    let probes = 0;
+    const result = await verifySharedReuse(
+      npmEntry({ environmentFiles: [overlayPath] }),
+      baseDeps(runner, {
+        probePort: async () => {
+          probes += 1;
+          return probes > 1;
+        },
+        readEnvironmentFile: () => 'API_URL=http://localhost:8080\nFEATURE_FLAG=enabled\n',
+      }),
+    );
+
+    assert.equal(result.status, 'green');
+    const launch = calls.find((call) => call.key.includes('echo $!'));
+    assert.equal(launch.opts.env.API_URL, 'http://localhost:8080');
+    assert.equal(launch.opts.env.FEATURE_FLAG, 'enabled');
+  });
+
+  test('restartRequired stops a healthy host consumer and proves readiness after relaunch', async () => {
+    const { calls, runner } = makeRunner([
+      { when: 'pgrep -f', results: ok('777\n') },
+      { when: 'echo $!', results: ok('4242\n') },
+    ]);
+    const result = await verifySharedReuse(
+      npmEntry({ restartRequired: true, teardownCmd: 'stop-beta-ui' }),
+      baseDeps(runner, { probePort: async () => true }),
+    );
+
+    assert.equal(result.status, 'green');
+    assert.equal(result.command_executed, true);
+    const stopIndex = calls.findIndex((call) => call.key === 'sh -c stop-beta-ui');
+    const launchIndex = calls.findIndex((call) => call.key.includes('echo $!'));
+    assert.ok(stopIndex >= 0);
+    assert.ok(stopIndex < launchIndex);
   });
 
   test('host pgrep probe escapes ERE metacharacters in the command', async () => {
@@ -644,6 +732,17 @@ describe('errorHints', () => {
     assert.deepEqual(errorHints(''), []);
     assert.deepEqual(errorHints(undefined), []);
   });
+
+  test('redacts secret assignments from returned diagnostic hints', () => {
+    const canary = 'phase04-canary-secret';
+    const hints = errorHints(`Error: login failed password=${canary}\nFatal authorization: Bearer ${canary}`);
+
+    assert.equal(hints.join('\n').includes(canary), false);
+    assert.deepEqual(hints, [
+      'Error: login failed password=[REDACTED]',
+      'Fatal authorization: Bearer [REDACTED]',
+    ]);
+  });
 });
 
 describe('verifySharedReuse — a failed readiness explains itself', () => {
@@ -684,5 +783,47 @@ describe('verifySharedReuse — a failed readiness explains itself', () => {
     assert.equal(result.cause, 'bad_ready_pattern');
     assert.deepEqual(result.error_hints, []);
     assert.equal(calls.some((c) => c.key.includes('cat ')), false);
+  });
+});
+
+describe('verifySharedReuse — lifecycle stages', () => {
+  test('reports boot and cleanup for a process created by the current run', async () => {
+    const { runner } = makeRunner([
+      { when: 'pgrep -f', results: { code: 1, stdout: '', stderr: '' } },
+      { when: 'echo $!', results: ok('4242\n') },
+    ]);
+    const lifecycle = [];
+    let probes = 0;
+
+    const result = await verifySharedReuse(npmEntry(), baseDeps(runner, {
+      probePort: async () => {
+        probes += 1;
+        return probes > 1;
+      },
+      onLifecycle: (event) => lifecycle.push(event),
+    }));
+
+    assert.equal(result.status, 'green');
+    assert.deepEqual(lifecycle.map(({ stage, outcome }) => ({ stage, outcome })), [
+      { stage: 'boot', outcome: 'started' },
+      { stage: 'boot', outcome: 'succeeded' },
+      { stage: 'cleanup', outcome: 'started' },
+      { stage: 'cleanup', outcome: 'succeeded' },
+    ]);
+  });
+
+  test('reports reuse without cleanup for an already healthy main service', async () => {
+    const { runner } = makeRunner([
+      { when: 'ps --services --status running', results: ok('app\n') },
+      { when: 'pgrep -f', results: ok() },
+    ]);
+    const lifecycle = [];
+
+    const result = await verifySharedReuse(dockerExecEntry(), baseDeps(runner, {
+      onLifecycle: (event) => lifecycle.push(event),
+    }));
+
+    assert.equal(result.status, 'green-preexisting');
+    assert.deepEqual(lifecycle, [{ stage: 'boot', outcome: 'reused' }]);
   });
 });

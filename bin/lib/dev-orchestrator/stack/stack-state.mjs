@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
+import { chmodSync, mkdirSync, writeFileSync, readFileSync, existsSync, renameSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { stateDir } from '../state.mjs';
 
@@ -7,7 +7,39 @@ export function stackStatePath(opts) {
 }
 
 export function emptyStackState() {
-  return { projects: [], hostPids: [], frontendEnv: null, backendEnvBackups: [] };
+  return { projects: [], hostPids: [], frontendEnv: null, backendEnvBackups: [], portAllocations: [], environmentOverlays: [], localAuthProfile: null, currentRun: null, mutationJournal: [] };
+}
+
+function containsSecret(value) {
+  if (!value || typeof value !== 'object') return false;
+  return Object.entries(value).some(([key, child]) => /password|secret|cookie|token/i.test(key) || containsSecret(child));
+}
+
+export function setLocalAuthProfile(state, profile) {
+  if (containsSecret(profile)) throw new Error('local auth profile must not contain secrets');
+  return { ...state, localAuthProfile: structuredClone(profile) };
+}
+
+function normalizedRunMarker(marker) {
+  const fields = ['workspaceId', 'taskSlug', 'runId'];
+  if (!marker || fields.some((field) => typeof marker[field] !== 'string' || marker[field].length === 0)) {
+    throw new Error('ownership marker requires workspaceId, taskSlug, and runId');
+  }
+  return { workspaceId: marker.workspaceId, taskSlug: marker.taskSlug, runId: marker.runId };
+}
+
+function sameRun(left, right) {
+  return left.workspaceId === right.workspaceId && left.taskSlug === right.taskSlug && left.runId === right.runId;
+}
+
+export function recordOwnedMutation(state, identity, mutation) {
+  const marker = normalizedRunMarker(identity);
+  if (state.currentRun && !sameRun(state.currentRun, marker)) throw new Error('current run marker mismatch');
+  return {
+    ...state,
+    currentRun: marker,
+    mutationJournal: [...(state.mutationJournal || []), { ...mutation, marker }],
+  };
 }
 
 export function addProject(state, project) {
@@ -45,7 +77,10 @@ export function readStackState(opts) {
 export function writeStackState(opts, state) {
   const p = stackStatePath(opts);
   mkdirSync(dirname(p), { recursive: true });
-  writeFileSync(p, JSON.stringify(state, null, 2) + '\n', 'utf8');
+  const temporary = `${p}.tmp-${process.pid}`;
+  writeFileSync(temporary, JSON.stringify(state, null, 2) + '\n', { encoding: 'utf8', mode: 0o600 });
+  renameSync(temporary, p);
+  chmodSync(p, 0o600);
   return p;
 }
 

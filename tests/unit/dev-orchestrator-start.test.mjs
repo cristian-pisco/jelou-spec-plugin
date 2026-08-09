@@ -96,6 +96,7 @@ describe('startDev — happy path inside tmux', () => {
       '-V': () => ({ status: 0, stdout: 'tmux 3.5a\n', stderr: '' })
     });
     let daemonCalled = 0;
+    const lifecycle = [];
     const daemonSpawn = () => { daemonCalled++; return { pid: 1234 }; };
     const cfg = {
       version: 1,
@@ -106,7 +107,8 @@ describe('startDev — happy path inside tmux', () => {
     };
     const result = startDev({
       config: cfg, workspaceRoot: '/work', slug: '_global',
-      env: { TMUX: '/tmp/x,1,2' }, runner, daemonSpawn
+      env: { TMUX: '/tmp/x,1,2' }, runner, daemonSpawn,
+      onLifecycle: (event) => lifecycle.push(event)
     });
     assert.equal(result.status, 'created');
     assert.equal(result.windowName, 'jlu-dev-_global');
@@ -116,6 +118,12 @@ describe('startDev — happy path inside tmux', () => {
     assert.ok(ops.includes('split-window'));
     assert.ok(ops.includes('send-keys'));
     assert.ok(ops.includes('select-layout'));
+    assert.deepEqual(lifecycle.map(({ stage, outcome }) => ({ stage, outcome })), [
+      { stage: 'resolution', outcome: 'succeeded' },
+      { stage: 'planning', outcome: 'succeeded' },
+      { stage: 'boot', outcome: 'started' },
+      { stage: 'boot', outcome: 'succeeded' },
+    ]);
   });
 
   test('reports existing window without recreating', () => {

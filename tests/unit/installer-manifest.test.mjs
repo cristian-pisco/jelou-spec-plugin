@@ -17,6 +17,9 @@ const FEATURE_BINS = [
   'bin/lib/boot-engine/execute-shared-reuse.mjs',
   'bin/lib/dev-orchestrator/readiness.mjs',
   'bin/list-tasks.mjs',
+  'bin/local-auth-onboarding.mjs',
+  'bin/local-stack-e2e.mjs',
+  'bin/local-test-data-cleanup.mjs',
   'bin/task-index.mjs',
   'bin/boot-dev-server.mjs',
   'bin/build-boot-plan.mjs',
@@ -213,6 +216,24 @@ describe('list-tasks — the scanner is reachable on every runtime', () => {
         'bin/lib/task-index/scan.mjs',
         'bin/lib/task-index/render.mjs',
         'bin/lib/task-index/workspace.mjs',
+      ]) {
+        assert.ok(shipped.has(bin), `${bin} missing from ${installer}`);
+      }
+    });
+  }
+});
+
+describe('local auth session — the runtime chain ships everywhere', () => {
+  for (const installer of INSTALLERS) {
+    test(`${installer} ships the genuine cookie and browser-session chain`, () => {
+      const shipped = shippedBins(read(installer));
+      for (const bin of [
+        'bin/lib/dev-orchestrator/stack/auth-cookie-state.mjs',
+        'bin/lib/dev-orchestrator/stack/auth-runtime.mjs',
+        'bin/lib/dev-orchestrator/stack/auth-session.mjs',
+        'bin/lib/dev-orchestrator/stack/auth-urls.mjs',
+        'bin/lib/dev-orchestrator/stack/login-cookie.mjs',
+        'bin/lib/dev-orchestrator/stack/local-keyring.mjs',
       ]) {
         assert.ok(shipped.has(bin), `${bin} missing from ${installer}`);
       }

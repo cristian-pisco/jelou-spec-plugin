@@ -1,8 +1,9 @@
 import { spawn } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { probeHttp, probeTcp } from '../dev-orchestrator/readiness.mjs';
+import { LIFECYCLE_STAGES, redactDiagnostics } from '../dev-orchestrator/events.mjs';
 
 export const DEFAULT_READY_TIMEOUT_S = 30;
 const POLL_INTERVAL_MS = 500;
@@ -60,9 +61,27 @@ async function probeHttp2xx(readiness, deps) {
 }
 
 async function runningComposeServices(entry, runner) {
-  const r = await runner('docker', ['compose', '-f', entry.composeFile, 'ps', '--services', '--status', 'running'], { cwd: entry.cwd });
+  const r = await runner('docker', composeArgs(entry, ['-f', entry.composeFile, 'ps', '--services', '--status', 'running']), { cwd: entry.cwd });
   if (r.code !== 0) return [];
   return r.stdout.split('\n').map((s) => s.trim()).filter(Boolean);
+}
+
+function composeArgs(entry, args) {
+  const environmentFiles = (entry.environmentFiles || []).flatMap((path) => ['--env-file', path]);
+  return ['compose', ...environmentFiles, ...args];
+}
+
+function readOverlayEnvironment(entry, readEnvironmentFile) {
+  const values = {};
+  for (const path of entry.environmentFiles || []) {
+    for (const line of String(readEnvironmentFile(path)).split('\n')) {
+      if (!line || line.trimStart().startsWith('#')) continue;
+      const separator = line.indexOf('=');
+      if (separator <= 0) continue;
+      values[line.slice(0, separator).trim()] = line.slice(separator + 1);
+    }
+  }
+  return values;
 }
 
 async function probeAlreadyServing(entry, deps) {
@@ -71,7 +90,7 @@ async function probeAlreadyServing(entry, deps) {
     const running = await runningComposeServices(entry, runner);
     if (!running.includes(entry.dockerService)) return false;
     if (entry.launcher === 'docker') return true;
-    const pgrep = await runner('docker', ['compose', '-f', entry.composeFile, 'exec', '-T', entry.dockerService, 'pgrep', '-f', escapeEre(entry.command)], { cwd: entry.cwd });
+    const pgrep = await runner('docker', composeArgs(entry, ['-f', entry.composeFile, 'exec', '-T', entry.dockerService, 'pgrep', '-f', escapeEre(entry.command)]), { cwd: entry.cwd });
     return pgrep.code === 0;
   }
   if (HOST_LAUNCHERS.has(entry.launcher)) {
@@ -87,7 +106,7 @@ async function probeAlreadyServing(entry, deps) {
 }
 
 function composeLogArgs(entry) {
-  const logArgs = ['compose', '-f', entry.composeFile, 'logs', '--no-color'];
+  const logArgs = composeArgs(entry, ['-f', entry.composeFile, 'logs', '--no-color']);
   if (entry.dockerService) logArgs.push(entry.dockerService);
   return logArgs;
 }
@@ -99,7 +118,7 @@ async function bootDockerFamily(entry, deps, started) {
   const preBootLogs = entry.launcher === 'docker'
     ? ((await runner('docker', logArgs, { cwd: entry.cwd })).stdout || '')
     : '';
-  const upArgs = ['compose', '-f', entry.composeFile, 'up', '-d'];
+  const upArgs = composeArgs(entry, ['-f', entry.composeFile, 'up', '-d']);
   if (entry.dockerService) upArgs.push(entry.dockerService);
   const up = await runner('docker', upArgs, { cwd: entry.cwd });
   if (up.code !== 0) {
@@ -120,14 +139,15 @@ async function bootDockerFamily(entry, deps, started) {
     };
   }
   const logPath = containerVerifyLogPath(entry);
-  const exec = await runner('docker', ['compose', '-f', entry.composeFile, 'exec', '-T', entry.dockerService, 'sh', '-lc', `${entry.command} > ${logPath} 2>&1 &`], { cwd: entry.cwd });
+  const environmentArgs = Object.entries(readOverlayEnvironment(entry, deps.readEnvironmentFile)).flatMap(([key, value]) => ['-e', `${key}=${value}`]);
+  const exec = await runner('docker', composeArgs(entry, ['-f', entry.composeFile, 'exec', '-T', ...environmentArgs, entry.dockerService, 'sh', '-lc', `${entry.command} > ${logPath} 2>&1 &`]), { cwd: entry.cwd });
   if (exec.code !== 0) {
     return { error: `exec_failed: ${(exec.stderr || exec.stdout || '').trim()}`, commandExecuted: false, readLogs: async () => '' };
   }
   started.processes.push({ kind: 'docker-exec', service: entry.dockerService, command: entry.command });
   return {
     commandExecuted: true,
-    readLogs: async () => (await runner('docker', ['compose', '-f', entry.composeFile, 'exec', '-T', entry.dockerService, 'sh', '-lc', `cat ${logPath} 2>/dev/null || true`], { cwd: entry.cwd })).stdout,
+    readLogs: async () => (await runner('docker', composeArgs(entry, ['-f', entry.composeFile, 'exec', '-T', entry.dockerService, 'sh', '-lc', `cat ${logPath} 2>/dev/null || true`]), { cwd: entry.cwd })).stdout,
   };
 }
 
@@ -135,7 +155,8 @@ async function bootHost(entry, deps, started) {
   const { runner } = deps;
   const logDir = mkdtempSync(join(tmpdir(), 'jlu-verify-'));
   const logPath = join(logDir, `${verifyLogName(entry)}.verify.log`);
-  const launch = await runner('sh', ['-c', `setsid ${entry.command} > ${logPath} 2>&1 & echo $!`], { cwd: entry.cwd });
+  const environment = { ...process.env, ...readOverlayEnvironment(entry, deps.readEnvironmentFile) };
+  const launch = await runner('sh', ['-c', `setsid ${entry.command} > ${logPath} 2>&1 & echo $!`], { cwd: entry.cwd, env: environment });
   if (launch.code !== 0) {
     return { error: `spawn_failed: ${(launch.stderr || launch.stdout || '').trim()}`, commandExecuted: false, logDir, readLogs: async () => '' };
   }
@@ -146,6 +167,21 @@ async function bootHost(entry, deps, started) {
     logDir,
     readLogs: async () => (await runner('sh', ['-c', `cat ${logPath} 2>/dev/null || true`], {})).stdout,
   };
+}
+
+async function restartServing(entry, deps) {
+  if (entry.launcher === 'docker') {
+    const args = composeArgs(entry, ['-f', entry.composeFile, 'up', '-d', '--force-recreate']);
+    if (entry.dockerService) args.push(entry.dockerService);
+    const restarted = await deps.runner('docker', args, { cwd: entry.cwd });
+    if (restarted.code !== 0) return { error: `restart_failed: ${(restarted.stderr || restarted.stdout || '').trim()}`, commandExecuted: false, readLogs: async () => '' };
+    const logArgs = composeLogArgs(entry);
+    return { commandExecuted: true, readLogs: async () => (await deps.runner('docker', logArgs, { cwd: entry.cwd })).stdout || '' };
+  }
+  if (!entry.teardownCmd) return { error: 'restart_required_but_no_teardown', commandExecuted: false, readLogs: async () => '' };
+  const stopped = await deps.runner('sh', ['-c', entry.teardownCmd], { cwd: entry.cwd });
+  if (stopped.code !== 0) return { error: `restart_failed: ${(stopped.stderr || stopped.stdout || '').trim()}`, commandExecuted: false, readLogs: async () => '' };
+  return null;
 }
 
 async function readinessCheckOnce(readiness, deps, readLogs, pattern) {
@@ -193,7 +229,10 @@ export function errorHints(logText, { max = HINT_LIMIT, width = HINT_WIDTH } = {
     .split('\n')
     .map((line) => line.replace(/\u001b\[[0-9;]*[A-Za-z]/g, '').trim())
     .filter((line) => line && !ENV_ASSIGNMENT_RE.test(line) && ERROR_HINT_RE.test(line));
-  return lines.slice(-max).map((line) => (line.length > width ? `${line.slice(0, width)}…` : line));
+  return lines.slice(-max).map((line) => {
+    const redacted = redactDiagnostics(line);
+    return redacted.length > width ? `${redacted.slice(0, width)}…` : redacted;
+  });
 }
 
 async function restoreToFound(entry, deps, started) {
@@ -216,7 +255,7 @@ async function restoreToFound(entry, deps, started) {
     }
   }
   if (started.containers.length > 0) {
-    const r = await runner('docker', ['compose', '-f', entry.composeFile, 'stop', ...started.containers], { cwd: entry.cwd });
+    const r = await runner('docker', composeArgs(entry, ['-f', entry.composeFile, 'stop', ...started.containers]), { cwd: entry.cwd });
     if (r.code !== 0) clean = false;
   }
   return clean;
@@ -236,23 +275,29 @@ export async function verifySharedReuse(entry, {
   sleep = defaultSleep,
   pollIntervalMs = POLL_INTERVAL_MS,
   now = Date.now,
+  readEnvironmentFile = (path) => readFileSync(path, 'utf8'),
+  onLifecycle = () => {},
 } = {}) {
-  const deps = { runner, probePort, probeHttp: probeHttpFn, sleep, pollIntervalMs, now };
+  const deps = { runner, probePort, probeHttp: probeHttpFn, sleep, pollIntervalMs, now, readEnvironmentFile };
   const started = { containers: [], processes: [] };
 
-  if (await probeAlreadyServing(entry, deps)) {
+  const alreadyServing = await probeAlreadyServing(entry, deps);
+  if (alreadyServing && !entry.restartRequired) {
+    onLifecycle({ stage: LIFECYCLE_STAGES.boot, outcome: 'reused' });
     return { status: 'green-preexisting', cause: null, readiness_ms: 0, command_executed: false, started, teardown_clean: true, error_hints: [] };
   }
 
+  onLifecycle({ stage: LIFECYCLE_STAGES.boot, outcome: 'started' });
   let commandExecuted = false;
   let outcome;
   let teardownClean = true;
   let hostLogDir = null;
   let hints = [];
   try {
-    const boot = HOST_LAUNCHERS.has(entry.launcher)
+    const restarted = alreadyServing && entry.restartRequired ? await restartServing(entry, deps) : null;
+    const boot = restarted || (HOST_LAUNCHERS.has(entry.launcher)
       ? await bootHost(entry, deps, started)
-      : await bootDockerFamily(entry, deps, started);
+      : await bootDockerFamily(entry, deps, started));
     hostLogDir = boot.logDir || null;
     commandExecuted = boot.commandExecuted;
     if (boot.error) {
@@ -266,8 +311,12 @@ export async function verifySharedReuse(entry, {
         ? { status: 'green', cause: null, readiness_ms: readinessMs }
         : { status: 'failed', cause: readiness.cause, readiness_ms: readinessMs };
     }
+    onLifecycle({ stage: LIFECYCLE_STAGES.boot, outcome: outcome.status === 'green' ? 'succeeded' : 'failed', cause: outcome.cause });
   } finally {
+    const ownsResources = started.containers.length > 0 || started.processes.length > 0;
+    if (ownsResources) onLifecycle({ stage: LIFECYCLE_STAGES.cleanup, outcome: 'started' });
     teardownClean = await restoreToFound(entry, deps, started);
+    if (ownsResources) onLifecycle({ stage: LIFECYCLE_STAGES.cleanup, outcome: teardownClean ? 'succeeded' : 'failed' });
     if (hostLogDir) removeHostLogDir(hostLogDir);
   }
   return { ...outcome, command_executed: commandExecuted, started, teardown_clean: teardownClean, error_hints: hints };

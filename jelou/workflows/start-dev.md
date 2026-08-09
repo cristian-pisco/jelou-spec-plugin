@@ -44,6 +44,30 @@ import('{plugin-root}/bin/lib/dev-orchestrator/task-context.mjs').then(({ resolv
 
 If output starts with `AMBIGUOUS:`, parse the comma-separated list and use `question` (single-choice) to ask the user which task to use. Append `_global` as a "no task" option.
 
+## Step 2.5 — Select the source mode
+
+Read the allowed choices from the shared source-mode contract:
+
+```bash
+node -e "
+import('{plugin-root}/bin/lib/dev-orchestrator/source-mode.mjs').then(({ sourceModeChoices }) => {
+  process.stdout.write(JSON.stringify(sourceModeChoices({ hasActiveTask: process.argv[1] !== '_global' })));
+});
+" "{slug}"
+```
+
+For every interactive invocation, ask the user which source mode to use. Offer `main` and `task-aware` exactly as returned. If no task is active, `task-aware` is disabled with the explanation `No active task is available`, so only `main` is selectable. Capture the selected normalized value as `{sourceMode}`.
+
+Create one run identity after the source mode is selected and retain it for the entire invocation:
+
+```bash
+node -e "
+import('node:crypto').then(({ randomUUID }) => process.stdout.write(randomUUID()));
+"
+```
+
+Capture the output as `{runId}`. Every lifecycle emitter, execution descriptor, journal write, and cleanup call in this invocation uses the same `runIdentity = { workspaceId, taskSlug: slug, runId }`.
+
 ## Step 3 — Verify tmux availability
 
 ```bash
@@ -81,18 +105,24 @@ If start, run startDev:
 node -e "
 Promise.all([
   import('{plugin-root}/bin/lib/dev-orchestrator/start.mjs'),
-  import('{plugin-root}/bin/lib/dev-orchestrator/config.mjs')
-]).then(([s, c]) => {
+  import('{plugin-root}/bin/lib/dev-orchestrator/config.mjs'),
+  import('{plugin-root}/bin/lib/dev-orchestrator/events.mjs'),
+  import('{plugin-root}/bin/lib/dev-orchestrator/state-daemon.mjs')
+]).then(([s, c, events, daemonState]) => {
   const cfg = c.readConfig(process.argv[1]);
+  const workspaceId = process.argv[4];
+  const slug = process.argv[3];
   const out = s.startDev({
     config: cfg,
     workspaceRoot: process.argv[2],
-    slug: process.argv[3],
-    env: process.env
+    workspaceId,
+    slug,
+    env: process.env,
+    onLifecycle: (event) => events.appendLifecycleEvent(daemonState.eventsLogPath({ workspaceId, slug }), event)
   });
   process.stdout.write(JSON.stringify(out));
 });
-" "{configPath}" "{root}" "{slug}"
+" "{configPath}" "{root}" "{slug}" "{workspaceId}"
 ```
 
 ## Step 6 — Report
@@ -127,18 +157,20 @@ import('{plugin-root}/bin/lib/dev-orchestrator/stack/stack-state.mjs').then((m) 
   const opts = { workspaceId: process.argv[1], slug: process.argv[2] };
   let s = m.readStackState(opts);
   const mutation = JSON.parse(process.argv[3]);
-  if (mutation.kind === 'hostPid') s = m.addHostPid(s, mutation.value);
+  const runIdentity = { workspaceId: process.argv[1], taskSlug: process.argv[2], runId: process.argv[4] };
+  if (mutation.kind === 'process') s = m.addHostPid(s, mutation.resource);
+  else if (mutation.kind === 'container') s = m.addProject(s, mutation.resource);
   else if (mutation.kind === 'frontendEnv') s = m.setFrontendEnv(s, mutation.value);
   else if (mutation.kind === 'backendEnvBackup') s = m.addBackendEnvBackup(s, mutation.value);
-  else if (mutation.kind === 'project') s = m.addProject(s, mutation.value);
+  s = m.recordOwnedMutation(s, runIdentity, mutation.cleanup);
   m.writeStackState(opts, s);
 });
-" "{workspaceId}" "{slug}" '{mutationJson}'
+" "{workspaceId}" "{slug}" '{mutationJson}' "{runId}"
 ```
 
 Steps B0 and C1 below record several mutations in one pass and use their own fuller scripts; Steps E, F, H, and the observer each record one mutation and reference this pattern with a concrete `{mutationJson}`. `{workspaceId}` is the value captured in Step 1.
 
-### Step A — Resolve the registry, task slug, and worktree paths
+### Step A — Resolve the registry, task slug, and source mode
 
 First ensure the unified registry exists and is compiled for this workspace (both idempotent — safe every run), then read it:
 
@@ -162,11 +194,11 @@ import('{plugin-root}/bin/lib/dev-orchestrator/task-context.mjs').then(({ resolv
 
 If the output starts with `AMBIGUOUS:`, prompt the user the same way as Step 2 of the generic path above.
 
-Build `worktreePaths` — a plain object mapping each registry service `id` to the absolute path of its worktree for this slug, for services that have one (`<service.path>/.worktrees/<slug>`, when that directory exists). Services with no worktree for this slug are omitted; if none have one, `worktreePaths` is `{}`. (`bin/build-boot-plan.mjs` resolves the same worktree paths internally; build this object here too for Steps B0/D that reference it directly.)
+Build and validate the plan with the Step B command before continuing. Report every selected source before any runtime mutation as a table with `serviceId`, `sourcePath`, and `commit` from each entry's source descriptor. If validation fails, stop without entering Step B0 or writing stack state.
 
 ### Step B0 — Back up the `.env`s of shared-reuse services that get a wiredEnv
 
-Build the plan once (Step B does this too; reuse the same JSON). A `shared-reuse` plan entry with a non-null `wiredEnv` will have its real repo `.env` rewritten to point a peer var at a worktree peer's task URL — back up each such `.env` first so `/jlu:stop-dev` can restore it. Task-isolated services write to their disposable worktree `.env`, so they are skipped. For each shared-reuse entry with `wiredEnv`, if `<entry.cwd>/.env` exists and its backup does not, copy it and record `kind:'backendEnvBackup'`:
+Build the plan once (Step B does this too; reuse the same JSON). A `shared-reuse` plan entry with a non-null `wiredEnv` will have its real repo `.env` rewritten to point a peer var at a worktree peer's task URL — back up each such `.env` first so `/jlu:stop-dev` can restore it. Task-isolated services write to their disposable worktree `.env`, so they are skipped. Journal every backup and generated overlay with the current run marker:
 
 ```bash
 node -e "
@@ -176,6 +208,7 @@ Promise.all([
 ]).then(([ss, fs]) => {
   const plan = JSON.parse(process.argv[3]);
   const opts = { workspaceId: process.argv[1], slug: process.argv[2] };
+  const runIdentity = { workspaceId: process.argv[1], taskSlug: process.argv[2], runId: process.argv[4] };
   let s = ss.readStackState(opts);
   for (const entry of plan.services) {
     if (entry.policy !== 'shared-reuse' || !entry.wiredEnv) continue;
@@ -184,11 +217,15 @@ Promise.all([
     if (fs.existsSync(path) && !fs.existsSync(backupPath)) {
       fs.copyFileSync(path, backupPath);
       s = ss.addBackendEnvBackup(s, { path, backupPath });
+      s = ss.recordOwnedMutation(s, runIdentity, { kind: 'restore', resource: { from: backupPath, to: path } });
     }
+  }
+  for (const overlay of plan.overlayFiles || []) {
+    s = ss.recordOwnedMutation(s, runIdentity, { kind: 'overlay', resource: { path: overlay.path } });
   }
   ss.writeStackState(opts, s);
 });
-" "{workspaceId}" "{slug}" '{planJson}'
+" "{workspaceId}" "{slug}" '{planJson}' "{runId}"
 ```
 
 `{planJson}` is the plan JSON from Step B.
@@ -198,12 +235,12 @@ Promise.all([
 Build the boot plan from the unified registry:
 
 ```bash
-node {plugin-root}/bin/build-boot-plan.mjs --workspace {root} --slug {slug}
+node {plugin-root}/bin/build-boot-plan.mjs --workspace {root} --slug {slug} --source-mode {sourceMode}
 ```
 
 This prints `{ services: [entry], network, slug }` — capture it as `{planJson}` (also used by Steps B0, C, C1, D, and the observer). Each `entry` has a `policy` of `task-isolated` or `shared-reuse`.
 
-Then boot each entry by following the `## Plan-driven boot` contract in `jelou/references/env-lifecycle.md`: for each entry, obtain its descriptor from `planEntryToCommands` and execute it —
+Then boot each entry by following the `## Plan-driven boot` contract in `jelou/references/env-lifecycle.md`: for each entry, obtain its descriptor with `planEntryToCommands(entry, { runIdentity })` and execute it —
 
 - **task-isolated**: write `descriptor.files[]` → `docker <descriptor.up>` (idle container, image reused, no rebuild) → if `descriptor.install` non-null run it per step 4b of the boot contract (blocking, before the dev command, bounded by `install.timeoutMs`; a non-zero exit means this entry is `down` with cause `deps_install_failed` and its dev command is never exec'd) → if `descriptor.exec` non-null `docker <descriptor.exec>` → poll `descriptor.readiness` (http/port on the allocated host port; stdout_match tails `descriptor.readiness.logPath`) → register `docker <descriptor.teardown>` (ALWAYS). WARN if `descriptor.imageResolved` is false.
 - **shared-reuse**: write `descriptor.files[]` (the `wiredEnv` `.env`) if present → the existing reuse-or-reboot path (`descriptor.launcher`/`command`/`cwd`): probe the developer's container, reuse if healthy, reboot only if unhealthy/stale → poll `descriptor.readiness` (the service's normal dev port) → register `descriptor.teardown` (kill-what-started) ONLY if this run rebooted it.
@@ -269,14 +306,17 @@ node -e "
 import('{plugin-root}/bin/lib/dev-orchestrator/stack/stack-state.mjs').then((ss) => {
   const plan = JSON.parse(process.argv[3]);
   const opts = { workspaceId: process.argv[1], slug: process.argv[2] };
+  const runIdentity = { workspaceId: process.argv[1], taskSlug: process.argv[2], runId: process.argv[4] };
   let s = ss.readStackState(opts);
   for (const e of plan.services) {
     if (e.policy !== 'task-isolated') continue;
-    s = ss.addProject(s, { projectName: e.projectName, cwd: e.cwd, composeFile: e.composeFile, overrideFile: 'docker-compose.jlu.yml' });
+    const resource = { projectName: e.projectName, cwd: e.cwd, composeFile: e.composeFile, overrideFile: 'docker-compose.jlu.yml' };
+    s = ss.addProject(s, resource);
+    s = ss.recordOwnedMutation(s, runIdentity, { kind: 'container', resource });
   }
   ss.writeStackState(opts, s);
 });
-" "{workspaceId}" "{slug}" '{planJson}'
+" "{workspaceId}" "{slug}" '{planJson}' "{runId}"
 ```
 
 `{registryJson}` is `JSON.stringify(registry)` (the full normalized registry from Step A); `{planJson}` is the plan JSON from Step B.
@@ -347,11 +387,13 @@ node -e "
 import('{plugin-root}/bin/lib/dev-orchestrator/stack/stack-state.mjs').then((m) => {
   const opts = { workspaceId: process.argv[1], slug: process.argv[2] };
   let s = m.readStackState(opts);
-  const mutation = JSON.parse(process.argv[3]);
-  s = m.addHostPid(s, mutation.value);
+  const resource = JSON.parse(process.argv[3]);
+  const runIdentity = { workspaceId: process.argv[1], taskSlug: process.argv[2], runId: process.argv[4] };
+  s = m.addHostPid(s, resource);
+  s = m.recordOwnedMutation(s, runIdentity, { kind: 'process', resource });
   m.writeStackState(opts, s);
 });
-" "{workspaceId}" "{slug}" '{"kind":"hostPid","value":{"role":"observer","pid":<OBSERVER_PID>}}'
+" "{workspaceId}" "{slug}" '{"role":"observer","pid":<OBSERVER_PID>}' "{runId}"
 ```
 
 Autofix is NOT recorded as a host PID — when `--auto-fix` is set it runs as an in-session `Agent` dispatch (see below), not a detached host process, so there is no separate process for teardown to kill.
@@ -416,11 +458,13 @@ node -e "
 import('{plugin-root}/bin/lib/dev-orchestrator/stack/stack-state.mjs').then((m) => {
   const opts = { workspaceId: process.argv[1], slug: process.argv[2] };
   let s = m.readStackState(opts);
-  const mutation = JSON.parse(process.argv[3]);
-  s = m.setFrontendEnv(s, mutation.value);
+  const value = JSON.parse(process.argv[3]);
+  const runIdentity = { workspaceId: process.argv[1], taskSlug: process.argv[2], runId: process.argv[4] };
+  s = m.setFrontendEnv(s, value);
+  s = m.recordOwnedMutation(s, runIdentity, { kind: 'restore', resource: { from: value.path + '/' + value.envBackup, to: value.path + '/' + value.envFile } });
   m.writeStackState(opts, s);
 });
-" "{workspaceId}" "{slug}" '{"kind":"frontendEnv","value":{"path":"<frontend.path>","envFile":"<frontend.envFile>","envBackup":"<frontend.envBackup>"}}'
+" "{workspaceId}" "{slug}" '{"path":"<frontend.path>","envFile":"<frontend.envFile>","envBackup":"<frontend.envBackup>"}' "{runId}"
 ```
 
 `registry.frontend.path`, `registry.frontend.envFile`, and `registry.frontend.envBackup` come from the unified registry's `frontend` block (Step A).
@@ -436,81 +480,62 @@ node -e "
 import('{plugin-root}/bin/lib/dev-orchestrator/stack/stack-state.mjs').then((m) => {
   const opts = { workspaceId: process.argv[1], slug: process.argv[2] };
   let s = m.readStackState(opts);
-  const mutation = JSON.parse(process.argv[3]);
-  s = m.addHostPid(s, mutation.value);
+  const resource = JSON.parse(process.argv[3]);
+  const runIdentity = { workspaceId: process.argv[1], taskSlug: process.argv[2], runId: process.argv[4] };
+  s = m.addHostPid(s, resource);
+  s = m.recordOwnedMutation(s, runIdentity, { kind: 'process', resource });
   m.writeStackState(opts, s);
 });
-" "{workspaceId}" "{slug}" '{"kind":"hostPid","value":{"role":"vite","pid":<VITE_PID>}}'
+" "{workspaceId}" "{slug}" '{"role":"vite","pid":<VITE_PID>}' "{runId}"
 ```
 
-### Step G — Login for the auth cookie
+### Step F0 — Reconcile the local authentication profile
 
-The `auth` block and `hostByService` come from Step A (`readUnifiedRegistry`) and Step C respectively; `resolveAuthUrls` consumes the normalized `auth.verify` array and `auth.dashboardService`'s policy-aware host.
+When the normalized registry has `auth`, onboarding is required before login. If `auth && !auth.localProvisioningAdapter`, stop with remediation to register the local database/bcrypt adapter; never skip into credential lookup. Read `localAuthProfile` from task stack state. A complete profile is offered for reuse; an incomplete profile requests only missing company or user fields; `--reconfigure` requests replacements for every selected field. Existing-company selection defaults to ID `135`. New-company plan choices are exactly `ENTERPRISE` and `SELF_SERVICE`.
 
-Read `E2E_USER_EMAIL` / `E2E_USER_PASSWORD` from `<auth.credentials.envFile>` — never print these values or the resulting cookie. Resolve the auth URLs, then perform the login, passing the password via the `E2E_PASSWORD` environment variable rather than `process.argv` (argv is visible in `ps` output and in the logged Bash tool-call input; env vars are not):
+Invoke the onboarding CLI with the registered adapter module path and send one JSON request through stdin. The request contains `{ workspaceId, taskSlug, runId, target, topology, storedProfile, input }`. The password is entered through stdin and must never appear in arguments, environment variables, runtime files, generated overlays, lifecycle events, or displayed command text. Forward the invocation's `--reconfigure` option to this CLI only when selected.
 
 ```bash
-E2E_PASSWORD="{password}" node -e "
-Promise.all([
-  import('{plugin-root}/bin/lib/dev-orchestrator/stack/auth-urls.mjs'),
-  import('{plugin-root}/bin/lib/dev-orchestrator/stack/login-cookie.mjs'),
-  import('{plugin-root}/bin/lib/dev-orchestrator/stack/auth-runtime.mjs')
-]).then(async ([{ resolveAuthUrls }, { loginForCookie }, { postJson, readOtpFromRedis }]) => {
-  const auth = JSON.parse(process.argv[1]);
-  const hostByService = JSON.parse(process.argv[2]);
-  const { loginUrl, verifyMfaUrl, cookieName } = resolveAuthUrls({ auth, hostByService });
-  const result = await loginForCookie({
-    loginUrl, verifyMfaUrl, cookieName,
-    email: process.argv[3], password: process.env.E2E_PASSWORD,
-    postJson,
-    readOtp: readOtpFromRedis(auth.otpFallback)
-  });
-  process.stdout.write(JSON.stringify({ status: result.status }));
-});
-" '{registry.authJson}' '{hostByServiceJson}' "{email}"
+node {plugin-root}/bin/local-auth-onboarding.mjs --adapter-module {registry.auth.localProvisioningAdapter} [--reconfigure]
 ```
 
-Capture the cookie value out-of-band (never echoed to stdout/logs). If `status` is not `ok`, map the cause and stop before touching the browser: `rejected` → bad credentials or an inactive account; `otp-missing` → no OTP found at the configured Redis key; `otp-rejected` → the OTP was read but the dashboard rejected it.
+Write the JSON request directly to the child process stdin without echoing or logging it. The CLI validates every onboarding field and keyring availability, proves the local database target independently, then reconciles the profile. A nonlocal target, unavailable keyring, or validation failure stops this run before Step G.
 
-### Step H — Inject the cookie and open the browser
+Parse the sanitized JSON response. Persist `response.profile` with `setLocalAuthProfile`. For each entry in `response.cleanupResources`, call `recordOwnedMutation` using the unchanged `runIdentity`; do not infer or manufacture cleanup records from input data.
 
-Start the inject server. `startInjectServer` calls `server.listen(...)` and keeps the Node event loop alive, so this must be launched as a **backgrounded** process (the same way Step F backgrounds the Vite boot) — a synchronous `node -e` invocation would never return and would hang the orchestrator. Pass the cookie value via the `JLU_INJECT_COOKIE` environment variable rather than `process.argv` (argv is visible in `ps` output and in the logged Bash tool-call input; env vars are not):
-
-```bash
-JLU_INJECT_COOKIE="{cookieValue}" node -e "
-import('{plugin-root}/bin/lib/dev-orchestrator/stack/inject-page.mjs').then(({ renderInjectPage, startInjectServer }) => {
-  const page = renderInjectPage({
-    cookieName: process.argv[1],
-    cookieValue: process.env.JLU_INJECT_COOKIE,
-    appUrl: process.argv[2],
-    account: process.argv[3]
-  });
-  startInjectServer({ port: Number(process.argv[4]), page });
+```javascript
+import('{plugin-root}/bin/lib/dev-orchestrator/stack/stack-state.mjs').then((state) => {
+  const opts = { workspaceId, slug };
+  let current = state.readStackState(opts);
+  current = state.setLocalAuthProfile(current, response.profile);
+  for (const mutation of response.cleanupResources) {
+    current = state.recordOwnedMutation(current, runIdentity, mutation);
+  }
+  state.writeStackState(opts, current);
 });
-" "{cookieName}" "http://localhost:{frontendPort}/" "{email}" "{injectPort}" > /tmp/jlu-inject-server-{slug}.log 2>&1 &
 ```
 
-Immediately after the inject server launches with `&`, capture its PID in the same shell (`INJECT_PID=$!`), then record its PID into stack-state (`kind: 'hostPid'`, role `inject`) so `/jlu:stop-dev` tears it down:
+Emit the provisioning lifecycle outcome through the existing redacted lifecycle boundary. Do not print the request, credential, hash, or unsanitized graph.
 
-```bash
-node -e "
-import('{plugin-root}/bin/lib/dev-orchestrator/stack/stack-state.mjs').then((m) => {
-  const opts = { workspaceId: process.argv[1], slug: process.argv[2] };
-  let s = m.readStackState(opts);
-  const mutation = JSON.parse(process.argv[3]);
-  s = m.addHostPid(s, mutation.value);
-  m.writeStackState(opts, s);
-});
-" "{workspaceId}" "{slug}" '{"kind":"hostPid","value":{"role":"inject","pid":<INJECT_PID>}}'
-```
+### Step G — Establish the genuine authenticated session
 
-Then, using `mcp__chrome-devtools__*`: `navigate_page` to `http://localhost:<injectPort>/`, `wait_for` the app to render, and if the page is blank reload once (Vite's cold-cache re-optimization can stall the first hit). Confirm the session is authenticated via `take_snapshot` — the URL must not be `/login` and real app content must be present — then close out with `take_screenshot`. Never print the cookie value in any tool output or report.
+The `auth` block and `hostByService` come from Step A and Step C. Resolve `loginUrl`, `verifyMfaUrl`, `cookieName`, and `verifyUrls` with `resolveAuthUrls`. Read `localAuthProfile` from the task stack state and stop if the profile or its `keyringIdentity` is missing. Credentials come only from `createOsKeyring`; do not read an environment credential file or place the password or cookie in arguments, environment variables, stdout, stderr, snapshots, traces, pane output, or reports.
 
-### Step I — Verify
+Resolve Playwright from `registry.frontend.path` so the browser runtime is the one owned by `jelou-apps`. Launch Chromium and pass `createBrowserContext: () => browser.newContext()` into `establishAuthenticatedSession`. Pass the task state identity, the keyring-backed profile, the resolved dashboard login contract, every protected API URL, `appUrl: http://localhost:{frontendPort}/`, and `protectedPath: registry.frontend.protectedPath || '/home'`.
 
-For each URL in `resolveAuthUrls({ auth, hostByService }).verifyUrls`, issue a request with header `Cookie: <cookieName>=<cookieValue>` and confirm a `200` response. Only declare auth green once every verify URL passes.
+Pass `postJson` and `readOtpFromRedis(auth.otpFallback)` from `auth-runtime.mjs`, `request: fetch`, and an `onLifecycle` adapter that calls `appendLifecycleEvent(eventsLogPath({ workspaceId, slug }), { ...event, taskSlug: slug })`. Close Chromium in `finally`.
+
+`establishAuthenticatedSession` first probes a stored task cookie. A valid cookie is reused without a credential lookup. A missing, expired, redirected, or rejected cookie permits exactly one keyring-backed login against the configured dashboard. Only a genuine `jelou_auth` response is eligible for verification and atomic `0600` persistence. Invalid credentials, a missing expected cookie, or a rejected refreshed cookie clears rejected task state, never injects the stale value, and returns the actionable `--reconfigure` failure.
+
+### Step H — Verify protected browser and API access
+
+The session module injects the genuine cookie directly through the Playwright browser context for the `jelou-apps` origin. It requests every configured protected API with manual redirect handling, then opens the configured protected route. Authentication succeeds only when every API returns HTTP `200` and the final browser URL remains outside `/login`. The returned result contains status, source, API statuses, and final URL only; it never contains the password or cookie.
+
+### Step I — Report the authenticated stack
+
+Report whether the session source was `stored`, `login`, or `refreshed`, together with the protected API statuses and final non-login route. Do not include request headers, browser storage, the keyring value, or the cookie file contents.
 
 ### Notes — frontend + auth
 
-- **Browser MCP override.** This path drives the browser exclusively through `mcp__chrome-devtools__*`. That is a deliberate, standing override of the global "use `/browse` for all web browsing" preference — the preference concerns the separate `mcp__claude-in-chrome__*` MCP and does not apply to this local-stack auth path, per the same override documented by the `jelou-local-stack` skill.
+- **Browser boundary.** Resolve Playwright through the `jelou-apps` checkout selected by the boot plan. Do not substitute an HTML cookie injector or a globally installed browser package.
 - **OTP key mismatch (informational).** `bin/lib/api-login.mjs`'s own CLI path uses `mfa-code-<email>` as the Redis key, while this path reads the registry's `auth.otpFallback.keyPrefix` (`2fa-code-`), per `jelou-local-stack`. The configured E2E account has 2FA disabled, so the OTP branch is normally never exercised — if 2FA is ever armed on that account, confirm which key prefix the auth-service actually writes before trusting `readOtpFromRedis`.

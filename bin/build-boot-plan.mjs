@@ -6,7 +6,14 @@ import { argv, exit, stdout } from 'node:process';
 import { readUnifiedRegistry } from './lib/registry/read.mjs';
 import { teardownSafetyCause } from './lib/registry/splice.mjs';
 import { buildBootPlan } from './lib/boot-engine/plan.mjs';
-import { parseOccupiedPorts } from './lib/dev-orchestrator/stack/ports.mjs';
+import { allocateOwnedPorts, discoverListeningPorts, parseListeningPorts } from './lib/dev-orchestrator/stack/ports.mjs';
+import { readStackState, writeStackState } from './lib/dev-orchestrator/stack/stack-state.mjs';
+import { stateDir } from './lib/dev-orchestrator/state.mjs';
+import { persistTopologyOverlays } from './lib/dev-orchestrator/stack/wiring.mjs';
+import { normalizeSourceMode } from './lib/dev-orchestrator/source-mode.mjs';
+import { resolveTaskSources } from './lib/dev-orchestrator/task-source.mjs';
+import { resolveTaskContext } from './lib/dev-orchestrator/task-context.mjs';
+import { computeWorkspaceId } from './lib/dev-orchestrator/workspace.mjs';
 
 export function unsafeTeardownEntries(plan) {
   const out = [];
@@ -24,9 +31,79 @@ function assertTeardownsAreSafe(plan) {
   throw new Error(`refusing to build a boot plan — fix these dev blocks in services.yaml first:\n${detail}`);
 }
 
-export function buildPlanForWorkspace({ workspaceRoot, slug, worktreePaths, occupied, resolveImage, readEnv }) {
-  const registry = readUnifiedRegistry(workspaceRoot);
-  return assertTeardownsAreSafe(buildBootPlan({ registry, slug, worktreePaths, occupied, resolveImage, readEnv }));
+function portRequests(registry) {
+  return registry.services.flatMap((service) => [service.dev.port_env, ...(service.dev.extra_ports || [])].map((portEnv) => ({
+    serviceId: service.id,
+    portEnv,
+    internal: service.dev.ports[portEnv],
+    primary: portEnv === service.dev.port_env,
+  })));
+}
+
+export function buildPlanForWorkspace({ projectRoot, workspaceRoot, slug, sourceMode, taskContext, worktreePaths, occupied, livePorts, persistState = false, stateBaseDir, resolveImage, readEnv, inspectGit, pathExists, listenerDiscovery = discoverListeningPorts }) {
+  const registryRoot = projectRoot || workspaceRoot;
+  const registry = readUnifiedRegistry(registryRoot);
+  if (sourceMode === undefined) {
+    return assertTeardownsAreSafe(buildBootPlan({ registry, slug, worktreePaths, occupied, resolveImage, readEnv }));
+  }
+  const normalizedMode = normalizeSourceMode(sourceMode, { hasActiveTask: Boolean(taskContext) });
+  const sources = resolveTaskSources({
+    sourceMode: normalizedMode,
+    registry,
+    taskContext,
+    inspectGit,
+    pathExists,
+  });
+  const resolvedWorktrees = Object.fromEntries(
+    sources.filter((source) => source.mode === 'worktree').map((source) => [source.serviceId, source.sourcePath]),
+  );
+  const workspaceId = computeWorkspaceId(registryRoot);
+  const stateOptions = { workspaceId, slug, baseDir: stateBaseDir };
+  const previousState = persistState ? readStackState(stateOptions) : null;
+  const listeners = livePorts
+    || (occupied ? occupied.map((port) => ({ port, ownerTag: null })) : null)
+    || (persistState ? listenerDiscovery({ state: previousState }) : []);
+  const portAllocations = allocateOwnedPorts({
+    requests: portRequests(registry),
+    workspaceId,
+    taskSlug: slug,
+    sourceMode: normalizedMode,
+    basePort: registry.network.basePort,
+    persisted: previousState?.portAllocations || [],
+    live: listeners,
+  });
+  const plan = assertTeardownsAreSafe(buildBootPlan({
+    registry,
+    workspaceId,
+    slug,
+    worktreePaths: resolvedWorktrees,
+    sources,
+    sourceMode: normalizedMode,
+    portAllocations,
+    overlayDirectory: join(stateDir(stateOptions), 'overlays', normalizedMode),
+    previousEnvironmentOverlays: previousState?.environmentOverlays || [],
+    occupied,
+    resolveImage,
+    readEnv,
+  }));
+  if (persistState) {
+    persistTopologyOverlays(plan.overlayFiles);
+    const currentOwners = new Set(portAllocations.map((allocation) => allocation.ownerTag));
+    const retainedAllocations = (previousState.portAllocations || []).filter((allocation) => !currentOwners.has(allocation.ownerTag));
+    const retainedOverlays = (previousState.environmentOverlays || []).filter((overlay) => overlay.sourceMode !== normalizedMode);
+    const environmentOverlays = plan.overlayFiles.map(({ serviceId, sourceMode: mode, path, digest }) => ({ serviceId, sourceMode: mode, path, digest }));
+    writeStackState(stateOptions, {
+      ...previousState,
+      portAllocations: [...retainedAllocations, ...portAllocations],
+      environmentOverlays: [...retainedOverlays, ...environmentOverlays],
+    });
+  }
+  const sourceByService = new Map(sources.map((source) => [source.serviceId, source]));
+  return {
+    ...plan,
+    sourceMode: normalizedMode,
+    services: plan.services.map((service) => ({ ...service, source: sourceByService.get(service.id) })),
+  };
 }
 
 function resolveWorktreePaths(registry, slug) {
@@ -38,9 +115,9 @@ function resolveWorktreePaths(registry, slug) {
   return out;
 }
 
-function dockerOccupied() {
-  const r = spawnSync('docker', ['ps', '--format', '{{.Ports}}'], { encoding: 'utf8' });
-  return [...parseOccupiedPorts(r.stdout || '')];
+function hostLivePorts() {
+  const r = spawnSync('ss', ['-ltnpH'], { encoding: 'utf8' });
+  return parseListeningPorts(r.stdout || '');
 }
 
 function main() {
@@ -50,10 +127,39 @@ function main() {
     console.error('build-boot-plan: --workspace <root> --slug <slug> required');
     exit(2);
   }
-  const workspaceRoot = argv[wi + 1];
+  const projectRoot = argv[wi + 1];
   const slug = argv[si + 1];
-  const registry = readUnifiedRegistry(workspaceRoot);
-  const plan = buildBootPlan({ registry, slug, worktreePaths: resolveWorktreePaths(registry, slug), occupied: dockerOccupied() });
+  const mi = argv.indexOf('--source-mode');
+  const sourceMode = mi === -1 ? null : argv[mi + 1];
+  if (sourceMode !== null) {
+    try {
+      normalizeSourceMode(sourceMode, { hasActiveTask: slug !== '_global' });
+    } catch (error) {
+      console.error(`build-boot-plan: ${error.message}`);
+      exit(2);
+    }
+  }
+  if (sourceMode !== null) {
+    try {
+      const taskContext = sourceMode === 'task-aware'
+        ? resolveTaskContext({ projectRoot, cwd: process.cwd(), slug })
+        : null;
+      const plan = buildPlanForWorkspace({
+        projectRoot,
+        slug,
+        sourceMode,
+        taskContext,
+        persistState: true,
+      });
+      stdout.write(JSON.stringify(plan, null, 2) + '\n');
+    } catch (error) {
+      console.error(`build-boot-plan: ${error.message}`);
+      exit(3);
+    }
+    return;
+  }
+  const registry = readUnifiedRegistry(projectRoot);
+  const plan = buildBootPlan({ registry, slug, worktreePaths: resolveWorktreePaths(registry, slug), occupied: hostLivePorts().map((listener) => listener.port) });
   const unsafe = unsafeTeardownEntries(plan);
   if (unsafe.length > 0) {
     for (const u of unsafe) console.error(`build-boot-plan: ${u.id}: ${u.cause}`);

@@ -4,7 +4,7 @@
 
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { allocateHostPorts, parseOccupiedPorts } from '../../bin/lib/dev-orchestrator/stack/ports.mjs';
+import { allocateHostPorts, allocateOwnedPorts, discoverListeningPorts, parseListeningPorts, parseOccupiedPorts } from '../../bin/lib/dev-orchestrator/stack/ports.mjs';
 
 describe('allocateHostPorts', () => {
   test('allocates sequentially from basePort', () => {
@@ -36,5 +36,150 @@ describe('parseOccupiedPorts', () => {
     assert.equal(out.has(3100), true);
     assert.equal(out.has(5433), true);
     assert.equal(out.has(8080), false);
+  });
+});
+
+describe('parseListeningPorts', () => {
+  test('reports IPv4 and IPv6 listeners with process identity and ignores malformed lines', () => {
+    const snapshot = [
+      'LISTEN 0 511 127.0.0.1:8080 0.0.0.0:* users:(("node",pid=912,fd=20))',
+      'LISTEN 0 4096 [::]:5173 [::]:* users:(("vite",pid=913,fd=24))',
+      'not a listener',
+    ].join('\n');
+
+    assert.deepEqual(parseListeningPorts(snapshot), [
+      { port: 8080, ownerTag: null, pid: 912, command: 'node' },
+      { port: 5173, ownerTag: null, pid: 913, command: 'vite' },
+    ]);
+  });
+});
+
+describe('discoverListeningPorts', () => {
+  test('maps persisted owners only through current-run PIDs and owned Compose labels', () => {
+    const marker = { workspaceId: 'workspace-1', taskSlug: 'task-a', runId: 'run-17' };
+    const run = (command) => command === 'ss'
+      ? {
+          status: 0,
+          stdout: [
+            'LISTEN 0 511 127.0.0.1:43210 0.0.0.0:* users:(("node",pid=912,fd=20))',
+            'LISTEN 0 511 127.0.0.1:43211 0.0.0.0:* users:(("docker-proxy",pid=913,fd=20))',
+            'LISTEN 0 511 127.0.0.1:43212 0.0.0.0:* users:(("node",pid=999,fd=20))',
+            'LISTEN 0 511 127.0.0.1:49999 0.0.0.0:* users:(("python",pid=1000,fd=20))',
+          ].join('\n'),
+        }
+      : {
+          status: 0,
+          stdout: `${JSON.stringify({
+            Labels: 'com.docker.compose.project=api-service-task-a,com.docker.compose.service=app',
+            Ports: '0.0.0.0:43211->8080/tcp',
+          })}\n${JSON.stringify({
+            Labels: 'com.docker.compose.project=foreign-project,com.docker.compose.service=app',
+            Ports: '0.0.0.0:43212->8080/tcp',
+          })}\n`,
+        };
+    const listeners = discoverListeningPorts({
+      state: {
+        currentRun: marker,
+        portAllocations: [
+          { serviceId: 'host-service', host: 43210, ownerTag: 'owner:host' },
+          { serviceId: 'api-service', host: 43211, ownerTag: 'owner:compose' },
+          { serviceId: 'foreign-service', host: 43212, ownerTag: 'owner:foreign' },
+        ],
+        mutationJournal: [
+          { marker, kind: 'process', resource: { pid: 912 } },
+          { marker, kind: 'container', resource: { projectName: 'api-service-task-a' } },
+          { marker: { ...marker, runId: 'other-run' }, kind: 'process', resource: { pid: 999 } },
+          { marker: { ...marker, runId: 'other-run' }, kind: 'container', resource: { projectName: 'foreign-project' } },
+        ],
+      },
+      run,
+    });
+
+    assert.deepEqual(listeners, [
+      { port: 43210, ownerTag: 'owner:host', pid: 912, command: 'node' },
+      { port: 43211, ownerTag: 'owner:compose', pid: 913, command: 'docker-proxy' },
+      { port: 43212, ownerTag: null, pid: 999, command: 'node' },
+      { port: 49999, ownerTag: null, pid: 1000, command: 'python' },
+    ]);
+  });
+});
+
+describe('allocateOwnedPorts', () => {
+  const requests = [
+    { serviceId: 'api-service', portEnv: 'PORT', internal: 8080, primary: true },
+    { serviceId: 'jelou-apps', portEnv: 'PORT', internal: 5173, primary: true },
+  ];
+  const identity = {
+    workspaceId: 'workspace-1',
+    taskSlug: 'task-a',
+    sourceMode: 'task-aware',
+  };
+
+  test('main mode preserves every free registered default with owner tags', () => {
+    const allocations = allocateOwnedPorts({
+      requests,
+      workspaceId: identity.workspaceId,
+      taskSlug: '_global',
+      sourceMode: 'main',
+      basePort: 3100,
+      persisted: [],
+      live: [],
+    });
+
+    assert.deepEqual(allocations, [
+      {
+        ...requests[0],
+        host: 8080,
+        ownerTag: 'workspace-1:_global:main:api-service:PORT',
+      },
+      {
+        ...requests[1],
+        host: 5173,
+        ownerTag: 'workspace-1:_global:main:jelou-apps:PORT',
+      },
+    ]);
+  });
+
+  test('another task on a default port produces the same deterministic free alternate', () => {
+    const live = [{ port: 8080, ownerTag: 'workspace-1:other-task:task-aware:api-service:PORT', pid: 44 }];
+    const first = allocateOwnedPorts({ ...identity, requests: [requests[0]], basePort: 3100, persisted: [], live });
+    const second = allocateOwnedPorts({ ...identity, requests: [requests[0]], basePort: 3100, persisted: [], live });
+
+    assert.deepEqual(second, first);
+    assert.notEqual(first[0].host, 8080);
+    assert.ok(first[0].host >= 3100 && first[0].host <= 65535);
+  });
+
+  test('a subsequent start reuses its persisted free allocation', () => {
+    const ownerTag = 'workspace-1:task-a:task-aware:api-service:PORT';
+    const persisted = [{ ...requests[0], host: 43210, ownerTag }];
+    const allocations = allocateOwnedPorts({
+      ...identity,
+      requests: [requests[0]],
+      basePort: 3100,
+      persisted,
+      live: [{ port: 43210, ownerTag, pid: 55 }],
+    });
+
+    assert.deepEqual(allocations, persisted);
+  });
+
+  test('an unrelated live process on a persisted port stops allocation and is preserved', () => {
+    const ownerTag = 'workspace-1:task-a:task-aware:api-service:PORT';
+    const persisted = [{ ...requests[0], host: 43210, ownerTag }];
+    const unrelated = { port: 43210, ownerTag: null, pid: 912, command: 'python local-server.py' };
+    const before = structuredClone(unrelated);
+
+    assert.throws(
+      () => allocateOwnedPorts({
+        ...identity,
+        requests: [requests[0]],
+        basePort: 3100,
+        persisted,
+        live: [unrelated],
+      }),
+      /api-service.*43210.*unrelated.*912/i,
+    );
+    assert.deepEqual(unrelated, before);
   });
 });
