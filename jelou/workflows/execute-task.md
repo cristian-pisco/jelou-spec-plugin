@@ -1,7 +1,7 @@
 # Workflow: execute-task
 
 > Orchestrator workflow for `/jlu-execute-task [task-slug]`
-> Runs TDD implementation with proposal generation, phase-by-phase execution, and QA validation.
+> Runs TDD implementation with proposal generation, phase-by-phase execution, and final validation.
 
 > **Execution policy**: This workflow runs fully autonomous. The ONLY case where execution pauses for user input is after 5 failed retry attempts on a phase or build step. All other decisions are auto-resolved.
 
@@ -17,7 +17,7 @@
 - Agents write the minimum code to satisfy tests. Over-engineering is a defect.
 - Every phase must end with verified green tests before the next phase starts.
 - When something fails after 5 retries, escalate to the user — don't hack around it.
-- When the process feels heavy for a trivial change, that's by design. The discipline prevents drift.
+- Every phase boundary is exactly two Bash calls: `bin/phase-open.mjs` before the dispatch, `bin/phase-close.mjs` after it. If you find yourself running `git`, `classify-phase.sh`, `finalize-phase.sh`, `format-changed-files.sh` or `phase-state.mjs` by hand inside the loop, you are doing the script's job.
 
 **When to simplify:** For single-file, single-function changes with no cross-service impact, the orchestrator may consolidate multiple phases into one if PROPOSAL.md supports it. The TDD cycle within each phase is never skipped.
 
@@ -28,25 +28,17 @@
 > ## TRACING IS OFF BY DEFAULT — resolve `TRACING_ON` here, once, and nowhere else
 >
 > `TRACING_ON` is **TRUE only when the env var `JLU_TRACE=1`**. Unset, `0`, or any
-> other value is FALSE. `TRACE_DISABLED=1` forces FALSE whatever `JLU_TRACE` says
-> (back-compat hard kill). There is no third state and no per-step re-derivation.
+> other value is FALSE. `TRACE_DISABLED=1` forces FALSE whatever `JLU_TRACE` says.
+> There is no third state and no per-step re-derivation.
 >
-> **When `TRACING_ON` is false, this workflow emits ZERO trace Bash calls.** Not
-> the orphan sweep, not the suggester, not the workflow span (Step 0.5 §2), not
-> the phase spans (7a.0 / 7z — now folded into `bin/phase-state.mjs`, which only
-> touches the trace layer when it is handed span flags), not the agent-dispatch
-> wrapper (Step 7), not the affected-tests spans (8b.4), not the Step N close.
-> Every `*_SPAN_ID` and `*_TRACE_ID` variable stays unset/empty and every step
-> that depends on one is **skipped outright** — no call, no `jq`, no no-op.
->
-> **Why the gate moved here.** `TRACE_DISABLED=1` short-circuited *inside* each
-> script, so the Bash call was still dispatched and still cost its ~15 s of turn
-> wall-clock. Skipping the script was never the saving; skipping the *call* is.
->
-> **Consequence, stated honestly.** With tracing off, `/jlu-trace-report`, the
-> suggester (`bin/trace-suggest.mjs`) and the Stage-4 golden-set regression gate
-> (`trace-regress`, a repo-local dev script) receive **no data from normal runs**. Telemetry is a
-> bench instrument now: re-run with `JLU_TRACE=1` when you want a trace.
+> **When `TRACING_ON` is false, this workflow emits ZERO trace Bash calls.** Not the
+> orphan sweep, not the suggester, not the workflow span, not the phase spans (they
+> ride inside `bin/phase-open.mjs` / `bin/phase-close.mjs` and only load the trace
+> layer when handed span flags), not the agent-dispatch wrapper (7b), not the
+> affected-tests spans (8b.4), not the Step N close. Every `*_SPAN_ID` and
+> `*_TRACE_ID` stays empty and every step that depends on one is **skipped
+> outright** — no call, no `jq`, no no-op. Skipping the script was never the saving;
+> skipping the *call* is.
 >
 > **Tracing tolerance (only when `TRACING_ON` is true)**: every
 > `trace-start-span.mjs` invocation captures stdout JSON; downstream
@@ -56,39 +48,33 @@
 **Steps 0.5 §1, §2 and 0.5b below run ONLY when `TRACING_ON` is true. When it is
 false, do none of them — go straight to Step 1.**
 
-1. **Sweep orphans from any prior interrupted run** (idempotent — safe when the store is empty):
+1. **Sweep orphans from any prior interrupted run** (idempotent):
    ```bash
    node "<root>/bin/trace-reconcile.mjs"
    ```
-   The output line `reconciled: <N>` is informational. Do not fail the workflow if this script exits non-zero — tracing is best-effort.
+   `reconciled: <N>` is informational. A non-zero exit does not fail the workflow — tracing is best-effort.
 
-2. **Open the workflow-level span** (deferred to the end of Step 1 when `$TASK_SLUG` is known):
+2. **Open the workflow-level span** (deferred to the end of Step 1, when `$TASK_SLUG` is known):
    ```bash
    WF_OUT=$(node "<root>/bin/trace-start-span.mjs" \
      --name execute_task --scope task --task "$TASK_SLUG")
    WORKFLOW_SPAN_ID=$(echo "$WF_OUT" | jq -r '.span_id // ""')
    WORKFLOW_TRACE_ID=$(echo "$WF_OUT" | jq -r '.trace_id // ""')
    ```
-
-   Store `WORKFLOW_SPAN_ID` and `WORKFLOW_TRACE_ID` for the duration of the workflow. Empty strings are valid when `TRACE_DISABLED=1`.
+   Store both for the duration of the workflow. Empty strings are valid when `TRACE_DISABLED=1`.
 
 ### Step 0.5b — Surface suggestions from prior runs (non-blocking)
 
-**Guard: skip this entire sub-step when `TRACING_ON` is false — it shells out, so
-it is a trace Bash call like any other.**
+**Skip this entire sub-step when `TRACING_ON` is false — it shells out, so it is a
+trace Bash call like any other.**
 
-Once `$TASK_SLUG` is resolved (Step 1), run the suggester scoped to the current task. It scans recent trace history and emits one SUGGEST block per active rule that fires (bump model tier, extend failure patterns, suggest parallelization, immediate flag on blocked/failed spans of THIS task). The 7-day cooldown is honored automatically.
+Once `$TASK_SLUG` is resolved (Step 1), run the suggester scoped to the current task. It emits one SUGGEST block per active rule that fires; the 7-day cooldown is honored automatically.
 
 ```bash
 SUGGESTIONS=$(TRACE_CURRENT_TASK="$TASK_SLUG" node "<root>/bin/trace-suggest.mjs" 2>/dev/null || true)
 ```
 
-Telemetry MUST NOT interrupt execution. Never prompt on these findings here.
-
-- If `SUGGESTIONS` is non-empty: print the blocks as a short informational note ("Prior-run suggestions (run `/jlu-refine-task` or `/jlu-trace-report` to act):") and continue immediately. Do NOT use `question` / `AskUserQuestion`, and do NOT write to `suggestion-history.jsonl` — nothing was decided, so no cooldown starts.
-- If `SUGGESTIONS` is empty, continue silently.
-
-Interactive approval of these suggestions lives only in `/jlu-refine-task` (the interview flow) and the on-demand `/jlu-trace-report`. Tracing is best-effort: if the suggester errors out, the empty variable means the workflow simply continues.
+Telemetry MUST NOT interrupt execution. Non-empty → print the blocks as one informational note (`Prior-run suggestions (run /jlu-refine-task or /jlu-trace-report to act):`) and continue immediately. Do NOT use `question` / `AskUserQuestion`, and do NOT write to `suggestion-history.jsonl` — nothing was decided, so no cooldown starts. Empty → continue silently. Interactive y/n approval of these suggestions lives only in `/jlu-refine-task` and `/jlu-trace-report`.
 
 ---
 
@@ -174,45 +160,49 @@ and `jlu-implementer` dispatch in this workflow gets its prompt from
 `bin/build-dispatch-prompt.mjs`. **The orchestrator does not compose agent prompts.**
 
 ```bash
-PROMPT=$(node <plugin-root>/bin/build-dispatch-prompt.mjs \
+node <plugin-root>/bin/build-dispatch-prompt.mjs \
   --agent=<proposal-agent|tdd-cycle|test-writer|build-validator|implementer> \
   --task-dir="<TASK_DIR>" \
   --service="<service-id>" \
   --plugin-root="<PLUGIN_ROOT>" \
   [--phase-file="<abs path to the phase file>"] \
-  [--notes-file="<abs path to a notes file>"])
+  [--docs-file="<abs path to the service doc cache>"] \
+  [--notes-file="<abs path to a notes file>"]
 ```
+
+On a phase's first dispatch you never run this yourself — `bin/phase-open.mjs` (7c)
+runs it for you and prints the prompt. Everywhere else — 4b, 4c, 8a, 8a.5, 8b.5, and a
+7d **retry** (which must not re-open the phase span) — you run it directly and dispatch
+its stdout **verbatim**, wrapped in the 7b span wrapper.
 
 `--plugin-root` is how `<PLUGIN_ROOT>` reaches the agent: it becomes the `PLUGIN_ROOT`
 row of `## CONTEXT`, which is the only way an agent can resolve a bundled bin (see
-`jelou/references/plugin-root.md`). Passing it is not optional for any dispatch below.
+`jelou/references/plugin-root.md`). Passing it is not optional for any dispatch.
 
-Dispatch `$PROMPT` verbatim, wrapped in the Step 7 span wrapper. The script is
-deterministic (byte-identical for identical inputs) and owns every section of the
-prompt: `## CONTEXT`, the phase's immutable `## Requirements`, `## EXISTING
-FOUNDATION`, the `## CASE MATRIX` copied from the phase's `## Acceptance`, the
-byte-invariant `## HARD CONSTRAINTS`, `## PROCEDURE`, `## RETURN`.
+The script is deterministic (byte-identical for identical inputs) and owns every
+section of the prompt: `## CONTEXT`, the phase's immutable `## Requirements`,
+`## EXISTING FOUNDATION`, the `## CASE MATRIX` copied from the phase's `## Acceptance`,
+the byte-invariant `## HARD CONSTRAINTS`, `## PROCEDURE`, `## RETURN`.
 
-**Never restate a section the script emits.** Re-wording the constraints per phase is
-exactly what this replaces — it was 28% of the prompt text and worded differently in
-every phase of the same task. `--phase-file` is required for `tdd-cycle`, accepted by
-`test-writer` and `implementer`, ignored elsewhere. Exit 2 is bad input (unknown agent,
-missing task dir, missing `<TASK_DIR>/services/<service-id>/`, missing phase file) — an
-orchestrator bug: fix the arguments, never hand-write the prompt instead.
+**Never restate a section the script emits.** `--phase-file` is required for
+`tdd-cycle`, accepted by `test-writer` and `implementer`, ignored elsewhere. Exit 2 is
+bad input (unknown agent, missing task dir, missing `<TASK_DIR>/services/<service-id>/`,
+missing phase file) — an orchestrator bug: fix the arguments, never hand-write the
+prompt instead.
 
 **`--notes-file` is the only escape hatch**, for context the script cannot derive.
 Write it to `<TASK_DIR>/services/<service-id>/phases/<NN>-reports/notes-<agent>-<round>.md`
 (`.../phases/final-reports/notes-<agent>.md` outside the phase loop); it renders as a
 trailing `## ORCHESTRATOR NOTES`. Legitimate contents, and nothing else: a prior
-attempt's failure context (per 7a.5); a list the orchestrator aggregated across phases
+attempt's failure context (per 7a); a list the orchestrator aggregated across phases
 and the script cannot see; which pass of a two-pass proposal this is; a repo convention
 that contradicts the codebase docs; the `SERVICE_SOURCE_PATH` override below. Never
 requirements, acceptance, constraints, procedure or return format.
 
 **Known gap — `SERVICE_SOURCE_PATH` is not always derivable.** The script reads it from
 `TASKS.md → ## Worktrees`, which exists only for `Mode: worktree` tasks. When
-`SETUP_MODE = branch` (no such section), or when Step 6.2a fell back to the main repo
-because the declared worktree was missing, the `## CONTEXT` row is absent while
+`SETUP_MODE = branch` (no such section), or when Step 6 resolved a service to its main
+repo because the declared worktree was missing, the `## CONTEXT` row is absent while
 `## HARD CONSTRAINTS` still orders the agent to stay inside `SERVICE_SOURCE_PATH` —
 leaving it with no working directory. In those two cases every `tdd-cycle` /
 `test-writer` / `implementer` / `build-validator` notes file MUST open with:
@@ -231,8 +221,8 @@ This overrides `## CONTEXT`, which omits the row: <branch-mode | worktree missin
 **Already-complete resume (status is `ready_to_publish`).** Implementation is
 finished and committed on `production/<TASK_SLUG>`, but the ship+green chain did
 not complete in the originating session (context death, aborted window, or the
-chain simply never ran). Do NOT re-run phases or final QA — the work is done.
-Resolve the autochain flag per §2 of
+chain simply never ran). Do NOT re-run phases or final validation — the work is
+done. Resolve the autochain flag per §2 of
 `{plugin-root}/jelou/references/autochain-handoff.md` (precedence:
 `--no-autochain` argument > `JLU_AUTOCHAIN` env >
 `node {plugin-root}/bin/jlu-settings.mjs get autochain`), then:
@@ -389,7 +379,7 @@ TASK: Produce the global proposal — cross-service strategy, dependency order, 
 
 If there are **2+ affected services**, spawn one `jlu-proposal-agent` per service, model: **MODEL_CONFIG.proposal** (default: sonnet).
 
-**Compute `TASK_FANOUT_CAP` NOW — this is its first point of use** (this step runs before the Step 6 throttles are set). Invoke the planner's cap-only mode and cache the number for every later consumer (Steps 6.4, 7d, 8a.3, 8a.5, 8b.4):
+**Compute `TASK_FANOUT_CAP` NOW — this is its first point of use** (this step runs before Step 6 sets the task-level throttles). Invoke the planner's cap-only mode and cache the number for every later consumer (Steps 6, 7d, 8a.3, 8a.5, 8b.4):
 
 ```bash
 TASK_FANOUT_CAP=$(node <plugin-root>/bin/plan-phase-waves.mjs --emit-cap-only --limit=<N_affected_services>)
@@ -461,31 +451,61 @@ Skip proposal generation. Read the existing PROPOSAL.md and phase files to resum
    - Status: `implementing`
    - Add timestamp: `- Implementing: <current-datetime-ISO>`
 
-2. **Per-service setup (once per task — not per phase).** Resolve the source path and capture the baseline commit so subsequent phases reuse cached values:
+2. **Per-service setup — ONE call for the whole task, not one per service and not one per phase.**
 
-   a. Resolve `SERVICE_SOURCE_PATH[service-id]` via the worktree resolution algorithm in `references/worktree-resolution.md`. The algorithm is **mode-driven**, NOT a filesystem existence check:
-      - `Mode: worktree` (`SETUP_MODE = worktree`): `SERVICE_SOURCE_PATH = <WORKSPACE_PATH>/<service-repo>/.worktrees/<TASK_SLUG>/`. If that path is missing, fall back to the main repo and log `Worktree missing for <service-id> despite Mode: worktree — using main repo.`
-      - `Mode: branch` (`SETUP_MODE = branch`): `SERVICE_SOURCE_PATH = <WORKSPACE_PATH>/<service-repo>` (main repo root). **Ignore any `.worktrees/<TASK_SLUG>/` that may exist on disk** — it is leftover state from a prior attempt, not the task's working tree. If such a leftover is detected, log `Branch-mode task <TASK_SLUG> has a leftover worktree at <path>. Ignoring it for execution; clean up with /jlu-close-task or git worktree remove.`
-      - `## Branching` section absent (legacy `spec/<slug>` tasks only): defer to `references/worktree-resolution.md` §3c.
-   b. Record current HEAD as the pre-execution baseline: `cd <SERVICE_SOURCE_PATH[service-id]> && git rev-parse --short HEAD`. Per-service `git rev-parse` calls can run in parallel (single orchestrator message) when 2+ services.
+   ```bash
+   node <plugin-root>/bin/task-setup.mjs \
+     --task-dir="<TASK_DIR>" --workspace="<WORKSPACE_PATH>" \
+     --task-slug="<TASK_SLUG>" --setup-mode="<SETUP_MODE>" \
+     --services="<AFFECTED_SERVICES as a comma-separated list>"
+   ```
 
-   c. Populate `SERVICE_DOC_CACHE[service-id]` — the immutable codebase context the per-phase TDD agent needs. It is resolved **once here**, not re-read by each phase dispatch, because these docs do not change during the task:
+   It emits `status=ok`, `setup_mode=`, `fanout_cap=` and, per service, a
+   `service.<id>.` block: `source_path`, `resolution`, `baseline_sha`, `docs_file`,
+   `docs_mode`, `docs_chars`. Parse it once and store:
 
-      ```bash
-      CODEBASE_DIR="<WORKSPACE_PATH>/services/<service-id>/codebase"
-      cat "$CODEBASE_DIR/CONVENTIONS.md"
-      node <plugin-root>/bin/extract-doc-sections.mjs \
-        --file="$CODEBASE_DIR/STRUCTURE.md" \
-        --section="Module Organization" \
-        --section="File Naming Conventions"
-      ```
+   - `SERVICE_SOURCE_PATH[service-id]` = `service.<id>.source_path`. The script applies
+     the **mode-driven** algorithm of `references/worktree-resolution.md`, NOT a
+     filesystem existence check: `Mode: worktree` resolves to
+     `<service-repo>/.worktrees/<TASK_SLUG>/` and falls back to the main repo with a
+     WARN when that path is missing (`resolution=worktree_missing_fallback_main_repo`);
+     `Mode: branch` resolves to the **main repo** root and ignores any leftover worktree
+     on disk, logging it as a WARN
+     (`resolution=branch_mode_leftover_worktree_ignored`) — remove that leftover worktree
+     with `git worktree remove` when you want it gone. A legacy task with no
+     `## Branching` section defers to `references/worktree-resolution.md` §3c.
+   - `SERVICE_DOC_CACHE[service-id]` = `service.<id>.docs_file` — the path to the
+     materialized cache, which Step 7c hands to `--docs-file`. Its **contents** are
+     CONVENTIONS.md in full plus **only** the two STRUCTURE.md sections the script
+     projects with `bin/extract-doc-sections.mjs`:
 
-      The cached payload is CONVENTIONS.md **in full** plus **only** those two STRUCTURE.md sections — never STRUCTURE.md's directory tree, and never STACK.md or ARCHITECTURE.md (`agents/jlu-tdd-cycle.md` → Rules forbids the TDD agent from reading those two at all).
+     ```
+     --section="Module Organization"
+     --section="File Naming Conventions"
+     ```
 
-      - If `extract-doc-sections.mjs` exits non-zero (missing file, or a section absent from STRUCTURE.md), cache CONVENTIONS.md alone and log `WARN: STRUCTURE.md sections unavailable for <service-id> — <stderr>. Caching CONVENTIONS.md only.` Never fall back to injecting the whole file.
-      - **Size bound**: if a service's cached payload exceeds ~8k tokens (≈32k characters — `wc -c` / 4), cache the **paths** instead of the contents and log `WARN: SERVICE_DOC_CACHE[<service-id>] is ~<N> tokens (> 8k) — caching paths instead of contents.` The Step 7a per-phase context increment (~200 tokens) must not become unbounded through this cache.
+     — never STRUCTURE.md's directory tree, and never
+     STACK.md or ARCHITECTURE.md (`agents/jlu-tdd-cycle.md` → Rules forbids the TDD
+     agent from reading those two at all). Missing sections degrade to CONVENTIONS.md
+     alone with `WARN: SERVICE_DOC_CACHE[<id>] — STRUCTURE.md sections unavailable`;
+     never fall back to injecting the whole file. Past 8k tokens (32 000 characters)
+     the script writes the **paths** instead and warns
+     `WARN: SERVICE_DOC_CACHE[<id>] is ~<N> tokens (> 8k) — caching paths instead of
+     contents.`; that is the bound, and past it the orchestrator must
+     cache the **paths** instead of the contents so the per-phase context increment
+     never becomes unbounded. The cache never enters orchestrator context; only its
+     path does.
+   - `TASK_FANOUT_CAP` = `fanout_cap` when Step 4c did not already compute it. The
+     script gets the number from `plan-phase-waves.mjs --emit-cap-only --limit=<N>`,
+     which is the single source of the formula.
 
-   **Do NOT** run `docker compose up -d`, `docker compose ps`, or compute any container exec prefix here. The TDD pipeline runs entirely on the host — tests, build, lint, and format never go through a container. If the developer wants a dev container running for the service, that is `/jlu-start-dev`'s job and is independent of this workflow.
+   `status=abort` + `reason=<missing_argument|task_dir_missing|workspace_missing|no_services>`
+   is an orchestrator bug — fix the arguments, never hand-resolve the paths instead.
+
+   **Do NOT** run `docker compose up -d`, `docker compose ps`, or compute any container
+   exec prefix here. The TDD pipeline runs entirely on the host — tests, build, lint and
+   format never go through a container. A dev container is `/jlu-start-dev`'s job and is
+   independent of this workflow.
 
 3. Update TASKS.md with the per-service baselines:
    ```markdown
@@ -498,35 +518,34 @@ Skip proposal generation. Read the existing PROPOSAL.md and phase files to resum
 
 4. **Set local CPU safety throttles (once per task).**
 
-   - `PHASE_PARALLELISM`: default `auto` for Step 7. The wave planner (`bin/plan-phase-waves.mjs`) resolves `auto` to a numeric cap itself and reports it as `auto_cap`/`chosen_cap` in the wave-plan JSON; `JLU_PHASE_PARALLELISM`, when set, is a manual ceiling the planner applies reduce-only. The planner is the single source of the cap formula — this workflow never restates or recomputes it. Same-service safety does not depend on the cap value: the planner enforces at-most-one-phase-per-service-per-chunk unconditionally, which retires the old orchestrator-side clamp. A corollary worth knowing before tuning anything: on a single-service task that invariant makes phase-level parallelism structurally impossible, whatever the cap resolves to.
-   - `TASK_FANOUT_CAP`: the numeric cap for every orchestrator-side fan-out comparison (Steps 4c, 7d, 8a.3, 8a.5, 8b.4). It was computed and cached at its first point of use — Step 4c — via `plan-phase-waves.mjs --emit-cap-only --limit=<N_affected_services>`. If Step 4c did not run (single-service task, or PROPOSAL.md already existed), compute it here with that same invocation and cache it. Later steps reference the cached value; they never re-derive it.
+   - `PHASE_PARALLELISM`: default `auto` for Step 7. The wave planner (`bin/plan-phase-waves.mjs`) resolves `auto` to a numeric cap itself and reports it as `auto_cap`/`chosen_cap` in the wave-plan JSON; `JLU_PHASE_PARALLELISM`, when set, is a manual ceiling the planner applies reduce-only. The planner is the single source of the cap formula — this workflow never restates or recomputes it. Same-service safety does not depend on the cap value: the planner enforces at-most-one-phase-per-service-per-chunk unconditionally.
+   - `TASK_FANOUT_CAP`: the numeric cap for every orchestrator-side fan-out comparison (Steps 4c, 7d, 8a.3, 8a.5, 8b.4). Cached at its first point of use — Step 4c, or Step 6.2's `fanout_cap` when 4c did not run. Later steps reference the cached value; they never re-derive it.
 
-The orchestrator no longer runs the full test suite — Step 8b is reduced to an **affected-tests** regression check (lightweight). The full suite is now owned by the dedicated `/jlu-test-suite` skill, which the developer invokes on-demand before opening a PR. For background: `JLU_FINAL_TEST_PARALLELISM` and `JLU_TEST_MAX_WORKERS` are no longer read here; see `jelou/references/parallel-dispatch.md` for the deprecation note.
+The orchestrator never runs the full test suite — Step 8b is an **affected-tests** regression check only. The full suite is owned by the dedicated `/jlu-test-suite` skill, invoked on demand before opening a PR. `JLU_FINAL_TEST_PARALLELISM` and `JLU_TEST_MAX_WORKERS` are no longer read here; see `jelou/references/parallel-dispatch.md`.
 
-**Store** (task-level): `PHASE_PARALLELISM` (the value handed to the planner, resolved only by the planner), `TASK_FANOUT_CAP` (cached numeric cap from Step 4c or computed here).
+**Store** (task-level): `PHASE_PARALLELISM` (the value handed to the planner, resolved only by the planner), `TASK_FANOUT_CAP`.
 
 ---
 
 ## Step 7 — Execute Phases
 
-Read the phases from PROPOSAL.md in dependency order. The orchestrator no longer iterates phases as a flat sequence — it builds a **wave plan** first (per-service lanes), then iterates wave-by-wave with cross-service parallelism inside each wave (H7).
+The orchestrator does not iterate phases as a flat sequence — it builds a **wave plan**
+first (per-service lanes), then iterates wave-by-wave with cross-service parallelism
+inside each wave.
+
+**Each phase costs exactly three orchestrator turns**: `bin/phase-open.mjs` (7c), the
+agent dispatch (7d), `bin/phase-close.mjs` (7e). A docs-mode phase costs two.
 
 ### 7.0. Wave Planning (cross-phase parallelism gate)
 
-Before the per-phase loop starts, decide whether this task runs sequentially (legacy) or in per-service waves.
+Read PROPOSAL.md's `## Execution Strategy` section: `sequential` (or missing) is the
+conservative default; `per-service-parallel` is the proposal-agent's opt-in, made there
+because only it can see whether services share cross-service contracts that gate one
+another. The orchestrator honors the decision and never promotes one.
 
-#### Detect the strategy
-
-1. Read PROPOSAL.md and look for a `## Execution Strategy` section. Recognized values:
-   - `sequential` (or missing section) — current behavior. Phases run one at a time in PROPOSAL.md order. No parallelism beyond what 7d already does for multi-service-per-phase fan-out.
-   - `per-service-parallel` — opt-in. Phases are grouped by their owning service, and same-index phases from different services run concurrently (one orchestrator message with multiple `Agent` calls).
-2. If `Execution Strategy` is missing, default to `sequential`. The proposal-agent SHOULD emit this section explicitly; treat its absence as a conservative default, not as opt-in.
-
-**Why opt-in.** Per-service parallelism is safe only when services do not share cross-service contracts that gate one another. If service B's Phase 02 depends on service A's Phase 01 emitting an API, running them in the same wave would race. The proposal-agent is the right place to make that call — it has full visibility into the contracts. The orchestrator just honors the decision.
-
-#### Build the wave plan
-
-Delegated to `bin/plan-phase-waves.mjs` — deterministic and unit-tested, so the orchestrator never improvises the grouping logic.
+Build the plan — `bin/plan-phase-waves.mjs` owns the grouping, the `**Needs:**` edges,
+the phase-id parsing (`03a-name.md` → `03a`) and the chunking, so the orchestrator never
+improvises any of it:
 
 ```bash
 node <plugin-root>/bin/plan-phase-waves.mjs \
@@ -535,9 +554,8 @@ node <plugin-root>/bin/plan-phase-waves.mjs \
   --phase-parallelism="<PHASE_PARALLELISM>"
 ```
 
-`<PHASE_PARALLELISM>` is the Step 6.4 value (default `auto`); the planner resolves it to the numeric cap itself.
-
-**Output (single JSON object on stdout)**:
+**Output** — one JSON object on stdout. Parse it once, store as `WAVE_PLAN`, and iterate
+`WAVE_PLAN.waves` for the rest of Step 7:
 
 ```json
 {
@@ -555,59 +573,83 @@ node <plugin-root>/bin/plan-phase-waves.mjs \
 }
 ```
 
-If `WAVE_PLAN.downgrade_reason` is present, log it as a one-line WARN (the planner degraded `per-service-parallel` to `sequential` — e.g. the PROPOSAL.md `Dependency Order` column declares `after <service>`) and continue with the plan as emitted.
+`downgrade_reason` present → log it as a one-line WARN and continue with the plan as
+emitted. Log `WAVE_PLAN.summary` once, then one line per wave:
+`Wave <i>/<total>: <K> phase(s) — <list of "<service>:<NN>" pairs>.`
 
-Parse the JSON once, store as `WAVE_PLAN`, and iterate `WAVE_PLAN.waves` for the rest of Step 7. The script handles:
+Each emitted wave lists the phases that may run together. Intra-service `**Needs:**`
+edges can place more than one phase of the *same* service on the same dependency
+**level** (absent `**Needs:**`, each phase defaults to depending on its predecessor) —
+but a level is not a wave. The planner chunks every level by `chosen_cap` and admits
+**at most one phase per service per chunk, unconditionally**, so `WAVE_PLAN.waves` as
+emitted never contains two phases of the same service: independent same-service phases
+are serialized across consecutive waves.
 
-- **Sequential**: one phase per wave, services alphabetical, phases lex within service.
-- **Per-service-parallel**: zip per-service lanes by dependency level, then chunk each wave by the plan's `chosen_cap` when a wave's phase count exceeds the cap.
-- **Phase id parsing**: filenames like `03a-name.md` yield `phase=03a` so sub-phases (3a, 3b, 3c) stay in order.
-
-Each emitted wave lists the phases that may run together. Intra-service `**Needs:**` edges can place more than one phase of the *same* service on the same dependency **level** (absent `**Needs:**`, each phase defaults to depending on its predecessor) — but a level is not a wave. The planner chunks every level by `chosen_cap` and admits **at most one phase per service per chunk, unconditionally**, so `WAVE_PLAN.waves` as emitted never contains two phases of the same service: independent same-service phases are serialized across consecutive waves. When `chosen_cap` resolves to 1, behavior is identical to the old sequential iteration.
-
-**Corollary — a single-service task never gets phase-level parallelism.** With one affected service every chunk holds at most one phase by that same invariant, whatever `chosen_cap` resolves to (auto or manual). Phase-level parallelism is structurally impossible there; raising the cap changes nothing.
+**Corollary — a single-service task never gets phase-level parallelism.** With one
+affected service every chunk holds at most one phase by that same invariant, whatever
+`chosen_cap` resolves to. Phase-level parallelism is structurally impossible there;
+raising the cap changes nothing.
 
 #### Concurrency cap
 
-The wave plan arrives pre-chunked: the planner resolves `PHASE_PARALLELISM` (including `auto`) to the numeric `chosen_cap` in its JSON and splits any wave whose phase count exceeds the cap into chunks processed serially. The orchestrator consumes the plan as emitted — it never recomputes, restates, or overrides the cap. Two planner invariants replace the old orchestrator-side `1..N` clamp:
-
-- **At most one phase per service per chunk, unconditionally** — regardless of the cap's value or origin (auto or manual). Same-checkout safety lives in the planner, not in the cap. This is the invariant behind the level-vs-wave distinction above, and it is why a single-service task gets no phase-level parallelism at any cap.
-- `JLU_PHASE_PARALLELISM`, when set, is a reduce-only manual ceiling the planner applies over its auto cap; no env var can raise concurrency above what the planner computes.
-
-When `chosen_cap = 1`, the wave plan serializes each wave's phases — sequential is still the outcome, just iterated wave-by-wave.
+The plan arrives pre-chunked. The orchestrator consumes it as emitted — it never
+recomputes, restates or overrides the cap. Two planner invariants replace any
+orchestrator-side clamp: at-most-one-phase-per-service-per-chunk, unconditionally,
+whatever the cap's value or origin; and `JLU_PHASE_PARALLELISM` as the planner's
+reduce-only manual ceiling, so no env var can raise concurrency above the planner's
+own number. When `chosen_cap = 1` the wave plan serializes each wave's phases —
+sequential is still the outcome, just iterated wave-by-wave.
 
 #### Per-wave execution
 
 For each wave:
 
-1. **Dispatch all phases in the wave concurrently** by emitting one orchestrator message that contains all the wave's Agent calls (test-writer, tdd-cycle, etc. — whichever each phase needs at this stage). See `jelou/references/parallel-dispatch.md` for the exact concurrency pattern, scope-isolation rules, and conflict-detection logic on return.
-2. **Wait for every phase in the wave to reach `Status: done` (or `failed`/`skipped`) before starting the next wave.** This is the synchronization point. A phase that errors blocks only its lane — the wave does not move on until every phase in it reaches a terminal state.
-3. **Within each phase**, steps 7a–7l below apply unchanged. Whether you run them sequentially per phase or in parallel across phases is governed by the wave-level dispatch only; the per-phase logic is identical.
+1. **Dispatch all phases in the wave concurrently** — one orchestrator message carrying all the wave's calls. See `jelou/references/parallel-dispatch.md` for the concurrency pattern, scope-isolation rules and conflict detection on return.
+2. **Wait for every phase in the wave to reach a terminal state (`done`, `failed`, `skipped`) before starting the next wave.** A phase that errors blocks only its lane; the wave does not advance until every phase in it is terminal.
+3. **Within each phase**, 7c → 7d → 7e apply unchanged. Whether phases run sequentially or in parallel is governed by the wave-level dispatch only.
 
-#### When to abort the wave
+If a phase in a wave hits the 5-retry pause (Escalation Format), the orchestrator pauses the whole workflow at that wave. Phases in the same wave that already completed stay `done` and are NOT re-run when the user resumes.
 
-If a phase in a wave hits the 5-retry pause (Escalation Format), the orchestrator pauses the entire workflow at that wave. The other phases in the wave that completed successfully are already committed; their state in TASKS.md is `done`. When the user resumes (via the question response), the failed phase re-enters its TDD cycle. Successful phases in the same wave are NOT re-run.
+### 7a. Report Persistence Discipline (context-saturation guard)
 
-#### Logging
+For every sub-agent dispatched inside this loop (`jlu-tdd-cycle`, and any
+`jlu-implementer` retry), the orchestrator MUST:
 
-At the start of Step 7, log a one-line plan summary:
+1. **Parse the agent's full report** as the tool result, immediately.
+2. **Persist it to disk** at `<TASK_DIR>/services/<service-id>/phases/<NN>-reports/<agent-name>-<round>.md`. Round suffix is `1` for the first dispatch in this phase, `2` for the first retry, etc. Create the parent directory on first write.
+3. **Keep only a structured digest in working memory** for downstream gating:
 
-- `Sequential: <total-phases> phases, <N> services, chosen_cap=<WAVE_PLAN.chosen_cap>.`
-- `Per-service parallel: <total-phases> phases across <N> service lanes (max <MAX_LANE> phases), <MAX_LANE> waves, chosen_cap=<WAVE_PLAN.chosen_cap> (auto_cap=<WAVE_PLAN.auto_cap>).`
+   ```json
+   {
+     "agent": "jlu-tdd-cycle",
+     "phase": "03a",
+     "service": "api-gateway-service",
+     "status": "GREEN",
+     "test_command": "<command>",
+     "files_modified_count": <N>,
+     "files_modified": ["<path>", ...],
+     "tests_written_count": <N>,
+     "refactor_candidates_present": true | false,
+     "deviations_present": true | false,
+     "test_objections_present": true | false,
+     "report_path": "<TASK_DIR>/services/.../<NN>-reports/jlu-tdd-cycle-1.md"
+   }
+   ```
 
-Then, at the start of each wave:
+   Capture only the fields later steps gate on. The full prose stays on disk for audit.
+4. **When a downstream step needs the full report** (8a.3 needs each phase's `Refactor Candidates`), re-read it from disk instead of relying on conversation history.
+5. **Failure-context recycling**: when retrying a failed agent (up to 5 attempts), pass only the digest + the last 50 lines of the previous attempt's failure output. The agent reads its predecessor's full report from disk if it needs more.
 
-- `Wave <i>/<total>: <K> phase(s) — <list of "<service>:<NN>" pairs>.`
+Each report is 500–2000 tokens; a 10-phase task would otherwise accumulate 20–80k tokens of report prose and force compaction mid-task. Persist-and-digest caps the per-phase working-memory increment at ~200 tokens.
 
-### Step 7 — Agent dispatch wrapper (referenced by every subagent dispatch below)
+### 7b. Agent dispatch wrapper (referenced by every subagent dispatch below)
 
 **Guard: this whole wrapper exists only when `TRACING_ON` (Step 0.5) is true.**
 When it is false, dispatch the agent bare — emit no `trace-start-span.mjs` call,
 no `trace-end-span.mjs` call, and do not extract the measurement fields below for
-a span that will not exist. That is two Bash calls saved per dispatch, which is
-the whole point of the Step 0.5 gate.
+a span that will not exist. That is two Bash calls saved per dispatch.
 
-When `TRACING_ON` is true, each subagent dispatch in this Step (test-writer, implementer, tdd-cycle, build-validator) is wrapped in a span pair. Apply this pattern around every dispatch:
+When `TRACING_ON` is true, each subagent dispatch (tdd-cycle, implementer, test-writer, refactor-agent, build-validator) is wrapped in a span pair.
 
 **Before the dispatch:**
 ```bash
@@ -621,21 +663,9 @@ DS_OUT=$(node "<root>/bin/trace-start-span.mjs" \
 DISPATCH_SPAN_ID=$(echo "$DS_OUT" | jq -r '.span_id // ""')
 ```
 
-Replace `<agent-role>` with the literal agent role (`test-writer`, `implementer`, `tdd-cycle`, `refactor-agent`, `build-validator`). `$MODEL_FOR_AGENT` is resolved from `MODEL_CONFIG` (Step 2b).
+`<agent-role>` is the literal role (`test-writer`, `implementer`, `tdd-cycle`, `refactor-agent`, `build-validator`). `$MODEL_FOR_AGENT` comes from `MODEL_CONFIG` (Step 2b). Measurement attrs: `$WAVE_CHOSEN_CAP` = `WAVE_PLAN.chosen_cap`; `$WAVE_INDEX` = 1-based index of the current wave; `$WAVE_WIDTH` = phases dispatched concurrently in the current chunk. For dispatches outside the wave loop (8a.3, 8a.5), pass `--phase-parallelism "$TASK_FANOUT_CAP"` and omit the two wave flags.
 
-Measurement attrs (they make per-phase duration, critical path, and Step 7+8 wall-clock derivable from the spans): `$WAVE_CHOSEN_CAP` = `WAVE_PLAN.chosen_cap`; `$WAVE_INDEX` = the 1-based index of the current wave; `$WAVE_WIDTH` = the number of phases dispatched concurrently in the current chunk. For dispatches outside the Step 7 wave loop (8a.3, 8a.5), pass `--phase-parallelism "$TASK_FANOUT_CAP"` and omit the two wave flags.
-
-**After parsing the agent's JSON report:**
-
-Extract from the report:
-- `$AGENT_STATUS` — one of `ok`, `blocked`, `failed`, `escalated`
-- `$AGENT_RETRIES` — internal retry count (from agent report, may be absent)
-- `$AGENT_OUTCOME` — the `outcome` field (may be absent)
-- `$DIFF_SIZE_LOC` — LOC added+removed from `git diff --shortstat` over reported artifacts (may be absent)
-- `$ERROR_SIG` — `sha256(normalized_error_message)[:8]` when status is `blocked` or `failed`, else absent
-- `$TOKENS_IN` / `$TOKENS_OUT` — dispatch token usage when the runtime exposes it in the report (`usage.input_tokens` / `usage.output_tokens`); best-effort, absent otherwise. When present, `cost_usd` is derived from the span's model tier automatically.
-
-Then close the span:
+**After parsing the agent's JSON report**, extract `$AGENT_STATUS` (`ok`/`blocked`/`failed`/`escalated`), `$AGENT_RETRIES`, `$AGENT_OUTCOME`, `$DIFF_SIZE_LOC` (LOC added+removed over reported artifacts), `$ERROR_SIG` (`sha256(normalized_error_message)[:8]`, only on `blocked`/`failed`), and `$TOKENS_IN` / `$TOKENS_OUT` when the runtime exposes `usage.input_tokens` / `usage.output_tokens`. All but the first are best-effort. Then close:
 
 ```bash
 node "<root>/bin/trace-end-span.mjs" \
@@ -648,368 +678,207 @@ node "<root>/bin/trace-end-span.mjs" \
   ${TOKENS_OUT:+--tokens-out "$TOKENS_OUT"}
 ```
 
-Empty `DISPATCH_SPAN_ID` (when `TRACE_DISABLED=1`) makes the close a no-op.
+Empty `DISPATCH_SPAN_ID` (when `TRACE_DISABLED=1`) makes the close a no-op. When `TRACING_ON` is true this wrapper applies to every `task` (OpenCode) / `Agent` (Claude Code) dispatch below; when it is false it applies to none of them.
 
-When `TRACING_ON` is true this wrapper applies to every `task` (OpenCode) / `Agent` (Claude Code) dispatch in the steps below — do not skip it for any dispatch. When `TRACING_ON` is false it applies to none of them.
+### 7c. Open the phase — one call
 
-### 7a. Report Persistence Discipline (context-saturation guard)
+`bin/phase-open.mjs` is the whole pre-dispatch half of a phase. It chains, in order:
 
-For every sub-agent dispatched within this Step 7 loop (`jlu-test-writer`, `jlu-implementer`, `jlu-tdd-cycle`), the orchestrator MUST follow this protocol to keep its own context window bounded across an N-phase task:
-
-1. **Receive the agent's full report** as the tool result. Parse the structured sections immediately.
-2. **Persist the full report to disk** at `<TASK_DIR>/services/<service-id>/phases/<NN>-reports/<agent-name>-<round>.md`. Round suffix is `1` for the first dispatch in this phase, `2` for the first retry, etc. Create the parent directory on first write.
-3. **Keep only a structured digest in the orchestrator's working memory** for downstream gating decisions:
-
-   ```json
-   {
-     "agent": "jlu-implementer",
-     "phase": "03a",
-     "service": "api-gateway-service",
-     "status": "GREEN",
-     "test_command": "<command>",
-     "files_modified_count": <N>,
-     "files_modified": ["<path>", ...],
-     "tests_written_count": <N>,
-     "refactor_candidates_present": true | false,
-     "deviations_present": true | false,
-     "test_objections_present": true | false,
-     "report_path": "<TASK_DIR>/services/.../<NN>-reports/jlu-implementer-1.md"
-   }
-   ```
-
-   Capture only the fields that subsequent steps gate on (`PHASE_IS_TRIVIAL`, task-level refactor aggregation). The full prose stays on disk for audit; the orchestrator does NOT keep it in context.
-
-4. **When a downstream step needs the full report** (e.g., the task-level refactor pass at 8a.3 needs each phase's `Refactor Candidates`), re-read the report from disk on demand instead of relying on conversation history. This makes the cost N reads instead of N reports persistently held.
-
-5. **Failure-context recycling**: when retrying a failed agent (up to 5 attempts), the orchestrator passes only the structured digest + the last 50 lines of the previous attempt's failure output, not the full prior report. The agent reads its own predecessor's full report from disk if it needs more context.
-
-**Why this matters.** Each agent report is 500-2000 tokens. A 10-phase task with 4 agents per phase accumulates 20-80k tokens of report prose in orchestrator context — enough to push past the working window on Opus and force compaction mid-task. The persist-and-digest pattern caps the orchestrator's per-phase working-memory increment at ~200 tokens (structured digest) instead of ~5000 tokens (full report bundle).
-
-### 7a.0 — Open phase span: FOLDED INTO 7b
-
-The phase span is no longer its own Bash call. `bin/phase-state.mjs --event=start`
-opens it in-process (it imports `bin/lib/trace/emitter.mjs` directly — no extra
-process is spawned) and prints `span_id=` / `trace_id=`. See 7b.
-
-### 7b. Start the phase (one call: state writes + phase span)
-
-The three writes this step used to make — phase file `Status: in_progress`,
-TASKS.md phase status, TASKS.md start timestamp — plus 7a.0's span are ONE
-deterministic call. The orchestrator never hand-edits TASKS.md or a phase file
-for bookkeeping again; `bin/phase-state.mjs` owns both files and is unit-tested.
+1. `bin/classify-phase.sh mode` — docs vs tdd, from the phase file alone. It never
+   touches `git diff`, so it cannot mistake a clean tree for a trivial phase.
+2. `bin/build-dispatch-prompt.mjs --agent=tdd-cycle` (skipped in docs mode) — the
+   dispatch prompt, per §2c.
+3. `bin/phase-state.mjs --event=start` — phase file `Status: in_progress`, the TASKS.md
+   phase status and the start timestamp, and the phase span when the span flags are
+   present (it imports `bin/lib/trace/emitter.mjs` directly, so no extra process is
+   spawned and no separate Bash call is ever needed for the span).
 
 ```bash
-node <plugin-root>/bin/phase-state.mjs --event=start \
+node <plugin-root>/bin/phase-open.mjs \
   --task-dir="<TASK_DIR>" --service="<service-id>" --phase="<NN>" \
   --phase-file="<PHASE_FILE>" --phase-title="<Phase Name>" \
+  --plugin-root="<PLUGIN_ROOT>" --services-in-phase="<K>" \
+  --docs-file="<SERVICE_DOC_CACHE[service-id]>" \
+  [--notes-file="<abs path>"] \
   [--span-parent="$WORKFLOW_SPAN_ID" --span-trace="$WORKFLOW_TRACE_ID" --task-slug="$TASK_SLUG"]
 ```
 
+`<K>` is how many services own this phase id: count the `WAVE_PLAN.lanes` entries whose
+lane contains this `phase`. Derive it from `lanes`, never from the current wave chunk —
+at `chosen_cap = 1` the planner splits a two-service phase across two chunks, and
+counting the chunk would report `1` for a phase that is genuinely multi-service, which
+would let 7e classify it trivial.
+
 **The three `--span-*` / `--task-slug` flags are passed ONLY when `TRACING_ON`
-(Step 0.5) is true.** Without them the script never loads the trace layer at all.
+(Step 0.5) is true.** Without them the trace layer is never loaded.
 
-**Output (key=value on stdout)**: `status=ok`, `event=start`, `phase=<NN>`,
-`phase_status=in_progress`, `started_at=<ISO>`, `grammar=table|headers|table+headers`,
-`tasks_md=`, `phase_file=`, plus `span_id=` / `trace_id=` when the span flags were
-passed. Store `PHASE_SPAN_ID` = `span_id` (it feeds the Step 7 dispatch wrapper and
-7l's close). `status=abort` + `reason=<task_dir_missing|tasks_md_missing|phase_file_missing|missing_service|invalid_event>`
+`--docs-file` is the path Step 6 resolved once for the whole task; **it looks the cache
+up and never recomputes or re-reads it**, and the bin inlines it as `## SERVICE DOCS`
+and suppresses the `CODEBASE_DOCS` path row — so the docs travel to the agent
+**inlined as contents, never as paths**, and no phase ever re-reads anything under
+`codebase/`. Pass nothing else from there; the agent's own Rules forbid the rest.
+Add `--notes-file` only for a retry's failure context or a `SERVICE_SOURCE_PATH`
+override (§2c).
+
+**Output (key=value on stdout)**: `status=ok`, `phase=`, `service=`, `mode=docs|tdd`,
+`fr_nfr_count=`, `frontmatter_override=docs|vertical|horizontal|trivial|none`,
+`mode_reason=frontmatter_override_validated|docs_override_rejected|legacy_mode_override|default`,
+`phase_status=in_progress`, `started_at=`, `grammar=`, `tasks_md=`, `phase_file=`, plus
+`span_id=` / `trace_id=` when the span flags were passed, and finally `prompt=below|none`.
+Store `PHASE_SPAN_ID` = `span_id` (it feeds 7b and 7e's close) and `PHASE_MODE` = `mode`.
+
+When `prompt=below`, everything after the `----- DISPATCH PROMPT -----` line is the
+agent prompt. Dispatch it **verbatim** in 7d. Do not re-read the phase file, do not
+re-state its requirements, do not add a preamble.
+
+`status=abort` + `reason=<missing_argument|task_dir_missing|phase_file_missing|classify_failed|prompt_build_failed|…>`
 exits non-zero and is an orchestrator bug — fix the arguments, never fall back to
-hand-editing the files.
+hand-editing TASKS.md or hand-writing the prompt.
 
-Then output the milestone to terminal (free — the orchestrator prints it, it costs
-no tool call): `Starting Phase <NN>: <Phase Name> for <service-id>`
+**Docs mode.** `mode=docs` means the phase file carries an explicit `**Mode: docs**` /
+`mode: docs` frontmatter AND zero code-change verbs (`implement`, `add endpoint`,
+`wire`, `inject`, `migrate`, `handler`, `controller`, `service`, `module`) in its
+requirements. Heuristic-only docs detection is forbidden — the orchestrator cannot
+promote a phase to docs from inference. No prompt is emitted: skip 7d entirely and go
+to 7e with `--docs`, which scope-checks and commits the documentation edits already on
+the task branch.
 
-### 7c. Resolve Per-Service Cached Values (lookup only)
-
-Per-service setup ran once at task start in Step 6.2. This step **looks up** the precomputed values for the current service; it never recomputes or re-reads them:
-
-- `SERVICE_SOURCE_PATH = SERVICE_SOURCE_PATH[service-id]`
-- `SERVICE_DOCS = SERVICE_DOC_CACHE[service-id]` — CONVENTIONS.md contents plus the projected STRUCTURE.md sections (or, when the Step 6.2c size bound tripped, their paths). Step 7d injects this into the tdd-cycle prompt.
-
-Tests, build, lint, and format all run on the host runtime against this path — never via a container.
-
-### 7c.1. Phase Mode Classification
-
-Determine whether this phase runs in **docs** mode (no TDD — direct commit of documentation edits) or **tdd** mode (the single `jlu-tdd-cycle` agent authors RED→GREEN per FR). The choice is delegated to `bin/classify-phase.sh all`; the orchestrator never counts FR/NFR bullets inline and never runs awk against frontmatter.
-
-**Invocation**:
-
-```bash
-CLASSIFY_PHASE_FILE="<PHASE_FILE>" \
-CLASSIFY_SOURCE_PATH="<SERVICE_SOURCE_PATH>" \
-CLASSIFY_SERVICES_IN_PHASE="<K>" \
-<plugin-root>/bin/classify-phase.sh all
-```
-
-`CLASSIFY_FRONTMATTER_TRIVIAL` is **not** passed: `all` derives it internally from
-its own mode pass. Setting the env var by hand here is an orchestrator bug; `all`
-ignores it.
-
-**Authoritative output here (key=value)** — these four are file-derived, so they
-are correct before the phase has a diff:
-
-- `mode=docs|tdd`
-- `fr_nfr_count=<N>`
-- `frontmatter_override=docs|vertical|horizontal|trivial|none`
-- `docs_validation=passed|failed|n/a` / `docs_rejection_reason=<verb>` (the latter only when override was `docs` and validation failed)
-- `mode_reason=frontmatter_override_validated|docs_override_rejected|legacy_mode_override|default`
-
-**`all` also emits `trivial=`, `lines_changed=`, `files_changed=`,
-`has_*`, `trivial_reason=` and `downgrade_reason=` — IGNORE THEM HERE.** They are
-a size gate over `git diff HEAD`, and at 7c.1 the tdd-cycle has not written
-anything yet: on a clean tree the phase would classify `trivial=true` every time,
-which would silently disable Step 8a.3's refactor pass for essentially every task
-(8a.3 skips a service when *all* its phases were classified trivial). Triviality
-is decided at **Step 7e, post-Green**, against the real diff. What 7c.1 hands
-forward instead is `frontmatter_override`, which is exactly the input 7e needs and
-cannot derive itself — that chaining is why the two classifiers share one script.
-
-The script enforces:
-
-- **Docs mode** requires explicit `**Mode: docs**` / `mode: docs` frontmatter AND zero code-change verbs (`implement`, `add endpoint`, `wire`, `inject`, `migrate`, `handler`, `controller`, `service`, `module`) in the requirements section. Heuristic-only docs detection is forbidden — the orchestrator cannot promote a phase to docs from inference.
-- **tdd mode**: the default for any non-docs phase. Dispatches jlu-tdd-cycle (one per service for multi-service phases).
-
-If `mode=docs`, skip the TDD path and jump to **Step 7df** (Docs Path).
-
-Log to terminal:
+Log the milestone to terminal (free — no tool call):
 
 - `Phase <NN> mode: docs (<N> doc requirements, <K> service(s)) — skipping TDD pipeline, going to commit-only path.`
 - `Phase <NN> mode: tdd (<N> FR/NFR, <K> service(s)) — dispatching jlu-tdd-cycle.`
 
-**Store**: `PHASE_MODE` (from `mode`), `FR_NFR_COUNT`, `PHASE_FRONTMATTER_OVERRIDE` (from `frontmatter_override` — Step 7e consumes it).
+### 7d. TDD Cycle — dispatch the authoring agent
 
-### 7df. Docs Path (docs mode only)
+**Skipped when `PHASE_MODE == docs`.**
 
-**Skip this step unless `PHASE_MODE == docs`.** For docs phases, the orchestrator does NOT dispatch the tdd-cycle agent. The developer (or the parent orchestrator in nested-execution mode) is expected to have already made the documentation edits on the task branch before invoking execution; the orchestrator's job here is to scope-check and commit them.
+Dispatch `jlu-tdd-cycle` with the prompt 7c printed, model **MODEL_CONFIG.code**
+(default sonnet), wrapped in the 7b span wrapper. The prompt already carries the
+phase's immutable requirements, the `## EXISTING FOUNDATION` digest of earlier phases,
+the `## CASE MATRIX` copied verbatim from `## Acceptance`, `TEST_TIER: 1`, the source
+path, and the RED→GREEN procedure and report format.
+**Nothing above is restated here or in the dispatch.**
 
-1. Capture the current diff on the task branch:
-   ```bash
-   cd <SERVICE_SOURCE_PATH>
-   git diff --name-only HEAD
-   ```
-2. **Scope check** (mirrors Step 7j's intent but enforces docs-only): every file in the diff MUST match a documentation extension or path: `.md`, `.mdx`, `.txt`, `.rst`, `README*`, `CHANGELOG*`, files under `docs/`, `verification.md`. If any non-doc file appears, abort with:
+For a multi-service phase, 7c runs once per service and the resulting dispatches go out
+in a single orchestrator message when `TASK_FANOUT_CAP > 1` (sequential otherwise) —
+see `jelou/references/parallel-dispatch.md`. After all return, compare `artifacts`
+arrays to detect cross-service file overlap.
 
-   > "Phase <NN> declared `mode: docs` but the diff contains code changes: `<file-list>`. Either remove the non-doc edits or change the phase's mode to `tdd`."
+**Verification (trust-the-report)**: the agent already ran every slice's tests in its
+own session and reports `Status` + `Command:` + a per-slice table. Trust it when the
+report includes `Status: GREEN` AND a `Command:` line AND an all-GREEN slice table.
+Only re-run the listed test files locally when the report is incomplete or flags
+`status: blocked`. On a genuine failure (local re-run shows red where the agent
+reported green, or the agent reports blocked), build a fresh prompt per §2c with a
+notes file carrying the accumulated failure context and spawn a new `jlu-tdd-cycle`;
+retry up to 5 times total; pause and notify the user after the 5th (Escalation Format).
 
-3. If the diff is empty, abort: `Phase <NN> declared mode: docs but the working tree contains no documentation changes. Make the edits or remove the phase.`
-4. Stage and commit using Step 7j's commit procedure but with `<type> = docs`. The commit message body still references `Phase <NN> of production/<TASK_SLUG>`.
-5. Jump straight to Step 7l (Complete Phase) after the commit lands.
+Carry into 7e, from the report: the union of `Files Modified` + `Tests Written`, the
+final `Command:` line, the test counts, the `Artifacts` list, any `Deviations`, and
+`$AGENT_RETRIES`.
 
-Log: `Phase <NN> docs path complete — <N> doc files committed.`
+### 7e — Close the phase — one call
 
-### 7d. TDD Cycle — Spawn the Authoring Agent
+`bin/phase-close.mjs` is the whole post-dispatch half of a phase. It chains, in order,
+aborting at the first failure so nothing half-lands:
 
-**Skip all of 7d if `PHASE_MODE == docs`** — the docs path (7df) handles the phase.
-
-Build the prompt per §2c and dispatch `jlu-tdd-cycle` (model: **MODEL_CONFIG.code**,
-default sonnet):
-
-```bash
-PROMPT=$(node <plugin-root>/bin/build-dispatch-prompt.mjs \
-  --agent=tdd-cycle --task-dir="<TASK_DIR>" --service="<service-id>" \
-  --plugin-root="<PLUGIN_ROOT>" --phase-file="<PHASE_FILE>" \
-  --docs-file="<SERVICE_DOC_CACHE[service-id] written to a temp file>")
-```
-
-That single call emits the phase's immutable requirements, the `## EXISTING FOUNDATION`
-digest of earlier phases, the `## CASE MATRIX` copied verbatim from the phase file's
-`## Acceptance`, `TEST_TIER: 1`, the source path, and the RED→GREEN procedure and report
-format. **Nothing above is restated here or in the dispatch.**
-
-`--docs-file` carries `SERVICE_DOC_CACHE[service-id]` — resolved once in Step 6.2c and
-**inlined as contents, never as paths**, so no phase ever re-reads `codebase/`. The bin
-emits it as `## SERVICE DOCS` and suppresses the `CODEBASE_DOCS` path row; when the Step
-6.2c size bound tripped, the cache already holds paths and they travel as-is. Pass
-nothing else from `codebase/` — the agent's own Rules forbid the rest.
-
-Add `--notes-file` only for a retry's failure context or a `SERVICE_SOURCE_PATH`
-override (§2c).
-
-For a multi-service phase, build one prompt per service and dispatch them in a single
-orchestrator message when `TASK_FANOUT_CAP > 1` (sequential otherwise) — see
-`jelou/references/parallel-dispatch.md`. After all return, compare `artifacts` arrays to
-detect cross-service file overlap.
-
-**Verification (trust-the-report)**: the agent already ran every slice's tests in its own
-session and reports `Status` + `Command:` + a per-slice table. Trust it when the report
-includes `Status: GREEN` AND a `Command:` line AND an all-GREEN slice table. Only re-run
-the listed test files locally when the report is incomplete or flags `status: blocked`. On a
-genuine failure (local re-run shows red the agent reported green, or the agent reports
-blocked), spawn a fresh `jlu-tdd-cycle` with accumulated failure context; retry up to 5
-times total; pause and notify the user after the 5th (see Escalation Format).
-
-**Post-Green lint/format**: invoke `bin/format-changed-files.sh` over the union of the
-report's `Files Modified` + `Tests Written`:
+1. `bin/format-changed-files.sh` over the `Files Modified` + `Tests Written` union.
+2. **The Green re-check**, gated on what the formatter actually did. `changed_by_format=0`
+   → the formatter touched nothing, so Green cannot have moved; it emits
+   `green_recheck=skipped` and logs `Green re-run skipped.` `changed_by_format>0` →
+   it re-runs `--green-recheck-command` (the agent's own `Command:` line) inside the
+   source path, bounded by `JLU_PHASE_RECHECK_TIMEOUT_MS` (default 600 000 ms). The
+   command is screened by `bin/guard-test-commands.mjs` first, so an uncapped or bare
+   full-suite command is refused, never run. Give the Bash call a timeout above that
+   bound so the script — not the tool — owns the deadline.
+3. `bin/classify-phase.sh all` — **After Green is verified**, triviality against the
+   real diff. This is why it runs here and not at 7c: the classifier is a size gate
+   over the phase's diff, which only exists once the tdd-cycle has written the code.
+   Classifying pre-dispatch would return `trivial=true` on a clean tree for every
+   single-service phase and silently disable 8a.3's refactor pass for essentially every
+   task. `all` also re-derives the `mode: trivial` frontmatter override internally, so
+   there is nothing for the orchestrator to thread through from 7c.
+4. `bin/finalize-phase.sh` — branch pre-flight, scope check, stage, commit, rev-parse.
+5. `bin/phase-state.mjs --event=end` — phase file `Status:`, TASKS.md status, test
+   counts, artifacts, deviations, the commit SHA `finalize-phase.sh` just returned
+   (never a second `git rev-parse`), the completion timestamp, and the phase span close.
 
 ```bash
-FORMAT_SOURCE_PATH="<SERVICE_SOURCE_PATH>" \
-FORMAT_CHANGED_FILES="$(printf '%s\n' <files-modified-1> <tests-written-1> ...)" \
-FORMAT_CONVENTIONS="<CODEBASE_DIR>/CONVENTIONS.md" \
-<plugin-root>/bin/format-changed-files.sh
-```
-
-`FORMAT_SOURCE_PATH` and `FORMAT_CHANGED_FILES` are required — the script exits 1 without
-them. `FORMAT_CONVENTIONS` is optional; pass it when the service has a codebase-docs dir so
-an explicit Format/Lint command there wins over the detection chain. Handle by status: `status=ok` with
-`changed_by_format=0` → the formatter touched nothing, so Green cannot have moved; log
-`Format changed 0 files — Green re-run skipped.` and continue. `status=ok` with
-`changed_by_format>0` → re-run the phase test files to confirm Green held. `status=skip`
-→ continue. `status=failed` → surface the stderr and continue.
-
-### 7e — Phase Triviality Classification (post-Green)
-
-After Green is verified, classify the phase to feed the task-level refactor
-aggregation (Step 8a.3). Delegated to `bin/classify-phase.sh trivial` — the
-orchestrator never runs `git diff --shortstat` + grep loops inline.
-
-**This call runs here, not at 7c.1, and that is load-bearing.** The classifier is
-a size gate over the phase's diff, which only exists once the tdd-cycle has
-written the code. Classifying pre-dispatch would return `trivial=true` on a clean
-tree for every single-service phase and silently disable 8a.3's refactor pass for
-essentially every task. One extra Bash call is the correct price for a gate that
-can still fire.
-
-**Invocation**:
-
-```bash
-CLASSIFY_SOURCE_PATH="<SERVICE_SOURCE_PATH>" \
-CLASSIFY_SERVICES_IN_PHASE="<K>" \
-CLASSIFY_FRONTMATTER_TRIVIAL="<0|1>" \
-<plugin-root>/bin/classify-phase.sh trivial
-```
-
-`CLASSIFY_FRONTMATTER_TRIVIAL` is `1` when Step 7c.1 stored
-`PHASE_FRONTMATTER_OVERRIDE = trivial`, else `0`. **Do not re-derive it** — 7c.1
-already read the phase file, and reusing its answer is what the merged `all`
-subcommand bought.
-
-**Output (key=value)**:
-
-- `trivial=true|false`
-- `lines_changed=<N>`, `files_changed=<N>`
-- `has_lockfile`, `has_migration`, `has_dts`, `has_tsconfig`
-- `reason=size_gate|frontmatter_override|frontmatter_override_downgraded`
-- `downgrade_reason=<list>` (only when the frontmatter override was downgraded)
-
-The script enforces:
-
-- **Default classifier**: `trivial=true` only when `lines ≤ 20 AND files ≤ 3 AND no lockfile/migration/d.ts/tsconfig AND services_in_phase == 1`.
-- **Frontmatter override** (`mode: trivial`): accepted unless safety bounds exceeded (`lines > 50` OR any of lockfile/migration/d.ts). On exceedance the script returns `trivial=false` + `reason=frontmatter_override_downgraded`, so the orchestrator falls back to the full pipeline.
-
-Log to terminal:
-
-- If trivial: `Phase <NN> classified as trivial.`
-- If not trivial: `Phase <NN> non-trivial.`
-- If a frontmatter override was downgraded: `Phase <NN> trivial override rejected — <downgrade_reason>.`
-
-**Store**: `PHASE_IS_TRIVIAL` (from `trivial`).
-
-### 7e.1 — Per-phase QA: RETIRED (nothing consumes it)
-
-No QA dispatch happens inside the phase loop. Its only consumer was the Step 8c
-static gate, which is itself retired — a phase that flags its own doubt now carries
-that doubt into the PR unreviewed.
-
-### 7i. Update TASKS.md: FOLDED INTO 7l
-
-Nothing happens here. Step 7l's single `bin/phase-state.mjs --event=end` call owns
-every per-phase write. Do not edit TASKS.md here.
-
-### 7j. Git Commit (batched via finalize-phase.sh)
-
-The orchestrator delegates pre-flight, scope check, stage, commit, and rev-parse to `<plugin-root>/bin/finalize-phase.sh` — one Bash dispatch per phase instead of five. The script is deterministic shell; no agent dispatch.
-
-**Invocation**:
-
-```bash
-FINALIZE_SOURCE_PATH="<SERVICE_SOURCE_PATH>" \
-FINALIZE_TASK_SLUG="<TASK_SLUG>" \
-FINALIZE_PHASE_NN="<NN>" \
-FINALIZE_PHASE_TITLE="<phase title>" \
-FINALIZE_SERVICE_ID="<service-id>" \
-FINALIZE_COMMIT_TYPE="<type>" \
-FINALIZE_EXPECTED="$(printf '%s\n' <declared-file-1> <declared-file-2> ...)" \
-<plugin-root>/bin/finalize-phase.sh
-```
-
-**Inputs**:
-- `FINALIZE_EXPECTED` is the union of the tdd-cycle agent's `Files Modified` + `Tests Written`. For docs mode, use the diff's actual content. The script appends known auto-staged manifests internally (`package.json`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `composer.lock`, `poetry.lock`, `Cargo.lock`, `go.sum`); do not include them in `FINALIZE_EXPECTED`.
-- `<type>` selection: `feat` for new functionality, `fix` for bug fixes, `test` for test-only phases, `refactor` for refactoring without behavior change, `docs` for documentation-only.
-
-**Output parsing**:
-
-The script writes `key=value` lines to stdout. Parse them:
-
-- `status=ok` + `commit_sha=<sha>` + `files_committed=<N>` → phase commit succeeded. Carry `commit_sha` into Step 7l.
-- `status=abort` + `reason=wrong_branch | source_path_missing | not_a_git_repo | no_changes | unexpected_files_in_diff | commit_failed | invalid_commit_type` → handle per the table below.
-
-| Abort reason | Orchestrator action |
-|--------------|---------------------|
-| `wrong_branch` | Abort the whole workflow. The branch invariant is load-bearing; surface to user. |
-| `source_path_missing` / `not_a_git_repo` | Abort. Source path resolution is broken; surface to user. |
-| `no_changes` | Treat as a phase no-op. Log `Phase <NN> produced no diff — skipping commit and continuing.` Do not retry. |
-| `unexpected_files_in_diff` | Parse `unexpected_files=<csv>`. Treat as a phase failure. Surface to user with the file list (same message as the old inline scope check). Do not auto-stage. |
-| `commit_failed` | A pre-commit hook (lint, commitlint, etc.) rejected the commit. Parse the script's stderr (last 50 lines), write it to a notes file, build an `--agent=implementer --phase-file=<PHASE_FILE> --plugin-root=<PLUGIN_ROOT>` prompt per §2c, dispatch `jlu-implementer`, then retry Step 7j (up to 5 attempts). Never bypass with `--no-verify`. |
-| `invalid_commit_type` | Orchestrator bug — the `<type>` derivation logic produced something outside `feat|fix|docs|refactor|test`. Abort and surface to user. |
-
-**Forbidden operations** (orchestrator must NEVER invoke, even via Bash, regardless of finalize-phase.sh):
-- `git push --force` / `git push -f`
-- `git reset --hard`
-- `git rebase` (any flavor)
-- `git checkout main`, `git checkout master`, `git checkout alpha`
-- `git branch -D`
-- `git commit --no-verify`
-
-### 7l. Complete Phase (one call: state writes + phase span close)
-
-Everything 7i and the old 7l wrote — phase file `Status: done`, TASKS.md status,
-test counts, artifacts, deviations, commit SHA, completion timestamp — plus 7z's
-span close is ONE call:
-
-```bash
-node <plugin-root>/bin/phase-state.mjs --event=end \
+node <plugin-root>/bin/phase-close.mjs \
   --task-dir="<TASK_DIR>" --service="<service-id>" --phase="<NN>" \
   --phase-file="<PHASE_FILE>" --phase-title="<Phase Name>" \
-  --status="<done|blocked|failed>" \
-  --tests-passed="<pass-count>" --tests-total="<total-count>" \
-  --artifacts="<comma-separated file paths from the tdd-cycle report>" \
+  --source-path="<SERVICE_SOURCE_PATH[service-id]>" --task-slug="<TASK_SLUG>" \
+  --commit-type="<feat|fix|docs|refactor|test>" \
+  --changed-files="<Files Modified + Tests Written, comma-separated>" \
+  --green-recheck-command="<the agent's Command: line>" \
+  --conventions="<WORKSPACE_PATH>/services/<service-id>/codebase/CONVENTIONS.md" \
+  --services-in-phase="<K>" \
+  --tests-passed="<N>" --tests-total="<N>" \
+  --artifacts="<comma-separated paths from the report>" \
   [--deviations="<one line, as the agent reported it>"] \
-  <--commit-sha="<sha from Step 7j>" | --no-diff> \
+  [--status="<done|blocked|failed>"] \
   [--span="$PHASE_SPAN_ID" --span-status="$PHASE_OUTCOME" \
    --span-success="$PHASE_SUCCESS" --span-attempts="$PHASE_ATTEMPTS"]
 ```
 
-**Commit argument — exactly one of the two:** `--commit-sha=<sha>` with the value
-Step 7j's `finalize-phase.sh` already returned (`commit_sha=` line) — do NOT run
-`git rev-parse` again, that is a duplicate Bash dispatch for data you already
-have — or `--no-diff` when Step 7j returned `status=abort` with
-`reason=no_changes`, which writes `Commit: (no diff)`. Passing both aborts with
-`reason=conflicting_commit_inputs`.
+**Docs-mode phases** pass `--docs` instead of `--commit-type` / `--changed-files` /
+`--green-recheck-command`: the script derives its scope from the working tree (tracked
+modifications **and** untracked-but-not-ignored files, so a brand-new doc travels), requires
+every file in it to be documentation (`.md`, `.mdx`, `.txt`, `.rst`, `README*`,
+`CHANGELOG*`, anything under `docs/`, `verification.md`), and commits with type `docs`.
+
+`--commit-type` selection: `feat` for new functionality, `fix` for bug fixes, `test` for
+test-only phases, `refactor` for refactoring without behavior change, `docs` for
+documentation-only. `--changed-files` must NOT list the auto-staged manifests
+(`package.json`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `composer.lock`,
+`poetry.lock`, `Cargo.lock`, `go.sum`) — the script appends them internally.
 
 **The `--span-*` flags are passed ONLY when `TRACING_ON` (Step 0.5) is true**, with
-`$PHASE_SPAN_ID` from 7b. Without them the script never loads the trace layer.
-Determine the span values exactly as the retired 7z did:
+`$PHASE_SPAN_ID` from 7c:
 
 - `$PHASE_OUTCOME`: `ok` (green tests + commit), `blocked` (three-strike rule fired), `failed` (phase aborted, non-recoverable).
 - `$PHASE_SUCCESS` — the correctness signal from the RED test oracle, independent of `$PHASE_OUTCOME` (`ok` means "did not crash", not "was correct first try"): `pass@1` when the tdd-cycle agent went green on its first attempt (`$AGENT_RETRIES == 0`), `pass@k` when green only after retries, `fail` when the phase never reached green.
-- `$PHASE_ATTEMPTS` = `$AGENT_RETRIES + 1`. Both `$PHASE_SUCCESS` and `$PHASE_ATTEMPTS` are absent for `docs`-mode phases, which have no test oracle.
+- `$PHASE_ATTEMPTS` = `$AGENT_RETRIES + 1`. Both are absent for `docs`-mode phases, which have no test oracle.
 
-**Output (key=value)**: `status=ok`, `event=end`, `phase=<NN>`, `phase_status=<status>`,
-`completed_at=<ISO>`, `grammar=`, `commit=<sha|(no diff)>`, `tasks_md=`, `phase_file=`,
-plus `span_closed=true` when the span flags were passed. An abort exits non-zero with
-the same `reason=` vocabulary as 7b; it is an orchestrator bug, not a phase failure.
+**Output (key=value)** on success: `status=ok`, `phase=`, `service=`, `format_status=`,
+`changed_by_format=`, `green_recheck=skipped|passed|not_requested`, `trivial=true|false`,
+`trivial_reason=size_gate|frontmatter_override|frontmatter_override_downgraded`,
+`downgrade_reason=` (only on a downgrade), `commit=<sha|(no diff)>`, `files_committed=`,
+`phase_status=`, `completed_at=`, `grammar=`, `tasks_md=`, `phase_file=`, plus
+`span_closed=true` when the span flags were passed.
 
-Then output the milestone to terminal (free, no tool call):
-`Phase <NN> complete. Tests: <pass-count>/<total-count> passing.`
+**Store**: `PHASE_IS_TRIVIAL` (from `trivial` — 8a.3 aggregates it per service). A
+docs-mode phase reports `trivial=n/a` (no diff-size gate applies); count it as
+**not** trivial in 8a.3's all-phases-trivial skip.
 
-**No container cleanup.** The TDD pipeline never starts or manages containers, so there's nothing to prune.
+Log: `Phase <NN> complete. Tests: <pass-count>/<total-count> passing.` and, when
+`trivial=false` with `trivial_reason=frontmatter_override_downgraded`,
+`Phase <NN> trivial override rejected — <downgrade_reason>.`
 
-### 7z — Close phase span: FOLDED INTO 7l
+**Aborts** — `status=abort` plus a `reason=`, never a partial write. The phase state is
+untouched on every one of them, so a retry re-enters cleanly:
 
-The phase span closes in-process inside `phase-state.mjs --event=end` (it imports
-`bin/lib/trace/emitter.mjs` and reads the matching start from the trace file, the
-same contract `bin/trace-end-span.mjs` implements). No separate Bash call — and
-none at all when `TRACING_ON` is false.
+| `reason` | Orchestrator action |
+|----------|---------------------|
+| `green_recheck_timeout` | The re-check ran past `JLU_PHASE_RECHECK_TIMEOUT_MS` (default 600 000). Nothing was committed. Treat it as a phase failure and re-dispatch `jlu-tdd-cycle` with the timeout as failure context. |
+| `green_recheck_command_denied` | The `Command:` line the agent reported violates the worker-cap policy. Surface the script's stderr and re-dispatch `jlu-tdd-cycle` with it as failure context. Never relax the guard. |
+| `green_broken_by_format` | The formatter moved the code off Green. The last 50 lines of the re-run are on stderr — write them to a notes file, build an `--agent=implementer --service=<service-id> --plugin-root=<PLUGIN_ROOT>` prompt per §2c, dispatch `jlu-implementer`, then retry 7e (up to 5 attempts). |
+| `wrong_branch` | Abort the whole workflow. The branch invariant is load-bearing; surface to user. |
+| `source_path_missing` / `not_a_git_repo` | Abort. Source path resolution is broken; surface to user. |
+| `unexpected_files_in_diff` | Parse `unexpected_files=<csv>`. Treat as a phase failure and surface the file list. Do not auto-stage. |
+| `non_doc_files_in_diff` | Docs mode only. Parse `non_doc_files=<csv>` and surface: the phase declared `mode: docs` but the diff contains code. Either remove the non-doc edits or change the phase's mode to `tdd`. |
+| `no_doc_changes` | Docs mode only. The phase declared `mode: docs` but the working tree has no documentation changes. Make the edits or remove the phase. |
+| `commit_failed` | A pre-commit hook (lint, commitlint) rejected the commit. Its last 50 lines are on stderr — write them to a notes file, build an `--agent=implementer --service=<service-id> --plugin-root=<PLUGIN_ROOT>` prompt per §2c, dispatch `jlu-implementer`, then retry 7e (up to 5 attempts). Never bypass with `--no-verify`. |
+| `invalid_commit_type` / `missing_argument` | Orchestrator bug. Fix the arguments and re-run. |
+
+A `no_changes` diff is **not** an abort: the script records `Commit: (no diff)` and
+completes the phase. Log `Phase <NN> produced no diff — commit skipped.` and continue.
+
+**Forbidden operations** (the orchestrator must NEVER invoke these, even via Bash):
+`git push --force` / `git push -f`, `git reset --hard`, `git rebase` (any flavor),
+`git checkout main` / `master` / `alpha`, `git branch -D`, `git commit --no-verify`.
+
+**No container cleanup.** The TDD pipeline never starts or manages containers, so there is nothing to prune.
 
 ---
 
@@ -1048,16 +917,15 @@ The `jlu-refactor-agent` and the `Refactor Candidates` report field are unchange
 the candidates remain advisory in the persisted phase reports either way.
 
 The Refactor step of TDD runs once per affected service against the task's full diff,
-instead of once per phase. Refactoring per phase re-visited the same files repeatedly
-and paid one agent dispatch plus test re-runs per phase; a single end-of-task pass
-sees every `Refactor Candidates` entry at once, and Steps 8a.5 (build) + 8b (affected
-tests) verify the result with runs that happen anyway.
+instead of once per phase: a single end-of-task pass sees every `Refactor Candidates`
+entry at once, and Steps 8a.5 (build) + 8b (affected tests) verify the result with runs
+that happen anyway.
 
 For each affected service (honor `TASK_FANOUT_CAP` for cross-service fan-out; sequential when it is 1):
 
 1. **Skip** when every one of the service's phases was classified trivial (`PHASE_IS_TRIVIAL`), or when no phase captured `refactor_candidates_present: true`. Log `Refactor pass skipped for <service-id> — no candidates reported.` and continue to the next service.
 2. **Aggregate**: re-read the service's phase reports from disk and collect the union of `Files Modified` and `Refactor Candidates` across phases (include Tier 2 wiring files from Step 8a if any).
-3. Dispatch `jlu-refactor-agent` (model: **MODEL_CONFIG.code**, default sonnet), wrapped in the span wrapper (per the dispatch-wrapper block above; `--agent refactor-agent`):
+3. Dispatch `jlu-refactor-agent` (model: **MODEL_CONFIG.code**, default sonnet), wrapped in the 7b span wrapper (`--agent refactor-agent`):
    - `<PLUGIN_ROOT>` (the agent cannot derive it — see `jelou/references/plugin-root.md`)
    - Service id and service source path (worktree or repo)
    - The aggregated `Files Modified` union (its scope boundary) and `Refactor Candidates` union
@@ -1075,7 +943,7 @@ For each affected service (honor `TASK_FANOUT_CAP` for cross-service fan-out; se
      FINALIZE_EXPECTED="$(printf '%s\n' <refactor-agent Refactors Applied file 1> <file 2> ...)" \
      <plugin-root>/bin/finalize-phase.sh
      ```
-     Parse the output exactly as Step 7j does (same abort-reason table).
+     Parse the output with the same abort-reason vocabulary Step 7e routes.
    - `NO_CHANGES` → continue.
    - `BLOCKED` (two consecutive refactors went red on first try) → log the agent's last error output and continue — the remaining candidates are not load-bearing. Do not retry.
 
@@ -1083,11 +951,11 @@ No orchestrator-level test re-run is needed — the agent re-runs after every ch
 
 ### 8a.5 — Build Validation (once per service)
 
-The build now runs exactly once per affected service here, against the task's full diff, instead of once per phase. The last per-phase build always subsumed the earlier ones — this removes that O(M) waste while still catching compile errors, including any introduced by the Tier 2 wiring in Step 8a, before the affected-tests regression in Step 8b.
+The build runs exactly once per affected service here, against the task's full diff, instead of once per phase. The last per-phase build always subsumed the earlier ones; this catches compile errors — including any introduced by the Tier 2 wiring in Step 8a — before the affected-tests regression in Step 8b.
 
 For each affected service (honor `TASK_FANOUT_CAP` for cross-service fan-out; sequential when it is 1):
 
-1. Gate on compilable changes, computed inline (no scratch file — the diff feeds the classifier through an env var, exactly as the old per-phase check did):
+1. Gate on compilable changes, computed inline (no scratch file — the diff feeds the classifier through an env var):
    ```bash
    cd <SERVICE_SOURCE_PATH[service-id]>
    PRE_SHA=<pre-execution commit cached in TASKS.md "Commit Tracking" for this service>
@@ -1095,11 +963,11 @@ For each affected service (honor `TASK_FANOUT_CAP` for cross-service fan-out; se
    CLASSIFY_FILES="$CHANGED_FILES" <plugin-root>/bin/classify-phase.sh compilable
    ```
    If `compilable=false`, log `Build skipped for <service-id> — no compilable source changed (<extensions>).` and continue to the next service.
-2. Otherwise build the prompt per §2c with `--agent=build-validator --service=<service-id> --plugin-root=<PLUGIN_ROOT>` (which also carries the service source path and the codebase docs) and dispatch `jlu-build-validator` (model: **MODEL_CONFIG.code**, default sonnet). Wrap the dispatch in the span wrapper (per the dispatch-wrapper block above; `--agent build-validator`).
+2. Otherwise build the prompt per §2c with `--agent=build-validator --service=<service-id> --plugin-root=<PLUGIN_ROOT>` (which also carries the service source path and the codebase docs) and dispatch `jlu-build-validator` (model: **MODEL_CONFIG.code**, default sonnet). Wrap the dispatch in the 7b span wrapper (`--agent build-validator`).
 3. Handle the agent's verdict:
    - **PASS, no fixes** → continue.
    - **SKIP** (no build command detected) → continue.
-   - **PASS with fixes** → commit the build fixes with the same `finalize-phase.sh` call as Step 7j, using the build-validator's reported file list as scope:
+   - **PASS with fixes** → commit the build fixes with `finalize-phase.sh`, using the build-validator's reported file list as scope:
      ```bash
      FINALIZE_SOURCE_PATH="<SERVICE_SOURCE_PATH>" \
      FINALIZE_TASK_SLUG="<TASK_SLUG>" \
@@ -1110,7 +978,7 @@ For each affected service (honor `TASK_FANOUT_CAP` for cross-service fan-out; se
      FINALIZE_EXPECTED="$(printf '%s\n' <build-validator Fixes Applied file 1> <file 2> ...)" \
      <plugin-root>/bin/finalize-phase.sh
      ```
-     Parse the output exactly as Step 7j does (same abort-reason table).
+     Parse the output with the same abort-reason vocabulary Step 7e routes.
    - **FAIL** (5 rounds exhausted) → pause and notify the user (Escalation Format).
 
 ### 8b. Affected-Tests Regression Check
@@ -1166,15 +1034,13 @@ The worker cap is **fixed** (never a configurable env var) and conditional on fa
 - `test-glob` → run `PLAN.command` (a name-scoped `--testPathPattern`/`--testPathPatterns`; the repo declares multiple jest projects with differing roots, so one roots widening cannot express it).
 - `full-suite` → **do NOT run `PLAN.command`.** Skip the service: record `AFFECTED_TESTS_RESULT[service-id] = SKIPPED` with `skip_reason = PLAN.reason`, append one `SHIP_CAVEATS` line carrying that `reason` verbatim, and log `Run /jlu-test-suite from <service-path> before /jlu-ship to confirm no regressions.`
 
-`full-suite` is what the resolver returns when there is no haystack it can narrow — mocha, plugin-less pytest, go, an unknown runner, or a jest whose `--showConfig` would not resolve. **The orchestrator never runs a bare full suite** (8b's own doctrine; `bin/guard-test-commands.mjs` denies `npm test` outright), so that value is a routing signal, not a command to execute. No reading of this list runs everything.
-
-The resolver exists because the hardcoded `npx jest --findRelatedTests src/…` it replaced silently matched **0 tests and exited 1** in any repo whose `jest.roots` is `["<rootDir>/test"]` — a green-looking regression net that ran nothing.
+`full-suite` is what the resolver returns when there is no haystack it can narrow — mocha, plugin-less pytest, go, an unknown runner, or a jest whose `--showConfig` would not resolve. **The orchestrator never runs a bare full suite** (8b's own doctrine; `bin/guard-test-commands.mjs` denies `npm test` outright), so that value is a routing signal, not a command to execute.
 
 #### 8b.4 — Dispatch
 
-1. Use the cached `TASK_FANOUT_CAP` (computed at Step 4c, referenced in Step 6.4) to decide cross-service fan-out: when `> 1`, run up to that many services concurrently (each resolved with `--workers=1` per 8b.2); when `= 1`, run sequentially per service.
+1. Use the cached `TASK_FANOUT_CAP` to decide cross-service fan-out: when `> 1`, run up to that many services concurrently (each resolved with `--workers=1` per 8b.2); when `= 1`, run sequentially per service.
 2. Per service whose `strategy` is not `full-suite`, run `PLAN.command` on the host runtime. Stream stdout for dev visibility.
-3. **Only when `TRACING_ON` (Step 0.5) is true**, wrap each service's run in the Step 7 span wrapper so Step 7+8 wall-clock is measurable from the spans (when it is false, emit neither call): open with `--name affected_tests --scope task --task "$TASK_SLUG" --service "$SERVICE_ID" --phase-parallelism "$TASK_FANOUT_CAP" --parent "$WORKFLOW_SPAN_ID" --trace "$WORKFLOW_TRACE_ID"` (no `--agent`, no wave flags — this is an orchestrator Bash run, not an agent dispatch), and close with `trace-end-span.mjs` passing `--status ok` on exit 0, `--status failed` otherwise. Empty span ids under `TRACE_DISABLED=1` are tolerated as everywhere else.
+3. **Only when `TRACING_ON` (Step 0.5) is true**, wrap each service's run in the 7b span wrapper so Step 7+8 wall-clock is measurable from the spans (when it is false, emit neither call): open with `--name affected_tests --scope task --task "$TASK_SLUG" --service "$SERVICE_ID" --phase-parallelism "$TASK_FANOUT_CAP" --parent "$WORKFLOW_SPAN_ID" --trace "$WORKFLOW_TRACE_ID"` (no `--agent`, no wave flags — this is an orchestrator Bash run, not an agent dispatch), and close with `trace-end-span.mjs` passing `--status ok` on exit 0, `--status failed` otherwise. Empty span ids under `TRACE_DISABLED=1` are tolerated as everywhere else.
 4. Capture the runner's exit code as `AFFECTED_TESTS_RESULT[service-id]`.
 
 #### 8b.5 — Handle failures
@@ -1184,11 +1050,9 @@ If any service's affected tests failed:
 - Build an `--agent=implementer --service=<service-id> --plugin-root=<PLUGIN_ROOT>` prompt per §2c with that notes file and dispatch `jlu-implementer` (model: **MODEL_CONFIG.code**, default sonnet). Retry up to 5 times.
 - If still failing after 5 attempts: pause and notify user.
 
-Every service the 8b.2 routing table skipped (`strategy = full-suite`) already carries its `SKIPPED` status, its `skip_reason` and its `SHIP_CAVEATS` line. `SHIP_CAVEATS` is the only surface for it — Step 9's summary block is retired, and ship renders every caveat in the PR body under `### Not verified by this PR`. Log `Run /jlu-test-suite from <service-path> before /jlu-ship to confirm no regressions.` to the terminal when it happens; do not hold it for a final report.
+Every service the 8b.2 routing table skipped (`strategy = full-suite`) already carries its `SKIPPED` status, its `skip_reason` and its `SHIP_CAVEATS` line. `SHIP_CAVEATS` is the only surface for it — ship renders every caveat in the PR body under `### Not verified by this PR`. Log `Run /jlu-test-suite from <service-path> before /jlu-ship to confirm no regressions.` to the terminal when it happens; do not hold it for a final report.
 
 #### 8b.6 — Record the affected-tests results
-
-The QA agent expects a structured object:
 
 ```
 AFFECTED_TESTS_RESULT = {
@@ -1204,36 +1068,32 @@ AFFECTED_TESTS_RESULT = {
 }
 ```
 
-### 8c. Comprehensive QA (static only): RETIRED (no owner — read the trade below)
+### 8c. Comprehensive QA (static only): RETIRED (no owner)
 
-**Retired**: `execute-task` dispatches no QA agent, and `jlu-spec-reviewer` is
-deleted from the plugin. Measured, not assumed: the agent cost **~112 s and ~6 261
-output tokens per dispatch** and ran twice per task, statically re-reading a diff the
-pipeline already validates by execution — and it could only annotate a build, never
-fail one.
+`execute-task` dispatches no QA agent, and `jlu-spec-reviewer` is deleted from the plugin.
 
 **Nothing inherits the gate.** What survives existed independently of the agent:
 **Affected-test execution** — Step 8b, unchanged; coverage breadth via the
 deterministic `bin/probe-coverage-breadth.mjs` at ship Step 2b.6b and in `/jlu-goal`
 Phase 4.5 (the unconditional whole-task FAIL on a validated field with no rejecting
-test is gone); the Testcontainers/Docker tier ban, now self-enforced by the agents
-that author tests; and **The no-comments rule**, inherited from
+test is gone); the Testcontainers/Docker tier ban, now self-enforced by the agents that
+author tests; and **The no-comments rule**, inherited from
 `jelou/references/subagent-base.md` — No agent re-reads the diff to catch a
 comment that slipped through.
 
-Unenforced from here on, with no replacement anywhere in the pipeline: code-smell
-and over-engineering review, security review of new endpoints, N+1 and unbounded
-query review, CONVENTIONS.md compliance, cross-service contract matching, the
-spec-quote audit of test rewrites, the tdd-cycle's own objection/deviation flags,
-the 100-line function cap, and artifact completeness.
+Unenforced from here on, with no replacement anywhere in the pipeline: code-smell and
+over-engineering review, security review of new endpoints, N+1 and unbounded query
+review, CONVENTIONS.md compliance, cross-service contract matching, the spec-quote audit
+of test rewrites, the tdd-cycle's own objection/deviation flags, the 100-line function
+cap, and artifact completeness.
 
-`SHIP_CAVEATS` is unaffected as a mechanism — Steps 8e and 8g still append to it,
-and ship still renders it under `### Not verified by this PR`; it simply receives no
+`SHIP_CAVEATS` is unaffected as a mechanism — Steps 8e and 8g still append to it, and
+ship still renders it under `### Not verified by this PR`; it simply receives no
 QA-derived rows. Continue to Step 8d.
 
 ### 8d. Post-Validation Cleanup
 
-No cleanup needed. The TDD pipeline never starts containers, so there is nothing to prune. If a dev container was running for `/jlu-start-dev`, leave it alone — its lifecycle is owned by that workflow.
+No cleanup needed. The TDD pipeline never starts containers, so there is nothing to prune. If a dev container is running for `/jlu-start-dev`, leave it alone — its lifecycle is owned by that workflow.
 
 ### Step 8e — Materialize the UI E2E suite from SPEC.md (shift-left)
 
@@ -1259,7 +1119,7 @@ cannot be empty at Step 8e.
 
 For each id in `SCOPE.ui_services`:
 
-1. Resolve its active worktree (`jelou/references/worktree-resolution.md`).
+1. Look its worktree up in `SERVICE_SOURCE_PATH` (Step 6 already resolved it, mode-driven, per `jelou/references/worktree-resolution.md`).
 2. Pick the writer's `MODE`. `jlu-ui-e2e-writer` has three, and each one has a branch
    here — a service that already has a `user-flow.md` but no specs still needs a
    dispatch, and that is the `normal` mode:
@@ -1278,10 +1138,9 @@ For each id in `SCOPE.ui_services`:
 
    **`bootstrap` is dispatched without asking.** This workflow is fully autonomous and
    Step 8g settles the same question one section below — *never by asking the user
-   mid-chain*. The confirmation the writer's own doc mentions belongs to
-   `/jlu-ui-qa-run`, the interactive post-deploy workflow; it does not apply here or in
-   `/jlu-goal`. Take the default, scaffold, and append one `SHIP_CAVEATS` line naming
-   the service whose Playwright config and fixtures are generated rather than reviewed.
+   mid-chain*. Where the writer's own doc mentions a confirmation, **take the
+   documented default**: scaffold, and append one `SHIP_CAVEATS` line naming the
+   service whose Playwright config and fixtures are generated rather than reviewed.
    A `BLOCKED` report (scaffold or install failed) is not a retry and not a prompt:
    append its verbatim manual command as a second caveat and continue to Step 9.
 
@@ -1289,16 +1148,15 @@ For each id in `SCOPE.ui_services`:
    which decides what an ignored suite path means.
 
 This step authors only — it is **pre-deploy**: it does NOT boot a UI server and does
-NOT run Playwright (that happens post-deploy under `/jlu-goal` /
-`/jlu-ui-qa-run`). It is a no-op when no UI service is affected.
+NOT run Playwright. Running the suite is `/jlu-goal`'s job (Phase 4, via
+`jlu-ui-qa-runner`). It is a no-op when no UI service is affected.
 
 ### Step 8f — Backend E2E authoring: RETIRED (owned by `/jlu-goal` Phase 3.5)
 
-**Retired**: `execute-task` no longer dispatches `jlu-test-writer` for backend E2E and
-no longer authors `test/e2e/**`. Measured, not assumed: it was the most expensive
-dispatch in a mono-service run (290 s of a 1 940 s Step 7+8, ~15%) for an artifact this
-stage never runs. `/jlu-goal` Phase 3.5 owns it, treats a missing suite as **mandatory,
-not discretionary** authoring, and is the only stage that can prove it green.
+`execute-task` no longer dispatches `jlu-test-writer` for backend E2E and no longer
+authors `test/e2e/**` or `*.e2e-spec.ts`. `/jlu-goal` Phase 3.5 owns it, treats a
+missing suite as **mandatory, not discretionary** authoring, and is the only stage that
+can prove it green.
 
 The trade this makes explicit: a PR opened without ever running `/jlu-goal` does not
 carry a backend E2E suite. Frontend parity is unaffected — **Step 8e (UI E2E) stays**,
@@ -1345,13 +1203,8 @@ If all validation passes:
    - Status: `validating` → `ready_to_publish`
    - Add completion timestamp
    - Record final test counts
-2. **Print nothing here when the chain is on.** The old `Execution Complete`
-   report block — its phases table, its verification list, its files-changed
-   totals and its next-steps list — is **deleted**. It restated state that already
-   lives in TASKS.md and the phase files, and on the normal (chain-on) path the
-   user then received a second large report from Step 9.5e immediately after:
-   ~40 lines to convey two URLs. The final output of this workflow is the PR list
-   at 9.5e and nothing else.
+2. **Print nothing here when the chain is on.** The final output of this workflow is
+   the PR list at 9.5e and nothing else.
 
    Resolve the autochain flag NOW (§2 of
    `{plugin-root}/jelou/references/autochain-handoff.md`; Step 9.5 reuses this
@@ -1511,15 +1364,13 @@ re-enter here and dispatch runners only for PRs whose `verdict` is not
 `GREEN`, then continue to 9.5d.
 
 **9.5d — ClickUp status flip (non-blocking).** Once the aggregate is known,
-follow the task-clickup workflow's UPDATE path inline (the ClickUp MCP tools
-are session-level; `jlu-pm-agent` is DEPRECATED — it has no MCP access and
-must not be dispatched): green → set the internal state `ready_to_publish`,
-which maps to `PENDING TO PRODUCTION` per task-clickup.md's Status Mapping;
-not green → leave the status unchanged, add a comment listing the
-escalations. Inside the chain, task-clickup's Step-0 hard-stop is DEMOTED to
-WARN-and-skip (recipe §1) — any ClickUp failure is a WARN and the chain
-result never depends on it. Skip silently when `CLICKUP_TASK.json` does not
-exist.
+update the bound ClickUp task inline with the session-level ClickUp MCP tools
+(`jlu-pm-agent` is DEPRECATED — it has no MCP access and must not be
+dispatched): green → set the internal state `ready_to_publish` and move the
+ClickUp status to `PENDING TO PRODUCTION`; not green → leave the status
+unchanged and add a comment listing the escalations. Any ClickUp failure is a
+WARN, never a stop, and the chain result never depends on it. Skip silently
+when `CLICKUP_TASK.json` does not exist.
 
 **9.5e — Final report.** This is the workflow's ONLY output on the chain-on path
 (Step 9 prints nothing). It is the PR list, and — conditionally — the two things
@@ -1596,7 +1447,7 @@ If validation fails or phases have unresolved issues:
    - <test-name>: <failure reason>
    ```
 
-2. Auto-retry each failed phase (re-run the full TDD cycle from Step 7d). Track attempts per phase.
+2. Auto-retry each failed phase (re-run the full TDD cycle from Step 7c). Track attempts per phase.
 
 3. If a phase fails after 5 total attempts: pause and notify user (see Escalation Format below).
 
@@ -1613,8 +1464,8 @@ If validation fails or phases have unresolved issues:
 | Codebase files missing | Warn, proceed (agents will have less context) |
 | TDD cycle agent fails | Kill, spawn fresh with failure context — up to 5 attempts |
 | Tests never go green after 5 retries | Pause and notify user (see Escalation Format) |
-| QA auto-fix fails after 5 retries | Pause and notify user (see Escalation Format) |
-| Git commit fails | Report error, do not block phase execution |
+| Formatting breaks Green (`green_broken_by_format`) | Dispatch `jlu-implementer` (prompt per §2c, `--plugin-root=<PLUGIN_ROOT>`) with the re-run output, retry 7e — up to 5 attempts |
+| Phase commit rejected by a hook (`commit_failed`) | Dispatch `jlu-implementer` (prompt per §2c, `--plugin-root=<PLUGIN_ROOT>`) with the hook output, retry 7e — up to 5 attempts |
 | Build validation fails after 5 rounds | Pause and notify user (see Escalation Format) |
 | Worktree missing | Fall back to main repo, warn user |
 | Destructive SQL in Bash command | Block execution, report BLOCKED (SQL Safety Gate) |
@@ -1629,7 +1480,7 @@ When any retry limit (5 attempts) is exhausted, this is the **only** point where
 ## Execution Paused — Manual Intervention Needed
 
 Phase <NN>: <Phase Name> (<service-id>)
-Failure type: <tdd-cycle | build | qa>
+Failure type: <tdd-cycle | build | commit>
 Attempts: 5/5
 
 Last error:
@@ -1656,27 +1507,9 @@ Awaiting your input to proceed.
 | PROPOSAL.md | `.spec-workspace/specs/<date>/<task-slug>/PROPOSAL.md` |
 | TASKS.md | `.spec-workspace/specs/<date>/<task-slug>/TASKS.md` |
 | Phase files | `.spec-workspace/specs/<date>/<task-slug>/services/<service-id>/phases/<NN>-<phase>.md` |
+| Service doc cache | `.spec-workspace/specs/<date>/<task-slug>/services/<service-id>/service-docs.md` |
 | Implementation (Mode: worktree) | `<service-repo>/.worktrees/<task-slug>/` |
 | Implementation (Mode: branch) | `<service-repo>` (main repo root, on branch `production/<task-slug>`) |
-
----
-
-## Decision References
-
-| Decision | Application |
-|----------|-------------|
-| #4 | Single authoring agent per phase (jlu-tdd-cycle) |
-| #7 | PROPOSAL.md bridges SPEC.md and implementation |
-| #9 | Dependency-driven multi-service execution order |
-| #10 | User stories auto-generated from spec in hybrid format |
-| #13 | **Retired**: no static QA agent runs in this workflow (see Step 8c) |
-| #19 | Phase files: immutable requirements + mutable execution |
-| #21 | Two-pass proposal: global strategy + per-service detail |
-| #29 | **Superseded**: always autonomous, execution mode selection removed |
-| #35 | **Simplified**: session recovery always auto-resumes from first incomplete phase |
-| #36 | Real-time progress in TASKS.md + milestone terminal output |
-| #38 | Hybrid user story format |
-| #40 | Task branch `production/<task-slug>` across all repos |
 
 ---
 
@@ -1687,7 +1520,7 @@ opened, so there is nothing to close and no Bash call to emit. `$WORKFLOW_OUTCOM
 is still determined — Step 9.5e references it — it just is not published anywhere.
 
 Determine `$WORKFLOW_OUTCOME`:
-- `ok` — all phases done, QA green, ready for `/jlu-ship` (or, when the
+- `ok` — all phases done, final validation green, ready for `/jlu-ship` (or, when the
   Step 9.5 auto-chain ran: shipped AND task-green)
 - `blocked` — workflow halted on a phase escalation; user intervention required
 - `failed` — workflow aborted (irrecoverable error)

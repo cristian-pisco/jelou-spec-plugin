@@ -106,10 +106,13 @@ describe('every subagent dispatch prompt comes from build-dispatch-prompt.mjs', 
     }
   });
 
-  test('7d hands the phase file to the script and restates nothing', () => {
+  test('7c hands the phase file to the script and 7d restates nothing', () => {
+    const s7c = section('### 7c. Open the phase', '### 7d. TDD Cycle');
+    assert.match(s7c, /--agent=tdd-cycle/);
+    assert.match(s7c, /--phase-file="<PHASE_FILE>"/);
+    assert.match(s7c, /Dispatch it \*\*verbatim\*\* in 7d/);
+
     const s7d = section('### 7d. TDD Cycle', '### 7e —');
-    assert.match(s7d, /--agent=tdd-cycle/);
-    assert.match(s7d, /--phase-file="<PHASE_FILE>"/);
     assert.match(s7d, /Nothing above is restated here or in the dispatch/);
     assert.doesNotMatch(s7d, /- \*\*Input\*\*:/);
   });
