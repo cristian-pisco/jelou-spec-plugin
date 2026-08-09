@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { isContainerLauncher } from './launcher.mjs';
 
 export function parsePublishedPort(stdout) {
   const line = String(stdout || '').split('\n').map((l) => l.trim()).find(Boolean);
@@ -22,6 +23,10 @@ export function hostByService({ plan, registry, publishedPort = defaultPublished
   const unresolved = [];
   for (const entry of plan.services) {
     if (entry.policy === 'task-isolated') {
+      if (!isContainerLauncher(entry.launcher)) {
+        unresolved.push(entry.id);
+        continue;
+      }
       const primary = entry.ports.find((p) => p.primary) || entry.ports[0];
       map[entry.id] = primary.host;
       for (const p of entry.ports) occupied.push(p.host);

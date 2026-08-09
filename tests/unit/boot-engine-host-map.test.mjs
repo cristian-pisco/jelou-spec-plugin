@@ -19,7 +19,7 @@ describe('hostByService', () => {
   test('task-isolated -> allocated primary host (and all ports occupied); shared-reuse -> normal dev port (not occupied)', () => {
     const plan = {
       services: [
-        { id: 'jelou-api', policy: 'task-isolated', ports: [
+        { id: 'jelou-api', policy: 'task-isolated', launcher: 'docker-exec', ports: [
           { internal: 8080, host: 3100, portEnv: 'APP_PORT', primary: true },
           { internal: 9001, host: 3101, portEnv: 'SUPERVISOR_PORT', primary: false }
         ] },
@@ -69,6 +69,33 @@ describe('hostByService — published ports for shared-reuse', () => {
   test('ports already published on the host are carried into occupied', () => {
     const out = hostByService({ plan, registry, publishedPort: () => null, occupiedOnHost: [3100, 3101] });
     assert.deepEqual(out.occupied, [3100, 3101]);
+  });
+});
+
+describe('hostByService — task-isolated entries with a host launcher', () => {
+  test('a task-isolated entry with no container launcher and no ports is reported unresolved, not a crash', () => {
+    const plan = {
+      services: [
+        { id: 'jelou-apps', policy: 'task-isolated', launcher: 'npm', cwd: '/repo/jelou-apps/.worktrees/t1' }
+      ]
+    };
+    const out = hostByService({ plan, registry: { services: [] } });
+    assert.deepEqual(out.hostByService, {});
+    assert.deepEqual(out.unresolved, ['jelou-apps']);
+    assert.deepEqual(out.occupied, []);
+  });
+
+  test('a mix of container and host-launcher task-isolated entries resolves the container one normally', () => {
+    const plan = {
+      services: [
+        { id: 'agent-harness-service', policy: 'task-isolated', launcher: 'docker', ports: [{ internal: 3000, host: 3102, portEnv: 'PORT', primary: true }] },
+        { id: 'jelou-apps', policy: 'task-isolated', launcher: 'npm' }
+      ]
+    };
+    const out = hostByService({ plan, registry: { services: [] } });
+    assert.deepEqual(out.hostByService, { 'agent-harness-service': 3102 });
+    assert.deepEqual(out.unresolved, ['jelou-apps']);
+    assert.deepEqual(out.occupied, [3102]);
   });
 });
 
