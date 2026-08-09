@@ -439,9 +439,10 @@ orchestrator narrative.
       resolved) → the service's backend E2E is **UNSATISFIED**. Record it as such; per step
       14 it forces the overall verdict to NOT be `PASS` — never silently pass.
 
-   Normally the suite already exists, authored shift-left at `/jlu-execute-task` Step 8f (or
-   found via `e2e.globs`); the reactive authoring in 11b.4 is the fallback when a task was
-   shipped before that step ran.
+   Authoring here is the **primary** path, not a fallback: `/jlu-execute-task` Step 8f was
+   retired, so this phase owns backend E2E authoring as well as execution. A suite found via
+   `e2e.globs` (a repo whose real-DB HTTP tier already covers the endpoints) is the only case
+   where 11b.4 does not author.
 
 ### Phase 3.75 — Auth gate (orchestrator-owned)
 

@@ -7,7 +7,7 @@
 
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -17,15 +17,14 @@ const read = (p) => readFileSync(join(ROOT, p), 'utf8');
 const E2E_PATH = /test\/e2e\/\*\*|\*\.e2e-spec\.ts/;
 
 describe('Testcontainers carve-out — E2E path is the only exception', () => {
-  test('the ban is canonical in tdd-cycle.md and spec-reviewer applies it by reference', () => {
+  test('the ban is canonical in tdd-cycle.md and declares itself unenforced', () => {
     const tdd = read('jelou/references/tdd-cycle.md');
     assert.match(tdd, /### Test Tier Compliance \(canonical Docker\/Testcontainers ban\)/);
-    const reviewer = read('agents/jlu-spec-reviewer.md');
-    assert.match(reviewer, /canonical in `jelou\/references\/tdd-cycle\.md`/);
-    assert.match(reviewer, /"Test Tier Compliance"/);
-    assert.match(reviewer, E2E_PATH);
-    assert.match(reviewer, /\/jlu-goal/);
-    assert.match(reviewer, /outside the E2E path/i);
+    assert.match(tdd, /\*\*The ban is currently unenforced\.\*\*/);
+    assert.match(tdd, /self-compliance by the agents that author tests/);
+    assert.match(tdd, E2E_PATH);
+    assert.match(tdd, /\/jlu-goal/);
+    assert.ok(!existsSync(join(ROOT, 'agents', 'jlu-spec-reviewer.md')));
   });
 
   test('test-writer allows Testcontainers only in the E2E path', () => {
@@ -47,14 +46,15 @@ describe('Testcontainers carve-out — E2E path is the only exception', () => {
     assert.match(tdd, /\/jlu-goal/);
   });
 
-  test('execute-task Step 8f authors the E2E suite but never runs it (goal stays the only runner)', () => {
+  test('execute-task neither authors nor runs the backend E2E suite (goal owns both)', () => {
     const wf = read('jelou/workflows/execute-task.md');
     const start = wf.indexOf('### Step 8f');
-    assert.ok(start >= 0, 'execute-task.md must define a "### Step 8f" backend-E2E authoring step');
+    assert.ok(start >= 0, 'execute-task.md must define a "### Step 8f" section');
     const end = wf.indexOf('## Step 9', start);
     const s8f = wf.slice(start, end > start ? end : wf.length);
+    assert.match(s8f, /RETIRED/);
     assert.match(s8f, E2E_PATH);
-    assert.match(s8f, /authors? only|does NOT run|never run/i);
+    assert.match(s8f, /no longer dispatches `jlu-test-writer`/);
     assert.match(s8f, /\/jlu-goal/);
   });
 });

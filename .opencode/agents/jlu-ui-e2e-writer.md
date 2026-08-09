@@ -57,7 +57,7 @@ The orchestrator dispatches you with:
 - `<MODE>` — operation mode (default: `normal`). One of:
   - `normal` — `<TASK_DIR>/services/<UI_SERVICE_ID>/user-flow.md` already exists (authored during `/jlu:refine-task` or by hand). Skip to the per-flow extraction in Process step 1.
   - `derive-from-spec` — no `user-flow.md` exists yet. Read `SPEC.md` directly and generate `<TASK_DIR>/services/<UI_SERVICE_ID>/user-flow.md` first (see "Deriving user-flow.md from SPEC.md" below), then continue with the normal flow against the generated file. **E2E is mandatory for any UI service** — never refuse a `derive-from-spec` dispatch on the grounds that the spec didn't pre-author `user-flow.md`.
-  - `bootstrap` — the UI service worktree has no Playwright infrastructure. Scaffold it (see "Bootstrapping Playwright infrastructure" below), then fall through to `derive-from-spec`. The orchestrator only dispatches this mode after obtaining the user's confirmation, so you do not prompt — you scaffold. If scaffolding or dependency install fails, report `BLOCKED` with the exact manual command to run.
+  - `bootstrap` — the UI service worktree has no Playwright infrastructure. Scaffold it (see "Bootstrapping Playwright infrastructure" below), then fall through to `derive-from-spec`. Whether the caller asked the user first is the caller's business — `/jlu-ui-qa-run` gates this mode behind a confirmation, while `/jlu:execute-task` and `/jlu-goal` are autonomous and dispatch it directly, disclosing the scaffold as a ship caveat. Either way you do not prompt — you scaffold. If scaffolding or dependency install fails, report `BLOCKED` with the exact manual command to run.
 
 You read:
 
@@ -90,7 +90,7 @@ You do NOT write:
 
 ## Bootstrapping Playwright infrastructure (mode: bootstrap)
 
-When dispatched with `MODE=bootstrap`, the UI service worktree has no Playwright infra and the orchestrator has already obtained user confirmation. Scaffold the minimum runnable setup, then fall through to `derive-from-spec`.
+When dispatched with `MODE=bootstrap`, the UI service worktree has no Playwright infra. Scaffold the minimum runnable setup, then fall through to `derive-from-spec`. Never prompt for confirmation — the caller already decided.
 
 **Idempotency first.** For each artifact below, write it only if absent. Never overwrite a pre-existing `playwright.config.{ts,js}` or fixture — those are consumer-owned.
 

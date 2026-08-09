@@ -1,7 +1,7 @@
 # Sub-Agent Operational Baseline
 
 > Shared operational rules for every TDD-pipeline sub-agent dispatched by `/jlu-execute-task`:
-> `jlu-test-writer`, `jlu-implementer`, `jlu-tdd-cycle`, `jlu-refactor-agent`, `jlu-spec-reviewer`, `jlu-build-validator`.
+> `jlu-test-writer`, `jlu-implementer`, `jlu-tdd-cycle`, `jlu-refactor-agent`, `jlu-build-validator`.
 >
 > Read this file once at the start of your session. Your agent-specific prompt extends these rules — when guidance conflicts (e.g., refactor-agent has stricter "never touch test files"), the agent-specific rule wins.
 

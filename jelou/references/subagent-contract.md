@@ -41,7 +41,7 @@
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `agent` | string | yes | The role of the reporting agent (e.g., `test-writer`, `implementer`, `spec-reviewer`, `proposal-agent`). |
+| `agent` | string | yes | The role of the reporting agent (e.g., `test-writer`, `implementer`, `build-validator`, `proposal-agent`). |
 | `task` | string | yes | The task slug this work belongs to. |
 | `service` | string | yes | The service ID the agent was working on. Use `"global"` for agents working across services (e.g., proposal-agent global pass). |
 | `status` | enum | yes | Current status: `pending` (not started), `in_progress` (still working), `success` (completed successfully), `blocked` (cannot continue), `failed` (completed with errors). |
@@ -114,25 +114,19 @@
 }
 ```
 
-### Final QA Validation (spec-reviewer)
+### Build Validation Success
 
 ```json
 {
-  "agent": "spec-reviewer",
+  "agent": "build-validator",
   "task": "add-user-auth",
   "service": "service-auth",
   "status": "success",
-  "outcome": "Final validation complete. All 47 tests pass. Coverage: 94% lines, 89% branches. All acceptance criteria from SPEC.md verified. Cross-service contract with service-frontend validated via integration tests.",
-  "risks": [
-    {
-      "description": "Branch coverage below 90% in error-handling module",
-      "severity": "low",
-      "mitigation": "Non-blocking for this task. Added to CONCERNS.md for future improvement."
-    }
-  ],
+  "outcome": "Build green after 1 auto-fix round: a missing type import in token.service.ts. No further compile errors.",
+  "risks": [],
   "next_actions": [],
   "artifacts": [
-    "coverage/lcov-report/index.html"
+    "src/auth/token.service.ts"
   ]
 }
 ```

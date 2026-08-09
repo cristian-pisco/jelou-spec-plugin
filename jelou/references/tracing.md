@@ -150,9 +150,9 @@ also carries `expected_improvement`.
 - `classifyFailureMode({ name, agent_role, escalation_reason })`
   (`bin/lib/trace/failure.mjs`) is role/context based — never the hashed
   `error_signature`: `qa-agent`/`test-writer`/`spec-reviewer` → `verification`
-  (legacy note: the `qa-agent` role remains in `VERIFICATION_ROLES` only to
-  classify historical spans from tasks traced before the agent was retired —
-  it is not a live dispatch role);
+  (legacy note: `qa-agent` and `spec-reviewer` are `RETIRED_VERIFICATION_ROLES` —
+  they stay in `VERIFICATION_ROLES` only to classify historical spans from tasks
+  traced before those agents were retired, and neither is a live dispatch role);
   `spec-interviewer`/`proposal-agent` → `spec`; an `escalation_reason` indicating
   coordination (or a phase span with multiple failed children) → `coordination`;
   `implementer`/`build-validator`/`refactor-agent` → `execution`; otherwise

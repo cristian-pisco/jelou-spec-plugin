@@ -729,7 +729,7 @@ Use the `/jlu-trace-report` skill to inspect the workspace traces:
 # agent_role       n   p50      p95      retry_rate  escalation_rate
 # implementer      14  62.0s    140.0s   21%         0%
 # test-writer      8   28.0s    35.0s    0%          0%
-# spec-reviewer    5   18.0s    24.0s    0%          0%
+# build-validator  3   18.0s    24.0s    0%          0%
 ```
 
 Other modes: `--by-phase` (durations grouped by `service:phase_num`), `--by-task <slug>` (full span tree of one task), `--trends` (week-over-week dispatch counts per agent).
@@ -766,7 +766,7 @@ You don't instrument anything by hand: running the normal lifecycle emits the wh
 /jlu-trace-report --by-agent
 # agent_role   n   p50    p95     retry_rate  escalation_rate
 # implementer    19  1.0s   1.0s    42%         0%
-# spec-reviewer  1   1.0s   1.0s    0%          100%
+# test-writer    1   1.0s   1.0s    0%          100%
 
 node bin/trace-analyze.mjs --by-task add-auth   # full span tree for one task
 ```
@@ -1032,7 +1032,6 @@ flowchart TB
             build["build-validator"]
         end
         subgraph delivery["Delivery"]
-            specrev["spec-reviewer"]
             shipr["ship-runner · per service"]
             confl["conflict-resolver"]
             rprr["resolve-pr-runner · per PR"]
@@ -1070,11 +1069,9 @@ flowchart TB
     refine --> spec_int
     exec --> proposal --> prop_file
     exec --> tddc --> refac
-    exec --> specrev
-    specrev --> impl
+    exec --> impl
     exec --> tw & uiw
     exec --> build
-    ship --> specrev
     ship --> shipr --> prs
     shipr --> deps & build & confl & git
     rpr --> rprr

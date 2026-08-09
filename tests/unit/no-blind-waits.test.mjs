@@ -19,7 +19,6 @@ const PROCESS_RUNNING_AGENTS = [
   'jlu-refactor-agent',
   'jlu-resolve-pr-runner',
   'jlu-ship-runner',
-  'jlu-spec-reviewer',
   'jlu-tdd-cycle',
   'jlu-test-suite-runner',
   'jlu-test-writer',

@@ -8,7 +8,8 @@
 // canonical text lives once in jelou/references/subagent-base.md; code-authoring
 // agents inherit it by referencing that file. This suite is self-enforcing: a new
 // code-writing agent that forgets the reference, or a contract that drops the
-// rule, turns the suite red.
+// rule, turns the suite red. Nothing verifies the rule on the finished diff — the
+// agent that did (jlu-spec-reviewer) is retired.
 
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
@@ -72,13 +73,22 @@ describe('no-comments rule — every code-authoring agent inherits the doctrine'
   }
 });
 
-describe('no-comments rule — QA gate enforces it on the diff', () => {
-  test('jlu-spec-reviewer.md flags narrating comments as FAIL', () => {
-    const src = read('agents/jlu-spec-reviewer.md');
-    assert.match(
-      src,
-      RULE_PHRASE,
-      'jlu-spec-reviewer.md must keep the check that flags line-by-line comments as a FAIL',
-    );
+describe('no-comments rule — no QA gate enforces it on the diff', () => {
+  test('the retired QA agent is gone from every runtime', () => {
+    for (const rel of [
+      'agents/jlu-spec-reviewer.md',
+      '.opencode/agents/jlu-spec-reviewer.md',
+      '.codex/agents/jlu-spec-reviewer.toml',
+    ]) {
+      assert.ok(!existsSync(join(ROOT, rel)), `${rel} must not exist — the agent is retired`);
+    }
+  });
+
+  test('the doctrine survives its enforcer — only the authors carry it now', () => {
+    assert.match(read('jelou/references/subagent-base.md'), RULE_PHRASE);
+    const executeTask = read('jelou/workflows/execute-task.md');
+    assert.match(executeTask, /### 8c\..*RETIRED/);
+    assert.match(executeTask, /The no-comments rule/);
+    assert.match(executeTask, /No agent re-reads the diff to catch a\s*comment that slipped through/);
   });
 });

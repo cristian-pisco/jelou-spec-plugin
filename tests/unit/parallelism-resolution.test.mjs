@@ -80,12 +80,23 @@ describe('parallelism resolution — the orchestrator never resolves auto itself
     }
   });
 
-  test('8b drops to one test worker under fan-out', () => {
-    const s8b3 = section('#### 8b.3 — Build the affected-tests command', '#### 8b.4');
-    assert.match(s8b3, /`TASK_FANOUT_CAP > 1`: drop every command to \*\*1 worker\*\*/);
-    assert.match(s8b3, /--maxWorkers=1/);
-    assert.match(s8b3, /--poolOptions\.threads\.maxThreads=1/);
-    assert.match(s8b3, /2 × cap/);
+  test('8b drops to one test worker under fan-out, via the resolver --workers flag', () => {
+    const s8b2 = section('#### 8b.2 — Resolve the affected-tests command', '#### 8b.4');
+    assert.match(s8b2, /resolve-affected-tests\.mjs/);
+    assert.match(s8b2, /--workers=<1 when TASK_FANOUT_CAP > 1, else 2>/);
+    assert.match(s8b2, /`TASK_FANOUT_CAP = 1` → `--workers=2`/);
+    assert.match(s8b2, /`TASK_FANOUT_CAP > 1` → `--workers=1`/);
+    assert.match(s8b2, /2 × cap/);
+  });
+
+  test('8b never runs a full suite — full-suite routes to skip + caveat', () => {
+    const s8b2 = section('#### 8b.2 — Resolve the affected-tests command', '#### 8b.4');
+    assert.match(s8b2, /`full-suite` is never run/);
+    assert.match(s8b2, /do NOT run `PLAN\.command`/);
+    assert.match(s8b2, /AFFECTED_TESTS_RESULT\[service-id\] = SKIPPED/);
+    assert.match(s8b2, /SHIP_CAVEATS/);
+    assert.match(s8b2, /\/jlu-test-suite/);
+    assert.match(s8b2, /never runs a bare full suite/);
   });
 
   test('the Step 7 dispatch wrapper carries the measurement attrs', () => {

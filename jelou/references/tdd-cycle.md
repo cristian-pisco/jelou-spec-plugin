@@ -61,7 +61,7 @@ RED→GREEN loop per requirement in one session. Multi-service phases fan out on
 
 `jlu-test-writer` and `jlu-implementer` are not part of per-phase authoring. They
 retain other roles: `jlu-test-writer` authors Tier 2 integration tests (Step 8a) and
-backend E2E suites (Step 8f); `jlu-implementer` applies fixes (final-QA fix in 8c,
+backend E2E suites (`/jlu-goal` Phase 3.5, the only stage that also runs them); `jlu-implementer` applies fixes (final-QA fix in 8c,
 affected-test fix in 8b) and Tier 2 wiring. There is no separate test-dispute
 mechanism — the authoring agent owns both test and implementation, and the
 Self-Correction rule (documented test rewrites with a spec quote, audited by QA)
@@ -147,7 +147,14 @@ The TDD cycle uses a tiered testing strategy to keep the feedback loop fast whil
 
 ### Test Tier Compliance (canonical Docker/Testcontainers ban)
 
-This section is the canonical owner of the ban. `jlu-spec-reviewer` (Final QA mode) enforces it verbatim:
+This section is the canonical owner of the ban. **The ban is currently unenforced.**
+`jlu-spec-reviewer` used to verify it verbatim against the task diff at Step 8c; that
+agent is retired and no other agent re-reads the diff to check compliance. What
+remains is self-compliance by the agents that author tests (`jlu-tdd-cycle` and
+`jlu-test-writer` both carry it in their own checklists) — a test file that imports
+Testcontainers outside the E2E path now reaches the PR unflagged.
+
+The rule itself is unchanged:
 
 - Verify that Tier 1 test files do NOT import database connection utilities or other heavy infrastructure.
 - Verify that no test file outside the E2E path (`test/e2e/**`, `*.e2e-spec.ts`) imports Testcontainers, `dockerode`, or any library that spawns containers, and that no such test or helper shells out to `docker`, `docker compose`, or `podman`. Docker is banned in the TDD pipeline. The E2E path is the single exception — it is executed only by `/jlu-goal`, never by the TDD pipeline, so finding Testcontainers there is allowed; finding it anywhere else is a FAIL.
@@ -167,18 +174,31 @@ The TDD cycle's value comes from speed. Integration tests' value comes from fide
 | Step | What runs | Times |
 |------|-----------|-------|
 | 7d TDD Cycle | Phase test files only (Tier 1) | per slice |
-| Step 8c Final QA | Nothing (static analysis) | 0 |
+| Step 8c Final QA | Retired — no dispatch | 0 |
 | Step 8a Tier 2 | Deferred Tier 2 test files only | ≤1 total |
 | 8a.3 Refactor | Union of task test files (Tier 1) | 0-1 per service |
 | Step 8a.5 Build | Nothing (compile only) | 1 per service |
 | Step 8b Regression | Affected tests only (`--maxWorkers=2`) | 1 total |
 
-## Final QA Validation
+## Final QA Validation — RETIRED
 
-Static quality validation happens exactly once per task: after all phases are done, `jlu-spec-reviewer` (Final QA mode, Step 8c) runs a full static pass covering:
+There is no static quality validation pass in the TDD pipeline any more. `execute-task`
+Step 8c used to run one `jlu-spec-reviewer` dispatch after all phases were done; the
+agent is deleted and the step is retired (see `jelou/workflows/execute-task.md` Step 8c
+for the measured reason).
 
-- Coverage analysis across the entire task scope (inferred statically — no test execution).
-- Edge case and coverage-breadth review against the spec and the input contracts.
+These checks no longer happen anywhere, and no agent inherited them:
+
+- Coverage analysis across the entire task scope.
+- Edge case review against the spec.
 - Cross-service contract verification.
-- Test-rewrite audit and `tdd_flags` scrutiny from the deferred per-phase entries.
+- Test-rewrite audit and `tdd_flags` scrutiny from the per-phase reports.
 - Consistency between artifacts (SPEC.md requirements vs. test coverage vs. implementation).
+
+Coverage-breadth is the one exception, and only partially: `bin/probe-coverage-breadth.mjs`
+still runs as an advisory heuristic at `/jlu-ship` Step 2b.1 (changed DTO/schema files
+only) and inside `/jlu-goal` Phase 4.5.
+
+What still validates the task is execution, not review: Step 8a/8b run the affected
+tests, `/jlu-test-suite` runs the full suite on demand, and `/jlu-goal` runs the real
+E2E suites against a booted stack.

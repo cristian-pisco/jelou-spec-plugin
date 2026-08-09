@@ -188,27 +188,28 @@ describe('execute-task auto-chain (Step 9.5)', () => {
 });
 
 describe('advisory findings never stop the chain', () => {
-  test('8c triages QA findings into blocking vs advisory', () => {
-    assert.match(step8c, /Finding classification — advisory vs blocking/);
-    assert.match(step8c, /A QA agent cannot create a gate/);
-    assert.match(step8c, /requires\s*a smoke test/);
-    assert.match(step8c, /NEVER blocks Step 9 or Step 9\.5/);
-    assert.match(step8c, /\*\*Store\*\*: `SHIP_CAVEATS`/);
+  test('8c is retired and names what it no longer enforces', () => {
+    assert.match(step8c, /RETIRED/);
+    assert.match(step8c, /Nothing inherits the gate/);
+    assert.match(step8c, /Unenforced from here on/);
+    assert.ok(!existsSync(join(ROOT, 'agents', 'jlu-spec-reviewer.md')));
   });
 
-  test('the final QA reviewer emits advisory rows and cannot create a merge gate', () => {
-    const reviewer = read('agents/jlu-spec-reviewer.md');
-    assert.match(reviewer, /### Advisory \/ Not Verifiable Here/);
-    assert.match(reviewer, /become the orchestrator's\s*`SHIP_CAVEATS`/);
-    assert.match(reviewer, /You cannot create a merge gate/);
-    assert.match(reviewer, /never phrased as\s*"must be verified before merge"/);
+  test('SHIP_CAVEATS survives the retirement as a mechanism', () => {
+    assert.match(step8c, /`SHIP_CAVEATS` is unaffected as a mechanism/);
+    assert.match(step8c, /Steps 8e and 8g still append to it/);
+    assert.match(step8c, /### Not verified by this PR/);
   });
 
   test('an ignored E2E suite path resolves without a question', () => {
     assert.match(executeTask, /### Step 8g — Ignored suite path/);
-    assert.match(executeTask, /git check-ignore -v <suite-path>/);
+    assert.match(executeTask, /classify-ignored-suite\.mjs/);
+    assert.match(executeTask, /`not_ignored` \/ `commit`/);
+    assert.match(executeTask, /`local_rule` \/ `force_add`/);
+    assert.match(executeTask, /`repo_rule` \/ `leave_uncommitted`/);
     assert.match(executeTask, /local, uncommitted\*\* rule/);
     assert.match(executeTask, /committed repo rule\*\*/);
+    assert.match(executeTask, /Exit 3 is a git failure/);
     assert.match(executeTask, /disclosure, not a\s*stop, and never a question/);
   });
 
@@ -223,7 +224,7 @@ describe('advisory findings never stop the chain', () => {
 
   test('9.5b hands the caveats and the autonomous flag to ship', () => {
     assert.match(step95, /Hand ship two inputs: the `SHIP_CAVEATS` list/);
-    assert.match(step95, /8c\/8e\/8f\/8g/);
+    assert.match(step95, /8e\/8g/);
   });
 
   test('the recipe carries a closed list of legitimate stops', () => {
@@ -237,27 +238,33 @@ describe('advisory findings never stop the chain', () => {
   });
 });
 
-describe('spec-reviewer dual-mode contract', () => {
-  const reviewer = read('agents/jlu-spec-reviewer.md');
-
-  test('the agent requires a literal first-line MODE and never infers it', () => {
-    assert.match(reviewer, /The FIRST line of every dispatch prompt you receive is a literal mode declaration/);
-    assert.match(reviewer, /MODE: compliance/);
-    assert.match(reviewer, /MODE: final-qa/);
-    assert.match(reviewer, /missing, malformed, or names any other mode, return `STATUS: NEEDS_CONTEXT`/);
-    assert.match(reviewer, /NEVER infer the mode/);
+describe('spec-reviewer retirement', () => {
+  test('the agent file is gone from the canonical dir and both runtime mirrors', () => {
+    for (const rel of [
+      'agents/jlu-spec-reviewer.md',
+      '.opencode/agents/jlu-spec-reviewer.md',
+      '.codex/agents/jlu-spec-reviewer.toml',
+    ]) {
+      assert.ok(!existsSync(join(ROOT, rel)), `${rel} must not exist — the agent is retired`);
+    }
   });
 
-  test('both dispatch sites lead with their literal MODE line', () => {
-    assert.match(step8c, /FIRST line is the literal `MODE: final-qa`/);
-    assert.match(ship, /FIRST line is the literal `MODE: compliance`/);
+  test('neither dispatch site spawns it any more', () => {
+    assert.doesNotMatch(step8c, /MODE: final-qa`\b.*NEEDS_CONTEXT/s);
+    assert.doesNotMatch(step8c, /Spawn `jlu-spec-reviewer`/);
+    assert.doesNotMatch(ship, /Spawn `jlu-spec-reviewer` agent/);
+    assert.match(ship, /### 2b\. Spec Compliance Review: RETIRED/);
   });
 
-  test('tdd-cycle report produces the sections that feed tdd_flags', () => {
+  test('ship keeps the deterministic coverage-breadth probe', () => {
+    assert.match(ship, /probe-coverage-breadth\.mjs/);
+    assert.match(ship, /always runs,\s*advisory/);
+  });
+
+  test('tdd-cycle report produces the sections that used to feed tdd_flags', () => {
     const tddCycle = read('agents/jlu-tdd-cycle.md');
     assert.match(tddCycle, /### Test Objections/);
     assert.match(tddCycle, /### Deviations from Expected Approach/);
-    assert.match(tddCycle, /carries this section into `tdd_flags`/);
   });
 });
 
