@@ -19,19 +19,36 @@ export function wireEnv({ envText, peers, slug, peerInternalPort }) {
   return out.join('\n');
 }
 
+const GRPC_VARIABLE_RE = /(^|_)GRPC(_|$)/;
+
 function primaryPort(service) {
   return service.ports.find((port) => port.primary);
 }
 
-export function topologyProviderUrl({ consumer, provider, slug, hostGateway = 'host.docker.internal' }) {
-  const port = primaryPort(provider);
-  if (consumer.topology.runtime === 'host') return `http://localhost:${port.host}`;
-  if (provider.topology.runtime === 'host') return `http://${hostGateway}:${port.host}`;
-  const hostname = provider.policy === 'task-isolated' ? projectName(provider.id, slug) : provider.id;
-  return `http://${hostname}:${port.internal}`;
+export function isGrpcVariable(variable) {
+  return GRPC_VARIABLE_RE.test(String(variable || ''));
 }
 
-export function buildTopologyOverlays({ services, slug, hostGateway }) {
+function portForVariable(provider, variable) {
+  if (!isGrpcVariable(variable)) return primaryPort(provider);
+  const grpc = provider.ports.find((port) => isGrpcVariable(port.portEnv));
+  return grpc || primaryPort(provider);
+}
+
+export function providerNetworkAlias({ provider, slug, aliasByService = {} }) {
+  if (provider.policy === 'task-isolated') return projectName(provider.id, slug);
+  return provider.networkAlias || aliasByService[provider.id] || provider.id;
+}
+
+export function topologyProviderUrl({ consumer, provider, variable, slug, hostGateway = 'host.docker.internal', aliasByService = {} }) {
+  const port = portForVariable(provider, variable);
+  const scheme = isGrpcVariable(variable) ? '' : 'http://';
+  if (consumer.topology.runtime === 'host') return `${scheme}localhost:${port.host}`;
+  if (provider.topology.runtime === 'host') return `${scheme}${hostGateway}:${port.host}`;
+  return `${scheme}${providerNetworkAlias({ provider, slug, aliasByService })}:${port.internal}`;
+}
+
+export function buildTopologyOverlays({ services, slug, hostGateway, aliasByService }) {
   const overlays = new Map();
   for (const consumer of services) {
     const routes = Object.entries(consumer.peers || {});
@@ -52,7 +69,7 @@ export function buildTopologyOverlays({ services, slug, hostGateway }) {
       }
       values.push([
         variable,
-        `${topologyProviderUrl({ consumer, provider: candidates[0], slug, hostGateway })}${consumer.peerSuffixes?.[variable] || ''}`,
+        `${topologyProviderUrl({ consumer, provider: candidates[0], variable, slug, hostGateway, aliasByService })}${consumer.peerSuffixes?.[variable] || ''}`,
       ]);
     }
     if (values.length === 0) continue;
@@ -64,14 +81,14 @@ export function buildTopologyOverlays({ services, slug, hostGateway }) {
   return overlays;
 }
 
-export function applyTopologyOverlays({ services, registryServices, slug, sourceMode, overlayDirectory, previousOverlays = [], hostGateway }) {
+export function applyTopologyOverlays({ services, registryServices, slug, sourceMode, overlayDirectory, previousOverlays = [], hostGateway, aliasByService = {} }) {
   const registryById = new Map(registryServices.map((service) => [service.id, service]));
   const graph = services.map((service) => ({
     ...service,
     peers: registryById.get(service.id)?.peers || {},
     peerSuffixes: registryById.get(service.id)?.peerSuffixes || {},
   }));
-  const generated = buildTopologyOverlays({ services: graph, slug, hostGateway });
+  const generated = buildTopologyOverlays({ services: graph, slug, hostGateway, aliasByService });
   const overlayFiles = [];
   const plannedServices = services.map((service) => {
     const overlay = generated.get(service.id);

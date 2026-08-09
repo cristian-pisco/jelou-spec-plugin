@@ -67,8 +67,20 @@ export function resolveWorkspace(startDir, { allowGitFallback = false } = {}) {
   throw err;
 }
 
-export function bootPathFor({ configPath }) {
-  return isFile(configPath) ? 'tmux' : 'jelou-stack';
+function registeredTmuxServiceCount(configPath) {
+  try {
+    const parsed = JSON.parse(readFileSync(configPath, 'utf8'));
+    return Array.isArray(parsed.services) ? parsed.services.length : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export function bootPathFor({ root, configPath }) {
+  const base = root || (configPath ? dirname(configPath) : null);
+  if (base && (hasUnifiedRegistry(base) || isFile(join(base, 'registry', 'registry.json')))) return 'jelou-stack';
+  if (!configPath || !isFile(configPath)) return 'jelou-stack';
+  return registeredTmuxServiceCount(configPath) > 0 ? 'tmux' : 'jelou-stack';
 }
 
 export function resolveSpecWorkspace(startDir) {

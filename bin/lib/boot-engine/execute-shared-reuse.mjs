@@ -169,7 +169,23 @@ async function bootHost(entry, deps, started) {
   };
 }
 
+export const DEFAULT_CODE_TARGET = '/app';
+
+export function codeTargetKillScript(codeTarget = DEFAULT_CODE_TARGET) {
+  return `for entry in /proc/[0-9]*; do pid=\${entry#/proc/}; [ "$pid" = "$$" ] && continue; cwd=$(readlink "$entry/cwd" 2>/dev/null) || continue; case "$cwd" in ${codeTarget}|${codeTarget}/*) kill "$pid" 2>/dev/null ;; esac; done; true`;
+}
+
+async function killContainerDevTree(entry, deps) {
+  const script = codeTargetKillScript(entry.codeTarget || DEFAULT_CODE_TARGET);
+  await deps.runner('docker', composeArgs(entry, ['-f', entry.composeFile, 'exec', '-T', entry.dockerService, 'sh', '-lc', script]), { cwd: entry.cwd });
+}
+
 async function restartServing(entry, deps) {
+  if (entry.launcher === 'docker-exec') {
+    if (entry.teardownCmd) await deps.runner('sh', ['-c', entry.teardownCmd], { cwd: entry.cwd });
+    await killContainerDevTree(entry, deps);
+    return null;
+  }
   if (entry.launcher === 'docker') {
     const args = composeArgs(entry, ['-f', entry.composeFile, 'up', '-d', '--force-recreate']);
     if (entry.dockerService) args.push(entry.dockerService);
@@ -196,6 +212,10 @@ async function readinessCheckOnce(readiness, deps, readLogs, pattern) {
     return probeHttp2xx(readiness, deps);
   }
   return false;
+}
+
+export async function pollReadinessSignal({ readiness, readyTimeoutS }, deps, readLogs) {
+  return pollReadiness({ readiness, readyTimeoutS }, deps, readLogs);
 }
 
 async function pollReadiness(entry, deps, readLogs) {
@@ -268,7 +288,7 @@ function removeHostLogDir(logDir) {
   }
 }
 
-export async function verifySharedReuse(entry, {
+export function resolveDeps({
   runner = defaultRunner,
   probePort = defaultProbePort,
   probeHttp: probeHttpFn = defaultProbeHttp,
@@ -276,48 +296,66 @@ export async function verifySharedReuse(entry, {
   pollIntervalMs = POLL_INTERVAL_MS,
   now = Date.now,
   readEnvironmentFile = (path) => readFileSync(path, 'utf8'),
-  onLifecycle = () => {},
 } = {}) {
-  const deps = { runner, probePort, probeHttp: probeHttpFn, sleep, pollIntervalMs, now, readEnvironmentFile };
+  return { runner, probePort, probeHttp: probeHttpFn, sleep, pollIntervalMs, now, readEnvironmentFile };
+}
+
+async function readinessOutcome(entry, deps, readLogs, now) {
+  const t0 = now();
+  const readiness = await pollReadiness(entry, deps, readLogs);
+  const readinessMs = now() - t0;
+  if (readiness.ok) return { outcome: { status: 'green', cause: null, readiness_ms: readinessMs }, hints: [] };
+  const port = entry.ports && entry.ports.find((p) => p.primary)?.host;
+  const staleSignal = readiness.cause === 'ready_timeout' && entry.readiness.type === 'stdout_match';
+  if (staleSignal && port && await deps.probePort(port)) {
+    return { outcome: { status: 'green-degraded', cause: 'ready_signal_stale', readiness_ms: readinessMs }, hints: [] };
+  }
+  const hints = readiness.cause === 'ready_timeout' ? errorHints(await readLogs()) : [];
+  return { outcome: { status: 'failed', cause: readiness.cause, readiness_ms: readinessMs }, hints };
+}
+
+const GREEN_STATUSES = new Set(['green', 'green-degraded', 'green-preexisting']);
+
+export async function bootSharedReuse(entry, options = {}) {
+  const deps = resolveDeps(options);
+  const onLifecycle = options.onLifecycle || (() => {});
   const started = { containers: [], processes: [] };
 
   const alreadyServing = await probeAlreadyServing(entry, deps);
   if (alreadyServing && !entry.restartRequired) {
     onLifecycle({ stage: LIFECYCLE_STAGES.boot, outcome: 'reused' });
-    return { status: 'green-preexisting', cause: null, readiness_ms: 0, command_executed: false, started, teardown_clean: true, error_hints: [] };
+    return { status: 'green-preexisting', cause: null, readiness_ms: 0, command_executed: false, started, error_hints: [], logDir: null, readLogs: async () => '' };
   }
 
   onLifecycle({ stage: LIFECYCLE_STAGES.boot, outcome: 'started' });
-  let commandExecuted = false;
-  let outcome;
-  let teardownClean = true;
-  let hostLogDir = null;
-  let hints = [];
-  try {
-    const restarted = alreadyServing && entry.restartRequired ? await restartServing(entry, deps) : null;
-    const boot = restarted || (HOST_LAUNCHERS.has(entry.launcher)
-      ? await bootHost(entry, deps, started)
-      : await bootDockerFamily(entry, deps, started));
-    hostLogDir = boot.logDir || null;
-    commandExecuted = boot.commandExecuted;
-    if (boot.error) {
-      outcome = { status: 'failed', cause: boot.error, readiness_ms: 0 };
-    } else {
-      const t0 = now();
-      const readiness = await pollReadiness(entry, deps, boot.readLogs);
-      const readinessMs = now() - t0;
-      if (readiness.cause === 'ready_timeout') hints = errorHints(await boot.readLogs());
-      outcome = readiness.ok
-        ? { status: 'green', cause: null, readiness_ms: readinessMs }
-        : { status: 'failed', cause: readiness.cause, readiness_ms: readinessMs };
-    }
-    onLifecycle({ stage: LIFECYCLE_STAGES.boot, outcome: outcome.status === 'green' ? 'succeeded' : 'failed', cause: outcome.cause });
-  } finally {
-    const ownsResources = started.containers.length > 0 || started.processes.length > 0;
-    if (ownsResources) onLifecycle({ stage: LIFECYCLE_STAGES.cleanup, outcome: 'started' });
-    teardownClean = await restoreToFound(entry, deps, started);
-    if (ownsResources) onLifecycle({ stage: LIFECYCLE_STAGES.cleanup, outcome: teardownClean ? 'succeeded' : 'failed' });
-    if (hostLogDir) removeHostLogDir(hostLogDir);
+  const restarted = alreadyServing && entry.restartRequired ? await restartServing(entry, deps) : null;
+  const boot = restarted || (HOST_LAUNCHERS.has(entry.launcher)
+    ? await bootHost(entry, deps, started)
+    : await bootDockerFamily(entry, deps, started));
+  if (boot.error) {
+    onLifecycle({ stage: LIFECYCLE_STAGES.boot, outcome: 'failed', cause: boot.error });
+    return { status: 'failed', cause: boot.error, readiness_ms: 0, command_executed: boot.commandExecuted, started, error_hints: [], logDir: boot.logDir || null, readLogs: boot.readLogs };
   }
-  return { ...outcome, command_executed: commandExecuted, started, teardown_clean: teardownClean, error_hints: hints };
+  const { outcome, hints } = await readinessOutcome(entry, deps, boot.readLogs, deps.now);
+  onLifecycle({ stage: LIFECYCLE_STAGES.boot, outcome: GREEN_STATUSES.has(outcome.status) ? 'succeeded' : 'failed', cause: outcome.cause });
+  return { ...outcome, command_executed: boot.commandExecuted, started, error_hints: hints, logDir: boot.logDir || null, readLogs: boot.readLogs };
+}
+
+export async function verifySharedReuse(entry, options = {}) {
+  const deps = resolveDeps(options);
+  const onLifecycle = options.onLifecycle || (() => {});
+  let result;
+  try {
+    result = await bootSharedReuse(entry, options);
+  } catch (error) {
+    result = { status: 'failed', cause: `boot_threw: ${error && error.message || error}`, readiness_ms: 0, command_executed: false, started: { containers: [], processes: [] }, error_hints: [], logDir: null };
+  }
+  const { started, logDir } = result;
+  const ownsResources = started.containers.length > 0 || started.processes.length > 0;
+  if (ownsResources) onLifecycle({ stage: LIFECYCLE_STAGES.cleanup, outcome: 'started' });
+  const teardownClean = await restoreToFound(entry, deps, started);
+  if (ownsResources) onLifecycle({ stage: LIFECYCLE_STAGES.cleanup, outcome: teardownClean ? 'succeeded' : 'failed' });
+  if (logDir) removeHostLogDir(logDir);
+  const { readLogs, logDir: _ignored, ...rest } = result;
+  return { ...rest, teardown_clean: teardownClean };
 }

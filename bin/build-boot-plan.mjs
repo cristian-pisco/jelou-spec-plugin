@@ -14,6 +14,7 @@ import { normalizeSourceMode } from './lib/dev-orchestrator/source-mode.mjs';
 import { resolveTaskSources } from './lib/dev-orchestrator/task-source.mjs';
 import { resolveTaskContext } from './lib/dev-orchestrator/task-context.mjs';
 import { computeWorkspaceId } from './lib/dev-orchestrator/workspace.mjs';
+import { isContainerLauncher } from './lib/boot-engine/launcher.mjs';
 
 export function unsafeTeardownEntries(plan) {
   const out = [];
@@ -31,13 +32,19 @@ function assertTeardownsAreSafe(plan) {
   throw new Error(`refusing to build a boot plan — fix these dev blocks in services.yaml first:\n${detail}`);
 }
 
-function portRequests(registry) {
-  return registry.services.flatMap((service) => [service.dev.port_env, ...(service.dev.extra_ports || [])].map((portEnv) => ({
-    serviceId: service.id,
-    portEnv,
-    internal: service.dev.ports[portEnv],
-    primary: portEnv === service.dev.port_env,
-  })));
+function allocatesHostPorts(service, isolated) {
+  return isolated.has(service.id) || !isContainerLauncher(service.dev.launcher);
+}
+
+function portRequests(registry, isolated) {
+  return registry.services
+    .filter((service) => allocatesHostPorts(service, isolated))
+    .flatMap((service) => [service.dev.port_env, ...(service.dev.extra_ports || [])].map((portEnv) => ({
+      serviceId: service.id,
+      portEnv,
+      internal: service.dev.ports[portEnv],
+      primary: portEnv === service.dev.port_env,
+    })));
 }
 
 export function buildPlanForWorkspace({ projectRoot, workspaceRoot, slug, sourceMode, taskContext, worktreePaths, occupied, livePorts, persistState = false, stateBaseDir, resolveImage, readEnv, inspectGit, pathExists, listenerDiscovery = discoverListeningPorts }) {
@@ -63,8 +70,9 @@ export function buildPlanForWorkspace({ projectRoot, workspaceRoot, slug, source
   const listeners = livePorts
     || (occupied ? occupied.map((port) => ({ port, ownerTag: null })) : null)
     || (persistState ? listenerDiscovery({ state: previousState }) : []);
+  const isolatedServices = new Set(sources.filter((source) => source.affected || source.mode === 'worktree').map((source) => source.serviceId));
   const portAllocations = allocateOwnedPorts({
-    requests: portRequests(registry),
+    requests: portRequests(registry, isolatedServices),
     workspaceId,
     taskSlug: slug,
     sourceMode: normalizedMode,

@@ -145,7 +145,7 @@ function expectedHybridDescriptors(workspaceId, slug) {
       id: 'dashboard-server', affected: false, sourcePath: '/repos/dashboard-server',
       commit: '2222222222222222222222222222222222222222', launcher: 'docker-exec',
       topology: { runtime: 'container', host: 'localhost', container: { service: 'app', network: 'app-network' } }, dependencies: [],
-      ports: [{ internal: 8484, host: 8484, portEnv: 'APP_PORT', primary: true, ownerTag: ownerTag('dashboard-server', 'APP_PORT') }],
+      ports: [{ internal: 8484, host: 8484, portEnv: 'APP_PORT', primary: true, published: false, ownerTag: ownerTag('dashboard-server', 'APP_PORT') }],
       readiness: { type: 'stdout_match', pattern: 'started' },
       environmentOverlay: { path: null, digest: null, restartRequired: false },
       ownership: { source: 'main', runtime: `${workspaceId}:${slug}:task-aware:dashboard-server` },

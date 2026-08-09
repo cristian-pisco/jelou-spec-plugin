@@ -234,6 +234,21 @@ made this path real and tested but has not yet re-routed a workflow through it.)
 `wiredEnv` is `null` unless the service peers a `task-isolated` service (a main-branch service
 A can carry a non-null `wiredEnv` pointing at a worktree peer B's task URL).
 
+**Do not execute this contract by hand either.** `bin/boot-stack.mjs` is its executable form —
+it walks the plan, calls `planEntryToCommands` per entry, runs every step below in order, and
+leaves what it started running. Drive it, and read the rest of this section as the specification
+it implements, not as a script to transcribe:
+
+```bash
+node {plugin-root}/bin/boot-stack.mjs --workspace-id <id> --slug <slug> --run-id <runId> --plan-file <planFile>
+```
+
+It prints `{ services, skipped, green, degraded, down, mutations, lifecycle }`. `mutations` are
+the compose-project teardown records to journal; `skipped` names entries it refused to boot (host
+launchers, and `task-isolated` entries with no `projectName`) with the reason. **Never boot with
+`verifySharedReuse`** — it tears down in a `finally` everything it started, so it can only verify.
+`bootSharedReuse` (same module) is the booting entry point, and `boot-stack.mjs` calls it.
+
 **Do not build commands by hand.** For each plan entry, obtain its execution descriptor from
 `planEntryToCommands` — it owns all argv/file assembly, so the prose never hand-writes a
 `docker` flag or an `sh -lc` string:
@@ -292,6 +307,23 @@ it is ALWAYS registered for teardown:
    change earns a fresh volume automatically, and two tasks never write the same volume.
    `depsProvision` is `null` when the worktree has no lockfile — then provisioning is
    unchanged from before this contract.
+4c. **Schema migrations — declared, never guessed.** If `descriptor.migrate` is non-null, run it
+   now, after dependencies and BEFORE the dev command: `migrate.exec` (a `docker exec` into the
+   container) when `runs_in: 'container'`, otherwise `migrate.command` in `migrate.cwd`. It comes
+   from the dev block's optional `migrate:` key and runs ONLY when declared:
+
+   ```yaml
+   migrate:
+       command: npx drizzle-kit migrate
+       runs_in: container   # or host
+       blocking: true       # false → a failure warns and the service still boots
+       timeout_ms: 300000
+   ```
+
+   A `blocking` failure means this service is `down` with cause `migrate_failed` and its dev
+   command never starts — a service booted against a schema its code does not expect fails later
+   as a 500 nobody traces back to the boot. A non-blocking failure is reported in
+   `services[].error_hints` and the boot continues.
 5. If `descriptor.exec` is non-null, `docker <descriptor.exec>` — execs the dev command into
    the idle container, redirecting to `/tmp/<projectName>.dev.log`. (`exec` is null for a
    non-`docker-exec` launcher, whose container runs its command from its own entrypoint.)

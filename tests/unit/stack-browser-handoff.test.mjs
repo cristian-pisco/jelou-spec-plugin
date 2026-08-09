@@ -42,20 +42,55 @@ describe('planBrowserHandoff', () => {
 });
 
 describe('handoffSucceeded', () => {
-  test('a landing outside /login is the transferred session', () => {
-    assert.equal(handoffSucceeded('http://localhost:5175/dashboard'), true);
-    assert.equal(handoffSucceeded('http://localhost:5175/'), true);
-    assert.equal(handoffSucceeded('http://localhost:5175/loginish'), false);
+  const markers = { isLogin: 'true' };
+
+  test('a landing outside /login with every session marker present is the transferred session', () => {
+    assert.deepEqual(handoffSucceeded({ finalUrl: 'http://localhost:5175/dashboard', sessionMarkers: markers, observedStorage: { isLogin: 'true' } }), { ok: true, reason: null });
+    assert.equal(handoffSucceeded({ finalUrl: 'http://localhost:5175/', sessionMarkers: markers, observedStorage: { isLogin: 'true' } }).ok, true);
   });
 
   test('a redirect back to /login is a failed handoff, never a green stack', () => {
-    assert.equal(handoffSucceeded('http://localhost:5175/login'), false);
-    assert.equal(handoffSucceeded('http://localhost:5175/login?redirect=/dashboard'), false);
+    assert.deepEqual(handoffSucceeded({ finalUrl: 'http://localhost:5175/login', sessionMarkers: markers, observedStorage: { isLogin: 'true' } }), { ok: false, reason: 'browser-on-login' });
+    assert.equal(handoffSucceeded({ finalUrl: 'http://localhost:5175/login?redirect=/dashboard', sessionMarkers: markers }).ok, false);
+  });
+
+  test('an off-login url whose session marker is absent is NOT a green handoff', () => {
+    const verdict = handoffSucceeded({ finalUrl: 'http://localhost:5175/home', sessionMarkers: markers, observedStorage: { isLogin: null } });
+
+    assert.equal(verdict.ok, false);
+    assert.equal(verdict.reason, 'session-markers-missing:isLogin');
+  });
+
+  test('refusing to observe the app storage cannot pass as success', () => {
+    assert.deepEqual(handoffSucceeded({ finalUrl: 'http://localhost:5175/home', sessionMarkers: markers }), { ok: false, reason: 'session-markers-unobserved' });
   });
 
   test('an unusable final url is a failure rather than a throw', () => {
-    assert.equal(handoffSucceeded(''), false);
-    assert.equal(handoffSucceeded(null), false);
-    assert.equal(handoffSucceeded('/dashboard'), false);
+    for (const finalUrl of ['', null, '/dashboard']) {
+      assert.deepEqual(handoffSucceeded({ finalUrl, sessionMarkers: markers }), { ok: false, reason: 'no-final-url' });
+    }
+  });
+});
+
+describe('session markers', () => {
+  test('the plan carries the marker write and probe scripts for the app origin', () => {
+    const plan = planBrowserHandoff({ cookie, ...target, sessionVerified: true });
+
+    assert.deepEqual(plan.sessionMarkers, { isLogin: 'true' });
+    assert.match(plan.markerScript, /localStorage\.setItem\("isLogin", "true"\)/);
+    assert.match(plan.markerScript, /location\.reload\(\)/);
+    assert.match(plan.probeScript, /localStorage\.getItem/);
+  });
+
+  test('a registry-declared marker set replaces the default', () => {
+    const plan = planBrowserHandoff({ cookie, ...target, sessionVerified: true, frontend: { session_markers: { authed: '1' } } });
+
+    assert.deepEqual(plan.sessionMarkers, { authed: '1' });
+  });
+
+  test('the inject page never claims to set app-origin storage it cannot reach', () => {
+    const plan = planBrowserHandoff({ cookie, ...target, sessionVerified: true });
+
+    assert.equal(plan.page.includes('localStorage'), false);
   });
 });

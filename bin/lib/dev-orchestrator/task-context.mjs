@@ -4,7 +4,8 @@
 //   1. override
 //   2. cwd matches /.worktrees/<slug>/
 //   3. branch matches task/<slug>, spec/<slug>, or <slug> with tasks/<slug>/TASKS.md
-//   4. workspace tasks/*/TASKS.md scan: unique implementing|validating wins
+//   4. workspace TASKS.md scan (specs/<date>/<slug>/ and legacy tasks/<slug>/):
+//      unique implementing|validating wins
 //   5. _global
 // When multiple tasks are in-flight at step 4, returns "AMBIGUOUS:s1,s2,..."
 // (caller must prompt the user).
@@ -26,17 +27,32 @@ export function getCurrentBranch(cwd) {
   return r.stdout.trim();
 }
 
-function inFlightSlugs(workspaceRoot) {
+function legacyTaskPaths(workspaceRoot) {
   const tasksDir = join(workspaceRoot, 'tasks');
   if (!existsSync(tasksDir)) return [];
-  const out = [];
-  for (const name of readdirSync(tasksDir)) {
-    const tmd = join(tasksDir, name, 'TASKS.md');
-    if (!existsSync(tmd)) continue;
-    const body = readFileSync(tmd, 'utf8');
-    if (STATE_RE.test(body)) out.push(name);
+  return readdirSync(tasksDir).map((slug) => ({ slug, path: join(tasksDir, slug, 'TASKS.md') }));
+}
+
+function specTaskPaths(workspaceRoot) {
+  let locations = [];
+  try {
+    locations = listTaskLocations(workspaceRoot);
+  } catch {
+    return [];
   }
-  return out.sort();
+  return locations.map((location) => ({
+    slug: location.slug,
+    path: join(workspaceRoot, 'specs', location.date_on_disk, location.slug, 'TASKS.md'),
+  }));
+}
+
+function inFlightSlugs(workspaceRoot) {
+  const out = new Set();
+  for (const candidate of [...legacyTaskPaths(workspaceRoot), ...specTaskPaths(workspaceRoot)]) {
+    if (!existsSync(candidate.path)) continue;
+    if (STATE_RE.test(readFileSync(candidate.path, 'utf8'))) out.add(candidate.slug);
+  }
+  return [...out].sort();
 }
 
 /**

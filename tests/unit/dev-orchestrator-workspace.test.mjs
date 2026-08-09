@@ -106,15 +106,29 @@ describe('resolveWorkspace — git fallback is opt-in', () => {
 });
 
 describe('bootPathFor', () => {
-  test('a workspace holding jlu-services.json takes the tmux path', () => {
+  test('a workspace whose jlu-services.json registers services takes the tmux path', () => {
     const root = mktree();
-    writeFileSync(join(root, 'jlu-services.json'), '{}');
+    writeFileSync(join(root, 'jlu-services.json'), JSON.stringify({ services: [{ id: 'a' }] }));
     assert.equal(bootPathFor(resolveWorkspace(root)), 'tmux');
   });
 
   test('a registry-only workspace takes the jelou-stack path', () => {
     const root = mktree();
     seedSpecWorkspace(root);
+    assert.equal(bootPathFor(resolveWorkspace(root)), 'jelou-stack');
+  });
+
+  test('an empty jlu-services.json takes the jelou-stack path instead of a serviceless tmux boot', () => {
+    const root = mktree();
+    writeFileSync(join(root, 'jlu-services.json'), JSON.stringify({ services: [] }));
+    assert.equal(bootPathFor(resolveWorkspace(root)), 'jelou-stack');
+  });
+
+  test('a unified-registry workspace that also carries jlu-services.json takes the jelou-stack path', () => {
+    const root = mktree();
+    mkdirSync(join(root, 'registry'), { recursive: true });
+    writeFileSync(join(root, 'registry', 'jelou-registry.yaml'), 'services: {}');
+    writeFileSync(join(root, 'jlu-services.json'), JSON.stringify({ services: [{ id: 'a' }] }));
     assert.equal(bootPathFor(resolveWorkspace(root)), 'jelou-stack');
   });
 });

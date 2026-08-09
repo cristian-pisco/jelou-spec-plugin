@@ -3,6 +3,8 @@ import { renderOverride, projectName as taskProjectName } from '../dev-orchestra
 import { applyTopologyOverlays, wireEnv } from '../dev-orchestrator/stack/wiring.mjs';
 import { resolveBaseImage } from '../dev-orchestrator/stack/resolve-base-image.mjs';
 import { resolveComposeMounts } from '../dev-orchestrator/stack/resolve-compose-mounts.mjs';
+import { createRunningNameResolver, resolveNetworkAlias } from '../dev-orchestrator/stack/resolve-network-alias.mjs';
+import { createPublishedPortResolver } from './host-map.mjs';
 import { resolveDepsProvision } from './deps-provision.mjs';
 import { isContainerLauncher } from './launcher.mjs';
 import { maskWiredEnv } from './env-mask.mjs';
@@ -16,6 +18,19 @@ function defaultResolveImage({ cwd, composeFile, composeService }) {
 function defaultResolveMounts({ cwd, composeFile, composeService }) {
   return resolveComposeMounts({ cwd, composeFile, composeService, run: (b, a, o) => spawnSync(b, a, { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024, ...o }) });
 }
+
+const defaultRunningName = createRunningNameResolver({ run: (b, a, o) => spawnSync(b, a, { encoding: 'utf8', ...o }) });
+
+function defaultResolveAlias({ cwd, composeFile, composeService, declaredAlias }) {
+  return resolveNetworkAlias({
+    composeText: defaultReadFile(`${cwd}/${composeFile}`),
+    composeService,
+    declaredAlias,
+    runningName: defaultRunningName({ cwd, composeService }),
+  });
+}
+
+const defaultResolvePublishedPort = createPublishedPortResolver();
 
 function defaultReadFile(p) {
   try { return readFileSync(p, 'utf8'); } catch { return null; }
@@ -81,10 +96,17 @@ function topologyFor(service, network) {
   };
 }
 
-function descriptorPorts({ service, workspaceId, slug, sourceMode, taken, basePort, portAllocations }) {
+function descriptorPorts({ service, workspaceId, slug, sourceMode, taken, basePort, portAllocations, usePublished, publishedHostPort }) {
   const portEnvs = [service.dev.port_env, ...(service.dev.extra_ports || [])];
   return portEnvs.map((portEnv) => {
     const internal = service.dev.ports[portEnv];
+    const ownerTag = `${workspaceId}:${slug}:${sourceMode}:${service.id}:${portEnv}`;
+    if (usePublished) {
+      const published = publishedHostPort(internal);
+      const host = published || internal;
+      taken.add(host);
+      return { internal, host, portEnv, primary: portEnv === service.dev.port_env, published: published !== null, ownerTag };
+    }
     const persisted = (portAllocations || []).find((allocation) => allocation.serviceId === service.id && allocation.portEnv === portEnv);
     const allocation = persisted || allocateHostPorts({ mappings: [{ internal }], occupied: [...taken], basePort: taken.has(internal) ? basePort : internal })[0];
     taken.add(allocation.host);
@@ -93,7 +115,7 @@ function descriptorPorts({ service, workspaceId, slug, sourceMode, taken, basePo
       host: allocation.host,
       portEnv,
       primary: portEnv === service.dev.port_env,
-      ownerTag: `${workspaceId}:${slug}:${sourceMode}:${service.id}:${portEnv}`,
+      ownerTag,
     };
   });
 }
@@ -156,7 +178,7 @@ function buildDockerExecEntry({ entry, svc, dev, slug, cwd, completeDescriptors,
   };
 }
 
-function buildServiceEntry({ svc, wt, sourceByService, isolated, completeDescriptors, workspaceId, slug, sourceMode, taken, registry, portAllocations, peerInternalPort, resolveImage, resolveMounts, readEnv, exists, readFile }) {
+function buildServiceEntry({ svc, wt, sourceByService, isolated, completeDescriptors, workspaceId, slug, sourceMode, taken, registry, portAllocations, peerInternalPort, resolveImage, resolveMounts, resolveAlias, resolvePublishedPort, readEnv, exists, readFile }) {
   const dev = svc.dev;
   const source = sourceByService.get(svc.id);
   const cwd = source?.sourcePath || (isolated.has(svc.id) ? wt[svc.id] : svc.path);
@@ -174,20 +196,29 @@ function buildServiceEntry({ svc, wt, sourceByService, isolated, completeDescrip
     cwd,
     command: dev.command,
     readiness: { ...(dev.ready_signal || {}) },
+    migrate: dev.migrate || null,
     teardownCmd: dev.teardown || null,
+    readyTimeoutS: dev.ready_timeout_s ?? null,
     ramEstimateMb: dev.ram_estimate_mb ?? null,
     policy: isolated.has(svc.id) ? 'task-isolated' : 'shared-reuse',
     wiredEnv
   };
 
   if (completeDescriptors) {
-    const ports = descriptorPorts({ service: svc, workspaceId, slug, sourceMode, taken, basePort: registry.network.basePort, portAllocations });
+    const containerLaunched = isContainerLauncher(dev.launcher);
+    const isolatedHere = isolated.has(svc.id);
+    const publishedHostPort = (internal) => resolvePublishedPort({ cwd: svc.path, composeFile: dev.docker?.compose_file, composeService: dev.docker?.service, internal });
+    const ports = descriptorPorts({ service: svc, workspaceId, slug, sourceMode, taken, basePort: registry.network.basePort, portAllocations, usePublished: !isolatedHere && containerLaunched, publishedHostPort });
+    const networkAlias = !isolatedHere && containerLaunched
+      ? resolveAlias({ cwd: svc.path, composeFile: dev.docker?.compose_file, composeService: dev.docker?.service, declaredAlias: dev.docker?.network_alias || null })
+      : null;
     Object.assign(entry, {
       affected: source.affected,
       source,
       topology: topologyFor(svc, registry.network),
       dependencies: [...(svc.depends_on || [])],
       ports,
+      networkAlias,
       readiness: taskReadiness(dev.ready_signal, ports.find((port) => port.primary).host),
       environmentOverlay: { path: null, digest: null, restartRequired: false },
       ownership: {
@@ -196,7 +227,6 @@ function buildServiceEntry({ svc, wt, sourceByService, isolated, completeDescrip
       },
       composeFile: dev.docker?.compose_file || null,
       dockerService: dev.docker?.service || null,
-      readyTimeoutS: dev.ready_timeout_s ?? null,
     });
   }
 
@@ -206,7 +236,7 @@ function buildServiceEntry({ svc, wt, sourceByService, isolated, completeDescrip
   return buildDockerExecEntry({ entry, svc, dev, slug, cwd, completeDescriptors, taken, registry, resolveImage, resolveMounts, exists, readFile });
 }
 
-export function buildBootPlan({ registry, workspaceId, slug, worktreePaths, sources, sourceMode, portAllocations, overlayDirectory = null, previousEnvironmentOverlays = [], occupied = [], resolveImage = defaultResolveImage, resolveMounts = defaultResolveMounts, readEnv = defaultReadEnv, exists = defaultExists, readJson = defaultReadJson, readFile = defaultReadFile }) {
+export function buildBootPlan({ registry, workspaceId, slug, worktreePaths, sources, sourceMode, portAllocations, overlayDirectory = null, previousEnvironmentOverlays = [], occupied = [], resolveImage = defaultResolveImage, resolveMounts = defaultResolveMounts, resolveAlias = defaultResolveAlias, resolvePublishedPort = defaultResolvePublishedPort, readEnv = defaultReadEnv, exists = defaultExists, readJson = defaultReadJson, readFile = defaultReadFile }) {
   const wt = worktreePaths || {};
   const sourceByService = new Map((sources || []).map((source) => [source.serviceId, source]));
   const completeDescriptors = sourceByService.size > 0;
@@ -215,7 +245,7 @@ export function buildBootPlan({ registry, workspaceId, slug, worktreePaths, sour
   for (const s of registry.services) peerInternalPort[s.id] = s.dev.ports[s.dev.port_env];
 
   const taken = new Set(occupied);
-  const services = registry.services.map((svc) => buildServiceEntry({ svc, wt, sourceByService, isolated, completeDescriptors, workspaceId, slug, sourceMode, taken, registry, portAllocations, peerInternalPort, resolveImage, resolveMounts, readEnv, exists, readFile }));
+  const services = registry.services.map((svc) => buildServiceEntry({ svc, wt, sourceByService, isolated, completeDescriptors, workspaceId, slug, sourceMode, taken, registry, portAllocations, peerInternalPort, resolveImage, resolveMounts, resolveAlias, resolvePublishedPort, readEnv, exists, readFile }));
 
   const frontend = resolveFrontendTarget({ frontend: registry.frontend, slug, exists });
 
@@ -228,6 +258,7 @@ export function buildBootPlan({ registry, workspaceId, slug, worktreePaths, sour
       overlayDirectory,
       previousOverlays: previousEnvironmentOverlays,
       hostGateway: registry.network.hostGateway,
+      aliasByService: Object.fromEntries(services.filter((s) => s.networkAlias).map((s) => [s.id, s.networkAlias])),
     });
     return { services: overlays.services, network: registry.network, slug, overlayFiles: overlays.overlayFiles, frontend };
   }
