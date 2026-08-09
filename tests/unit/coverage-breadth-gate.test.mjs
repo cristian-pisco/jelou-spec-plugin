@@ -5,7 +5,7 @@
 //     field gains a rejecting-payload test (the GUID-into-@IsNumber 400 shape),
 //     and flags collection fields exercised only empty.
 //  2. The workflow prose for the gate + the two false-green guards survive edits
-//     (production-like.md, test-suite.md, ui-qa-run.md).
+//     (goal.md, test-suite.md, agents/jlu-ui-qa-runner.md).
 //
 // Run: `node --test tests/unit/coverage-breadth-gate.test.mjs`
 
@@ -174,6 +174,11 @@ describe('goal.md — Phase 4.5 gate prose', () => {
 describe('false-green guards in the delegates', () => {
   test('test-suite.md: green is not a breadth verdict', () => {
     assert.match(read('jelou/workflows/test-suite.md'), /green != broad/);
+  });
+  test('jlu-ui-qa-runner.md: minimal_input_coverage guard on a thin green suite', () => {
+    const runner = read('agents/jlu-ui-qa-runner.md');
+    assert.match(runner, /minimal_input_coverage/);
+    assert.match(runner, /ui_breadth_gaps/);
   });
 });
 

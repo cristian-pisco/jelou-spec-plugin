@@ -81,7 +81,7 @@ When the consumer's login requires an emailed OTP (no `/api/test/login`, no test
 
 1. `bin/e2e-session-probe.mjs` checks the stored session against `E2E_BASE_URL`.
 2. If invalid, `bin/e2e-login.mjs` performs the real login: fills `TEST_EMAIL`/`TEST_PASSWORD` (from `.env.e2e`, values never enter the conversation), reaches the OTP screen, prints `WAITING_OTP`, and polls `OTP_FILE`.
-3. The orchestrator reads the OTP from the user's Gmail via the MCP integration (mail pattern persisted in `.spec-workspace/e2e-auth.yaml`). The live-validated sequence (against Jelou's 2FA mail): `mcp__claude_ai_Gmail__search_threads` (`from:<otp_from> newer_than:1h`) → take the newest thread's **`threads[].id`** (the THREAD id — passing a `messages[].id` to `get_thread` returns "Requested entity was not found", the precise bug that forced the manual paste before) → `get_thread(threadId, FULL_CONTENT)` → extract `otp_code_regex` from the **newest message's `plaintextBody`** (`.messages[-1].plaintextBody`; `search_threads` returns only a subset of messages and may omit the newest, the code is in the body not the snippet, and `htmlBody` carries decorative 6-digit noise). Large threads are saved to a file the orchestrator reads. If no fresh mail within ~90s, ask the user to paste. See `ui-qa-run.md` step 14b sub-step 4.
+3. The orchestrator reads the OTP from the user's Gmail via the MCP integration (mail pattern persisted in `.spec-workspace/e2e-auth.yaml`). The live-validated sequence (against Jelou's 2FA mail): `mcp__claude_ai_Gmail__search_threads` (`from:<otp_from> newer_than:1h`) → take the newest thread's **`threads[].id`** (the THREAD id — passing a `messages[].id` to `get_thread` returns "Requested entity was not found", the precise bug that forced the manual paste before) → `get_thread(threadId, FULL_CONTENT)` → extract `otp_code_regex` from the **newest message's `plaintextBody`** (`.messages[-1].plaintextBody`; `search_threads` returns only a subset of messages and may omit the newest, the code is in the body not the snippet, and `htmlBody` carries decorative 6-digit noise). Large threads are saved to a file the orchestrator reads. If no fresh mail within ~90s, ask the user to paste. See `goal.md` Phase 3.75 (step 11c) for the orchestrator side of this gate.
 4. The script completes the login and saves `storageState` to `E2E_STORAGE_STATE` (under `.auth/`, gitignored).
 
 Exit codes: `41` auth rejected (the run aborts with the user-facing HTTP 401 message) · `42` OTP never arrived · `43` OTP rejected · `44` login form not found (feeds the zero-assumptions feedback loop) · `47` blocked by a captcha/Turnstile challenge (the orchestrator hands off to the consumer capture provider below — never a headless bypass, never a prod-target fallback).
@@ -128,7 +128,7 @@ replicates it: after a successful login it decrypts the real captured `jelou_aut
 (AES-256-GCM, shared `COOKIE_SECRET`), upserts the session into `logsM.userSessions`, and
 copies the cookie onto the `localhost` host in `storageState`.
 
-This is the **one** sanctioned session write (see the `ui-qa-run.md` step 14b "Forbidden under all circumstances" carve-out). It is
+This is the **one** sanctioned session write; every other datastore write that would mask an auth failure is forbidden, and `agents/jlu-ui-qa-runner.md` bars the fix-loop from all of them. It is
 safe precisely because it is not fabrication:
 
 - It runs **only after a real login succeeded** — never as a response to a 401.

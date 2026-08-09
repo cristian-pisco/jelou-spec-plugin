@@ -9,7 +9,7 @@
 
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -79,5 +79,54 @@ describe('jlu-ui-qa-runner', () => {
     assert.match(md, /jlu-ui-fix-loop/);
     assert.match(md, /minimal[- ]input|ui_breadth_gaps/i);
     assert.match(md, /NEEDS_CONTEXT/);
+  });
+
+  test('carries the execution body self-contained — no pointer to a retired workflow', () => {
+    assert.doesNotMatch(md, /ui-qa-run\.md/);
+    assert.doesNotMatch(md, /ui-qa-cleanup/);
+    assert.doesNotMatch(md, /step 1[4-8][a-z']?\b/);
+    assert.match(md, /npx playwright test/);
+    assert.match(md, /--trace=retain-on-failure/);
+    assert.match(md, /extract-trace\.mjs/);
+    assert.match(md, /MAX_FIX_DISPATCHES=10/);
+    assert.match(md, /FIX_DEADLINE/);
+    assert.match(md, /no_tests_collected/);
+  });
+
+  test('every reference it points at exists on disk', () => {
+    for (const ref of md.match(/jelou\/references\/[a-z0-9-]+\.md/g) ?? []) {
+      assert.ok(existsSync(join(ROOT, ref)), `${ref} referenced by jlu-ui-qa-runner.md does not exist`);
+    }
+  });
+});
+
+describe('goal.md — the jlu-ui-qa-runner dispatch contract', () => {
+  const wf = read('jelou/workflows/goal.md');
+
+  test('names every required runner input', () => {
+    for (const input of [
+      'TASK_DIR', 'UI_SERVICE_ID', 'UI_SERVICE_WORKTREE', 'PLUGIN_ROOT',
+      'WORKERS', 'PLAYWRIGHT_CONFIG', 'ALLOW_PROD_TARGET', 'ALLOW_TEST_EDITS',
+      'GREP', 'USER_FEEDBACK',
+    ]) {
+      assert.match(wf, new RegExp(`\\b${input}\\b`), `goal.md must pass ${input} to jlu-ui-qa-runner`);
+    }
+  });
+
+  test('handles all four runner STATUS outcomes', () => {
+    const i = wf.indexOf('Runner output contract');
+    assert.ok(i > -1, 'goal.md must document the runner output contract');
+    const region = wf.slice(i, i + 1800);
+    assert.match(region, /PASS/);
+    assert.match(region, /FAIL/);
+    assert.match(region, /BLOCKED/);
+    assert.match(region, /NEEDS_CONTEXT/);
+    assert.match(region, /AskUserQuestion/);
+    assert.match(region, /jlu-ui-e2e-writer/);
+  });
+
+  test('cites no retired workflow file', () => {
+    assert.doesNotMatch(wf, /ui-qa-run\.md/);
+    assert.doesNotMatch(wf, /ui-qa-cleanup\.md/);
   });
 });

@@ -155,6 +155,15 @@ describe('orchestrator workflows — capped invocations stay capped', () => {
     assert.match(testSuite, /MemAvailable/);
   });
 
+  test('the UI E2E runner keeps the worker default on every Playwright invocation', () => {
+    const runner = read('agents/jlu-ui-qa-runner.md');
+    const invocations = runner.match(/npx playwright test[\s\S]*?\n\n/g) ?? [];
+    assert.ok(invocations.length >= 2, 'expected the suite run and the per-spec re-run');
+    for (const invocation of invocations) {
+      assert.match(invocation, /--workers=\$\{WORKERS:-1\}/);
+    }
+  });
+
   test('env-lifecycle carries the canonical CPU cap and RAM gate', () => {
     const envLifecycle = read('jelou/references/env-lifecycle.md');
     assert.match(envLifecycle, /MAX_WORKERS_BY_CPU=\$\(\( CPU_CORES \/ 2 \)\)/);

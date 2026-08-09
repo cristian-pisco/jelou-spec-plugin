@@ -2,8 +2,8 @@
 // bin/classify-task-scope.mjs — classify a task as `fullstack` or `full-backend`.
 //
 // A task is `fullstack` when at least one affected service is a UI service;
-// otherwise it is `full-backend`. UI detection mirrors ui-qa-run.md Phase 2
-// step 11: a service is UI when its `stack` is a known frontend framework, or
+// otherwise it is `full-backend`. UI detection mirrors goal.md Phase 1
+// step 6: a service is UI when its `stack` is a known frontend framework, or
 // (legacy fallback) its `description` matches a frontend keyword.
 //
 // Usage:

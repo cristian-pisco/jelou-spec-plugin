@@ -209,10 +209,10 @@ docker compose -f <compose_file> stop <service>
 
 ## Consumers
 
-- `ui-qa-run.md` runs `preflight_gate` (browser_overhead_mb=1300), `boot`, `teardown`
-  when invoked standalone. With `--no-boot` it skips all three — the caller owns the lifecycle.
-- `goal.md` runs `preflight_gate` (1300 for fullstack, 0 for full-backend),
-  `boot` once, and `teardown` once, around its delegated execution phases.
+- `goal.md` runs `preflight_gate` (browser_overhead_mb 1300 for fullstack, 0 for
+  full-backend), `boot` once, and `teardown` once, around its delegated execution phases.
+- `agents/jlu-ui-qa-runner.md` runs none of the three: the UI E2E execution body assumes a
+  booted stack and a valid session, so the caller owns the whole lifecycle.
 - `test-suite.md` calls none — it runs on the host and only needs the infra reachable.
 
 ## Plan-driven boot (consolidation #3a)

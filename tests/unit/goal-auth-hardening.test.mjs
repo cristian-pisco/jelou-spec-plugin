@@ -24,6 +24,39 @@ const env = read('jelou/references/env-lifecycle.md');
 const e2eenv = read('jelou/references/e2e-environment.md');
 const fixtures = read('jelou/references/auth-fixtures.md');
 
+describe('auth gate — captcha on a loopback target is a misconfiguration, not a capture trigger', () => {
+  test('goal 11c refuses the consumer-capture flow for a loopback exit-47', () => {
+    assert.match(prodlike, /Captcha on a loopback target is a misconfiguration, not a capture trigger/i);
+    assert.match(prodlike, /consumer-capture flow is FORBIDDEN/i);
+    assert.match(prodlike, /poisons the next run/i);
+  });
+
+  test('a loopback captcha diagnoses a frontend pointing at a prod/remote backend', () => {
+    assert.match(prodlike, /NX_REACT_APP/);
+    assert.match(prodlike, /(prod|remote)[\s\S]{0,60}backend|backend[\s\S]{0,60}(prod|remote)/i);
+  });
+
+  test('the exit-47 diagnosis names the reused-frontend-bakes-prod trap', () => {
+    assert.match(prodlike, /never reads `?\.env\.e2e`?/i);
+    assert.match(prodlike, /reused dev server/i);
+    assert.match(prodlike, /\*\*booted fresh\*\*/i);
+    assert.match(prodlike, /VITE_TURNSTILE_ENABLED=false/);
+  });
+
+  test('consumer capture is reserved for a genuinely remote E2E_BASE_URL', () => {
+    assert.match(prodlike, /remote[\s\S]{0,120}capture|capture[\s\S]{0,120}remote/i);
+    assert.match(prodlike, /never\s*\n?\s*a prod fallback/i);
+  });
+
+  test('the four sanctioned prompts are enumerated in goal itself, not by reference', () => {
+    assert.match(prodlike, /ONLY four user prompts/i);
+    assert.match(prodlike, /e2e-auth\.yaml/);
+    assert.match(prodlike, /Gmail paste fallback/i);
+    assert.match(prodlike, /exit 44/);
+    assert.match(prodlike, /exit 47/);
+  });
+});
+
 describe('auth gate — discards a foreign/undecryptable persisted session', () => {
   test('a cookie undecryptable with the local COOKIE_SECRET is foreign and discarded', () => {
     assert.match(fixtures, /decrypt/i);
