@@ -25,6 +25,13 @@ function makeCache(version = '0.3.240') {
   return dir;
 }
 
+function makeWorktreeCache(version = '0.3.240') {
+  const dir = mkdtempSync(join(tmpdir(), 'jlu-worktree-'));
+  writeFileSync(join(dir, '.git'), `gitdir: ${join(dir, '..', 'main', '.git', 'worktrees', 'task')}\n`);
+  writeFileSync(join(dir, 'package.json'), `{ "version": "${version}" }\n`);
+  return dir;
+}
+
 function makeShim(log) {
   const dir = mkdtempSync(join(tmpdir(), 'jlu-shim-'));
   const bin = join(dir, 'claude');
@@ -100,6 +107,27 @@ describe('jlu-update.sh — cache resolution', () => {
       assert.match(r.stdout, new RegExp(`^CACHE: ${cache}$`, 'm'));
     } finally {
       rmSync(cache, { recursive: true, force: true });
+    }
+  });
+  test('treats a git worktree checkout as a usable cache', () => {
+    const worktree = makeWorktreeCache();
+    try {
+      const r = run(['--host', 'codex'], { JLU_HOME: worktree });
+      assert.equal(r.status, 0);
+      assert.match(r.stdout, new RegExp(`^CACHE: ${worktree}$`, 'm'));
+      assert.doesNotMatch(r.stdout, /^PLAN: clone /m);
+    } finally {
+      rmSync(worktree, { recursive: true, force: true });
+    }
+  });
+  test('falls back to a worktree --source when JLU_HOME is not a git repo', () => {
+    const worktree = makeWorktreeCache();
+    try {
+      const r = run(['--host', 'codex', '--source', worktree], { JLU_HOME: '/nonexistent' });
+      assert.equal(r.status, 0);
+      assert.match(r.stdout, new RegExp(`^CACHE: ${worktree}$`, 'm'));
+    } finally {
+      rmSync(worktree, { recursive: true, force: true });
     }
   });
   test('falls back to the script repo when JLU_HOME is not a git repo', () => {
