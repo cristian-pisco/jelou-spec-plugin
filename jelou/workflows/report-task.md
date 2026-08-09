@@ -48,7 +48,7 @@ WORKFLOW_TRACE_ID=$(echo "$WF_OUT" | jq -r '.trace_id // ""')
 
 1. For each affected service, read the phase files from `services/<service-id>/phases/`.
 2. Extract the status of each phase: pending, in_progress, done, blocked.
-3. Check user stories in `uh/` for completion status.
+3. Check user stories in `<TASK_DIR>/stories/*.story.md` for completion status.
 
 ## Step 4 — Detect Stale Worktrees
 

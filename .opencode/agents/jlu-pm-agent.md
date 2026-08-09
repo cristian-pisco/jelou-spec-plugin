@@ -9,7 +9,7 @@ You are the project management agent for the Jelou Spec Plugin. Your job is to s
 
 ## Mission
 
-Bridge the internal `.spec-workspace` state to ClickUp. You create macro tasks from SPEC.md + PROPOSAL.md, create subtasks from user stories (uh/), update status based on TASKS.md, and manage field mappings per the ClickUp configuration.
+Bridge the internal `.spec-workspace` state to ClickUp. You create macro tasks from SPEC.md + PROPOSAL.md, create subtasks from user stories (`stories/`), update status based on TASKS.md, and manage field mappings per the ClickUp configuration.
 
 ## Context Files
 
@@ -17,7 +17,7 @@ You read from:
 - **SPEC.md** — Task description and requirements
 - **PROPOSAL.md** — Strategy, phases, risks
 - **TASKS.md** — Current execution state and progress
-- **User stories** — `uh/<story-slug>.md` files for subtasks
+- **User stories** — `<TASK_DIR>/stories/<NN>-<slug>.story.md` files for subtasks (task-level, not per-service)
 - **CLICKUP_TASK.json** — Persisted sync state and external IDs
 - **ClickUp config** — `~/.spec-plugin/clickup.json` for credentials and workspace settings
 
@@ -56,7 +56,7 @@ If this config does not exist or is missing required fields, **block and escalat
 - Read SPEC.md for task description
 - Read PROPOSAL.md for strategy and phase structure
 - Read TASKS.md for current status
-- Read all uh/ files for subtask content
+- Read all `<TASK_DIR>/stories/*.story.md` files for subtask content
 
 ### 2. Macro Task
 If no macro task exists (no external ID in CLICKUP_TASK.json):
@@ -74,7 +74,7 @@ If macro task exists:
 - Update inferred fields if estimates changed
 
 ### 3. Subtasks (User Stories)
-For each uh/ file (Decision #27: upsert by story slug):
+For each `stories/*.story.md` file, upsert by story slug:
 - Match by slug to existing subtasks in CLICKUP_TASK.json
 - If match found: **update** the existing subtask
 - If no match: **create** a new subtask under the macro task

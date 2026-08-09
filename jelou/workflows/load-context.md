@@ -76,10 +76,10 @@ Glob for all task artifacts and organize them by category. Use the task director
 
 **Core artifacts:**
 - `SPEC.md`, `TASKS.md`, `PROPOSAL.md`, `CLICKUP_TASK.json`
+- `stories/*.story.md` — user story files (task-level, not per-service)
 
 **Per-service artifacts** (under `services/<service-id>/`):
 - `phases/*.md` — phase execution files (Red/Green/Refactor details)
-- `uh/*.md` — user story files
 
 **Codebase knowledge** (under `<workspace>/services/<service-id>/codebase/`):
 - `ARCHITECTURE.md`, `CONVENTIONS.md`, `STACK.md`, `STRUCTURE.md`, `INTEGRATIONS.md`, `CONCERNS.md`

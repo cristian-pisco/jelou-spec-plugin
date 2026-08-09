@@ -96,4 +96,4 @@
 | {{story-slug}} | {{brief-description}} | {{phase-numbers}} |
 
 <!-- Each story maps to one or more phases for traceability.
-     Full story details live in uh/<story-slug>.md -->
+     Full story details live in stories/<NN>-<slug>.story.md -->
