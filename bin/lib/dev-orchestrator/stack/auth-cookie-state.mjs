@@ -10,7 +10,7 @@ import {
 import { dirname, join } from 'node:path';
 import { stateDir } from '../state.mjs';
 
-function isGenuineAuthCookie(cookie) {
+export function isGenuineAuthCookie(cookie) {
   return cookie?.name === 'jelou_auth' && typeof cookie.value === 'string' && cookie.value.length > 0;
 }
 

@@ -18,6 +18,13 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..');
 const SCRIPT = join(HERE, '..', '..', 'bin', 'jlu-update.sh');
 
+function assertCachePath(stdout, expected) {
+  assert.ok(
+    stdout.split('\n').includes(`CACHE: ${expected}`),
+    `expected a "CACHE: ${expected}" line in:\n${stdout}`
+  );
+}
+
 function makeCache(version = '0.3.240') {
   const dir = mkdtempSync(join(tmpdir(), 'jlu-cache-'));
   mkdirSync(join(dir, '.git'));
@@ -80,7 +87,7 @@ describe('jlu-update.sh — cache resolution', () => {
     try {
       const r = run(['--host', 'codex'], { JLU_HOME: cache });
       assert.equal(r.status, 0);
-      assert.match(r.stdout, new RegExp(`^CACHE: ${cache}$`, 'm'));
+      assertCachePath(r.stdout, cache);
       assert.match(r.stdout, /^HOST: codex$/m);
       assert.match(r.stdout, /^PLAN: setup --host codex$/m);
     } finally {
@@ -104,7 +111,7 @@ describe('jlu-update.sh — cache resolution', () => {
     try {
       const r = run(['--host', 'codex', '--source', cache], { JLU_HOME: '/nonexistent' });
       assert.equal(r.status, 0);
-      assert.match(r.stdout, new RegExp(`^CACHE: ${cache}$`, 'm'));
+      assertCachePath(r.stdout, cache);
     } finally {
       rmSync(cache, { recursive: true, force: true });
     }
@@ -114,7 +121,7 @@ describe('jlu-update.sh — cache resolution', () => {
     try {
       const r = run(['--host', 'codex'], { JLU_HOME: worktree });
       assert.equal(r.status, 0);
-      assert.match(r.stdout, new RegExp(`^CACHE: ${worktree}$`, 'm'));
+      assertCachePath(r.stdout, worktree);
       assert.doesNotMatch(r.stdout, /^PLAN: clone /m);
     } finally {
       rmSync(worktree, { recursive: true, force: true });
@@ -125,7 +132,7 @@ describe('jlu-update.sh — cache resolution', () => {
     try {
       const r = run(['--host', 'codex', '--source', worktree], { JLU_HOME: '/nonexistent' });
       assert.equal(r.status, 0);
-      assert.match(r.stdout, new RegExp(`^CACHE: ${worktree}$`, 'm'));
+      assertCachePath(r.stdout, worktree);
     } finally {
       rmSync(worktree, { recursive: true, force: true });
     }
@@ -133,7 +140,7 @@ describe('jlu-update.sh — cache resolution', () => {
   test('falls back to the script repo when JLU_HOME is not a git repo', () => {
     const r = run(['--host', 'codex'], { JLU_HOME: '/nonexistent' });
     assert.equal(r.status, 0);
-    assert.match(r.stdout, new RegExp(`^CACHE: ${ROOT}$`, 'm'));
+    assertCachePath(r.stdout, ROOT);
     assert.match(r.stdout, /^HOST: codex$/m);
     assert.match(r.stdout, /^PLAN: setup --host codex$/m);
   });
@@ -146,7 +153,7 @@ describe('jlu-update.sh — cache bootstrap', () => {
     try {
       const r = run(['--host', 'codex'], { JLU_HOME: cache }, copy.script);
       assert.equal(r.status, 0);
-      assert.match(r.stdout, new RegExp(`^CACHE: ${cache}$`, 'm'));
+      assertCachePath(r.stdout, cache);
       assert.match(r.stdout, /^HOST: codex$/m);
       assert.match(r.stdout, /PLAN: clone https:\/\/github\.com\/cristian-pisco\/jelou-spec-plugin -> /);
       assert.match(r.stdout, /^PLAN: setup --host codex$/m);

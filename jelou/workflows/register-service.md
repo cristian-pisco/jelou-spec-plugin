@@ -113,7 +113,12 @@ Use `question` (free-text, optional). One regex per line. Empty input = use only
 
 ## Step 12 — Build the service object and validate
 
-Build the service entry from the answers (omit fields the user left blank/none). Then validate by writing through:
+Build the service entry from the answers (omit fields the user left blank/none). Always set
+`package_manager` to the manager detected in Step 4 — it is recorded so that later consumers
+(dependency installs, `/jlu:autofix`) read it as a fact instead of re-deriving or guessing it.
+Omit it only when Step 4 detected none (a non-Node service).
+
+Then validate by writing through:
 
 ```bash
 node -e "

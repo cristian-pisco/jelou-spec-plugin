@@ -1,3 +1,5 @@
+const DEFAULT_PROVISIONING_ADAPTER = 'plugin:local-jelou-provisioning';
+
 function normalizeService(id, svc, resolve) {
   const dev = { ...(svc.dev || {}) };
   dev.extra_ports = dev.extra_ports || [];
@@ -41,7 +43,7 @@ function frontendService(frontend) {
 
 export function ensureFrontendService(registry) {
   const normalized = registry.auth && !registry.auth.localProvisioningAdapter
-    ? { ...registry, auth: { ...registry.auth, localProvisioningAdapter: 'plugin:local-jelou-provisioning' } }
+    ? { ...registry, auth: { ...registry.auth, localProvisioningAdapter: DEFAULT_PROVISIONING_ADAPTER } }
     : registry;
   const candidate = frontendService(normalized.frontend);
   if (!candidate || normalized.services.some((service) => service.id === candidate.id)) return normalized;
@@ -58,10 +60,26 @@ function normalizeAuth(auth, resolve) {
   const out = { ...auth };
   out.localProvisioningAdapter = auth.localProvisioningAdapter
     ? (auth.localProvisioningAdapter.startsWith('plugin:') ? auth.localProvisioningAdapter : resolve(auth.localProvisioningAdapter))
-    : 'plugin:local-jelou-provisioning';
+    : DEFAULT_PROVISIONING_ADAPTER;
   const verify = normalizeVerify(auth.verify);
   if (verify) out.verify = verify;
   return out;
+}
+
+export { DEFAULT_PROVISIONING_ADAPTER };
+
+export function resolveProvisioningAdapter(registry) {
+  const auth = registry && registry.auth;
+  if (!auth) return { required: false, adapter: null, ok: true, reason: null };
+  if (auth.localProvisioningAdapter) {
+    return { required: true, adapter: auth.localProvisioningAdapter, ok: true, reason: null };
+  }
+  return {
+    required: true,
+    adapter: null,
+    ok: false,
+    reason: 'the registry carries an auth block but no localProvisioningAdapter — this value is applied by normalizeRegistry, so the caller is reading the raw registry instead of the normalized one'
+  };
 }
 
 export function normalizeRegistry(raw, { resolve }) {

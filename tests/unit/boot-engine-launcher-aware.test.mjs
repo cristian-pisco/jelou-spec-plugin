@@ -58,7 +58,7 @@ describe('resolveDepsProvision — self-starting containers', () => {
   const lockFiles = { '/wt/svc/pnpm-lock.yaml': 'lock-contents' };
   const readFile = (p) => (p in lockFiles ? lockFiles[p] : null);
 
-  test('a shadowed node_modules on a docker launcher is reported as unverified image deps, never a host install', () => {
+  test('a shadowed node_modules on a docker launcher reconciles inside the container, never on the host', () => {
     const out = resolveDepsProvision({
       launcher: 'docker',
       serviceId: 'harness',
@@ -73,8 +73,9 @@ describe('resolveDepsProvision — self-starting containers', () => {
       readFile
     });
     assert.equal(out.source, 'image');
-    assert.equal(out.unverified, true);
-    assert.equal(out.install, null);
+    assert.equal(out.install.runs_in, 'container');
+    assert.equal(out.install.cwd, '/app');
+    assert.match(out.install.cmd, /pnpm install --frozen-lockfile/);
   });
 
   test('the same shadowed mount on docker-exec still takes the named-volume install path', () => {
@@ -92,7 +93,6 @@ describe('resolveDepsProvision — self-starting containers', () => {
       readFile
     });
     assert.equal(out.source, 'named-volume');
-    assert.equal(out.unverified, false);
     assert.equal(out.install.runs_in, 'container');
   });
 

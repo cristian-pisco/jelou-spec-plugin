@@ -272,7 +272,7 @@ This prints `{ services: [entry], network, slug }` — capture it as `{planJson}
 
 Then boot each remaining entry by following the `## Plan-driven boot` contract in `jelou/references/env-lifecycle.md`: for each entry, obtain its descriptor with `planEntryToCommands(entry, { runIdentity })` and execute it —
 
-- **task-isolated**: write `descriptor.files[]` → `docker <descriptor.up>` (image reused, no rebuild) → if `descriptor.install` non-null run it per step 4b of the boot contract (blocking, bounded by `install.timeoutMs`; a non-zero exit means this entry is `down` with cause `deps_install_failed` and its dev command is never started) → if `descriptor.exec` non-null `docker <descriptor.exec>`, else if `descriptor.restart` non-null `docker <descriptor.restart>` → poll `descriptor.readiness` (http/port on the allocated host port; stdout_match reads the log source below) → register `docker <descriptor.teardown>` (ALWAYS). WARN if `descriptor.imageResolved` is false, and WARN if `descriptor.depsUnverified` is true (the container resolves `node_modules` from its base image, so a lockfile newer than the image serves stale dependencies — rebuild the base image if the service misbehaves).
+- **task-isolated**: write `descriptor.files[]` → `docker <descriptor.up>` (image reused, no rebuild) → if `descriptor.install` non-null run it per step 4b of the boot contract (blocking, bounded by `install.timeoutMs`; a non-zero exit means this entry is `down` with cause `deps_install_failed` and its dev command is never started) → if `descriptor.exec` non-null `docker <descriptor.exec>`, else if `descriptor.restart` non-null `docker <descriptor.restart>` → poll `descriptor.readiness` (http/port on the allocated host port; stdout_match reads the log source below) → register `docker <descriptor.teardown>` (ALWAYS). WARN if `descriptor.imageResolved` is false.
 
   Whether the entry is idle-then-exec'd or self-starting is decided by its `dev.launcher`, and `planEntryToCommands` has already resolved it: `docker-exec` yields a `descriptor.exec` (the override makes the container idle, the dev command is exec'd into it and redirected to `descriptor.readiness.logPath`); `docker` yields `exec: null` because the image's own CMD starts the dev command when the container comes up — there is no `logPath`, and a deps install has to be followed by `descriptor.restart` so the CMD re-runs against the installed dependencies. Never assume a `/tmp/<projectName>.dev.log` exists: read `descriptor.readiness.logSource`, which is `{ mode: 'exec-file', container, path }` or `{ mode: 'docker-logs', container }`, and tail with `docker exec <container> tail -n 30 <path>` or `docker logs --tail 30 <container>` accordingly.
 - **shared-reuse**: write `descriptor.files[]` (the `wiredEnv` `.env`) if present → the existing reuse-or-reboot path (`descriptor.launcher`/`command`/`cwd`): probe the developer's container, reuse if healthy, reboot only if unhealthy/stale → poll `descriptor.readiness` (the service's normal dev port) → register `descriptor.teardown` (kill-what-started) ONLY if this run rebooted it.
@@ -532,7 +532,23 @@ import('{plugin-root}/bin/lib/dev-orchestrator/stack/stack-state.mjs').then((m) 
 
 ### Step F0 — Reconcile the local authentication profile
 
-When the normalized registry has `auth`, onboarding is required before login. If `auth && !auth.localProvisioningAdapter`, stop with remediation to register the local database/bcrypt adapter; never skip into credential lookup. Read `localAuthProfile` from task stack state. A complete profile is offered for reuse; an incomplete profile requests only missing company or user fields; `--reconfigure` requests replacements for every selected field. Existing-company selection defaults to ID `135`. New-company plan choices are exactly `ENTERPRISE` and `SELF_SERVICE`.
+When the normalized registry has `auth`, onboarding is required before login. Decide with the
+registry resolved in Step A — the **normalized** one, never the raw `services.yaml`:
+
+```bash
+node -e "
+import('{plugin-root}/bin/lib/registry/normalize.mjs').then(({ resolveProvisioningAdapter }) => {
+  process.stdout.write(JSON.stringify(resolveProvisioningAdapter(JSON.parse(process.argv[1]))));
+});
+" '{normalizedRegistryJson}'
+```
+
+`required: false` → no auth block; skip to the frontend report. `ok: true` → use `adapter`.
+`ok: false` → **stop** and print the returned `reason`. Note what that reason says:
+`normalizeRegistry` applies `plugin:local-jelou-provisioning` whenever the registry omits it,
+so a normalized registry can never fail this check. If it fails, the bug is that an unnormalized
+registry reached this step — do NOT tell the user to register an adapter that is already
+defaulted, and never skip into credential lookup. Read `localAuthProfile` from task stack state. A complete profile is offered for reuse; an incomplete profile requests only missing company or user fields; `--reconfigure` requests replacements for every selected field. Existing-company selection defaults to ID `135`. New-company plan choices are exactly `ENTERPRISE` and `SELF_SERVICE`.
 
 Invoke the onboarding CLI with the registered adapter module path and send one JSON request through stdin. The request contains `{ workspaceId, taskSlug, runId, target, topology, storedProfile, input }`. The password is entered through stdin and must never appear in arguments, environment variables, runtime files, generated overlays, lifecycle events, or displayed command text. Forward the invocation's `--reconfigure` option to this CLI only when selected.
 
@@ -580,7 +596,57 @@ Report whether the session source was `stored`, `login`, or `refreshed`, togethe
 
 Whenever the auth steps do not finish green — blocked, skipped, or failed — the report MUST state the email of the account the stack expects (`localAuthProfile.user.email`) and warn that logging in manually with any other account renders the sidebar without permissions. Never leave the user with an open browser and no indication of which account to use.
 
+### Step I.5 — Hand the verified session to a browser the user drives
+
+Step G's Chromium is a verifier and is closed in `finally`. Without this step the run ends with
+a genuine session on disk and none in any browser, so the next page the user opens redirects to
+`/login`. Run this step ONLY when Step H finished green.
+
+Build the handoff, which refuses anything that is not an already-verified genuine cookie:
+
+```bash
+node -e "
+Promise.all([
+  import('{plugin-root}/bin/lib/dev-orchestrator/stack/auth-cookie-state.mjs'),
+  import('{plugin-root}/bin/lib/dev-orchestrator/stack/browser-handoff.mjs')
+]).then(([state, handoff]) => {
+  const cookie = state.readAuthCookie({ workspaceId: process.argv[1], slug: process.argv[2] });
+  const plan = handoff.planBrowserHandoff({
+    cookie,
+    appUrl: process.argv[3],
+    account: process.argv[4],
+    port: Number(process.argv[5]),
+    sessionVerified: true
+  });
+  process.stdout.write(JSON.stringify({ ok: plan.ok, reason: plan.reason, entryUrl: plan.entryUrl }));
+});
+" "{workspaceId}" "{slug}" "http://localhost:{frontendPort}{protectedPath}" "{localAuthProfile.user.email}" "{handoffPort}"
+```
+
+`handoffPort` is any free loopback port; it serves one page and is closed at the end of this step.
+
+- `ok: false` with `no-genuine-cookie` → report that the session was verified but not persisted, and stop. Do not attempt a second login.
+- `ok: true` → serve the page with `startInjectServer({ port: handoffPort, page: plan.page })`, then drive the browser.
+
+Open `plan.entryUrl` through the Chrome MCP tools (`mcp__chrome-devtools__new_page`, then
+`mcp__chrome-devtools__navigate_page`). **Open the `entryUrl` exactly as the plan returns it.**
+It is built on `localhost`, not `127.0.0.1`: the injector page sets the cookie for the host in the
+address bar, and a cookie set for `127.0.0.1` is not sent to `http://localhost:{frontendPort}`.
+Substituting the loopback literal reintroduces the redirect this step exists to remove.
+
+The page sets the cookie and redirects itself to `appUrl`. Read the resulting URL with
+`mcp__chrome-devtools__list_pages` and confirm it with `handoffSucceeded(finalUrl)`. `false`
+means the browser still landed on `/login` — report it as a handoff failure and say the verified
+session did not transfer; never report the stack green on the strength of Step H alone.
+
+Close the inject server in a `finally`, whatever the outcome. Leave the browser open — it is the
+deliverable. Never print the cookie value, the page HTML, or the entry URL's query.
+
+If the Chrome MCP tools are unavailable in this runtime, say so plainly and print `appUrl`
+together with the expected account; do not silently fall back to a headless browser, which
+leaves the user exactly as stranded as before.
+
 ### Notes — frontend + auth
 
-- **Browser boundary.** Resolve Playwright through the `jelou-apps` checkout selected by the boot plan. Do not substitute an HTML cookie injector or a globally installed browser package.
+- **Browser boundary.** Resolve Playwright through the `jelou-apps` checkout selected by the boot plan for Steps G and H. Do not substitute an HTML cookie injector or a globally installed browser package **for establishing or verifying the session** — its provenance must stay a genuine keyring-backed login. The injector is permitted only in Step I.5, which transfers an already-verified cookie and can never mint one.
 - **OTP key mismatch (informational).** `bin/lib/api-login.mjs`'s own CLI path uses `mfa-code-<email>` as the Redis key, while this path reads the registry's `auth.otpFallback.keyPrefix` (`2fa-code-`), per `jelou-local-stack`. The configured E2E account has 2FA disabled, so the OTP branch is normally never exercised — if 2FA is ever armed on that account, confirm which key prefix the auth-service actually writes before trusting `readOtpFromRedis`.

@@ -282,7 +282,10 @@ it is ALWAYS registered for teardown:
    `entry.depsProvision` explains what was decided and why: `source` is `named-volume` (the
    base compose declares a volume over `<codeTarget>/node_modules`, so the container would
    otherwise resolve dependencies from the **image**, not from any checkout — we take that
-   target over with a lock-keyed named volume), `worktree-bind`, `canonical` (the branch did
+   target over with a lock-keyed named volume), `image` (the same shadowed `node_modules`, but
+   the launcher starts the dev process at `up` so the volume cannot be lock-keyed — the install
+   reconciles the image's dependencies against the lockfile in place, and the descriptor's
+   `restart` re-launches the dev process afterwards), `worktree-bind`, `canonical` (the branch did
    not change the lockfile, so the canonical mount is by definition correct — no install), or
    `worktree` (host launcher). A `named-volume` name embeds the service, slug and lockfile
    hash, so it is per-task and per-lockfile: the install is paid once per task, a lockfile

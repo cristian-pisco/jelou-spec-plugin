@@ -98,8 +98,8 @@ function installStep({ cwd, runsIn, lock, serviceId, slug }) {
   };
 }
 
-function provision({ source, lock, mountTarget, volumeName = null, satisfied, install = null, adopted = false, missing = null, unverified = false }) {
-  return { source, lockFile: lock.file, lockHash: lock.hash, volumeName, mountTarget, satisfied, adopted, missing, install, unverified };
+function provision({ source, lock, mountTarget, volumeName = null, satisfied, install = null, adopted = false, missing = null }) {
+  return { source, lockFile: lock.file, lockHash: lock.hash, volumeName, mountTarget, satisfied, adopted, missing, install };
 }
 
 export function resolveDepsProvision({
@@ -134,7 +134,13 @@ export function resolveDepsProvision({
   const containerInstall = () => installStep({ cwd: codeTarget, runsIn: 'container', lock, serviceId, slug });
 
   if (shadowingDepsMount(mounts, codeTarget) && startsDevOnUp(launcher)) {
-    return provision({ source: 'image', lock, mountTarget, satisfied: true, unverified: true });
+    return provision({
+      source: 'image',
+      lock,
+      mountTarget,
+      satisfied: false,
+      install: containerInstall()
+    });
   }
 
   if (shadowingDepsMount(mounts, codeTarget)) {
