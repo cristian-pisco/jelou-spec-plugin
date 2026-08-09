@@ -1,3 +1,5 @@
+import { spawnSync } from 'node:child_process';
+
 const MAX_PORT = 65535;
 
 function stableOffset(value, span) {
@@ -87,4 +89,61 @@ export function parseListeningPorts(snapshot) {
     listeners.push({ port, ownerTag: null, pid: pid || null, command });
   }
   return listeners;
+}
+
+function sameMarker(left, right) {
+  return left?.workspaceId === right?.workspaceId
+    && left?.taskSlug === right?.taskSlug
+    && left?.runId === right?.runId;
+}
+
+function ownedEntries(state, kind) {
+  if (!state?.currentRun) return [];
+  return (state.mutationJournal || []).filter((entry) => entry.kind === kind && sameMarker(entry.marker, state.currentRun));
+}
+
+function dockerRecords(snapshot) {
+  const records = [];
+  for (const line of String(snapshot || '').split('\n').filter(Boolean)) {
+    try {
+      const value = JSON.parse(line);
+      const labels = Object.fromEntries(String(value.Labels || '').split(',').map((item) => {
+        const separator = item.indexOf('=');
+        return separator === -1 ? [item, ''] : [item.slice(0, separator), item.slice(separator + 1)];
+      }));
+      records.push({ projectName: labels['com.docker.compose.project'], ports: parseOccupiedPorts(value.Ports || '') });
+    } catch {
+    }
+  }
+  return records;
+}
+
+export function mapListenerOwners({ listeners, state, dockerSnapshot = '' }) {
+  const allocations = new Map((state?.portAllocations || []).map((allocation) => [allocation.host, allocation]));
+  const ownedPids = new Set(ownedEntries(state, 'process').map((entry) => Number(entry.resource?.pid)).filter(Number.isInteger));
+  const ownedProjects = new Set(ownedEntries(state, 'container').map((entry) => entry.resource?.projectName).filter(Boolean));
+  const dockerOwners = new Map();
+  for (const record of dockerRecords(dockerSnapshot)) {
+    if (!ownedProjects.has(record.projectName)) continue;
+    for (const port of record.ports) dockerOwners.set(port, record.projectName);
+  }
+  return listeners.map((listener) => {
+    const allocation = allocations.get(listener.port);
+    if (!allocation) return listener;
+    const processOwned = listener.pid && ownedPids.has(listener.pid);
+    const projectName = dockerOwners.get(listener.port);
+    const containerOwned = projectName && (projectName === allocation.serviceId || projectName.startsWith(`${allocation.serviceId}-`));
+    return processOwned || containerOwned ? { ...listener, ownerTag: allocation.ownerTag } : listener;
+  });
+}
+
+export function discoverListeningPorts({ state, run = spawnSync } = {}) {
+  const sockets = run('ss', ['-ltnpH'], { encoding: 'utf8' });
+  const listeners = sockets.status === 0 ? parseListeningPorts(sockets.stdout || '') : [];
+  const containers = run('docker', ['ps', '--format', '{{json .}}'], { encoding: 'utf8' });
+  return mapListenerOwners({
+    listeners,
+    state,
+    dockerSnapshot: containers.status === 0 ? containers.stdout || '' : '',
+  });
 }

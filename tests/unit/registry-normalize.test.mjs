@@ -50,6 +50,51 @@ describe('normalizeRegistry', () => {
     assert.deepEqual(out.frontend.envLocal, { NX_A: { service: 'jelou-api', suffix: '' } });
   });
 
+  test('normalizes the registry frontend into the jelou-apps service consumed by planning', () => {
+    const out = normalizeRegistry({
+      services: {
+        'jelou-api': {
+          path: '../jelou-api',
+          dev: { launcher: 'docker-exec', command: 'npm run start:dev' },
+        },
+      },
+      frontend: {
+        path: '../jelou-apps',
+        command: 'yarn start --host 127.0.0.1',
+        port: 5175,
+        envLocal: {
+          NX_REACT_APP_JELOU_API_BASE: { service: 'jelou-api', suffix: '/v1' },
+        },
+      },
+    }, { resolve });
+
+    assert.deepEqual(out.services.find((service) => service.id === 'jelou-apps'), {
+      id: 'jelou-apps',
+      path: '/ws/jelou-apps',
+      stack: 'react',
+      peers: { 'jelou-api': 'NX_REACT_APP_JELOU_API_BASE' },
+      peerSuffixes: { NX_REACT_APP_JELOU_API_BASE: '/v1' },
+      depends_on: ['jelou-api'],
+      runtimeMounts: [],
+      dev: {
+        launcher: 'npm',
+        command: 'yarn start --host 127.0.0.1',
+        teardown: null,
+        port_env: 'PORT',
+        extra_ports: [],
+        ports: { PORT: 5175 },
+        ready_signal: { type: 'http_200', path: '/' },
+        ram_estimate_mb: null,
+      },
+    });
+  });
+
+  test('defaults authenticated registries to the plugin-owned provisioning adapter', () => {
+    const out = normalizeRegistry({ services: {}, auth: { cookieName: 'jelou_auth' } }, { resolve });
+
+    assert.equal(out.auth.localProvisioningAdapter, 'plugin:local-jelou-provisioning');
+  });
+
   test('defaults: no auth/frontend -> null; missing peers/depends_on/extra_ports -> empty', () => {
     const out = normalizeRegistry({ services: { a: { path: '../a', dev: { launcher: 'npm' } } } }, { resolve });
     assert.equal(out.auth, null);

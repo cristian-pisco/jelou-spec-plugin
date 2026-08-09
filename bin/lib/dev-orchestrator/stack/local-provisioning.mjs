@@ -40,7 +40,7 @@ async function restoreCredential(keyring, identity, previousPassword) {
   else keyring.replace(identity, previousPassword);
 }
 
-function cleanupResources(graph, identity, owner) {
+function cleanupResources(graph, identity, owner, cleanupDescriptor) {
   const resources = [{ kind: 'credential', resource: { identity, profileIdentity: identity, owner } }];
   for (const [entity, record] of Object.entries(graph)) {
     if (record?.owner?.profileIdentity !== identity) continue;
@@ -51,6 +51,7 @@ function cleanupResources(graph, identity, owner) {
         id: record.id || record.identity || record.userId,
         profileIdentity: identity,
         owner: record.owner,
+        ...(cleanupDescriptor || {}),
       },
     });
   }
@@ -89,7 +90,7 @@ export async function onboardLocalAuth(options, { keyring, database, bcrypt }) {
       profile: resolved.profile,
       targetProof,
       ...provisioned,
-      cleanupResources: cleanupResources(provisioned.graph, identity, owner),
+      cleanupResources: cleanupResources(provisioned.graph, identity, owner, database.cleanupDescriptor),
     };
   } catch (error) {
     try {

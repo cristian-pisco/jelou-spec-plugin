@@ -4,6 +4,29 @@ import { readStackState, writeStackState, clearStackState } from './stack-state.
 import { composeDownArgs } from './compose-down.mjs';
 import { ownedCleanupPlan, pidsToKill, restorePlan } from './teardown-plan.mjs';
 import { LIFECYCLE_STAGES } from '../events.mjs';
+import { createOsKeyring } from './local-keyring.mjs';
+import { fileURLToPath } from 'node:url';
+
+const TEST_DATA_CLEANUP_CLI = fileURLToPath(new URL('../../../local-test-data-cleanup.mjs', import.meta.url));
+
+function defaultRemoveCredential(resource) {
+  if (!resource.identity || resource.profileIdentity !== resource.identity || resource.owner?.profileIdentity !== resource.identity) return false;
+  try {
+    createOsKeyring().remove(resource.identity);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function defaultRemoveTestData(resource) {
+  if (!resource.provisioningBoundaryPath || resource.owner?.profileIdentity !== resource.profileIdentity) return false;
+  const result = spawnSync(process.execPath, [TEST_DATA_CLEANUP_CLI], {
+    encoding: 'utf8',
+    input: JSON.stringify(resource),
+  });
+  return result.status === 0;
+}
 
 function cleanupIdentity(opts) {
   return { workspaceId: opts.workspaceId, taskSlug: opts.taskSlug || opts.slug, runId: opts.runId };
@@ -77,8 +100,8 @@ export function tearDownStack(opts, deps = {}) {
       run,
       kill,
       fs: fsx,
-      removeCredential: deps.removeCredential,
-      removeTestData: deps.removeTestData,
+      removeCredential: deps.removeCredential || defaultRemoveCredential,
+      removeTestData: deps.removeTestData || defaultRemoveTestData,
       onLifecycle: deps.onLifecycle || (() => {}),
     }, clearState, writeState);
   }

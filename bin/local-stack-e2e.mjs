@@ -4,6 +4,8 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { resolveLocalStackE2eConfig } from './lib/dev-orchestrator/stack/local-stack-e2e-config.mjs';
+import { createAdapter as createRegisteredAdapter } from './lib/dev-orchestrator/stack/local-stack-e2e-adapter.mjs';
 
 const REQUIRED_PREFLIGHTS = [
   'docker',
@@ -343,18 +345,18 @@ async function main() {
     process.exitCode = 2;
     return;
   }
-  if (!args.configPath) {
-    process.stderr.write('local-stack-e2e: --config <path> is required\n');
-    process.exitCode = 2;
-    return;
-  }
   try {
-    const configPath = resolve(args.configPath);
-    const config = JSON.parse(readFileSync(configPath, 'utf8'));
-    if (!config.adapterPath) throw new Error('config.adapterPath is required');
-    const adapterModule = await import(pathToFileURL(resolve(config.adapterPath)).href);
-    if (typeof adapterModule.createAdapter !== 'function') throw new Error('E2E adapter must export createAdapter(config)');
-    const adapter = await adapterModule.createAdapter(config);
+    const config = args.configPath
+      ? JSON.parse(readFileSync(resolve(args.configPath), 'utf8'))
+      : resolveLocalStackE2eConfig();
+    let adapter;
+    if (config.adapterPath) {
+      const adapterModule = await import(pathToFileURL(resolve(config.adapterPath)).href);
+      if (typeof adapterModule.createAdapter !== 'function') throw new Error('E2E adapter must export createAdapter(config)');
+      adapter = await adapterModule.createAdapter(config);
+    } else {
+      adapter = await createRegisteredAdapter(config);
+    }
     const result = await runDeterministicFullStackE2e({
       ...config,
       injectFailureAfter: args.injectFailureAfter,

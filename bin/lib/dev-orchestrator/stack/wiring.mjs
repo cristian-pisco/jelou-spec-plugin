@@ -51,7 +51,7 @@ export function buildTopologyOverlays({ services, slug, hostGateway }) {
       }
       values.push([
         variable,
-        topologyProviderUrl({ consumer, provider: candidates[0], slug, hostGateway }),
+        `${topologyProviderUrl({ consumer, provider: candidates[0], slug, hostGateway })}${consumer.peerSuffixes?.[variable] || ''}`,
       ]);
     }
     if (values.length === 0) continue;
@@ -64,8 +64,12 @@ export function buildTopologyOverlays({ services, slug, hostGateway }) {
 }
 
 export function applyTopologyOverlays({ services, registryServices, slug, sourceMode, overlayDirectory, previousOverlays = [], hostGateway }) {
-  const peersById = new Map(registryServices.map((service) => [service.id, service.peers || {}]));
-  const graph = services.map((service) => ({ ...service, peers: peersById.get(service.id) || {} }));
+  const registryById = new Map(registryServices.map((service) => [service.id, service]));
+  const graph = services.map((service) => ({
+    ...service,
+    peers: registryById.get(service.id)?.peers || {},
+    peerSuffixes: registryById.get(service.id)?.peerSuffixes || {},
+  }));
   const generated = buildTopologyOverlays({ services: graph, slug, hostGateway });
   const overlayFiles = [];
   const plannedServices = services.map((service) => {

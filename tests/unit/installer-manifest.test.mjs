@@ -19,6 +19,7 @@ const FEATURE_BINS = [
   'bin/list-tasks.mjs',
   'bin/local-auth-onboarding.mjs',
   'bin/local-stack-e2e.mjs',
+  'bin/local-test-data-cleanup.mjs',
   'bin/task-index.mjs',
   'bin/boot-dev-server.mjs',
   'bin/build-boot-plan.mjs',

@@ -145,6 +145,36 @@ describe('resolveTaskSources — task source rejection', () => {
     );
   });
 
+  test('rejects a task source whose Git top-level differs from the selected worktree path', () => {
+    assert.throws(
+      () => resolveTaskSources({
+        ...input,
+        inspectGit: () => ({
+          topLevel: '/repos/api-service',
+          commit: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          branch,
+          worktrees: [{ path: sourcePath, branch, prunable: false }],
+        }),
+      }),
+      /api-service.*path mismatch.*\.worktrees\/source-task.*\/repos\/api-service/i,
+    );
+  });
+
+  test('rejects a prunable task worktree before returning any source descriptor', () => {
+    assert.throws(
+      () => resolveTaskSources({
+        ...input,
+        inspectGit: () => ({
+          topLevel: sourcePath,
+          commit: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          branch,
+          worktrees: [{ path: sourcePath, branch, prunable: true }],
+        }),
+      }),
+      /api-service.*stale.*source-task/i,
+    );
+  });
+
   test('rejects a detached affected task source', () => {
     assert.throws(
       () => resolveTaskSources({

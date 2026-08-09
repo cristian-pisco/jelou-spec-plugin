@@ -6,6 +6,13 @@ import { pathToFileURL } from 'node:url';
 import { createOsKeyring } from './lib/dev-orchestrator/stack/local-keyring.mjs';
 import { onboardLocalAuth } from './lib/dev-orchestrator/stack/local-provisioning.mjs';
 
+function adapterUrl(value) {
+  if (value === 'plugin:local-jelou-provisioning') {
+    return new URL('./lib/dev-orchestrator/stack/local-jelou-provisioning-adapter.mjs', import.meta.url).href;
+  }
+  return pathToFileURL(resolve(value)).href;
+}
+
 export function parseLocalOnboardingArgs(argv) {
   const adapterIndex = argv.indexOf('--adapter-module');
   if (adapterIndex === -1 || !argv[adapterIndex + 1]) throw new Error('--adapter-module is required');
@@ -28,10 +35,12 @@ export async function runLocalOnboardingCli({ requestText, adapter, keyring = cr
 
 async function main() {
   const parsed = parseLocalOnboardingArgs(process.argv.slice(2));
-  const adapterUrl = pathToFileURL(resolve(parsed.adapterModule)).href;
-  const adapter = await import(adapterUrl);
   const requestText = readFileSync(0, 'utf8');
   const request = JSON.parse(requestText);
+  const adapterModule = await import(adapterUrl(parsed.adapterModule));
+  const adapter = typeof adapterModule.createProvisioningAdapter === 'function'
+    ? await adapterModule.createProvisioningAdapter(request)
+    : adapterModule;
   const output = await runLocalOnboardingCli({
     requestText: JSON.stringify({ ...request, reconfigure: parsed.reconfigure || request.reconfigure }),
     adapter,

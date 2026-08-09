@@ -4,6 +4,9 @@
 
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
+import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { tearDownStack } from '../../bin/lib/dev-orchestrator/stack/stack-teardown.mjs';
 
 function fixtureState() {
@@ -187,5 +190,104 @@ describe('tearDownStack', () => {
     assert.deepEqual(killed, [41]);
     assert.deepEqual(out.refused, [{ kind: 'process', resource: { pid: 42 }, reason: 'ownership-marker-mismatch' }]);
     assert.deepEqual(written[0].mutationJournal, [refusedEntry]);
+  });
+
+  test('default owned teardown removes process container file credential and test data resources', (t) => {
+    const root = mkdtempSync(join(tmpdir(), 'stack-default-cleanup-'));
+    t.after(() => rmSync(root, { recursive: true, force: true }));
+    const fakeBin = join(root, 'bin');
+    const credentialLog = join(root, 'credentials.log');
+    const testDataLog = join(root, 'test-data.log');
+    const boundaryPath = join(root, 'boundary.mjs');
+    mkdirSync(fakeBin);
+    writeFileSync(join(fakeBin, 'secret-tool'), '#!/bin/sh\nprintf \'%s\\n\' "$*" >> "$JLU_FAKE_KEYRING_LOG"\n');
+    chmodSync(join(fakeBin, 'secret-tool'), 0o755);
+    writeFileSync(boundaryPath, [
+      "import { appendFileSync } from 'node:fs';",
+      'export async function createLocalJelouBoundary() {',
+      '  return { database: { async removeOwnedRecord(resource) {',
+      "    appendFileSync(resource.proofPath, `${resource.entity}:${resource.id}\\n`);",
+      '    return true;',
+      '  } } };',
+      '}',
+      '',
+    ].join('\n'));
+    const previousPath = process.env.PATH;
+    const previousLog = process.env.JLU_FAKE_KEYRING_LOG;
+    process.env.PATH = `${fakeBin}:${previousPath}`;
+    process.env.JLU_FAKE_KEYRING_LOG = credentialLog;
+    t.after(() => {
+      process.env.PATH = previousPath;
+      if (previousLog === undefined) delete process.env.JLU_FAKE_KEYRING_LOG;
+      else process.env.JLU_FAKE_KEYRING_LOG = previousLog;
+    });
+    const marker = { workspaceId: 'workspace-1', taskSlug: 'task-a', runId: 'run-17' };
+    const profileIdentity = 'jlu-local-auth:workspace-1:task-a';
+    const actions = [];
+    let cleared = false;
+    const result = tearDownStack({ ...marker, slug: marker.taskSlug }, {
+      readState: () => ({
+        currentRun: marker,
+        mutationJournal: [
+          { marker, kind: 'container', resource: { projectName: 'api-task-a', cwd: '/repo/api', composeFile: 'compose.yml' } },
+          { marker, kind: 'process', resource: { pid: 41 } },
+          { marker, kind: 'file', resource: { path: '/runtime/owned.json' } },
+          { marker, kind: 'credential', resource: { identity: profileIdentity, profileIdentity, owner: { profileIdentity } } },
+          {
+            marker,
+            kind: 'testData',
+            resource: {
+              entity: 'user',
+              id: 'user-17',
+              profileIdentity,
+              owner: { profileIdentity },
+              target: { host: '127.0.0.1', port: 5432 },
+              topology: {},
+              provisioningBoundaryPath: boundaryPath,
+              proofPath: testDataLog,
+            },
+          },
+        ],
+      }),
+      clearState: () => { cleared = true; },
+      writeState: () => {},
+      run: (_binary, args) => { actions.push(`container:${args[2]}`); return { status: 0 }; },
+      kill: (pid) => { actions.push(`process:${pid}`); return true; },
+      fs: {
+        exists: () => false,
+        copy: () => {},
+        remove: (path) => actions.push(`file:${path}`),
+      },
+    });
+
+    assert.deepEqual(result.refused, []);
+    assert.equal(cleared, true);
+    assert.deepEqual(actions, ['file:/runtime/owned.json', 'process:41', 'container:api-task-a']);
+    assert.match(readFileSync(credentialLog, 'utf8'), new RegExp(`clear service jlu-local-auth account ${profileIdentity}`));
+    assert.equal(readFileSync(testDataLog, 'utf8'), 'user:user-17\n');
+  });
+
+  test('refuses every foreign resource kind before invoking any cleanup boundary', () => {
+    const marker = { workspaceId: 'workspace-1', taskSlug: 'task-a', runId: 'run-17' };
+    const foreign = { ...marker, runId: 'run-18' };
+    const kinds = ['process', 'container', 'file', 'credential', 'testData'];
+    const invoked = [];
+    const result = tearDownStack({ ...marker, slug: marker.taskSlug }, {
+      readState: () => ({
+        currentRun: marker,
+        mutationJournal: kinds.map((kind) => ({ marker: foreign, kind, resource: { id: kind, pid: 41, path: `/runtime/${kind}` } })),
+      }),
+      clearState: () => { throw new Error('foreign state must remain'); },
+      writeState: () => {},
+      run: () => { invoked.push('container'); return { status: 0 }; },
+      kill: () => { invoked.push('process'); return true; },
+      fs: { exists: () => false, copy: () => {}, remove: () => invoked.push('file') },
+      removeCredential: () => invoked.push('credential'),
+      removeTestData: () => invoked.push('testData'),
+    });
+
+    assert.deepEqual(invoked, []);
+    assert.deepEqual(result.refused.map(({ kind }) => kind).sort(), [...kinds].sort());
+    assert.equal(result.refused.every(({ reason }) => reason === 'ownership-marker-mismatch'), true);
   });
 });

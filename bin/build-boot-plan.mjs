@@ -6,7 +6,7 @@ import { argv, exit, stdout } from 'node:process';
 import { readUnifiedRegistry } from './lib/registry/read.mjs';
 import { teardownSafetyCause } from './lib/registry/splice.mjs';
 import { buildBootPlan } from './lib/boot-engine/plan.mjs';
-import { allocateOwnedPorts, parseListeningPorts } from './lib/dev-orchestrator/stack/ports.mjs';
+import { allocateOwnedPorts, discoverListeningPorts, parseListeningPorts } from './lib/dev-orchestrator/stack/ports.mjs';
 import { readStackState, writeStackState } from './lib/dev-orchestrator/stack/stack-state.mjs';
 import { stateDir } from './lib/dev-orchestrator/state.mjs';
 import { persistTopologyOverlays } from './lib/dev-orchestrator/stack/wiring.mjs';
@@ -40,8 +40,9 @@ function portRequests(registry) {
   })));
 }
 
-export function buildPlanForWorkspace({ workspaceRoot, slug, sourceMode, taskContext, worktreePaths, occupied, livePorts, persistState = false, stateBaseDir, resolveImage, readEnv, inspectGit, pathExists }) {
-  const registry = readUnifiedRegistry(workspaceRoot);
+export function buildPlanForWorkspace({ projectRoot, workspaceRoot, slug, sourceMode, taskContext, worktreePaths, occupied, livePorts, persistState = false, stateBaseDir, resolveImage, readEnv, inspectGit, pathExists, listenerDiscovery = discoverListeningPorts }) {
+  const registryRoot = projectRoot || workspaceRoot;
+  const registry = readUnifiedRegistry(registryRoot);
   if (sourceMode === undefined) {
     return assertTeardownsAreSafe(buildBootPlan({ registry, slug, worktreePaths, occupied, resolveImage, readEnv }));
   }
@@ -56,10 +57,12 @@ export function buildPlanForWorkspace({ workspaceRoot, slug, sourceMode, taskCon
   const resolvedWorktrees = Object.fromEntries(
     sources.filter((source) => source.mode === 'worktree').map((source) => [source.serviceId, source.sourcePath]),
   );
-  const workspaceId = computeWorkspaceId(workspaceRoot);
+  const workspaceId = computeWorkspaceId(registryRoot);
   const stateOptions = { workspaceId, slug, baseDir: stateBaseDir };
   const previousState = persistState ? readStackState(stateOptions) : null;
-  const listeners = livePorts || (occupied || []).map((port) => ({ port, ownerTag: null }));
+  const listeners = livePorts
+    || (occupied ? occupied.map((port) => ({ port, ownerTag: null })) : null)
+    || (persistState ? listenerDiscovery({ state: previousState }) : []);
   const portAllocations = allocateOwnedPorts({
     requests: portRequests(registry),
     workspaceId,
@@ -124,7 +127,7 @@ function main() {
     console.error('build-boot-plan: --workspace <root> --slug <slug> required');
     exit(2);
   }
-  const workspaceRoot = argv[wi + 1];
+  const projectRoot = argv[wi + 1];
   const slug = argv[si + 1];
   const mi = argv.indexOf('--source-mode');
   const sourceMode = mi === -1 ? null : argv[mi + 1];
@@ -139,14 +142,13 @@ function main() {
   if (sourceMode !== null) {
     try {
       const taskContext = sourceMode === 'task-aware'
-        ? resolveTaskContext({ workspaceRoot, cwd: process.cwd(), slug })
+        ? resolveTaskContext({ projectRoot, cwd: process.cwd(), slug })
         : null;
       const plan = buildPlanForWorkspace({
-        workspaceRoot,
+        projectRoot,
         slug,
         sourceMode,
         taskContext,
-        livePorts: hostLivePorts(),
         persistState: true,
       });
       stdout.write(JSON.stringify(plan, null, 2) + '\n');
@@ -156,7 +158,7 @@ function main() {
     }
     return;
   }
-  const registry = readUnifiedRegistry(workspaceRoot);
+  const registry = readUnifiedRegistry(projectRoot);
   const plan = buildBootPlan({ registry, slug, worktreePaths: resolveWorktreePaths(registry, slug), occupied: hostLivePorts().map((listener) => listener.port) });
   const unsafe = unsafeTeardownEntries(plan);
   if (unsafe.length > 0) {

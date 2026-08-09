@@ -126,6 +126,9 @@ export function buildBootPlan({ registry, workspaceId, slug, worktreePaths, sour
           source: source.ownership,
           runtime: `${workspaceId}:${slug}:${sourceMode}:${svc.id}`,
         },
+        composeFile: dev.docker?.compose_file || null,
+        dockerService: dev.docker?.service || null,
+        readyTimeoutS: dev.ready_timeout_s ?? null,
       });
     }
 

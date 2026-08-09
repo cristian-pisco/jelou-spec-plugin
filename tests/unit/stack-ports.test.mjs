@@ -4,7 +4,7 @@
 
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { allocateHostPorts, allocateOwnedPorts, parseListeningPorts, parseOccupiedPorts } from '../../bin/lib/dev-orchestrator/stack/ports.mjs';
+import { allocateHostPorts, allocateOwnedPorts, discoverListeningPorts, parseListeningPorts, parseOccupiedPorts } from '../../bin/lib/dev-orchestrator/stack/ports.mjs';
 
 describe('allocateHostPorts', () => {
   test('allocates sequentially from basePort', () => {
@@ -50,6 +50,56 @@ describe('parseListeningPorts', () => {
     assert.deepEqual(parseListeningPorts(snapshot), [
       { port: 8080, ownerTag: null, pid: 912, command: 'node' },
       { port: 5173, ownerTag: null, pid: 913, command: 'vite' },
+    ]);
+  });
+});
+
+describe('discoverListeningPorts', () => {
+  test('maps persisted owners only through current-run PIDs and owned Compose labels', () => {
+    const marker = { workspaceId: 'workspace-1', taskSlug: 'task-a', runId: 'run-17' };
+    const run = (command) => command === 'ss'
+      ? {
+          status: 0,
+          stdout: [
+            'LISTEN 0 511 127.0.0.1:43210 0.0.0.0:* users:(("node",pid=912,fd=20))',
+            'LISTEN 0 511 127.0.0.1:43211 0.0.0.0:* users:(("docker-proxy",pid=913,fd=20))',
+            'LISTEN 0 511 127.0.0.1:43212 0.0.0.0:* users:(("node",pid=999,fd=20))',
+            'LISTEN 0 511 127.0.0.1:49999 0.0.0.0:* users:(("python",pid=1000,fd=20))',
+          ].join('\n'),
+        }
+      : {
+          status: 0,
+          stdout: `${JSON.stringify({
+            Labels: 'com.docker.compose.project=api-service-task-a,com.docker.compose.service=app',
+            Ports: '0.0.0.0:43211->8080/tcp',
+          })}\n${JSON.stringify({
+            Labels: 'com.docker.compose.project=foreign-project,com.docker.compose.service=app',
+            Ports: '0.0.0.0:43212->8080/tcp',
+          })}\n`,
+        };
+    const listeners = discoverListeningPorts({
+      state: {
+        currentRun: marker,
+        portAllocations: [
+          { serviceId: 'host-service', host: 43210, ownerTag: 'owner:host' },
+          { serviceId: 'api-service', host: 43211, ownerTag: 'owner:compose' },
+          { serviceId: 'foreign-service', host: 43212, ownerTag: 'owner:foreign' },
+        ],
+        mutationJournal: [
+          { marker, kind: 'process', resource: { pid: 912 } },
+          { marker, kind: 'container', resource: { projectName: 'api-service-task-a' } },
+          { marker: { ...marker, runId: 'other-run' }, kind: 'process', resource: { pid: 999 } },
+          { marker: { ...marker, runId: 'other-run' }, kind: 'container', resource: { projectName: 'foreign-project' } },
+        ],
+      },
+      run,
+    });
+
+    assert.deepEqual(listeners, [
+      { port: 43210, ownerTag: 'owner:host', pid: 912, command: 'node' },
+      { port: 43211, ownerTag: 'owner:compose', pid: 913, command: 'docker-proxy' },
+      { port: 43212, ownerTag: null, pid: 999, command: 'node' },
+      { port: 49999, ownerTag: null, pid: 1000, command: 'python' },
     ]);
   });
 });
