@@ -73,32 +73,39 @@ describe('goal — routes E2E authoring with the doctrine', () => {
   });
 });
 
-describe('execute-task — shift-left backend E2E authoring (parity with UI 8e)', () => {
+describe('execute-task — backend E2E authoring is retired, goal owns it', () => {
   const wf = read('jelou/workflows/execute-task.md');
-  // Slice the Step 8f section so assertions pin the step itself — not tokens
-  // (SPEC.md, commit, goal, "authors only") that recur throughout the
-  // workflow and would keep the suite green even if Step 8f were gutted.
   const start = wf.indexOf('### Step 8f');
   const end = start >= 0 ? wf.indexOf('## Step 9', start) : -1;
   const s8f = start >= 0 ? wf.slice(start, end > start ? end : wf.length) : '';
 
-  test('the Step 8f section exists', () => {
+  test('the Step 8f section exists and is marked retired', () => {
     assert.ok(start >= 0, 'execute-task.md must contain a "### Step 8f" section');
+    assert.match(s8f, /RETIRED/);
   });
 
-  test('Step 8f authors the backend E2E suite from SPEC.md via the doctrine', () => {
-    assert.match(s8f, /backend E2E/i);
-    assert.match(s8f, /SPEC\.md/);
-    assert.match(s8f, new RegExp(DOC));
+  test('Step 8f no longer dispatches jlu-test-writer', () => {
+    assert.doesNotMatch(s8f, /dispatch `jlu-test-writer`/);
+    assert.match(s8f, /no longer dispatches `jlu-test-writer`/);
   });
 
-  test('Step 8f authors only — does NOT run Testcontainers (goal stays the only runner)', () => {
-    assert.match(s8f, /authors? only|does NOT run|never run/i);
+  test('Step 8f hands backend E2E authoring to goal Phase 3.5', () => {
     assert.match(s8f, /\/jlu-goal/);
+    assert.match(s8f, /Phase 3\.5/);
+    assert.match(s8f, /mandatory/i);
   });
 
-  test('Step 8f detects backend services and commits the generated suite', () => {
-    assert.match(s8f, /backend service/i);
-    assert.match(s8f, /commit/i);
+  test('Step 8f states the trade it makes and preserves UI parity at 8e', () => {
+    assert.match(s8f, /Step 8e/);
+    assert.match(s8f, /stays/i);
+  });
+});
+
+describe('goal — Phase 3.5 is the primary backend E2E authoring path', () => {
+  const wf = read('jelou/workflows/goal.md');
+
+  test('11b.4 authoring is primary, not a shift-left fallback', () => {
+    assert.match(wf, /Authoring here is the \*\*primary\*\* path/);
+    assert.match(wf, /Step 8f was\n\s*retired/);
   });
 });

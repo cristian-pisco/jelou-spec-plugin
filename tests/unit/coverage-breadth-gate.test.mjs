@@ -186,7 +186,9 @@ describe('ship.md — breadth gate on the always-run PR path', () => {
     assert.match(wf, /probe-coverage-breadth\.mjs/);
     assert.match(wf, /--dto/);
   });
-  test('prompts on a happy-path-only PARTIALLY_COVERED (breadth) requirement', () => {
-    assert.match(wf, /PARTIALLY_COVERED \(breadth\)/);
+  test('the auditor is the surviving enforcement after the reviewer was retired', () => {
+    assert.match(wf, /### 2b\. Spec Compliance Review: RETIRED/);
+    assert.match(wf, /survives because it is a deterministic script/);
+    assert.match(wf, /uncovered_dimensions/);
   });
 });

@@ -99,8 +99,8 @@ Exactly two things stop it:
 1. **A red green-gate.** Phases unfinished, final validation failing, or a
    5-retry escalation — execute-task lands in Step 10 and no PR is opened.
 2. **A `blocked` service at ship.** Inside the chain ship runs with
-   `<AUTONOMOUS> = yes`, so none of its named gates asks — spec-compliance
-   MISSING, coverage-breadth thin, deps preflight FAIL, cherry-pick conflict,
+   `<AUTONOMOUS> = yes`, so none of its named gates asks —
+   coverage-breadth thin, deps preflight FAIL, cherry-pick conflict,
    CLOSED PR, no commits ahead and rate-limit exhaustion each take the
    documented default from ship.md's gate table and disclose it in the PR.
    Only two outcomes end work: a task status of `draft`/`refining` aborts the

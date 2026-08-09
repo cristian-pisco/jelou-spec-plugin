@@ -1,6 +1,6 @@
 # SQL Safety Gate
 
-> Inject this block into every agent prompt that has Bash access (test-writer, implementer, spec-reviewer, build-validator, build-validator's fix loop).
+> Inject this block into every agent prompt that has Bash access (test-writer, implementer, build-validator, build-validator's fix loop).
 
 ```
 ## SQL Safety Gate

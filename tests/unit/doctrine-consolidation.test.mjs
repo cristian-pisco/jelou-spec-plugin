@@ -31,11 +31,16 @@ describe('doctrine consolidation — anti-patterns replace the per-cycle checkli
   });
 
   test('agents cite §8 Anti-Patterns, not the checklist', () => {
-    for (const a of ['jlu-spec-reviewer', 'jlu-test-writer', 'jlu-implementer', 'jlu-tdd-cycle']) {
+    for (const a of ['jlu-test-writer', 'jlu-implementer', 'jlu-tdd-cycle']) {
       const body = read(`agents/${a}.md`);
       assert.match(body, /§8 Anti-Patterns/, `${a} must cite §8 Anti-Patterns`);
       assert.doesNotMatch(body, /per-cycle checklist/i, `${a} still cites the checklist`);
     }
+  });
+
+  test('principles no longer name a verifier — only the authoring agents', () => {
+    assert.match(principles, /No agent verifies these principles against a finished diff any more/);
+    assert.doesNotMatch(principles, /jlu-spec-reviewer`\./);
   });
 
   test('tdd-cycle agent replaced the 10-item per-slice checklist', () => {

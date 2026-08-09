@@ -4,13 +4,25 @@
 
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { classifyFailureMode, earliestDecisiveFailure } from '../../bin/lib/trace/failure.mjs';
+import {
+  classifyFailureMode,
+  earliestDecisiveFailure,
+  RETIRED_VERIFICATION_ROLES,
+} from '../../bin/lib/trace/failure.mjs';
 import { FAILURE_MODE } from '../../bin/lib/trace/schema.mjs';
 
 describe('classifyFailureMode', () => {
   test('verification roles map to verification', () => {
     for (const role of ['qa-agent', 'test-writer', 'spec-reviewer', 'jlu-qa-agent']) {
       assert.equal(classifyFailureMode({ agent_role: role }), FAILURE_MODE.VERIFICATION);
+    }
+  });
+
+  test('retired verification roles stay classifiable for historical spans only', () => {
+    assert.deepEqual([...RETIRED_VERIFICATION_ROLES].sort(), ['qa-agent', 'spec-reviewer']);
+    for (const role of RETIRED_VERIFICATION_ROLES) {
+      assert.equal(classifyFailureMode({ agent_role: role }), FAILURE_MODE.VERIFICATION);
+      assert.equal(classifyFailureMode({ agent_role: `jlu-${role}` }), FAILURE_MODE.VERIFICATION);
     }
   });
 

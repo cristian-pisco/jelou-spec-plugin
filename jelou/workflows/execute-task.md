@@ -5,7 +5,7 @@
 
 > **Execution policy**: This workflow runs fully autonomous. The ONLY case where execution pauses for user input is after 5 failed retry attempts on a phase or build step. All other decisions are auto-resolved.
 
-> **SQL Safety Gate**: inject the block from `jelou/references/sql-safety.md` into every Bash-capable agent prompt (test-writer, implementer, spec-reviewer, build-validator).
+> **SQL Safety Gate**: inject the block from `jelou/references/sql-safety.md` into every Bash-capable agent prompt (test-writer, implementer, build-validator).
 
 ---
 
@@ -71,34 +71,55 @@ non-flag, non-ClickUp token is the `task-slug`; a ClickUp URL
 9.5 gate; `--refactor` is captured for the Step 8a.3 opt-in gate. Strip the
 captured tokens before slug resolution.
 
-1. If a `task-slug` is provided as a command argument:
-   a. Use `WORKSPACE_CONFIG.workspace` to get the workspace path.
-   b. Search `<WORKSPACE_PATH>/specs/` across all date folders for the matching slug.
-2. If no `task-slug` provided:
-   a. Find the most recent task (latest date folder, latest task within it).
-   b. Auto-select it. Log to terminal: "Auto-selected task `<task-slug>`."
+`WORKSPACE_PATH` is `WORKSPACE_CONFIG.workspace`.
 
-**Error gate**: If no task found, stop: "No task found. Run `/jlu-new-task` first."
+**Resolution is one script call, not a directory walk.** The orchestrator never
+searches `<WORKSPACE_PATH>/specs/` across date folders and never parses `TASKS.md`
+to derive task state — `bin/task-index.mjs` owns both, deterministically and
+unit-tested.
 
-**Store**: `TASK_DIR`, `TASK_SLUG`, `WORKSPACE_PATH`, `WORKSPACE_CONFIG`
+1. If a `task-slug` was parsed from the invocation, use it verbatim as `<IDENT>`.
+2. If not, take the newest task from the index and log `Auto-selected task <slug>.`:
+   ```bash
+   IDENT=$(node <plugin-root>/bin/task-index.mjs list --json --workspace "<WORKSPACE_PATH>" \
+     | jq -r '.[0].slug // empty')
+   ```
+   `list --json` is ordered newest date first (slug-ascending within a date — the
+   index has no intra-day creation order, so the first row is the deterministic
+   choice, not necessarily the last one you created).
+3. Resolve the full record in one invocation:
+   ```bash
+   TASK_JSON=$(node <plugin-root>/bin/task-index.mjs get "$IDENT" --json --workspace "<WORKSPACE_PATH>")
+   ```
+
+**Exit codes** (do not paper over them): `2` no spec workspace → stop, surface stderr
+verbatim. `6` no task matches `<IDENT>` → stop: "No task found. Run `/jlu-new-task`
+first." `7` the slug matches several date folders → stderr lists the full
+`<date>/<slug>` keys; re-invoke `get` with the newest-dated one and log which you took.
+Never ask.
+
+**Store — parse `TASK_JSON` once; nothing downstream re-derives any of these:**
+`TASK_SLUG` = `.slug`; `TASK_DIR` = `<WORKSPACE_PATH>/` + `.root_path` (workspace-relative);
+`CURRENT_STATUS` = `.status`; `AFFECTED_SERVICES` = `.services[].id` (`.services[].role`
+marks the `primary`); `PHASE_STATE` = `.phases` (`[{ordinal, phase_number, heading,
+status}]`, status ∈ `pending|in_progress|done|blocked`); `SETUP_MODE` = `.setup_mode`
+(from `## Branching → Mode`; `null` means `worktree`).
+
+Also store `WORKSPACE_PATH`, `WORKSPACE_CONFIG` and the parsed `TASK_JSON` itself. Log
+`.derivation_issues` as one-line WARNs when non-empty — informational only; the
+validation below is what stops the workflow.
 
 ---
 
-## Step 2 — Load Task State
+## Step 2 — Validate Task State
 
-1. Read `<TASK_DIR>/TASKS.md`.
-2. Extract:
-   - Current status (draft, refining, planned, implementing, etc.)
-   - Affected services list
-   - Phase progress (if any phases have been executed)
-   - Any blocked or failed phases
-   - Setup mode from `## Branching → Mode` (default `worktree` if absent)
+No file is read here. Everything this step gates on came from `TASK_JSON` in Step 1.
 
 **Validation**:
-- If status is `draft` or `refining`: stop. "Task is in `<status>` state. Run `/jlu-new-task <slug>` first to complete the spec interview and get it to `planned`."
-- If status is `closed` or `cancelled`: stop. "Task is already `<status>`. Cannot execute."
+- If `CURRENT_STATUS` is `draft` or `refining`: stop. "Task is in `<status>` state. Run `/jlu-new-task <slug>` first to complete the spec interview and get it to `planned`."
+- If `CURRENT_STATUS` is `closed` or `cancelled`: stop. "Task is already `<status>`. Cannot execute."
 
-**Store**: `CURRENT_STATUS`, `AFFECTED_SERVICES`, `PHASE_STATE`, `SETUP_MODE`
+**Store**: `CURRENT_STATUS`, `AFFECTED_SERVICES`, `PHASE_STATE`, `SETUP_MODE` (all from Step 1)
 
 ---
 
@@ -109,8 +130,67 @@ captured tokens before slug resolution.
 3. Store as `MODEL_CONFIG` — a map of group name → model name.
 4. When spawning agents in subsequent steps, resolve the model:
    - For proposal-agent: use `MODEL_CONFIG.proposal` or default `"sonnet"`
-   - For test-writer, implementer, spec-reviewer (final QA), build-validator: use `MODEL_CONFIG.code` or default `"sonnet"`
+   - For test-writer, implementer, build-validator: use `MODEL_CONFIG.code` or default `"sonnet"`
    - For git-agent, tasks-agent: use `MODEL_CONFIG.operational` or default `"haiku"`
+
+---
+
+### 2c. Dispatch prompts (referenced by every subagent dispatch below)
+
+Every `jlu-proposal-agent`, `jlu-tdd-cycle`, `jlu-test-writer`, `jlu-build-validator`
+and `jlu-implementer` dispatch in this workflow gets its prompt from
+`bin/build-dispatch-prompt.mjs`. **The orchestrator does not compose agent prompts.**
+
+```bash
+PROMPT=$(node <plugin-root>/bin/build-dispatch-prompt.mjs \
+  --agent=<proposal-agent|tdd-cycle|test-writer|build-validator|implementer> \
+  --task-dir="<TASK_DIR>" \
+  --service="<service-id>" \
+  --plugin-root="<PLUGIN_ROOT>" \
+  [--phase-file="<abs path to the phase file>"] \
+  [--notes-file="<abs path to a notes file>"])
+```
+
+`--plugin-root` is how `<PLUGIN_ROOT>` reaches the agent: it becomes the `PLUGIN_ROOT`
+row of `## CONTEXT`, which is the only way an agent can resolve a bundled bin (see
+`jelou/references/plugin-root.md`). Passing it is not optional for any dispatch below.
+
+Dispatch `$PROMPT` verbatim, wrapped in the Step 7 span wrapper. The script is
+deterministic (byte-identical for identical inputs) and owns every section of the
+prompt: `## CONTEXT`, the phase's immutable `## Requirements`, `## EXISTING
+FOUNDATION`, the `## CASE MATRIX` copied from the phase's `## Acceptance`, the
+byte-invariant `## HARD CONSTRAINTS`, `## PROCEDURE`, `## RETURN`.
+
+**Never restate a section the script emits.** Re-wording the constraints per phase is
+exactly what this replaces — it was 28% of the prompt text and worded differently in
+every phase of the same task. `--phase-file` is required for `tdd-cycle`, accepted by
+`test-writer` and `implementer`, ignored elsewhere. Exit 2 is bad input (unknown agent,
+missing task dir, missing `<TASK_DIR>/services/<service-id>/`, missing phase file) — an
+orchestrator bug: fix the arguments, never hand-write the prompt instead.
+
+**`--notes-file` is the only escape hatch**, for context the script cannot derive.
+Write it to `<TASK_DIR>/services/<service-id>/phases/<NN>-reports/notes-<agent>-<round>.md`
+(`.../phases/final-reports/notes-<agent>.md` outside the phase loop); it renders as a
+trailing `## ORCHESTRATOR NOTES`. Legitimate contents, and nothing else: a prior
+attempt's failure context (per 7a.5); a list the orchestrator aggregated across phases
+and the script cannot see; which pass of a two-pass proposal this is; a repo convention
+that contradicts the codebase docs; the `SERVICE_SOURCE_PATH` override below. Never
+requirements, acceptance, constraints, procedure or return format.
+
+**Known gap — `SERVICE_SOURCE_PATH` is not always derivable.** The script reads it from
+`TASKS.md → ## Worktrees`, which exists only for `Mode: worktree` tasks. When
+`SETUP_MODE = branch` (no such section), or when Step 6.2a fell back to the main repo
+because the declared worktree was missing, the `## CONTEXT` row is absent while
+`## HARD CONSTRAINTS` still orders the agent to stay inside `SERVICE_SOURCE_PATH` —
+leaving it with no working directory. In those two cases every `tdd-cycle` /
+`test-writer` / `implementer` / `build-validator` notes file MUST open with:
+
+```
+SERVICE_SOURCE_PATH: <SERVICE_SOURCE_PATH[service-id]>
+This overrides `## CONTEXT`, which omits the row: <branch-mode | worktree missing, using the main repo>.
+```
+
+`proposal-agent` is exempt — it writes planning artifacts only.
 
 ---
 
@@ -137,7 +217,9 @@ Resolve the autochain flag per §2 of
   `Next Steps` block (run `/jlu-ship`, then `/jlu-close-task` after merge) and
   stop.
 
-If TASKS.md shows a mid-execution state (status is `implementing` and some phases are marked `done` while others are `pending` or `in_progress`):
+Otherwise, read the mid-execution state off `PHASE_STATE` (Step 1) — do NOT re-read
+`TASKS.md`. A resume is `CURRENT_STATUS == implementing` AND `PHASE_STATE` holds at
+least one entry whose `status` is `done` alongside at least one that is not:
 
 1. Log the current state to terminal:
    ```
@@ -146,17 +228,19 @@ If TASKS.md shows a mid-execution state (status is `implementing` and some phase
    Resuming from: Phase 03
    ```
 
-2. If any phase has status `in_progress` (interrupted mid-execution):
-   - Reset that phase's status to `pending`.
+2. For every `PHASE_STATE` entry whose `status` is `in_progress` (interrupted
+   mid-execution):
+   - Write that phase's status back to `pending` in TASKS.md and in the phase file.
    - Log to terminal: "Phase <NN> was interrupted. Restarting from scratch."
 
-3. Set `RESUME_FROM` = first phase that is not `done`. Skip to Step 7, starting from that phase.
+3. Set `RESUME_FROM` = the first `PHASE_STATE` entry in `ordinal` order whose `status`
+   is not `done`. Skip to Step 7, starting from that phase.
 
 ---
 
 ## Step 3b — Mode Detection and Auto-Checkout (Decision gate)
 
-Use `SETUP_MODE` parsed from Step 2 (do not re-read `TASKS.md`):
+Use `SETUP_MODE` from `TASK_JSON` (Step 1) — do not re-read `TASKS.md`:
 
 - If `SETUP_MODE = worktree` (or `## Branching` section absent): skip to Step 4. Implementation will run in the task worktree.
 - If `SETUP_MODE = branch`: continue with the branch-mode pre-flight below.
@@ -255,14 +339,19 @@ Do NOT preload codebase files or `ENGINEERING_PRINCIPLES.md` into the orchestrat
 
 ### 4b. Global Strategy Pass (Decision #21)
 
-Spawn `jlu-proposal-agent` with model: **MODEL_CONFIG.proposal** (default: sonnet). In the prompt, include:
+Build the prompt per §2c with `--agent=proposal-agent --service=<the `primary` service
+in `TASK_JSON.services`, else the first in `AFFECTED_SERVICES`>` and dispatch with
+model: **MODEL_CONFIG.proposal** (default: sonnet). Do NOT inline SPEC.md — the script
+gives its path and the agent reads it, which is 4a's discipline.
 
-- **Inlined**: full SPEC.md content (already in orchestrator context from 4a), affected services list with their `services.yaml` entries (`{id, path, stack, docker?}`).
-- **Paths to Read** (the agent reads on demand, the orchestrator does NOT prepend file content):
-  - `<WORKSPACE_PATH>/principles/ENGINEERING_PRINCIPLES.md`
-  - `<WORKSPACE_PATH>/registry/services.yaml`
-  - For each affected service, the 6 codebase files at `<WORKSPACE_PATH>/services/<service-id>/codebase/{ARCHITECTURE,STACK,CONVENTIONS,INTEGRATIONS,STRUCTURE,CONCERNS}.md`. Missing files are tolerable — the agent skips silently.
-- **Task**: "Produce the global proposal — cross-service strategy, dependency order, phase structure, contract boundaries, risks, testing strategy."
+Notes file — only what the script cannot see:
+
+```
+PASS: global
+AFFECTED SERVICES: <one line per service: its `services.yaml` entry {id, path, stack, docker?}>
+ALSO READ: <WORKSPACE_PATH>/principles/ENGINEERING_PRINCIPLES.md, <WORKSPACE_PATH>/registry/services.yaml, and each affected service's <WORKSPACE_PATH>/services/<service-id>/codebase/{ARCHITECTURE,STACK,CONVENTIONS,INTEGRATIONS,STRUCTURE,CONCERNS}.md (missing files are tolerable — skip silently)
+TASK: Produce the global proposal — cross-service strategy, dependency order, phase structure, contract boundaries, risks, testing strategy.
+```
 
 ### 4c. Local Detail Pass (Multi-Service Only)
 
@@ -274,11 +363,9 @@ If there are **2+ affected services**, spawn one `jlu-proposal-agent` per servic
 TASK_FANOUT_CAP=$(node <plugin-root>/bin/plan-phase-waves.mjs --emit-cap-only --limit=<N_affected_services>)
 ```
 
-The cap formula lives ONLY in the planner (`bin/plan-phase-waves.mjs` — auto cap from host cores, with `JLU_PHASE_PARALLELISM` applied as a reduce-only manual ceiling); never restate it in this workflow. Honor `TASK_FANOUT_CAP`: when `> 1`, fan out in a single orchestrator message; when `= 1`, dispatch sequentially. Each prompt includes:
+The cap formula lives ONLY in the planner (`bin/plan-phase-waves.mjs` — auto cap from host cores, with `JLU_PHASE_PARALLELISM` applied as a reduce-only manual ceiling); never restate it in this workflow. Honor `TASK_FANOUT_CAP`: when `> 1`, fan out in a single orchestrator message; when `= 1`, dispatch sequentially.
 
-- **Inlined**: full SPEC.md, the global strategy draft from 4b, the target service's `services.yaml` entry.
-- **Paths to Read**: the 6 codebase files for the target service (same paths as 4b, scoped to one service).
-- **Task**: "Expand service-specific execution details for `<service-id>`: local scope, relevant modules, implementation constraints, service-level phases."
+Each prompt is built per §2c with `--agent=proposal-agent --service=<service-id>` and a per-service notes file carrying `PASS: local — <service-id>`, the global strategy draft (its path, or the text when it is not yet on disk), the target service's `services.yaml` entry, its six `codebase/` docs to read, and the task: *expand service-specific execution details — local scope, relevant modules, implementation constraints, service-level phases*.
 
 Wait for all local agents to complete before continuing to 4d.
 
@@ -496,7 +583,7 @@ DS_OUT=$(node "<root>/bin/trace-start-span.mjs" \
 DISPATCH_SPAN_ID=$(echo "$DS_OUT" | jq -r '.span_id // ""')
 ```
 
-Replace `<agent-role>` with the literal agent role (`test-writer`, `implementer`, `tdd-cycle`, `refactor-agent`, `spec-reviewer`, `build-validator`). `$MODEL_FOR_AGENT` is resolved from `MODEL_CONFIG` (Step 2b).
+Replace `<agent-role>` with the literal agent role (`test-writer`, `implementer`, `tdd-cycle`, `refactor-agent`, `build-validator`). `$MODEL_FOR_AGENT` is resolved from `MODEL_CONFIG` (Step 2b).
 
 Measurement attrs (they make per-phase duration, critical path, and Step 7+8 wall-clock derivable from the spans): `$WAVE_CHOSEN_CAP` = `WAVE_PLAN.chosen_cap`; `$WAVE_INDEX` = the 1-based index of the current wave; `$WAVE_WIDTH` = the number of phases dispatched concurrently in the current chunk. For dispatches outside the Step 7 wave loop (8a.3, 8a.5), pass `--phase-parallelism "$TASK_FANOUT_CAP"` and omit the two wave flags.
 
@@ -552,9 +639,9 @@ For every sub-agent dispatched within this Step 7 loop (`jlu-test-writer`, `jlu-
    }
    ```
 
-   Capture only the fields that subsequent steps gate on (`PHASE_IS_TRIVIAL`, task-level refactor aggregation, the phase's `DEFERRED_QA_PHASES` entry). The full prose stays on disk for audit; the orchestrator does NOT keep it in context.
+   Capture only the fields that subsequent steps gate on (`PHASE_IS_TRIVIAL`, task-level refactor aggregation). The full prose stays on disk for audit; the orchestrator does NOT keep it in context.
 
-4. **When a downstream step needs the full report** (e.g., the task-level refactor pass at 8a.3 needs each phase's `Refactor Candidates`; final QA at 8c needs implementer file lists across all phases), re-read the report from disk on demand instead of relying on conversation history. This makes the cost N reads instead of N reports persistently held.
+4. **When a downstream step needs the full report** (e.g., the task-level refactor pass at 8a.3 needs each phase's `Refactor Candidates`), re-read the report from disk on demand instead of relying on conversation history. This makes the cost N reads instead of N reports persistently held.
 
 5. **Failure-context recycling**: when retrying a failed agent (up to 5 attempts), the orchestrator passes only the structured digest + the last 50 lines of the previous attempt's failure output, not the full prior report. The agent reads its own predecessor's full report from disk if it needs more context.
 
@@ -638,7 +725,7 @@ Log to terminal:
 
 3. If the diff is empty, abort: `Phase <NN> declared mode: docs but the working tree contains no documentation changes. Make the edits or remove the phase.`
 4. Stage and commit using Step 7j's commit procedure but with `<type> = docs`. The commit message body still references `Phase <NN> of production/<TASK_SLUG>`.
-5. Append the phase's `DEFERRED_QA_PHASES` entry (Step 7e.1) with the committed doc files as `files_modified` and empty `test_rewrites` / `tdd_flags` of `None` (docs phases have no tdd-cycle report), then jump straight to Step 7l (Complete Phase) after the commit lands.
+5. Jump straight to Step 7l (Complete Phase) after the commit lands.
 
 Log: `Phase <NN> docs path complete — <N> doc files committed.`
 
@@ -646,24 +733,34 @@ Log: `Phase <NN> docs path complete — <N> doc files committed.`
 
 **Skip all of 7d if `PHASE_MODE == docs`** — the docs path (7df) handles the phase.
 
-Dispatch `jlu-tdd-cycle` (model: **MODEL_CONFIG.code**, default sonnet). For a
-multi-service phase, dispatch one per service in a single orchestrator message when
-`TASK_FANOUT_CAP > 1` (sequential otherwise) — see `jelou/references/parallel-dispatch.md`.
-After all return, compare `artifacts` arrays to detect cross-service file overlap.
+Build the prompt per §2c and dispatch `jlu-tdd-cycle` (model: **MODEL_CONFIG.code**,
+default sonnet):
 
-- **Input**:
-  - Phase requirements (from the phase file's immutable section)
-  - `SERVICE_DOCS` (from Step 7c) **inlined into the prompt as contents, not as paths**: CONVENTIONS.md in full plus the projected STRUCTURE.md sections (`## Module Organization`, `## File Naming Conventions`). When the Step 6.2c size bound tripped, pass the paths instead and say so. Pass nothing else from `codebase/`; the agent's own Rules forbid the rest.
-  - Service source path (worktree or repo)
-  - SPEC.md relevant sections
-  - `TEST_TIER: 1` (TDD cycle — fast, isolated tests only; Tier 2 deferred to Step 8a)
-- **Task**: For each requirement, write the slice's failing test(s) (RED), implement the
-  minimum code to make them pass (GREEN), then move to the next slice — a surface batch
-  (rejections + boundary cases) counts as one slice. Derive coverage from the canonical case-matrix procedure. Document
-  any test rewrite under `Test Rewrites` with a spec quote.
-- **Output**: a `TDD Cycle Report — Phase <N>` with `Files Modified`, `Tests Written`,
-  `Refactor Candidates`, `Test Rewrites`, `Test Objections`, `Deviations from Expected
-  Approach` (both default to the literal `None`), and a final `Command:` line.
+```bash
+PROMPT=$(node <plugin-root>/bin/build-dispatch-prompt.mjs \
+  --agent=tdd-cycle --task-dir="<TASK_DIR>" --service="<service-id>" \
+  --plugin-root="<PLUGIN_ROOT>" --phase-file="<PHASE_FILE>" \
+  --docs-file="<SERVICE_DOC_CACHE[service-id] written to a temp file>")
+```
+
+That single call emits the phase's immutable requirements, the `## EXISTING FOUNDATION`
+digest of earlier phases, the `## CASE MATRIX` copied verbatim from the phase file's
+`## Acceptance`, `TEST_TIER: 1`, the source path, and the RED→GREEN procedure and report
+format. **Nothing above is restated here or in the dispatch.**
+
+`--docs-file` carries `SERVICE_DOC_CACHE[service-id]` — resolved once in Step 6.2c and
+**inlined as contents, never as paths**, so no phase ever re-reads `codebase/`. The bin
+emits it as `## SERVICE DOCS` and suppresses the `CODEBASE_DOCS` path row; when the Step
+6.2c size bound tripped, the cache already holds paths and they travel as-is. Pass
+nothing else from `codebase/` — the agent's own Rules forbid the rest.
+
+Add `--notes-file` only for a retry's failure context or a `SERVICE_SOURCE_PATH`
+override (§2c).
+
+For a multi-service phase, build one prompt per service and dispatch them in a single
+orchestrator message when `TASK_FANOUT_CAP > 1` (sequential otherwise) — see
+`jelou/references/parallel-dispatch.md`. After all return, compare `artifacts` arrays to
+detect cross-service file overlap.
 
 **Verification (trust-the-report)**: the agent already ran every slice's tests in its own
 session and reports `Status` + `Command:` + a per-slice table. Trust it when the report
@@ -716,28 +813,18 @@ Log to terminal:
 
 **Store**: `PHASE_IS_TRIVIAL` (from `trivial` field).
 
-### 7e.1 — Defer QA to the Final Gate (Step 8c)
+### 7e.1 — Per-phase QA: RETIRED (nothing consumes it)
 
-No QA dispatch happens inside the phase loop. The final static verification for the entire task runs once, at Step 8c. Every completed phase — docs or TDD, trivial or not — appends one entry to the `DEFERRED_QA_PHASES` accumulator that Step 8c consumes:
+No QA dispatch happens inside the phase loop, and no `DEFERRED_QA_PHASES`
+accumulator is built any more. The accumulator existed for exactly one consumer —
+the Step 8c final static gate — and that gate is retired (see Step 8c for the
+measured reason and the full list of what is now unenforced).
 
-```json
-{
-  "phase_id": "<NN>",
-  "service_id": "<service-id>",
-  "files_modified": ["<path>", ...],
-  "test_rewrites": ["<verbatim `Test Rewrites` entries, each with its spec quote>", ...],
-  "tdd_flags": {
-    "test_objections": "<the report's `Test Objections` section, or `None`>",
-    "deviations": "<the report's `Deviations from Expected Approach` section, or `None`>"
-  }
-}
-```
-
-- `files_modified`: the union of the tdd-cycle report's `Files Modified` + `Tests Written` (for docs phases, the committed doc files).
-- `test_rewrites`: the report's `Test Rewrites` entries verbatim; empty when the section is absent or `None`.
-- `tdd_flags`: the report's `Test Objections` and `Deviations from Expected Approach` sections (the tdd-cycle report defaults both to the literal `None`). Docs phases have no tdd-cycle report — record both as `None`.
-
-No agent dispatch happens here. Convention drift, pattern violations, test-rewrite verification, and every flag the tdd-cycle raised are evaluated at Step 8c against the full task scope.
+Concretely, the phase loop no longer collects each phase's `files_modified`,
+`test_rewrites`, or `tdd_flags` for later review. The tdd-cycle report still
+writes its `Test Objections` and `Deviations from Expected Approach` sections to
+disk for audit, but nothing reads them back: a phase that flagged its own doubt
+now carries that doubt into the PR unreviewed.
 
 ### 7i. Update TASKS.md (inline)
 
@@ -783,7 +870,7 @@ The script writes `key=value` lines to stdout. Parse them:
 | `source_path_missing` / `not_a_git_repo` | Abort. Source path resolution is broken; surface to user. |
 | `no_changes` | Treat as a phase no-op. Log `Phase <NN> produced no diff — skipping commit and continuing.` Do not retry. |
 | `unexpected_files_in_diff` | Parse `unexpected_files=<csv>`. Treat as a phase failure. Surface to user with the file list (same message as the old inline scope check). Do not auto-stage. |
-| `commit_failed` | A pre-commit hook (lint, commitlint, etc.) rejected the commit. Parse the script's stderr (last 50 lines), dispatch a `jlu-implementer` with `<PLUGIN_ROOT>` and the hook output as failure context, then retry Step 7j (up to 5 attempts). Never bypass with `--no-verify`. |
+| `commit_failed` | A pre-commit hook (lint, commitlint, etc.) rejected the commit. Parse the script's stderr (last 50 lines), write it to a notes file, build an `--agent=implementer --phase-file=<PHASE_FILE> --plugin-root=<PLUGIN_ROOT>` prompt per §2c, dispatch `jlu-implementer`, then retry Step 7j (up to 5 attempts). Never bypass with `--no-verify`. |
 | `invalid_commit_type` | Orchestrator bug — the `<type>` derivation logic produced something outside `feat|fix|docs|refactor|test`. Abort and surface to user. |
 
 **Forbidden operations** (orchestrator must NEVER invoke, even via Bash, regardless of finalize-phase.sh):
@@ -844,12 +931,21 @@ After all phases are complete, this is the **regression check** for the entire t
 **Aggregate first**: collect every `Tier 2 Deferred` entry reported across phases. If empty, skip to Step 8b and log: `Tier 2 step skipped — no deferred requirements.`
 
 Otherwise, for each service that has Tier 2 deferred requirements:
-1. Collect all deferred requirements from that service's phase files.
-2. Spawn `jlu-test-writer` with model: **MODEL_CONFIG.code** (default: sonnet):
-   - **Input**: Deferred requirements list, CONVENTIONS.md, service source path
-   - **TEST_TIER: 2** (integration tests against host-resident infrastructure only — no containers, no Testcontainers)
-   - **Task**: Write integration tests for all deferred requirements. Assume any required real dependency (database, queue, peer service) is already running on the host; if it isn't, mark the test skipped with a clear reason rather than starting anything yourself.
-3. Spawn `jlu-implementer` with model: **MODEL_CONFIG.code** (default: sonnet) and `<PLUGIN_ROOT>` if the integration tests reveal missing wiring (e.g., a repository method needs a real database query that was mocked in Tier 1).
+1. Collect every deferred requirement from that service's phase files into a notes file
+   (`<TASK_DIR>/services/<service-id>/phases/final-reports/notes-test-writer.md`): one
+   `- <requirement> — deferred by phase <NN>, reason: <as reported>` line each, under a
+   `DEFERRED TIER 2 REQUIREMENTS` heading, preceded by the §2c `SERVICE_SOURCE_PATH`
+   line when it applies.
+2. Build the prompt per §2c with `--agent=test-writer --service=<service-id> --notes-file=<that file>`
+   (no `--phase-file` — this is task-level) and dispatch `jlu-test-writer` with model:
+   **MODEL_CONFIG.code** (default: sonnet). The script emits `TEST_TIER: 2` and the
+   host-only dependency rule — an unavailable dependency is a skipped test with a
+   reason, never a container the agent starts.
+3. If the integration tests reveal missing wiring (e.g. a repository method needs a real
+   database query that was mocked in Tier 1), dispatch `jlu-implementer` (model:
+   **MODEL_CONFIG.code**, default sonnet) with a prompt built the same way —
+   `--agent=implementer --service=<service-id> --plugin-root=<PLUGIN_ROOT>` and the
+   failing-test output as its notes file.
 
 ### 8a.3 — Task-Level Refactor Pass (once per service)
 
@@ -908,7 +1004,7 @@ For each affected service (honor `TASK_FANOUT_CAP` for cross-service fan-out; se
    CLASSIFY_FILES="$CHANGED_FILES" <plugin-root>/bin/classify-phase.sh compilable
    ```
    If `compilable=false`, log `Build skipped for <service-id> — no compilable source changed (<extensions>).` and continue to the next service.
-2. Otherwise dispatch `jlu-build-validator` (model: **MODEL_CONFIG.code**, default sonnet) with `<PLUGIN_ROOT>`, the service source path and `<WORKSPACE_PATH>/services/<service-id>/codebase/CONVENTIONS.md`. Wrap the dispatch in the span wrapper (per the dispatch-wrapper block above; `--agent build-validator`).
+2. Otherwise build the prompt per §2c with `--agent=build-validator --service=<service-id> --plugin-root=<PLUGIN_ROOT>` (which also carries the service source path and the codebase docs) and dispatch `jlu-build-validator` (model: **MODEL_CONFIG.code**, default sonnet). Wrap the dispatch in the span wrapper (per the dispatch-wrapper block above; `--agent build-validator`).
 3. Handle the agent's verdict:
    - **PASS, no fixes** → continue.
    - **SKIP** (no build command detected) → continue.
@@ -939,10 +1035,10 @@ For each affected service:
 ```bash
 cd <SERVICE_SOURCE_PATH[service-id]>
 PRE_SHA=<the pre-execution commit cached in TASKS.md "Commit Tracking" for this service>
-git diff --name-only "$PRE_SHA"..HEAD > .changed-files.txt
+git diff --name-only "$PRE_SHA"..HEAD
 ```
 
-Filter `.changed-files.txt` to source files only — drop:
+Filter that list to source files only — drop:
 - `*.md`, `*.lock`, `*.yaml`, `*.yml`, `*.json` (except `package.json`)
 - Any `*.test.*`, `*.spec.*`, `__tests__/*`, `test/**`, `tests/**`
 - Lock files (`package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`)
@@ -955,49 +1051,51 @@ Call the result `CHANGED_SOURCES`.
 
 **If config files were the only thing that changed** (e.g., only `tsconfig.json`, `package.json`, or migration files): skip Step 8b but log: `Only config/migration files changed for <service-id> — affected-tests cannot detect related tests. Run /jlu-test-suite before opening PR.`
 
-#### 8b.2 — Detect runner
+#### 8b.2 — Resolve the affected-tests command
 
-Same detection chain as `/jlu-test-suite` Step 4 (read CONVENTIONS.md, fall back to manifest introspection). Identify `RUNNER` ∈ `{jest, vitest, mocha, pytest, go, unknown}`.
+The orchestrator does not detect the runner and does not assemble a command. Both are
+`bin/resolve-affected-tests.mjs`, which probes the repo's real jest config
+(`jest --showConfig`, ~0.3 s) so it handles presets, `projects`, TypeScript config
+files, and propagates any `--config` the repo's own `scripts.test` selects:
 
-#### 8b.3 — Build the affected-tests command
+```bash
+PLAN=$(node <plugin-root>/bin/resolve-affected-tests.mjs \
+  --repo="<SERVICE_SOURCE_PATH[service-id]>" \
+  --changed="<CHANGED_SOURCES as a comma-separated list>" \
+  --workers=<1 when TASK_FANOUT_CAP > 1, else 2>)
+```
 
-| RUNNER | Command | Notes |
-|--------|---------|-------|
-| jest | `npx jest --findRelatedTests $CHANGED_SOURCES --maxWorkers=2` | Jest's native related-tests resolver |
-| vitest | `npx vitest related $CHANGED_SOURCES --pool=threads --poolOptions.threads.maxThreads=2 --run` | Vitest's `related` mode |
-| pytest with `pytest-picked` installed | `pytest --picked --mode=branch -n 2` (drops `-n` if no xdist) | Picks tests based on git diff |
-| pytest with `pytest-testmon` installed | `pytest --testmon -n 2` | Persistent affected-test map |
-| pytest without either plugin | (skip) | Log: `pytest affected-test detection unavailable. Run /jlu-test-suite before opening PR.` |
-| mocha | (skip) | Log: `Mocha has no built-in affected-tests resolver. Run /jlu-test-suite before opening PR.` |
-| go | `go test -p 2 $(go list -deps ./... \| grep -Ff <(awk -F/ '{print $1"/"$2}' .changed-files.txt \| sort -u))` | Lists packages depending on changed packages. If shell magic above is risky, fall back to `go test ./...` with `-p 2` |
-| unknown | (skip) | Log: `Affected-tests unavailable for unknown runner. Run /jlu-test-suite before opening PR.` |
+Output is `{strategy, command, reason}`, `strategy ∈ {find-related, test-glob, full-suite}`. Exit 2 is bad input (missing repo, empty `--changed`, `--workers` outside `1|2`) — an orchestrator bug, since 8b.1 already proved `CHANGED_SOURCES` non-empty.
 
-The worker caps above are **fixed** (not a configurable env var) and conditional on fan-out:
+The worker cap is **fixed** (never a configurable env var) and conditional on fan-out, expressed once as the `--workers` value above: `TASK_FANOUT_CAP = 1` → `--workers=2`; `TASK_FANOUT_CAP > 1` → `--workers=1`, because otherwise the effective worker count is `2 × cap` and the resource invariant is one test worker per concurrent lane. Affected sets are small (10–50 tests), so these caps are fast and never overload the box; more parallelism is the dev's call via `/jlu-test-suite`. Never inject `--coverage` or `--cov` — coverage belongs in CI.
 
-- `TASK_FANOUT_CAP = 1` (sequential per service): the 2-worker forms in the table apply as written.
-- `TASK_FANOUT_CAP > 1`: drop every command to **1 worker** (`--maxWorkers=1`, `--poolOptions.threads.maxThreads=1`, `-n 1`, `-p 1`). Without this the effective worker count is `2 × cap` — the resource invariant is one test worker per concurrent lane.
+**Routing by `strategy` — `full-suite` is never run:**
 
-Affected sets are usually small (10–50 tests); these caps are enough to be fast and never overload the box. If you want more parallelism, that's the dev's call — they run `/jlu-test-suite` (which still uses 1 worker but covers the full suite) or invoke the runner directly.
+- `find-related` → run `PLAN.command` (jest `--findRelatedTests` with roots widened when `jest.roots` would otherwise exclude a changed source, or `vitest related`). The normal path.
+- `test-glob` → run `PLAN.command` (a name-scoped `--testPathPattern`/`--testPathPatterns`; the repo declares multiple jest projects with differing roots, so one roots widening cannot express it).
+- `full-suite` → **do NOT run `PLAN.command`.** Skip the service: record `AFFECTED_TESTS_RESULT[service-id] = SKIPPED` with `skip_reason = PLAN.reason`, append one `SHIP_CAVEATS` line carrying that `reason` verbatim, and log `Run /jlu-test-suite from <service-path> before /jlu-ship to confirm no regressions.`
 
-Never inject `--coverage` or `--cov` here. Coverage belongs in CI.
+`full-suite` is what the resolver returns when there is no haystack it can narrow — mocha, plugin-less pytest, go, an unknown runner, or a jest whose `--showConfig` would not resolve. **The orchestrator never runs a bare full suite** (8b's own doctrine; `bin/guard-test-commands.mjs` denies `npm test` outright), so that value is a routing signal, not a command to execute. No reading of this list runs everything.
+
+The resolver exists because the hardcoded `npx jest --findRelatedTests src/…` it replaced silently matched **0 tests and exited 1** in any repo whose `jest.roots` is `["<rootDir>/test"]` — a green-looking regression net that ran nothing.
 
 #### 8b.4 — Dispatch
 
-1. Use the cached `TASK_FANOUT_CAP` (computed at Step 4c, referenced in Step 6.4) to decide cross-service fan-out: when `> 1`, run up to that many services concurrently (with the 1-worker commands from 8b.3); when `= 1`, run sequentially per service.
-2. Per service, run the constructed command on the host runtime. Stream stdout for dev visibility.
+1. Use the cached `TASK_FANOUT_CAP` (computed at Step 4c, referenced in Step 6.4) to decide cross-service fan-out: when `> 1`, run up to that many services concurrently (each resolved with `--workers=1` per 8b.2); when `= 1`, run sequentially per service.
+2. Per service whose `strategy` is not `full-suite`, run `PLAN.command` on the host runtime. Stream stdout for dev visibility.
 3. **Wrap each service's run in the Step 7 span wrapper** so Step 7+8 wall-clock is measurable from the spans: open with `--name affected_tests --scope task --task "$TASK_SLUG" --service "$SERVICE_ID" --phase-parallelism "$TASK_FANOUT_CAP" --parent "$WORKFLOW_SPAN_ID" --trace "$WORKFLOW_TRACE_ID"` (no `--agent`, no wave flags — this is an orchestrator Bash run, not an agent dispatch), and close with `trace-end-span.mjs` passing `--status ok` on exit 0, `--status failed` otherwise. Empty span ids under `TRACE_DISABLED=1` are tolerated as everywhere else.
 4. Capture the runner's exit code as `AFFECTED_TESTS_RESULT[service-id]`.
 
 #### 8b.5 — Handle failures
 
 If any service's affected tests failed:
-- Aggregate failing test names + file paths.
-- Spawn `jlu-implementer` with model: **MODEL_CONFIG.code** (default: sonnet), `<PLUGIN_ROOT>`, and the failure context to fix. Retry up to 5 times.
+- Aggregate failing test names + file paths into a notes file.
+- Build an `--agent=implementer --service=<service-id> --plugin-root=<PLUGIN_ROOT>` prompt per §2c with that notes file and dispatch `jlu-implementer` (model: **MODEL_CONFIG.code**, default sonnet). Retry up to 5 times.
 - If still failing after 5 attempts: pause and notify user.
 
-If a service was skipped (mocha, plugin-less pytest, unknown runner), pass `AFFECTED_TESTS_RESULT[service-id] = SKIPPED` to Step 8c.
+Every service the 8b.2 routing table skipped (`strategy = full-suite`) already carries its `SKIPPED` status, its `skip_reason` and its `SHIP_CAVEATS` line; surface `Run /jlu-test-suite from <service-path> before /jlu-ship to confirm no regressions.` in the Step 9 summary.
 
-#### 8b.6 — Pass results to Step 8c
+#### 8b.6 — Record the affected-tests results
 
 The QA agent expects a structured object:
 
@@ -1015,75 +1113,54 @@ AFFECTED_TESTS_RESULT = {
 }
 ```
 
-### 8c. Comprehensive QA (static only)
+### 8c. Comprehensive QA (static only): RETIRED (no owner — read the trade below)
 
-Spawn `jlu-spec-reviewer` (subagent_type `jlu:jlu-spec-reviewer`, bare `jlu-spec-reviewer` fallback) with model: **MODEL_CONFIG.code** (default: sonnet) for a **static** comprehensive review. The dispatch prompt's FIRST line is the literal `MODE: final-qa` — the mode contract: without a valid `MODE` line the agent returns `STATUS: NEEDS_CONTEXT` instead of inferring a mode. The reviewer **must NOT run the test suite** — not the affected-tests subset, not coverage, not anything. Test execution this task is owned by Step 8b (affected) and by `/jlu-test-suite` (on-demand full); the reviewer's job is static analysis.
+This step used to be the single static quality gate for the whole task: one
+`jlu-spec-reviewer` dispatch in `MODE: final-qa` that read the authoritative
+per-service diff and returned coverage, coverage-breadth, code-smell,
+over-engineering, security, performance, convention, cross-service-contract and
+test-rewrite findings, split into blocking (fixed in-session by `jlu-implementer`)
+and advisory (published as `SHIP_CAVEATS`). It is **retired**: `execute-task` no
+longer dispatches any QA agent, and `jlu-spec-reviewer` is deleted from the plugin.
 
-**File inventory — the authoritative diff.** The file set the reviewer inspects comes from `git diff PRE_SHA..HEAD --name-only` per service (the pre-execution commit cached in TASKS.md "Commit Tracking") — never from report file lists alone, which are blind to Tier 2 wiring, refactor-pass, and build-validator fixes. The per-phase `files_modified` lists (including every `DEFERRED_QA_PHASES` entry) are passed as provenance annotation over that diff, not as the inventory.
+Why it was retired — measured, not assumed. The agent cost **~112 s and ~6 261
+output tokens per dispatch**, and it ran twice per task (here in `final-qa` mode,
+and again at ship Step 2b in `compliance` mode). That is pure static re-reading of
+a diff the pipeline has already validated by execution: Step 8b runs the affected
+tests, `/jlu-test-suite` runs the full suite on demand, and `/jlu-goal` runs the
+real E2E suites against a booted stack. The gate could not fail a build, only
+annotate one.
 
-Pass the reviewer the captured Step 8b results (affected-tests verdict per service):
+**Nothing inherits the gate.** This is the honest statement of the trade, not a
+hand-off. What survives is only what already existed independently of the agent:
 
-- **Step 8b affected-tests results** (`AFFECTED_TESTS_RESULT` from 8b.6): PASS/FAIL/SKIPPED/NO_DIFF per service, exact command run, failing tests if any
-- **Deferred QA review** (`DEFERRED_QA_PHASES` from Step 7e.1): one entry per completed phase, shape `{phase_id, service_id, files_modified, test_rewrites, tdd_flags}`. The reviewer must (a) include every entry's `files_modified` in its convention/code-smell/over-engineering scan; (b) verify each entry's `test_rewrites`: every rewrite must carry a valid spec quote and the rewritten test must still describe behavior, not implementation — a violation is a BLOCKING finding per the taxonomy below; (c) give priority scrutiny to entries whose `tdd_flags` are not `None` — a flagged objection or deviation is where the tdd-cycle itself signalled doubt.
-- **Full coverage analysis**: Are all requirements from SPEC.md covered by tests? (read SPEC.md and test files; do not run them). Note: this is static — checking that every requirement has at least one test file asserting the behavior, not measuring runtime coverage percentages
-- **Pre-PR recommendation**: if any service's 8b result was SKIPPED (mocha, plugin-less pytest, or only config files changed), the reviewer surfaces a clear note in its report:
-  > `Pre-PR action: run /jlu-test-suite from <service-path> before opening the pull request to confirm no regressions in the full suite.`
-- **Edge case & coverage-breadth review**: Were edge cases from the spec addressed? AND — the coverage-breadth backstop is UNCONDITIONAL: pass the reviewer the union of new/modified DTO/validator files across ALL phases (from the authoritative per-service diff) and restate the Coverage-Breadth FAIL rule verbatim: a new/modified validated DTO field (request body or typed query parameter) with no test that sends a violating payload and asserts the 4xx is a FAIL, and a collection/reference field exercised only empty is a FAIL. The breadth gate must fire at 8c unconditionally — it is the single static gate for the whole task.
-- **Cross-service contract verification** (if multi-service): Do the services communicate correctly? Are contracts honored?
-- **Convention compliance**: Final check against CONVENTIONS.md
-- **Code smell detection**: Full structural review
-- **Over-engineering detection**: Verify minimum viable implementation
+- **Affected-test execution** — Step 8b, unchanged. It was never the reviewer's.
+- **Coverage breadth** — `bin/probe-coverage-breadth.mjs`, a deterministic script,
+  still runs at ship Step 2b.6b (always, advisory, scoped to changed
+  `*.dto.*`/`*.schema.*` files) and inside `/jlu-goal` Phase 4.5 via
+  `jlu-test-suite-runner`. The unconditional whole-task FAIL on a validated field
+  with no rejecting test is gone; what remains is a heuristic probe that warns.
+- **The Testcontainers/Docker tier ban** — still stated in
+  `jelou/references/tdd-cycle.md` and still in the self-checklists of the agents
+  that author tests (`jlu-tdd-cycle`, `jlu-test-writer`). There is no longer an
+  independent verifier that the authors obeyed it.
+- **The no-comments rule** — still inherited by every code-authoring agent from
+  `jelou/references/subagent-base.md`. No agent re-reads the diff to catch a
+  comment that slipped through.
 
-**Finding classification — advisory vs blocking.** The QA report is triaged
-here, and the classification is closed. A QA agent cannot create a gate: no
-wording in its report ("must be verified by a human before merge", "requires
-a smoke test", "do not merge until…") promotes an item past this triage.
+Unenforced from here on, with no replacement anywhere in the pipeline: code-smell
+and over-engineering review, security review of new endpoints, N+1 and unbounded
+query review, CONVENTIONS.md compliance on the diff, cross-service contract
+matching, the audit that every tdd-cycle test rewrite carried a valid spec quote,
+priority scrutiny of the tdd-cycle's own `Test Objections` / `Deviations` flags,
+the 100-line function cap, and artifact completeness.
 
-- **Blocking** — only a failing check this pipeline itself owns and can fix
-  in-session: a Coverage-Breadth FAIL, a convention violation with a concrete
-  fix, a cross-service contract mismatch, a test rewrite without a valid spec
-  quote or whose rewritten test describes implementation instead of behavior,
-  or a security finding with a concrete in-session fix. Dispatch
-  `jlu-implementer` with model **MODEL_CONFIG.code** (default: sonnet) and
-  `<PLUGIN_ROOT>`, and resolve it before Step 9. Blocking findings never
-  travel to ship. **Post-fix re-validation**: after each blocking-finding fix
-  is applied, re-run the affected tests of the files the fix touched (build
-  the command per Step 8b.3, scoped to those files) BEFORE Step 9 — a late
-  fix never leaves the final state unvalidated.
-- **Advisory** — everything else, whatever the QA agent labelled it
-  (`Advisory / Not Verifiable Here` rows, a `FU-<n>` follow-up, prose "next
-  step"): recommended manual or human smoke tests, verifications that are
-  inherently post-merge or need a real deployed consumer, the
-  `/jlu-test-suite` pre-PR suggestion, and risk notes about code outside this
-  task's scope. Collect each one verbatim as a single line into
-  `SHIP_CAVEATS`.
+`SHIP_CAVEATS` is unaffected as a mechanism — Steps 8e and 8g still append to it,
+and ship still renders it in the PR body under `### Not verified by this PR`. It
+simply no longer receives QA-derived rows, because nothing produces them.
 
-An advisory finding NEVER blocks Step 9 or Step 9.5. It is published, not
-enforced: ship's Step 7d renders `SHIP_CAVEATS` in the PR body under
-`### Not verified by this PR`, so the reviewer sees the gap and the PR still
-opens. A requirement that only a human can verify is an advisory line, not a
-held PR.
-
-**Store**: `SHIP_CAVEATS` (list of strings, source-tagged `8c`; empty when
-the report is clean)
-
-Log the validation results to terminal:
-```
-## Final Validation Results
-
-### Coverage
-- Requirements covered: <N>/<total>
-- Test suites passing: <N>/<total>
-- Tier 1 (unit/mock) tests: <count>
-- Tier 2 (integration) tests: <count>
-
-### Issues Found
-- <issue-1>
-- <issue-2>
-
-### Cross-Service Contracts
-- <contract check results>
-```
+The `AFFECTED_TESTS_RESULT` map from Step 8b is still logged for the run summary;
+it just has no downstream consumer that re-reads it. Continue to Step 8d.
 
 ### 8d. Post-Validation Cleanup
 
@@ -1092,93 +1169,112 @@ No cleanup needed. The TDD pipeline never starts containers, so there is nothing
 ### Step 8e — Materialize the UI E2E suite from SPEC.md (shift-left)
 
 After backend validation passes, author the UI E2E suite for any affected frontend
-service so it ships with the change. A service is a **UI service** when its
-`services.yaml` `stack` ∈ {`react`, `nextjs`, `vue`, `angular`, `svelte`} (or its
-`description` matches `/(react|next\.?js|vue|angular|svelte|frontend|UI app)/i` for
-legacy registrations without a `stack`).
+service so it ships with the change.
 
-For each affected UI service:
+**The UI/backend split is not restated here.** It is `bin/classify-task-scope.mjs` —
+the same classifier `/jlu-goal` uses, which already implements this rule (frontend
+stacks `react`/`nextjs`/`vue`/`angular`/`svelte`, with the `description` regex as the
+legacy fallback for registrations that carry no `stack`):
+
+```bash
+SCOPE=$(node <plugin-root>/bin/classify-task-scope.mjs \
+  '[{"id":"<service-id>","stack":"<services.yaml stack>","description":"<services.yaml description>"}, ...]')
+```
+
+It returns `{scope, ui_services, backend_services, warnings}`. Iterate
+`SCOPE.ui_services`; `scope = full-backend` (empty `ui_services`) makes this whole step
+a no-op. Log every `SCOPE.warnings` entry as a one-line WARN — each names a service
+detected as UI by `description` alone, whose `services.yaml` entry should declare a
+`stack`. Exit 1 means empty or invalid input, an orchestrator bug: `AFFECTED_SERVICES`
+cannot be empty at Step 8e.
+
+For each id in `SCOPE.ui_services`:
 
 1. Resolve its active worktree (`jelou/references/worktree-resolution.md`).
-2. If `services/<UI_SERVICE_ID>/user-flow.md` + generated specs already exist → no-op.
-3. Otherwise dispatch `jlu-ui-e2e-writer`: `MODE=bootstrap` when no Playwright infra
-   exists, else `MODE=derive-from-spec`; `EXPECT=red`. The writer reads `SPEC.md` and
-   emits `user-flow.md` + the complete suite (success + non-default-field +
-   reference-population + negative/rejection per its rule 4b).
-4. Commit the generated `user-flow.md` + specs to the task branch.
+2. Pick the writer's `MODE`. `jlu-ui-e2e-writer` has three, and each one has a branch
+   here — a service that already has a `user-flow.md` but no specs still needs a
+   dispatch, and that is the `normal` mode:
+
+   | Worktree / task-dir state | MODE |
+   |---------------------------|------|
+   | No Playwright infra in the worktree (no `playwright.config.{ts,js}`) | `bootstrap` — scaffolds the infra, then falls through to `derive-from-spec` itself |
+   | Infra exists, `<TASK_DIR>/services/<UI_SERVICE_ID>/user-flow.md` does not | `derive-from-spec` — the writer generates `user-flow.md` from `SPEC.md`, then authors the suite |
+   | `user-flow.md` exists, `<TASK_DIR>/services/<UI_SERVICE_ID>/e2e/` holds no `*.spec.ts` | `normal` — the writer authors the suite from the existing `user-flow.md` |
+   | Both `user-flow.md` and generated specs exist | no dispatch. Log `UI E2E suite already present for <UI_SERVICE_ID> — skipping.` |
+
+3. Dispatch `jlu-ui-e2e-writer` with that `MODE`, `EXPECT=red`, `<TASK_DIR>`,
+   `<UI_SERVICE_ID>` and `<UI_SERVICE_WORKTREE>`. The writer emits `user-flow.md` (in
+   the two deriving modes) plus the complete suite — success + non-default-field +
+   reference-population + negative/rejection, per its rule 4b.
+
+   **`bootstrap` is dispatched without asking.** This workflow is fully autonomous and
+   Step 8g settles the same question one section below — *never by asking the user
+   mid-chain*. The confirmation the writer's own doc mentions belongs to
+   `/jlu-ui-qa-run`, the interactive post-deploy workflow; it does not apply here or in
+   `/jlu-goal`. Take the default, scaffold, and append one `SHIP_CAVEATS` line naming
+   the service whose Playwright config and fixtures are generated rather than reviewed.
+   A `BLOCKED` report (scaffold or install failed) is not a retry and not a prompt:
+   append its verbatim manual command as a second caveat and continue to Step 9.
+
+4. Commit the generated `user-flow.md` + specs to the task branch — through Step 8g,
+   which decides what an ignored suite path means.
 
 This step authors only — it is **pre-deploy**: it does NOT boot a UI server and does
 NOT run Playwright (that happens post-deploy under `/jlu-goal` /
 `/jlu-ui-qa-run`). It is a no-op when no UI service is affected.
 
-### Step 8f — Materialize the backend E2E suite from SPEC.md (shift-left)
+### Step 8f — Backend E2E authoring: RETIRED (owned by `/jlu-goal` Phase 3.5)
 
-The backend twin of Step 8e, for parity: a frontend change ships with its Playwright
-suite, so a backend change must ship with its controller-level E2E suite — instead of
-that suite only ever existing reactively the first time someone runs
-`/jlu-goal`. A service is a **backend service** when its `services.yaml`
-`stack` is NOT a UI stack (i.e. ∉ {`react`, `nextjs`, `vue`, `angular`, `svelte`}); the
-HTTP-surface gate below — not this definition — decides whether it actually gets a suite.
+This step used to author the backend E2E suite here, shift-left, so a backend change
+would carry its controller-level suite into the PR. It is **retired**: `execute-task`
+no longer dispatches `jlu-test-writer` for backend E2E, and no longer authors
+`test/e2e/**`.
 
-This step is gated on real HTTP surface area the change **adds or modifies**: run it for
-an affected backend service only when this task **introduced or changed an HTTP route
-handler the service exposes** — detected runtime-agnostically from the phase's
-added/changed lines, NOT from a fixed filename set (so it works beyond NestJS). A route
-handler is any of: an HTTP-method decorator (`@Get`/`@Post`/… NestJS, `@app.get`/router
-decorators FastAPI), a route registration (`app.get(...)`/`router.post(...)` Express,
-`r.Get(...)`/`http.HandleFunc(...)` Go, a `routes/*.php` entry Laravel), or a
-controller/handler method wired to a path. Key on the handler appearing in the diff —
-NOT on SPEC.md merely *naming* an endpoint, since the spec may name a downstream API the
-service only *calls* (that is not an exposed surface and must not trigger authoring). A
-backend service whose change exposes no new/changed route handler (pure refactor,
-internal helper, worker/cron/queue consumer, migration-only) is skipped with a one-line
-note — it has no controller→DB flow to E2E.
+Why it was retired — measured, not assumed. Backend E2E authoring was the single most
+expensive dispatch in a mono-service run (290 s of a 1 940 s Step 7+8, ~15%) and
+`execute-task` **never runs** what it produced: execution has always belonged to
+`/jlu-goal` Phase 3.5. Paying the authoring cost on the critical path of the stage that
+cannot verify the artifact is the wrong stage for the work.
 
-For each affected backend service that clears the gate:
+Nothing is lost. `/jlu-goal` Phase 3.5 already treats a missing suite as
+**mandatory, not discretionary** authoring: a `NO_E2E_SUITE` verdict routes to
+`jlu-test-writer` with the `jelou/references/backend-e2e-authoring.md` doctrine, and the
+phase is non-bypassable. The suite is now authored by the stage that immediately runs it,
+which is also the only stage that can prove it green.
 
-1. Resolve its active worktree (`jelou/references/worktree-resolution.md`).
-2. If a suite matching the service's declared E2E glob(s) (`services.yaml` `e2e.globs`;
-   default `test/e2e/**` / `*.e2e-spec.ts`) already covers the touched endpoints → no-op. A
-   repo whose real-DB HTTP tier is the `*.integration-spec.ts` convention declares it there,
-   so the integration spec the TDD cycle already authored satisfies this step (do not author
-   a duplicate parallel tree).
-3. Otherwise dispatch `jlu-test-writer` with an **E2E target** (the declared convention;
-   default `test/e2e/**`, dependencies-only Testcontainers permitted for DB/Redis/etc.),
-   instructing it to author the suite from `SPEC.md` following the assertion doctrine in
-   `jelou/references/backend-e2e-authoring.md` — every mutating endpoint reads its
-   entity back through a fresh request and asserts the DB-persistence + cache side
-   effects, never just the HTTP 2xx.
-4. Commit the generated `test/e2e/**` suite to the task branch.
+The trade this makes explicit: a PR opened without ever running `/jlu-goal` does not
+carry a backend E2E suite. Frontend parity is unaffected — **Step 8e (UI E2E) stays**,
+because a UI change has no other authoring path before ship.
 
-This step **authors only** — it does NOT boot the service and does NOT run the E2E
-suite (it never starts a Testcontainers dependency). Execution, and the Testcontainers
-boot, remain owned exclusively by `/jlu-goal` (Phase 3.5) — the Testcontainers
-carve-out is path-scoped to `test/e2e/**` and the TDD pipeline never *runs* it. It is a
-no-op when no affected backend service exposes a touched endpoint.
-
-### Step 8g — Ignored suite path (applies to 8e and 8f)
+### Step 8g — Ignored suite path (applies to 8e)
 
 A generated suite whose path is excluded by git cannot travel with the PR, and
 silently leaving it uncommitted is worse than either alternative. Decide it
 here — never at ship time, never by asking the user mid-chain:
 
-1. Before committing, in the service worktree resolved in 8e/8f step 1:
+1. Before committing, classify the path. The orchestrator does not interpret
+   `git check-ignore` output itself:
    ```bash
-   git check-ignore -v <suite-path> || echo NOT_IGNORED
+   IGNORED=$(node <plugin-root>/bin/classify-ignored-suite.mjs \
+     --path="<suite-path>" --repo="<the service worktree resolved in 8e step 1>")
    ```
-2. `NOT_IGNORED` → commit normally, nothing to record.
-3. Excluded by a **local, uncommitted** rule (`check-ignore` points at
-   `.git/info/exclude`, or at a `.gitignore` that is itself untracked) → the
-   exclusion is one developer's local choice and must not decide what a PR
-   contains. Force-add the suite (`git add -f <suite-path>`), commit it, and
-   append one `SHIP_CAVEATS` line naming the override and the rule.
-4. Excluded by a **committed repo rule** (the matching `.gitignore` is tracked)
-   → that is the repo's deliberate convention; do not fight it and do not
-   force-add. Leave the suite uncommitted and append one `SHIP_CAVEATS` line:
-   the suite exists locally at `<path>`, is excluded by `<rule>` from
-   `<file>:<line>`, and is therefore not part of the PR.
+   Output is `{status, rule, source, action, caveat}`.
+2. Switch on `.action` — these three branches are exhaustive:
 
-Both branches continue to Step 9. An ignored suite path is a disclosure, not a
+   | `.status` / `.action` | Do |
+   |------------------------|----|
+   | `not_ignored` / `commit` | Commit the suite normally. Nothing to record — `.caveat` is `null`. |
+   | `local_rule` / `force_add` | The exclusion is a **local, uncommitted** rule (`.git/info/exclude`, or a `.gitignore` that is itself untracked) — one developer's local choice, which must not decide what a PR contains. `git add -f <suite-path>`, commit, and append `.caveat` to `SHIP_CAVEATS` verbatim. |
+   | `repo_rule` / `leave_uncommitted` | The exclusion is a **committed repo rule** (the matching `.gitignore` is tracked) — the repo's deliberate convention. Do not fight it, do not force-add. Leave the suite uncommitted and append `.caveat` to `SHIP_CAVEATS` verbatim; it already names the path, the rule, and the `<file>:<line>` it came from. |
+
+3. **Exit 3 is a git failure**, not a fourth classification: `git` could not run, the
+   path lies outside the repo, or `check-ignore` output was unparseable. Never read it
+   as `not_ignored`. Leave the suite uncommitted, append one `SHIP_CAVEATS` line
+   naming the suite path and the script's stderr verbatim, and continue. (Exit 2 is
+   bad input — a missing `--path`/`--repo` or a repo path that is not a directory —
+   an orchestrator bug; fix the arguments.)
+
+Every branch continues to Step 9. An ignored suite path is a disclosure, not a
 stop, and never a question.
 
 ---
@@ -1235,7 +1331,7 @@ If all validation passes:
 ## Step 9.5 — Auto-chain (ship → PRs green)
 
 Runs ONLY from the Step 9 success path — that IS the green-gate: every phase
-done, final validation green, QA findings triaged per Step 8c. A red gate
+done and final validation green (Step 8c QA is retired — see it). A red gate
 lands in Step 10 instead, so a PR is only ever opened on a green gate.
 
 **Resolve the flag** per §2 of
@@ -1256,9 +1352,9 @@ The stops available to you are the closed list in §5 of the recipe — a red
 green-gate, or one of ship's own named `question` gates. Everything else
 continues:
 
-- A QA follow-up (`FU-*`), a manual or human smoke test you cannot perform, a
-  verification that is inherently post-merge, or any advisory finding from
-  Step 8c is **not** a stop. It is already in `SHIP_CAVEATS`.
+- A QA follow-up (`FU-*`), a manual or human smoke test you cannot perform, or a
+  verification that is inherently post-merge is **not** a stop. It is already in
+  `SHIP_CAVEATS`.
 - A condition the workflows do not name is **not** a stop. Take the
   documented default, append one line to `SHIP_CAVEATS`, continue.
 - "Opening this PR would overstate what was verified" is **not** a stop — it
@@ -1284,7 +1380,7 @@ workflow itself uses — and restore the snapshot after ship's own span close
 Without the snapshot, ship's span close consumes this workflow's span and the
 final Step N double-closes ship's.
 
-Hand ship two inputs: the `SHIP_CAVEATS` list accumulated in Steps 8c/8e/8f/8g
+Hand ship two inputs: the `SHIP_CAVEATS` list accumulated in Steps 8e/8g
 (it renders in every PR body at Step 7d) and **`<AUTONOMOUS> = yes`**. That
 second one is what carries the authorization into ship's own gates: none of them
 asks, each takes its documented default and records a caveat, per ship.md's
@@ -1515,7 +1611,7 @@ Awaiting your input to proceed.
 | #7 | PROPOSAL.md bridges SPEC.md and implementation |
 | #9 | Dependency-driven multi-service execution order |
 | #10 | User stories auto-generated from spec in hybrid format |
-| #13 | **Superseded**: QA consolidated into the single final static gate (Step 8c, spec-reviewer in final-qa mode) |
+| #13 | **Retired**: per-phase QA was consolidated into one final static gate (Step 8c), and that gate is now retired too — no static QA agent runs in this workflow |
 | #19 | Phase files: immutable requirements + mutable execution |
 | #21 | Two-pass proposal: global strategy + per-service detail |
 | #29 | **Superseded**: always autonomous, execution mode selection removed |

@@ -4,14 +4,15 @@
 //  - SPEC Success Criteria carry a labeled [success|rejection|realistic|boundary]
 //    taxonomy with a Case-Coverage self-check before status=planned, so the
 //    input space is born in the spec rather than transcribed from happy-path prose.
-//  - The QA gate gained Coverage-Breadth smells + a contract-derived rejection
-//    review, and the spec-reviewer downgrades a happy-path-only requirement.
+//  - The Coverage-Breadth smells still exist as doctrine, and the only surviving
+//    enforcement is the deterministic probe — the agent that used to apply them
+//    (jlu-spec-reviewer) is retired.
 //
 // Run: `node --test tests/unit/spec-case-taxonomy.test.mjs`
 
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -75,27 +76,32 @@ describe('QA gate — breadth-aware coverage', () => {
     assert.match(c, /payload realism/);
   });
 
-  test('jlu-spec-reviewer.md Final QA derives the rejection space from the contract', () => {
-    const a = read('agents/jlu-spec-reviewer.md');
-    assert.match(a, /[Dd]erive the rejection space from the contract/);
-    assert.match(a, /Coverage-Breadth Smells/);
+  test('the catalog states plainly that it has no enforcer', () => {
+    const c = read('jelou/references/qa-smell-catalog.md');
+    assert.match(c, /no enforcer/i);
+    assert.match(c, /retired/i);
+    assert.ok(!existsSync(join(ROOT, 'agents', 'jlu-spec-reviewer.md')));
   });
 
-  test('jlu-spec-reviewer.md downgrades + tags a happy-path-only requirement', () => {
-    const a = read('agents/jlu-spec-reviewer.md');
-    assert.match(a, /backed only by a single happy-path test is PARTIALLY_COVERED/);
-    assert.match(a, /PARTIALLY_COVERED \(breadth\)/);
+  test('the deterministic breadth probe is the only surviving enforcement', () => {
+    assert.ok(existsSync(join(ROOT, 'bin', 'probe-coverage-breadth.mjs')));
+    const ship = read('jelou/workflows/ship.md');
+    assert.match(ship, /probe-coverage-breadth\.mjs/);
+    const runner = read('agents/jlu-test-suite-runner.md');
+    assert.match(runner, /probe-coverage-breadth\.mjs/);
   });
 });
 
 describe('always-run-path enforcement (not just opt-in production-like)', () => {
-  test('execute-task 8c reinforces the breadth FAIL rule when 7h is skipped', () => {
+  test('execute-task 8c records that the unconditional breadth FAIL is gone', () => {
     const wf = read('jelou/workflows/execute-task.md');
-    assert.match(wf, /coverage-breadth review/i);
-    assert.match(wf, /must fire at 8c/);
+    assert.match(wf, /### 8c\..*RETIRED/);
+    assert.match(wf, /unconditional whole-task FAIL on a validated field/);
   });
 
-  test('ship gate prompts on a breadth gap instead of waving it through', () => {
-    assert.match(read('jelou/workflows/ship.md'), /PARTIALLY_COVERED \(breadth\)/);
+  test('ship keeps the always-run breadth auditor on the PR path', () => {
+    const ship = read('jelou/workflows/ship.md');
+    assert.match(ship, /always runs,\s*advisory/);
+    assert.match(ship, /uncovered_dimensions/);
   });
 });

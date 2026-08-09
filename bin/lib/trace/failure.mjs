@@ -1,6 +1,7 @@
 import { FAILURE_MODE } from './schema.mjs';
 
-const VERIFICATION_ROLES = new Set(['qa-agent', 'test-writer', 'spec-reviewer']);
+export const RETIRED_VERIFICATION_ROLES = new Set(['qa-agent', 'spec-reviewer']);
+const VERIFICATION_ROLES = new Set(['test-writer', ...RETIRED_VERIFICATION_ROLES]);
 const SPEC_ROLES = new Set(['spec-interviewer', 'proposal-agent']);
 const EXECUTION_ROLES = new Set(['implementer', 'build-validator', 'refactor-agent']);
 const COORDINATION_PATTERN = /coordinat|handoff|dependency|blocked_on|deadlock|contention|orphan/i;

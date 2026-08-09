@@ -1,6 +1,10 @@
 # QA Smell Catalog
 
-> Code smells and over-engineering patterns `jlu-spec-reviewer` reviews in Final QA mode (Step 8c). Read on demand.
+> Code smells and over-engineering patterns. **This catalog currently has no enforcer.**
+> `jlu-spec-reviewer` applied it at execute-task Step 8c; that agent is retired and no
+> other agent reads this file as a gate. It is kept as the shared vocabulary for anyone
+> — human or agent — reviewing a diff by hand, and as the definition the catalog would
+> be re-attached to if a QA gate is ever reinstated.
 >
 > For each finding: provide exact file path and line range, classify severity, include a one-line fix suggestion. Do not flag patterns that match the codebase's established architecture (check CONVENTIONS.md and ARCHITECTURE.md).
 

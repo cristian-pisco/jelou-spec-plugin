@@ -46,11 +46,10 @@ Interactive approval of these suggestions lives only in `/jlu-refine-task` (the 
 > **Idempotent. Every mutation is followed by its named verification command.**
 
 - Running this workflow twice produces the same result. Existing PRs are skipped.
-- The spec compliance review catches drift between what was planned and what was built.
 - Every PR description tells reviewers what changed and why — traced back to SPEC.md requirements.
 - Rate limits are handled gracefully with backoff. Never skip the retry protocol.
 
-**When to simplify:** For single-service tasks with one PR, the cross-referencing and multi-service coordination steps are automatically skipped. The compliance review always runs.
+**When to simplify:** For single-service tasks with one PR, the cross-referencing and multi-service coordination steps are automatically skipped.
 
 ---
 
@@ -73,8 +72,7 @@ Rows at Step 2 and 2b resolve in the orchestrator, before the fan-out. Rows from
 | Gate | Site | Autonomous default |
 |------|------|--------------------|
 | Task status `draft` / `refining` | Step 2 | **Abort the run.** A spec that never reached `planned` has no agreed contract to ship against. |
-| Spec-compliance MISSING requirement, or one tagged `PARTIALLY_COVERED (breadth)` | 2b decision gate (items 6a / 6b) | Proceed. Caveat lists each missing FR/NFR with the coverage ratio, or names the requirement and its untested dimension. |
-| `probe-coverage-breadth` verdict `thin` | 2b step 6b (the auditor) | Proceed. Caveat lists the `uncovered_dimensions`. Already documented as advisory friction, never a hard block. |
+| `probe-coverage-breadth` verdict `thin` | 2b.1 (the auditor) | Proceed. Caveat lists the `uncovered_dimensions`. Already documented as advisory friction, never a hard block. |
 | Dependency preflight FAIL | 4b.1 | Proceed, set `PREFLIGHT_OVERRIDE += deps`. The validator is report-only by design and the override banner already surfaces it in the PR. |
 | Build FAIL after 5 auto-fix rounds | 4b.2 | **Block this service.** Never proceed — a PR whose code does not compile burns a reviewer and cannot merge. |
 | git-agent escalation | Step 5 | **Block this service**, escalation verbatim in the caveat. Remaining services continue. |
@@ -166,7 +164,7 @@ For **Step 8** (`gh pr edit`), on exhaustion: warn "Cross-reference update for <
 **Caller inputs (optional).** Running inside the autochain (execute-task Step
 9.5b), the caller hands over `<AUTONOMOUS> = yes` (see "Autonomous mode" above —
 it decides how every gate resolves) and `SHIP_CAVEATS` — advisory lines from
-Steps 8c/8e/8f/8g that must be disclosed in every PR body (Step 7d). Both are
+Steps 8e/8g that must be disclosed in every PR body (Step 7d). Both are
 absent or empty on a standalone `/jlu-ship` run. A caller-driven run adds **no**
 confirmation of its own beyond the named gates in this workflow: the chain
 already carries the user's standing authorization to ship
@@ -206,55 +204,57 @@ Read and cache task artifacts in one pass (single parallel tool-call message whe
 
 ---
 
-### 2b. Spec Compliance Review
+### 2b. Spec Compliance Review: RETIRED (only the coverage-breadth probe survives)
 
-1. Reuse cached `SPEC.md` and `PROPOSAL.md` content loaded in Step 2 (do not re-read).
-2. Read `<TASK_DIR>/versions/SPEC-changelog.md` (if exists).
-3. For each affected service, collect the git diff:
-   a. Resolve the service working directory (worktree or repo root, same logic as Step 4).
-   b. Detect the default branch:
-      ```bash
-      cd <SERVICE_CWD> && git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@'
-      ```
-      Fall back to `main` if this fails.
-   c. Collect the diff:
-      ```bash
-      cd <SERVICE_CWD> && git diff <DEFAULT_BRANCH>..production/<TASK_SLUG>
-      ```
-4. Spawn `jlu-spec-reviewer` agent with model: **MODEL_CONFIG.code** (default: sonnet):
-   - The dispatch prompt's FIRST line is the literal `MODE: compliance` — the mode contract: without a valid `MODE` line the agent returns `STATUS: NEEDS_CONTEXT` instead of inferring a mode.
-   - Pass: SPEC.md content, PROPOSAL.md content (or empty), SPEC-changelog.md content (or empty), combined git diff for all services, service source paths.
-5. Receive the compliance report from the agent.
-6. **Decision gate**:
-   a. If the report shows any MISSING requirements, present via question:
-      ```
-      Spec Compliance Review found gaps:
+This step used to spawn `jlu-spec-reviewer` in `MODE: compliance` to diff the task
+branch against `SPEC.md` + `PROPOSAL.md` and return a requirements-coverage table
+(COVERED / PARTIALLY_COVERED / UNTESTED / MISSING) plus scope-creep detection, which
+was then rendered verbatim in every PR body. It is **retired**: the agent is deleted
+from the plugin and no compliance report is produced or published.
 
-      Missing requirements:
-      - FR-<N>: <requirement>
-      - NFR-<N>: <requirement>
+Why it was retired — measured, not assumed. The agent cost **~112 s and ~6 261
+output tokens per dispatch** and ran twice per task (here, and again at
+execute-task Step 8c in `final-qa` mode). Both dispatches were static re-reads of a
+diff, and neither could stop anything: the decision gate below already defaulted to
+"proceed with a caveat" in autonomous mode, which is how the chain actually runs.
 
-      Coverage: <N>/<total> (<percentage>%)
+**Nothing inherits the requirements-coverage table or the scope-creep check.** A PR
+no longer carries a per-FR/NFR/SC coverage statement, and a file changed outside
+everything `SPEC.md` and `PROPOSAL.md` mention is no longer flagged. `SPEC.md`
+itself is still the contract, and `/jlu-goal` still proves behaviour against a real
+stack — but nothing maps the diff back to numbered requirements.
 
-      Options:
-      A) Proceed with PR creation (known gaps, will address in follow-up)
-      B) Abort PR creation (go implement missing requirements)
-      ```
-   b. If a requirement is tagged `PARTIALLY_COVERED (breadth)` — an input-validating requirement backed only by a happy-path test, with no rejection/realistic case — present it via question exactly like a MISSING gap (Options: A) Proceed with known thin coverage · B) Abort and add the rejection + realistic tests). Do NOT silently wave a breadth gap through.
-   c. Otherwise, if all requirements are COVERED or plain PARTIALLY_COVERED: log the summary to terminal and continue.
-   d. **Autonomous** (`<AUTONOMOUS> = yes`): neither 6a nor 6b asks. Proceed and append one `SHIP_CAVEATS` line per gap — the missing FR/NFR list with its coverage ratio, or the breadth-thin requirement with its untested dimension (gate table).
-6b. **Coverage-breadth check (static, scoped to changed DTOs — always runs, advisory).** This puts the `/jlu-goal` Phase 4.5 breadth gate on the always-run PR path without booting anything. Compute the DTO/validator files changed in THIS task:
-   ```bash
-   cd <SERVICE_CWD> && git diff --name-only <DEFAULT_BRANCH>..production/<TASK_SLUG> | grep -E '\.(dto|schema)\.[jt]sx?$'
-   ```
-   If any changed DTO files exist, run the static auditor scoped to exactly those files (legacy untouched DTOs are never flagged):
-   ```bash
-   node <plugin-root>/bin/probe-coverage-breadth.mjs --service <SERVICE_CWD> $(printf -- '--dto %s ' <each changed dto>) --json
-   ```
-   On `verdict: thin` (exit 4), present the `uncovered_dimensions` via question — each is a validated field with no rejecting-payload test, or a collection/reference exercised only empty — and offer: A) Proceed (known thin coverage) · B) Abort and add the missing rejection/realistic tests (re-dispatch `jlu-test-writer` with `--allow-test-edits`). The auditor is a heuristic: advisory friction, never a hard block, consistent with the goal PASS-THIN stance. Autonomous → proceed with the `uncovered_dimensions` as a `SHIP_CAVEATS` line.
-7. Store the compliance report for inclusion in PR descriptions.
+**2b.1 — Coverage-breadth check (static, scoped to changed DTOs — always runs,
+advisory).** This survives because it is a deterministic script, not the agent. It
+puts the `/jlu-goal` Phase 4.5 breadth gate on the always-run PR path without
+booting anything. For each affected service, resolve `<SERVICE_CWD>` (worktree or
+repo root, same logic as Step 4), detect the default branch:
 
-**Store**: `COMPLIANCE_REPORT`
+```bash
+cd <SERVICE_CWD> && git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@'
+```
+
+Fall back to `main` if this fails. Then compute the DTO/validator files changed in
+THIS task:
+
+```bash
+cd <SERVICE_CWD> && git diff --name-only <DEFAULT_BRANCH>..production/<TASK_SLUG> | grep -E '\.(dto|schema)\.[jt]sx?$'
+```
+
+If any changed DTO files exist, run the static auditor scoped to exactly those files
+(legacy untouched DTOs are never flagged):
+
+```bash
+node <plugin-root>/bin/probe-coverage-breadth.mjs --service <SERVICE_CWD> $(printf -- '--dto %s ' <each changed dto>) --json
+```
+
+On `verdict: thin` (exit 4), present the `uncovered_dimensions` via question — each
+is a validated field with no rejecting-payload test, or a collection/reference
+exercised only empty — and offer: A) Proceed (known thin coverage) · B) Abort and
+add the missing rejection/realistic tests (re-dispatch `jlu-test-writer` with
+`--allow-test-edits`). The auditor is a heuristic: advisory friction, never a hard
+block, consistent with the goal PASS-THIN stance. Autonomous → proceed with the
+`uncovered_dimensions` as a `SHIP_CAVEATS` line.
 
 ---
 
@@ -268,7 +268,7 @@ For each affected service, dispatch `jlu-ship-runner` with model
 orchestrator resolves it, the runner does not), `<PLUGIN_ROOT>`,
 `<SETUP_MODE>`, `<DUAL_PR>`, this service's `<SYNC_MARKERS>`, `<TASK_TITLE>`,
 `<PROBLEM_STATEMENT>`, `<PROPOSAL_SUMMARY>`, this service's `<PHASE_PROGRESS>`
-and `<TEST_SUMMARY>`, `<COMPLIANCE_REPORT>`, `<SHIP_CAVEATS>`, and
+and `<TEST_SUMMARY>`, `<SHIP_CAVEATS>`, and
 `<AUTONOMOUS>`. Wrap each dispatch in the span wrapper
 (`--agent ship-runner`).
 
@@ -712,17 +712,6 @@ the reviewer learns exactly what was and was not verified, and the PR still
 opens. Never silently drop a caveat, and never let a caveat become a reason to
 skip PR creation.
 
-If `COMPLIANCE_REPORT` exists, append to the PR body:
-
-```html
-<details>
-<summary>Spec Compliance Review (<N>/<total> requirements covered)</summary>
-
-<COMPLIANCE_REPORT content>
-
-</details>
-```
-
 ### 7e. Create the PR
 
 ```bash
@@ -771,8 +760,7 @@ If `STAGING_SYNC[<service-id>] = "rebuild"`, prepend to the PR body (before `## 
 ```
 
 If `SHIP_CAVEATS` is non-empty, append the same `### Not verified by this PR`
-block used in the trunk PR body. If `COMPLIANCE_REPORT` exists, append the same
-`<details>` block used in the trunk PR body.
+block used in the trunk PR body.
 
 Create the PR:
 

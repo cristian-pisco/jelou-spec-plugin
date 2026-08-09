@@ -30,16 +30,6 @@
 - **Context:** Diseño completo en `~/.gstack/projects/cristian-pisco-jelou-spec-plugin/cristianp-main-design-20260807-232622.md` (Approach C + Open Question 1). Criterio de activación medible: tras 2+ semanas de métricas P7 con el lote 1 activo, el camino crítico intra-servicio representa >50% del wall-clock de las tareas medidas. Sin ese umbral, no se construye.
 - **Depends on / blocked by:** lote 1 de velocidad mergeado + métricas P7 acumuladas.
 
-## Dedup de las dos pasadas de spec-reviewer (8c + ship)
-
-- **Priority:** P3
-- **What:** Tras la fusión del lote de velocidad, `jlu-spec-reviewer` corre dos veces por tarea: Step 8c de execute-task (`MODE: final-qa`) y Step 6 de ship (`MODE: compliance`). Evaluar consolidarlas en una.
-- **Why:** Dos pasadas estáticas finales sobre código muy solapado son costo redundante si los datos muestran que el compliance de ship no encuentra nada que el 8c no encontró ya.
-- **Pros:** Un dispatch menos por tarea; simplifica ship; cierra el arco de P9 (un solo verificador) con evidencia.
-- **Cons:** Ship corre en otro contexto (post-cherry-pick, por servicio) — la equivalencia no es obvia; tocar ship sin datos sería especulación.
-- **Context:** Nota post-fusión en Tarea 2 item 9 del design doc del lote de velocidad. Criterio medible desde los reports: si en 2-3 tareas reales los findings de la pasada de ship son subconjunto de los de 8c, la pasada de ship se elimina o se reduce a un check de cherry-pick.
-- **Depends on / blocked by:** lote 1 completo (Tareas 1 y 2) mergeado + 2-3 tareas reales con ambas pasadas registradas.
-
 ## Completed
 
 ### Full installer whitelist audit (Codex/OpenCode)

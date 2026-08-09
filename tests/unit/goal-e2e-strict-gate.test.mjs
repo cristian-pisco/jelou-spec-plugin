@@ -80,14 +80,19 @@ describe('jlu-backend-e2e-runner — accepts E2E_GLOBS, never emits N/A', () => 
   });
 });
 
-describe('execute-task Step 8f — glob-aware coverage, no duplicate tree', () => {
+describe('goal Phase 3.5 — glob-aware coverage, no duplicate tree', () => {
   test('the coverage check uses the declared E2E glob(s)', () => {
-    assert.match(exec, /declared E2E glob\(s\)[\s\S]{0,40}e2e\.globs/i);
+    assert.match(wf, /e2e\.globs/);
+    assert.match(wf, /Resolve the E2E discovery glob\(s\)/i);
   });
 
-  test('an integration-convention repo is satisfied by its TDD-authored spec', () => {
-    assert.match(exec, /\*\.integration-spec\.ts.{0,3}convention/);
-    assert.match(exec, /do not author[\s\S]{0,20}duplicate parallel tree/i);
+  test('an integration-convention repo is recognized only via declared globs', () => {
+    assert.match(wf, /\*\.integration-spec\.ts/);
+    assert.match(wf, /recognition is by the declared/i);
+  });
+
+  test('execute-task no longer owns backend E2E authoring', () => {
+    assert.match(exec, /### Step 8f — Backend E2E authoring: RETIRED/);
   });
 });
 

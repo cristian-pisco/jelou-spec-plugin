@@ -79,7 +79,7 @@ After all agents return:
 Two distinct fan-out axes apply in `execute-task.md`:
 
 1. **Wave-level fan-out (H7)** — when `PROPOSAL.md` declares `Execution Strategy: per-service-parallel`, Step 7.0 builds waves where each wave contains one phase per service. All phases in a wave dispatch concurrently in a single orchestrator message, capped by `PHASE_PARALLELISM`. See `bin/plan-phase-waves.mjs` for the deterministic plan.
-2. **Per-phase fan-out** — within a single phase that affects multiple services (rarer with H7 since most multi-service phases get split into per-service phases by the proposal-agent), 7d dispatches one agent per service. QA is final-only: a single `jlu-spec-reviewer` dispatch at Step 8c, never fanned out per phase.
+2. **Per-phase fan-out** — within a single phase that affects multiple services (rarer with H7 since most multi-service phases get split into per-service phases by the proposal-agent), 7d dispatches one agent per service. There is no QA dispatch on any axis: Step 8c is retired and `jlu-spec-reviewer` is deleted, so nothing fans out per phase and nothing runs once at the end either.
 
 Per-phase fan-out points:
 

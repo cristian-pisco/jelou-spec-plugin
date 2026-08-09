@@ -11,7 +11,7 @@
 
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -116,31 +116,33 @@ describe('test-running agents — reference the policy and carry caps', () => {
   });
 });
 
-describe('spec-reviewer — never executes tests in either mode', () => {
-  const reviewer = read('agents/jlu-spec-reviewer.md');
-
-  test('the never-executes rule is a shared rule across both modes', () => {
-    assert.match(reviewer, /You are static in both modes/);
-    assert.match(reviewer, /NEVER execute tests or coverage/);
+describe('spec-reviewer — retired, so it cannot re-run anything', () => {
+  test('no runtime still carries the agent', () => {
+    for (const rel of [
+      'agents/jlu-spec-reviewer.md',
+      '.opencode/agents/jlu-spec-reviewer.md',
+      '.codex/agents/jlu-spec-reviewer.toml',
+    ]) {
+      assert.ok(!existsSync(join(ROOT, rel)), `${rel} must not exist — the agent is retired`);
+    }
   });
 
-  test('Final QA mode consumes Step 8b evidence instead of re-running', () => {
-    assert.match(reviewer, /Do NOT re-run tests in this agent/);
-  });
-
-  test('coverage analysis stays read-only', () => {
-    assert.match(reviewer, /Do NOT invoke `jest --coverage`/);
+  test('the single remaining test execution in execute-task is the capped Step 8b run', () => {
+    const executeTask = read('jelou/workflows/execute-task.md');
+    assert.match(executeTask, /### 8c\..*RETIRED/);
+    assert.match(executeTask, /\*\*Affected-test execution\*\* — Step 8b, unchanged/);
   });
 });
 
 describe('orchestrator workflows — capped invocations stay capped', () => {
   test('execute-task Step 8b keeps fixed worker caps with the fan-out conditional', () => {
     const executeTask = read('jelou/workflows/execute-task.md');
-    assert.match(executeTask, /--findRelatedTests \$CHANGED_SOURCES --maxWorkers=2/);
-    assert.match(executeTask, /--poolOptions\.threads\.maxThreads=2/);
-    assert.match(executeTask, /`TASK_FANOUT_CAP > 1`: drop every command to \*\*1 worker\*\*/);
-    assert.match(executeTask, /--maxWorkers=1/);
+    assert.match(executeTask, /resolve-affected-tests\.mjs/);
+    assert.match(executeTask, /--workers=<1 when TASK_FANOUT_CAP > 1, else 2>/);
+    assert.match(executeTask, /`TASK_FANOUT_CAP = 1` → `--workers=2`/);
+    assert.match(executeTask, /`TASK_FANOUT_CAP > 1` → `--workers=1`/);
     assert.match(executeTask, /never invokes the bare full-suite command/);
+    assert.match(executeTask, /never runs a bare full suite/);
   });
 
   test('test-suite workflow keeps workers=1 and the RAM gate', () => {

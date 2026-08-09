@@ -66,7 +66,7 @@ describe('ship fans out one runner per service', () => {
     assert.match(runner, /STATUS: BLOCKED reason=/);
     assert.match(runner, /Cross-reference PRs, update TASKS\.md/);
     assert.match(runner, /Merge a PR, force-push/);
-    assert.match(runner, /spec-compliance review or the coverage-breadth probe/);
+    assert.match(runner, /Run the coverage-breadth probe — the caller owns it/);
   });
 
   test('a blocked runner does not abort the remaining services', () => {
@@ -77,7 +77,7 @@ describe('ship fans out one runner per service', () => {
     assert.match(ship, /## Autonomous mode — how every gate resolves/);
     assert.match(ship, /`<AUTONOMOUS>` is a caller input, `no` unless/);
     assert.match(ship, /In autonomous mode no gate asks/);
-    for (const site of ['Step 2', '2b decision gate \\(items 6a \\/ 6b\\)', '2b step 6b \\(the auditor\\)', '4b\\.1', '4b\\.2', 'Step 5', '5b', '6 \\/ 6b', '7b', '6 \\/ 7e']) {
+    for (const site of ['Step 2', '2b\\.1 \\(the auditor\\)', '4b\\.1', '4b\\.2', 'Step 5', '5b', '6 \\/ 6b', '7b', '6 \\/ 7e']) {
       assert.match(ship, new RegExp(`\\| ${site} \\|`), `gate table is missing site ${site}`);
     }
     assert.match(ship, /Rows at Step 2 and 2b resolve in the orchestrator/);
