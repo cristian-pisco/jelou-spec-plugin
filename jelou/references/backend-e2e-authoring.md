@@ -106,6 +106,22 @@ internal collaborator:
 - Asserting cache behavior against an in-memory stub instead of the real cache the
   runner brought up.
 
+## Running the suite — termination
+
+A backend E2E boots the real app against real dependencies, so it holds whatever the app
+opened: a DB pool, a cache client, a listening socket. Jest waits on those handles and the
+run never exits.
+
+Run in the **foreground with `--forceExit`** — `npx jest <suite> --runInBand --forceExit`.
+Never background the run and poll it: no `&` plus a wait, no `kill -0` / `pgrep` liveness
+loop, no waiting for a log file to fill, no `strace` / `/proc` / `lsof` forensics on a test
+process. That path burns minutes of wall-clock and ends where it started.
+
+A suite that still hangs under `--forceExit` has found a shutdown defect in the service —
+report it as `OPEN_HANDLE: <module> does not close <resource> on shutdown` and leave
+production code alone. Adding a lifecycle hook to make your own test exit is a production
+change smuggled in through a test task.
+
 ## Per-suite checklist (before reporting DONE)
 
 - [ ] Every mutating endpoint reads its entity back through a fresh request and asserts

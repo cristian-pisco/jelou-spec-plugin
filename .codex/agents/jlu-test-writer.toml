@@ -155,6 +155,37 @@ Run ONLY the newly written phase test files using `Bash` to confirm Red. All com
 
 If Tier 2 integration tests require a live NestJS service process, the developer must have already started it on the host via `/jlu-start-dev` (or `npm run start:dev` / `pnpm run start:dev` in another terminal). Do not start service processes yourself, and never start them inside a container.
 
+### Step 4b: Test-run termination contract (mandatory)
+
+A suite that boots the application keeps whatever the application opened — a database pool, a
+Redis client, a server socket. Jest waits for those handles and the run never exits. Measured
+cost of getting this wrong: **8.3 minutes of a 13.2-minute agent run**, spent polling a
+process that was never going to terminate.
+
+**Always run in the foreground with `--forceExit`** whenever the suite boots the app
+(`Test.createTestingModule`, `app.init()`, `app.listen()`, or any `test/**/*.e2e-spec.ts`):
+
+```
+npx jest <test-file> --runInBand --forceExit
+```
+
+**Never** background a test run and poll for it. All of these are forbidden, no exceptions:
+
+- `npx jest ... &` followed by any wait
+- `until ! kill -0 $(pgrep -f jest)` / `while kill -0 <pid>` / any PID-liveness loop
+- `while [ ! -s <log> ]` or `until grep -q <marker> <log>` — waiting on a log to fill
+- `ps aux | grep jest`, `strace`, `/proc/<pid>/`, `ss`/`lsof` — process forensics on a test run
+
+If a run still hangs with `--forceExit`, you have found a **product defect**, not a testing
+problem. Stop, do not debug the process, and report it in your summary in this shape:
+
+```
+OPEN_HANDLE: <module/class> does not close <resource> on shutdown — jest cannot exit after app.close()
+```
+
+Never fix it by editing production code: adding a lifecycle hook to make your test exit is a
+production change smuggled in through a test task. Report it and let the phase own it.
+
 ## Test Construction Rules
 
 ### DO:
