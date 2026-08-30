@@ -12,6 +12,7 @@ OPENCODE_TARGET="${OPENCODE_HOME:-$HOME/.config/opencode}"
 CODEX_TARGET="${CODEX_HOME:-$HOME/.codex}"
 NO_GLOBAL_OPENCODE="false"
 NO_GLOBAL_CODEX="false"
+LEGACY_COPY="false"
 declare -a OPENCODE_PROJECTS=()
 
 usage() {
@@ -30,6 +31,12 @@ Options:
   --project <path>              Also install OpenCode files into a project (repeatable)
   --no-opencode-global          Skip install into --opencode-target
   --no-codex-global             Skip install into --codex-target
+  --legacy-copy                 Claude Code only: copy skills and agents into
+                                ~/.claude instead of relying on the plugin
+                                system. They install unnamespaced, shadow the
+                                plugin's jlu: surfaces, and are not removed by
+                                a later plugin update. Only for a Claude Code
+                                too old to support plugins.
   -h, --help                    Show this help
 
 Examples:
@@ -86,6 +93,10 @@ while [ "$#" -gt 0 ]; do
       NO_GLOBAL_CODEX="true"
       shift
       ;;
+    --legacy-copy)
+      LEGACY_COPY="true"
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -117,10 +128,29 @@ else
   echo "Syncing runtime mirrors... skipped (node not found)"
 fi
 
+report_claude_plugin_state() {
+  local claude_bin="${JLU_CLAUDE_CLI:-claude}"
+  echo "Claude Code loads this plugin through the plugin system — no file copy needed."
+  if command -v "$claude_bin" >/dev/null 2>&1 &&
+     "$claude_bin" plugin list --json 2>/dev/null | grep -q '"jlu@jelou-spec-plugin"'; then
+    echo "  jlu@jelou-spec-plugin is installed. Run /jlu-update to pull the latest version."
+  else
+    echo "  jlu@jelou-spec-plugin is not installed yet:"
+    echo "    claude plugin marketplace add cristian-pisco/jelou-spec-plugin"
+    echo "    claude plugin install jlu@jelou-spec-plugin"
+  fi
+  echo "  To exercise this working tree before releasing:"
+  echo "    claude --plugin-dir \"$PLUGIN_DIR\""
+}
+
 if [ "$INSTALL_CLAUDE" = "true" ]; then
   echo
-  echo "Installing for Claude Code..."
-  JLU_SKIP_SYNC_AGENTS=true "$PLUGIN_DIR/bin/install.sh"
+  if [ "$LEGACY_COPY" = "true" ]; then
+    echo "Installing for Claude Code (legacy copy)..."
+    JLU_SKIP_SYNC_AGENTS=true "$PLUGIN_DIR/bin/install.sh"
+  else
+    report_claude_plugin_state
+  fi
 fi
 
 if [ "$INSTALL_OPENCODE" = "true" ]; then

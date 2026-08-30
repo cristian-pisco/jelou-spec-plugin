@@ -182,11 +182,21 @@ The plugin silently checks for updates when you run any `/jlu-*` command. If a n
 # Option A: Load directly from a local directory
 claude --plugin-dir /path/to/jelou-spec-plugin
 
-# Option B: Fallback installer (same behavior as ./setup --host claude)
+# Option B: Legacy copy installer — only for a Claude Code without plugin support
 git clone https://github.com/cristian-pisco/jelou-spec-plugin.git
 cd jelou-spec-plugin
-./setup --host claude
+./setup --host claude --legacy-copy
 ```
+
+Option A is the one to use for local development. It loads the working tree under the
+same `jlu:` namespace as the installed release and outranks it for that session, so an
+unreleased change to a skill, agent or hook is exercisable without publishing anything.
+`./setup --host claude` (without `--legacy-copy`) copies nothing — it reports whether
+the plugin is installed and how to install it.
+
+Option B copies skills and agents into `~/.claude` under their **bare** names. They
+shadow the plugin's `jlu:` surfaces, collide with same-named skills from other sources,
+and carry no hooks. A later plugin update does not touch them.
 
 ## Quick Start (Codex)
 
