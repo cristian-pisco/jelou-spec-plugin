@@ -5,7 +5,7 @@
 import { test, describe, beforeEach, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, copyFileSync, readFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -18,6 +18,17 @@ const FIX_RULES = join(ROOT, 'tests/fixtures/trace/rules-sample.jsonl');
 let dir;
 let traceFile;
 let historyFile;
+
+function fixtureShiftedIntoLookbackWindow(source) {
+  const spans = readFileSync(source, 'utf8').trim().split('\n').map((line) => JSON.parse(line));
+  const newest = Math.max(...spans.map((span) => new Date(span.ts).getTime()));
+  const shift = Date.now() - newest;
+  const shifted = spans.map((span) => ({
+    ...span,
+    ts: new Date(new Date(span.ts).getTime() + shift).toISOString(),
+  }));
+  return `${shifted.map((span) => JSON.stringify(span)).join('\n')}\n`;
+}
 
 function run(env = {}) {
   return spawnSync('node', [SCRIPT], {
@@ -36,7 +47,7 @@ beforeEach(() => {
   traceFile = join(dir, '.traces/spans.jsonl');
   historyFile = join(dir, '.spec-workspace/.cache/suggestion-history.jsonl');
   mkdirSync(dirname(traceFile), { recursive: true });
-  copyFileSync(FIX_RULES, traceFile);
+  writeFileSync(traceFile, fixtureShiftedIntoLookbackWindow(FIX_RULES));
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
