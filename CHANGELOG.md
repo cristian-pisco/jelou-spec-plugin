@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.360] — 2026-08-30
+
+### Changed
+- Make the working tree testable before a release, and fix the manifest that made 0.3.359 fail to load (#94)
+
 ## [0.3.359] — 2026-08-09
 
 ### Changed
