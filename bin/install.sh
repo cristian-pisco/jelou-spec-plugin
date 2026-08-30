@@ -1,21 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Jelou Spec Plugin — Legacy Fallback Installer (Claude Code)
-#
-# Only for a Claude Code too old to support plugins. Everywhere else the plugin
-# system owns the install: it namespaces every surface under `jlu:`, loads
-# hooks/hooks.json, and replaces the whole tree on update.
-#
-# This path cannot do any of that. It copies skills and agents into ~/.claude
-# under their BARE names, where they shadow the plugin's namespaced surfaces and
-# collide with third-party skills of the same name. It installs no hooks at all.
-#
-# Reach it only through `./setup --host claude --legacy-copy`.
-#
-# Every run purges the surfaces a previous run installed before copying: without
-# that, a skill or agent retired upstream stays resident and dispatchable forever.
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_DIR="$(dirname "$SCRIPT_DIR")"
 CLAUDE_DIR="${CLAUDE_HOME:-$HOME/.claude}"
@@ -26,12 +11,8 @@ echo "Plugin directory: $PLUGIN_DIR"
 echo "Claude directory: $CLAUDE_DIR"
 echo ""
 
-# Ensure Claude directory exists
 mkdir -p "$CLAUDE_DIR"
 
-# A previously installed skill is identified by the workflow reference only this
-# plugin emits, never by name — third-party skills share names (gstack ships its
-# own `ship`) and must survive untouched.
 purge_installed_skills() {
   local dir="$1" removed=0 skill
   [ -d "$dir" ] || return 0
@@ -55,9 +36,6 @@ purge_installed_agents() {
   echo "  Purged $removed previously installed agent(s)"
 }
 
-# Bare names collide across sources — gstack ships its own `ship`. Whatever this
-# installer did not put there wins; the alternative is silently destroying a
-# skill the user installed from somewhere else.
 install_skills() {
   local src="$1" dest="$2" installed=0 skipped=0 skill name
   mkdir -p "$dest"
@@ -89,8 +67,6 @@ if [ -d "$PLUGIN_DIR/agents" ]; then
   echo "  Installed $(find "$PLUGIN_DIR/agents" -name "*.md" | wc -l) agents"
 fi
 
-# Sync .opencode/agents from agents/ (canonical) so OpenCode users get the
-# same content. Non-fatal: install never breaks if Node is missing.
 if [ "${JLU_SKIP_SYNC_AGENTS:-false}" != "true" ]; then
   if command -v node >/dev/null 2>&1 && [ -f "$PLUGIN_DIR/bin/sync-agents.mjs" ]; then
     echo "Syncing .opencode/agents from agents/..."
@@ -99,7 +75,6 @@ if [ "${JLU_SKIP_SYNC_AGENTS:-false}" != "true" ]; then
   fi
 fi
 
-# Copy update check script
 if [ -f "$PLUGIN_DIR/bin/check-update.sh" ]; then
   echo "Installing update check..."
   mkdir -p "$CLAUDE_DIR/bin"
@@ -108,7 +83,6 @@ if [ -f "$PLUGIN_DIR/bin/check-update.sh" ]; then
   echo "  Installed check-update.sh"
 fi
 
-# Copy shared resources
 if [ -d "$PLUGIN_DIR/jelou" ]; then
   echo "Installing shared resources..."
   mkdir -p "$CLAUDE_DIR/jelou"

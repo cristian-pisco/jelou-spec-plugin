@@ -1,17 +1,3 @@
-// tests/unit/claude-install-path.test.mjs
-//
-// Run: `node --test tests/unit/claude-install-path.test.mjs`
-//
-// Claude Code installs through the plugin system, which namespaces every surface
-// under `jlu:` and replaces the whole tree on update. The legacy fallback copies
-// into ~/.claude under bare names instead, and running it as part of a normal
-// `./setup` is what left 33 frozen skills and 30 frozen agents on a developer
-// machine — 12 of them for workflows the plugin had already retired.
-//
-// These cases pin the two invariants that keep that from recurring: setup does
-// not take the copy path unless asked, and the copy path purges what it put
-// there before and refuses to overwrite a skill from another source.
-
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { spawnSync } from 'node:child_process';

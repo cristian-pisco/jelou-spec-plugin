@@ -1,14 +1,3 @@
-// bin/lib/dev-link/manifest.mjs
-//
-// Static reimplementation of the plugin-load rules that actually break a release.
-//
-// `claude plugin validate` passes on manifests that the runtime then refuses to
-// load — 0.3.359 shipped with a hooks reference the CLI auto-loads on its own and
-// reported "failed to load" for every install. These checks run offline, so the
-// pre-push gate does not depend on the Claude CLI being present.
-//
-// Every check returns findings shaped { id, severity, message, fix }.
-
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseAgentFile } from '../agent-frontmatter.mjs';

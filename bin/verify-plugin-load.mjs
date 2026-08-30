@@ -1,25 +1,4 @@
 #!/usr/bin/env node
-// bin/verify-plugin-load.mjs
-//
-// Pre-release gate: would this working tree actually LOAD as a plugin?
-//
-// `npm test` proves the scripts behave; nothing proved that Claude Code accepts
-// the manifest. 0.3.359 shipped a hooks reference the runtime auto-loads on its
-// own and every install reported "failed to load" — green suite, dead plugin.
-//
-// The default pass is offline and deterministic, so it runs in CI with no CLI:
-// manifest load rules, hook target reachability, skill and agent frontmatter.
-// When the `claude` CLI is present it also runs `claude plugin validate`; when
-// it is absent that step SKIPS cleanly rather than failing the gate.
-//
-// Usage:
-//   node bin/verify-plugin-load.mjs [--root <path>] [--json] [--live]
-//
-// --live additionally boots a headless session with --plugin-dir and asserts the
-// skills and agents it can see are exactly the ones this tree declares. It costs
-// one model call, so it is opt-in and never runs in the default pre-push flow.
-//
-// Exit codes: 0 pass (or skipped), 1 the tree would not load cleanly, 2 usage error.
 
 import { execFileSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';

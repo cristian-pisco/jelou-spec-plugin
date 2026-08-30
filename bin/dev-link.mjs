@@ -1,23 +1,4 @@
 #!/usr/bin/env node
-// bin/dev-link.mjs
-//
-// Repo-development CLI: run the WORKING TREE of this plugin as the live plugin,
-// so skills, agents and hooks can be exercised before a release exists.
-//
-// Claude Code loads `jlu` from ~/.claude/plugins/cache/... pinned to the last
-// published commit, so an unreleased edit is invisible to every session. The fix
-// is `claude --plugin-dir <root>`, which loads the tree from disk under the same
-// `jlu:` namespace and outranks the installed release for that session only.
-//
-// Usage:
-//   node bin/dev-link.mjs status [--json]
-//   node bin/dev-link.mjs doctor [--json]
-//   node bin/dev-link.mjs clean-shadows [--apply] [--include-legacy-root]
-//   node bin/dev-link.mjs launch [--print-command] [-- <claude args>...]
-//
-// Options: --root <path> (default: this repo), --home <path> (default: $HOME).
-//
-// Exit codes: 0 clean, 1 findings or removals pending, 2 usage error.
 
 import { execFileSync } from 'node:child_process';
 import { readFileSync, rmSync } from 'node:fs';

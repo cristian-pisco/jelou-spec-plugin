@@ -1,16 +1,3 @@
-// bin/lib/dev-link/claude-cli.mjs
-//
-// Thin, injectable wrapper over the `claude` CLI surfaces this tooling reads.
-//
-// `claude --plugin-dir <root>` loads a plugin straight from disk and takes
-// precedence over an installed plugin of the same name, keeping the `jlu:`
-// namespace intact. That is the whole mechanism behind pre-release testing:
-// the working tree becomes the plugin for that session, with no install,
-// no uninstall, and no global state touched.
-//
-// `claude plugin list --json` reports each installed plugin's load errors —
-// the only surface that reveals a manifest the runtime refused.
-
 import { execFileSync } from 'node:child_process';
 
 export const PLUGIN_ID = 'jlu@jelou-spec-plugin';

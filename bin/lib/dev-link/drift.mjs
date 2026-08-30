@@ -1,10 +1,3 @@
-// bin/lib/dev-link/drift.mjs
-//
-// Compares the working tree against the installed release copy, surface by
-// surface, so `status` can answer the only question that matters before a
-// release: what would a session see differently if it loaded this tree instead
-// of the published version.
-
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';

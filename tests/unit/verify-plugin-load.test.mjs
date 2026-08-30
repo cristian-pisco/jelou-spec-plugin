@@ -1,12 +1,3 @@
-// tests/unit/verify-plugin-load.test.mjs
-//
-// Run: `node --test tests/unit/verify-plugin-load.test.mjs`
-//
-// The gate exists because a green `npm test` and a passing `claude plugin
-// validate` both held while 0.3.359 shipped a manifest the runtime refused to
-// load. These cases pin the defect it must catch, the offline behaviour CI
-// depends on, and the opt-in live probe.
-
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';

@@ -1,12 +1,3 @@
-// tests/unit/dev-link.test.mjs
-//
-// Run: `node --test tests/unit/dev-link.test.mjs`
-//
-// Covers the pre-release dev-link tooling: the manifest load rules that
-// `claude plugin validate` does not enforce, detection of the legacy installer's
-// shadow copies in the global Claude directories, working-tree-vs-release drift,
-// and the CLI surface that turns those into a session.
-
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, rmSync } from 'node:fs';

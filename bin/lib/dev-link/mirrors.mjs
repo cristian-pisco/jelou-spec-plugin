@@ -1,11 +1,3 @@
-// bin/lib/dev-link/mirrors.mjs
-//
-// Codex and OpenCode do not have Claude Code's `--plugin-dir`: their runtimes
-// read generated mirrors (.codex/, .opencode/) that a copy-install pushes into
-// ~/.codex and ~/.config/opencode. A working tree whose mirrors are stale
-// therefore tests one thing on Claude Code and a different, older thing on the
-// other two runtimes — the drift is invisible until a release reproduces it.
-
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 

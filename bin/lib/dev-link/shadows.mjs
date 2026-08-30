@@ -1,19 +1,3 @@
-// bin/lib/dev-link/shadows.mjs
-//
-// Detects plugin surfaces copied into the user's global Claude directories by the
-// legacy fallback installer (bin/install.sh).
-//
-// Those copies are frozen at whatever version last ran the installer. They keep
-// resolving under their BARE name (`execute-task`, `jlu-tdd-cycle`) alongside the
-// namespaced plugin surfaces (`jlu:execute-task`), so a session can route into a
-// stale workflow or an agent the plugin already retired — a regression class no
-// amount of working-tree testing can see.
-//
-// Provenance markers, verified against a real installation:
-//   skills — SKILL.md body references `jelou/workflows/`, which only this plugin
-//            emits; gstack and other third-party skills never match.
-//   agents — the `jlu-` filename prefix, which the plugin owns exclusively.
-
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { listAgentFiles, listSkillDirs } from './manifest.mjs';
