@@ -276,9 +276,16 @@ describe('guard — plugin wiring', () => {
     assert.ok(hooks.hooks.PreToolUse.some((h) => h.matcher === '^Bash$'));
   });
 
-  test('plugin manifest points at the hooks file', () => {
+  test('the plugin manifest leaves the standard hooks file to the runtime', () => {
     const manifest = JSON.parse(readFileSync(join(ROOT, '.claude-plugin/plugin.json'), 'utf8'));
-    assert.equal(manifest.hooks, './hooks/hooks.json');
+    const declared = typeof manifest.hooks === 'string' ? [manifest.hooks] : manifest.hooks ?? [];
+    assert.equal(
+      declared.some((path) => path.replace(/^\.\//, '') === 'hooks/hooks.json'),
+      false,
+      'Claude Code auto-loads hooks/hooks.json; naming it again makes the runtime reject the whole plugin ' +
+        'with "Duplicate hooks file detected" — the defect that shipped in 0.3.359',
+    );
+    assert.ok(existsSync(join(ROOT, 'hooks/hooks.json')));
     assert.ok(existsSync(join(ROOT, 'bin/guard-test-commands.mjs')));
   });
 });

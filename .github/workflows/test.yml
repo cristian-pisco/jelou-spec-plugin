@@ -23,6 +23,8 @@ jobs:
         run: node bin/sync-agents.mjs --check
       - name: Verify .codex/ mirror is in sync (agents + prompts)
         run: node bin/sync-codex.mjs --check
+      - name: Verify the tree loads as a plugin
+        run: node bin/verify-plugin-load.mjs
       - name: Run unit suite
         run: node --test tests/unit/*.test.mjs
 
