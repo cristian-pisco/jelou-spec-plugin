@@ -18,6 +18,10 @@
   "scripts": {
     "test": "node --test tests/unit/*.test.mjs",
     "test:e2e:local-stack": "node --test tests/e2e/deterministic-local-stack.e2e.test.mjs",
+    "verify-load": "node bin/verify-plugin-load.mjs",
+    "dev:status": "node bin/dev-link.mjs status",
+    "dev:doctor": "node bin/dev-link.mjs doctor",
+    "dev:launch": "node bin/dev-link.mjs launch",
     "sync-agents": "node bin/sync-agents.mjs",
     "sync-codex": "node bin/sync-codex.mjs",
     "sync": "node bin/sync-agents.mjs && node bin/sync-codex.mjs",
