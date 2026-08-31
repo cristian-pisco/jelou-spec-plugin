@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.361] — 2026-08-31
+
+### Changed
+- Make the local working tree usable as the plugin from any terminal, without installing it (#95)
+
 ## [0.3.360] — 2026-08-30
 
 ### Changed
