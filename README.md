@@ -176,27 +176,76 @@ To pull the latest version inside a Claude Code session:
 
 The plugin silently checks for updates when you run any `/jlu-*` command. If a newer version exists, you'll see a one-line notice with the update command. Checks are cached for 4 hours and skip in CI environments.
 
-### Local Development / Manual Installation (Claude)
+### Running the plugin 100% locally (no install)
+
+Use this when you want to work from a clone for days — trying skills, agents and hooks
+before any of it is released. Nothing is installed and nothing is copied: Claude Code
+reads the working tree straight from disk.
 
 ```bash
-# Option A: Load directly from a local directory
-claude --plugin-dir /path/to/jelou-spec-plugin
-
-# Option B: Legacy copy installer — only for a Claude Code without plugin support
 git clone https://github.com/cristian-pisco/jelou-spec-plugin.git
 cd jelou-spec-plugin
+bin/install-dev-link.sh
+```
+
+That adds two helpers to your shell startup file:
+
+| command | what it does |
+| --- | --- |
+| `jlu-dev` | starts a session with this working tree loaded, from **any** directory |
+| `jlu-dev-c` | the same, resuming the last conversation (`--continue`) |
+
+Open a new terminal (or `source` the file the script names) and run `jlu-dev` wherever
+you actually work. Both accept extra arguments: `jlu-dev -p "..."`, `jlu-dev-c --model opus`.
+
+The script picks the startup file for your platform:
+
+| OS | shell | file |
+| --- | --- | --- |
+| Linux | bash | `~/.bashrc` |
+| Linux | zsh | `~/.zshrc` |
+| macOS | zsh (default since Catalina) | `~/.zshrc` |
+| macOS | bash | `~/.bash_profile`, falling back to `~/.bashrc` |
+
+macOS Terminal opens bash as a *login* shell, which reads `~/.bash_profile` and never
+`~/.bashrc` — that is why the two platforms differ. Override the choice with
+`--rc <path>`, preview it with `--detect`, print the block without writing with
+`--print`, and undo with `--uninstall`. Re-running is safe: the block is delimited by
+markers, so a second run replaces it rather than stacking a copy, and moving the clone
+rewrites the path. The previous file is kept as `<file>.jlu-dev-link.bak`. If you had
+already defined `jlu-dev` by hand, the script says so rather than quietly letting the
+last definition win.
+
+#### Why this is not an install
+
+`claude --plugin-dir <dir>` — what the helpers wrap — loads the tree under the same
+`jlu:` namespace as the published plugin and outranks it for that session only. No
+global state is touched, so an unreleased change to a skill, agent or hook is
+exercisable without publishing anything. `./setup --host claude` copies nothing either;
+it reports whether the plugin is installed and how to install it.
+
+If you want a period where a forgotten flag cannot silently hand you the *released*
+version instead, uninstall the plugin for the duration:
+
+```bash
+claude plugin uninstall jlu@jelou-spec-plugin   # plain `claude` now has no jlu at all
+claude plugin install jlu@jelou-spec-plugin     # back to the published release
+```
+
+Only Claude Code has a live `--plugin-dir`. Codex and OpenCode read generated mirrors,
+so testing a working tree there is a real copy install: `npm run sync && ./setup --host
+codex --host opencode`.
+
+#### Legacy copy installer
+
+```bash
 ./setup --host claude --legacy-copy
 ```
 
-Option A is the one to use for local development. It loads the working tree under the
-same `jlu:` namespace as the installed release and outranks it for that session, so an
-unreleased change to a skill, agent or hook is exercisable without publishing anything.
-`./setup --host claude` (without `--legacy-copy`) copies nothing — it reports whether
-the plugin is installed and how to install it.
-
-Option B copies skills and agents into `~/.claude` under their **bare** names. They
-shadow the plugin's `jlu:` surfaces, collide with same-named skills from other sources,
-and carry no hooks. A later plugin update does not touch them.
+Only for a Claude Code without plugin support. It copies skills and agents into
+`~/.claude` under their **bare** names. They shadow the plugin's `jlu:` surfaces,
+collide with same-named skills from other sources, and carry no hooks. A later plugin
+update does not touch them.
 
 ## Quick Start (Codex)
 

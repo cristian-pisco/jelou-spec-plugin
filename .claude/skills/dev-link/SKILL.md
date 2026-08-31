@@ -75,6 +75,11 @@ node bin/dev-link.mjs launch --print-command
 Give the user the command. Launching an interactive session is theirs to run — this
 session cannot become the one under test.
 
+When the user is settling in for more than one session — testing over days, or working
+from several directories — point them at `bin/install-dev-link.sh`, which writes
+`jlu-dev` and `jlu-dev-c` into their shell startup file so the flag is never forgotten.
+It is idempotent and reversible with `--uninstall`.
+
 For a scripted check instead of an interactive session:
 
 ```bash
