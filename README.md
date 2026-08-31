@@ -188,6 +188,10 @@ cd jelou-spec-plugin
 bin/install-dev-link.sh
 ```
 
+Inside a Claude Code session in this repo, `/dev-link` runs the same script and then
+verifies the result — that the block landed in the file your terminal actually reads,
+that both helpers resolve, and that the tree passes the plugin-load gate.
+
 That adds two helpers to your shell startup file:
 
 | command | what it does |
