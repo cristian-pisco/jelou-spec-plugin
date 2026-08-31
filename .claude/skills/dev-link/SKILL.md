@@ -1,6 +1,6 @@
 ---
 name: dev-link
-description: Use before releasing this plugin — runs the working tree as the live plugin so skills, agents and hooks can be exercised without publishing. Triggers "test the plugin locally", "probar el plugin antes del release", "dev link", "verify plugin load", "pre-release check"
+description: Use to set up this working tree as the live plugin from any terminal — runs bin/install-dev-link.sh and proves the jlu-dev helpers actually load. Triggers "dev link", "set up local plugin", "instalar el dev link", "probar el plugin localmente", "jlu-dev no funciona"
 allowed-tools:
   - Read
   - Bash
@@ -9,86 +9,68 @@ allowed-tools:
   - AskUserQuestion
 ---
 
-You are the pre-release verification orchestrator for this repository.
+Run the installer, then prove the helpers load. The script owns which startup file to
+write — do not re-derive that.
 
-This skill is project-scoped: it exists only inside `jelou-spec-plugin` and is never
-shipped to plugin consumers.
-
-## The problem it solves
-
-Claude Code loads `jlu` from `~/.claude/plugins/cache/jelou-spec-plugin/jlu/<version>`,
-pinned to the last published commit. An unreleased edit to `skills/`, `agents/`,
-`hooks/` or `bin/` is invisible to every session, so the only way to exercise a change
-used to be to release it first.
-
-`claude --plugin-dir <repo-root>` loads the tree straight from disk under the same
-`jlu:` namespace and outranks the installed release for that session. No install, no
-uninstall, no global state touched.
-
-## Step 1 — Report the gap
+## Step 1 — Install
 
 ```bash
-node bin/dev-link.mjs status
+bin/install-dev-link.sh
 ```
 
-Print the output verbatim. It shows the working-tree version and git state, the
-installed release and any load errors it reports, and a per-surface diff of what a
-session would see differently.
+Read the output. It names the startup file it wrote and the plugin directory it points
+at; carry both into Step 2.
 
-## Step 2 — Gate the tree
+A `warning: ... already defines jlu-dev` line means a hand-written definition exists
+outside the managed block, and the last one loaded wins. Show the user the offending
+line and offer to remove it before continuing.
+
+Pass `--rc <path>` only when the user asks for a specific file. `--uninstall` reverses
+the change; the previous file is kept as `<file>.jlu-dev-link.bak`.
+
+## Step 2 — Prove the helpers load
+
+Writing a file is not evidence. Source it in a clean shell and assert both functions
+resolve to this repository:
+
+```bash
+RC="$(bin/install-dev-link.sh --detect)"
+bash -c "source \"$RC\" >/dev/null 2>&1; type jlu-dev jlu-dev-c"
+```
+
+Both must report `is a function`, and each body must carry this repo's absolute path.
+Use `zsh -c` when the startup file is `~/.zshrc`, so the check runs the interpreter the
+user runs.
+
+If a function is missing, report what the installer wrote and what sourcing produced —
+do not re-run the installer, it would write the same file again.
+
+## Step 3 — Prove the tree loads through it
+
+Defined helpers do not mean the plugin loads. Gate the tree they point at:
 
 ```bash
 node bin/verify-plugin-load.mjs
 ```
 
-Exit `1` means the tree would not load: report every defect and its fix, then STOP.
-Do not proceed to a session that cannot load what it is meant to test.
+Exit `1` means `jlu-dev` opens a session that cannot load what it is meant to test.
+Report every defect and its fix, then STOP — a working alias pointed at a broken
+manifest is worse than no alias, because it looks correct. `claude plugin validate` is
+not a substitute: it passed on the manifest that made 0.3.359 fail to load on every
+install.
 
-`claude plugin validate` is not a substitute — it passed on the manifest that made
-0.3.359 report `failed to load` on every install.
+## Step 4 — Hand over
 
-Add `--live` only when the user asks for it or when a skill or agent was added,
-renamed or removed. It spends one model call to boot a headless session with
-`--plugin-dir` and assert the skills and agents it sees are exactly the declared set.
+Tell the user to open a new terminal, or to run `source <rc>`, then:
 
-## Step 3 — Clear the shadows
-
-```bash
-node bin/dev-link.mjs doctor
+```
+jlu-dev      a session with this working tree, from any directory
+jlu-dev-c    the same, resuming the last conversation
 ```
 
-Findings of class `skill-shadow-*` / `agent-shadow-*` are copies the legacy fallback
-installer left in `~/.claude/skills/` and `~/.claude/agents/`. They resolve under their
-bare name next to the namespaced plugin surfaces, so a session can route into a frozen
-workflow or an agent the plugin already retired.
+The current session cannot become the one under test — it already built its skill list.
 
-Removal is destructive and touches directories outside this repo. Show
-`node bin/dev-link.mjs clean-shadows` (dry run, lists every path) and ask the user with
-`AskUserQuestion` before running it with `--apply`. Never pass `--apply` unprompted.
-
-## Step 4 — Hand over the session
-
-```bash
-node bin/dev-link.mjs launch --print-command
-```
-
-Give the user the command. Launching an interactive session is theirs to run — this
-session cannot become the one under test.
-
-For a scripted check instead of an interactive session:
-
-```bash
-node bin/dev-link.mjs launch -- -p "<prompt>"
-```
-
-## Other runtimes
-
-Only Claude Code has a live `--plugin-dir`. Codex and OpenCode read generated mirrors,
-so testing the working tree there is a copy-install:
-
-```bash
-npm run sync && ./setup --host codex --host opencode
-```
-
-`doctor` fails with `mirror-drift-*` when `.codex/` or `.opencode/` lag behind
-`agents/` and `skills/`.
+If the user wants a stretch where a forgotten flag cannot silently serve the released
+version, offer `claude plugin uninstall jlu@jelou-spec-plugin` for the duration, and
+`claude plugin install jlu@jelou-spec-plugin` to restore it. Confirm before running
+either; both change state outside this repository.

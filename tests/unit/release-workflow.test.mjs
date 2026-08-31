@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const releaseWorkflowPath = new URL('../../.github/workflows/release.yml', import.meta.url);
-const claudeInstructionsPath = new URL('../../CLAUDE.md', import.meta.url);
+const readmePath = new URL('../../README.md', import.meta.url);
 
 test('release workflow runs only after a successful main push test run', async () => {
   const workflow = await readFile(releaseWorkflowPath, 'utf8');
@@ -22,9 +22,9 @@ test('release workflow publishes an untagged version or bumps a tagged version',
   assert.match(workflow, /gh release create "v\$VERSION" --target main/);
 });
 
-test('Claude instructions do not require a manual release', async () => {
-  const instructions = await readFile(claudeInstructionsPath, 'utf8');
+test('the documentation does not require a manual release', async () => {
+  const readme = await readFile(readmePath, 'utf8');
 
-  assert.doesNotMatch(instructions, /npm run release/);
-  assert.doesNotMatch(instructions, /Releasing \(one bump per feature\)/);
+  assert.doesNotMatch(readme, /npm run release/);
+  assert.doesNotMatch(readme, /Releasing \(one bump per feature\)/);
 });

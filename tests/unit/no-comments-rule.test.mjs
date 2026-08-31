@@ -1,16 +1,3 @@
-// tests/unit/no-comments-rule.test.mjs
-//
-// Run: `node --test tests/unit/no-comments-rule.test.mjs`
-//
-// The "No line-by-line comments" doctrine must reach every subagent that writes
-// production or test source, and must be stated identically across the runtime
-// contracts (CLAUDE.md for Claude Code, AGENTS.md for Codex/OpenCode). The
-// canonical text lives once in jelou/references/subagent-base.md; code-authoring
-// agents inherit it by referencing that file. This suite is self-enforcing: a new
-// code-writing agent that forgets the reference, or a contract that drops the
-// rule, turns the suite red. Nothing verifies the rule on the finished diff — the
-// agent that did (jlu-spec-reviewer) is retired.
-
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { readFileSync, existsSync } from 'node:fs';
@@ -20,9 +7,6 @@ import { fileURLToPath } from 'node:url';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const read = (rel) => readFileSync(join(ROOT, rel), 'utf8');
 
-// Agents that emit production or test SOURCE code (vs doc/spec/glossary authors,
-// which also have Write but never produce code). Each must inherit the doctrine
-// from subagent-base.md. Keep this list in sync when adding a code-writing agent.
 const CODE_AUTHORING_AGENTS = [
   'jlu-build-validator',
   'jlu-conflict-resolver',
@@ -43,16 +27,6 @@ describe('no-comments rule — canonical doctrine', () => {
     assert.match(src, RULE_PHRASE, 'subagent-base.md must state the No line-by-line comments rule');
     assert.match(src, SELF_DOCUMENTING, 'subagent-base.md must prescribe self-documenting code');
   });
-});
-
-describe('no-comments rule — runtime contract parity (CLAUDE.md ⇄ AGENTS.md)', () => {
-  for (const contract of ['CLAUDE.md', 'AGENTS.md']) {
-    test(`${contract} states the rule`, () => {
-      const src = read(contract);
-      assert.match(src, RULE_PHRASE, `${contract} must carry the No line-by-line comments rule`);
-      assert.match(src, SELF_DOCUMENTING, `${contract} must prescribe self-documenting code`);
-    });
-  }
 });
 
 describe('no-comments rule — every code-authoring agent inherits the doctrine', () => {

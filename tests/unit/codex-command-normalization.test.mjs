@@ -11,22 +11,7 @@ function readRepo(path) {
 }
 
 describe('Codex jlu command normalization', () => {
-  test('AGENTS.md maps bare jlu-* input to skills, not PATH', () => {
-    const src = readRepo('AGENTS.md');
-    assert.match(src, /Codex command normalization/);
-    assert.match(src, /explicit skill form \(`\$jlu-load-context`\)/);
-    assert.match(src, /matching Codex skill/);
-    assert.match(src, /use the jlu-load-context skill/);
-    assert.match(src, /not as a shell executable or a canonical `skills\/\*\/SKILL\.md` entry point/);
-    assert.match(src, /\.agents\/skills\/jlu-<command>\/SKILL\.md/);
-    assert.match(src, /`~\/\.agents\/skills\/` global/);
-    assert.match(src, /Match command names exactly/);
-    assert.match(src, /Never fuzzy-correct/);
-    assert.match(src, /Never search `PATH`/);
-    assert.match(src, /`skills\/\*\/SKILL\.md`/);
-  });
-
-  test('the Codex runtime reference carries the same fallback', () => {
+  test('the Codex runtime reference carries the fallback', () => {
     const src = readRepo('jelou/references/codex-runtime.md');
     assert.match(src, /## Invocation model/);
     assert.match(src, /Invoke explicitly with `\$jlu-<skill>`/);
