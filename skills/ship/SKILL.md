@@ -1,6 +1,6 @@
 ---
 name: ship
-description: Use after implementation is complete — stages, commits, pushes, and opens PRs for all affected services. Triggers: "ship", "ship it", "create PR", "open pull request", "push the code", "ready for review"
+description: "Use after implementation is complete — stages, commits, pushes, and opens PRs for all affected services. Triggers: \"ship\", \"ship it\", \"create PR\", \"open pull request\", \"push the code\", \"ready for review\""
 argument-hint: "[task-slug]"
 allowed-tools:
   - Read

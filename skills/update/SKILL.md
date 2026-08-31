@@ -1,6 +1,6 @@
 ---
 name: update
-description: Use to update the Jelou Spec Plugin to the latest version from any runtime. On Claude Code it drives the plugin CLI directly (no manual /plugin update); on Codex and OpenCode it pulls the shared git cache and reinstalls. Triggers: "update the plugin", "update jlu", "upgrade jelou plugin", "actualizar el plugin", "actualiza jlu", "get the latest version of the plugin"
+description: "Use to update the Jelou Spec Plugin to the latest version from any runtime. On Claude Code it drives the plugin CLI directly (no manual /plugin update); on Codex and OpenCode it pulls the shared git cache and reinstalls. Triggers: \"update the plugin\", \"update jlu\", \"upgrade jelou plugin\", \"actualizar el plugin\", \"actualiza jlu\", \"get the latest version of the plugin\""
 argument-hint: "[--ref <ref>]"
 allowed-tools:
   - Read

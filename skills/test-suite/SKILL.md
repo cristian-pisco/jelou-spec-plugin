@@ -1,6 +1,6 @@
 ---
 name: test-suite
-description: Run the current service's unit + integration tests with the minimum worker count (1) and report failures grouped by component (Controller, Service, Repository, etc). Use when you want a fuller signal than execute-task's affected-tests step — typically before opening a PR. Triggers: "run tests", "test suite", "regression check", "validar tests"
+description: "Run the current service's unit + integration tests with the minimum worker count (1) and report failures grouped by component (Controller, Service, Repository, etc). Use when you want a fuller signal than execute-task's affected-tests step — typically before opening a PR. Triggers: \"run tests\", \"test suite\", \"regression check\", \"validar tests\""
 allowed-tools:
   - Read
   - Write

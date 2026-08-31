@@ -1,6 +1,6 @@
 ---
 name: map-codebase
-description: Use before starting work on a new service or workspace root — analyzes architecture, stack, conventions, integrations, and concerns. Triggers: "map codebase", "analyze the service", "understand the code", "explore the repo"
+description: "Use before starting work on a new service or workspace root — analyzes architecture, stack, conventions, integrations, and concerns. Triggers: \"map codebase\", \"analyze the service\", \"understand the code\", \"explore the repo\""
 argument-hint: "[service-id | --root [root-path] | --all]"
 allowed-tools:
   - Read
