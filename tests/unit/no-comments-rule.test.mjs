@@ -1,14 +1,3 @@
-// tests/unit/no-comments-rule.test.mjs
-//
-// Run: `node --test tests/unit/no-comments-rule.test.mjs`
-//
-// The "No line-by-line comments" doctrine must reach every subagent that writes
-// production or test source. The canonical text lives once in
-// jelou/references/subagent-base.md; code-authoring agents inherit it by
-// referencing that file. This suite is self-enforcing: a new code-writing agent
-// that forgets the reference turns the suite red. Nothing verifies the rule on the
-// finished diff — the agent that did (jlu-spec-reviewer) is retired.
-
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { readFileSync, existsSync } from 'node:fs';
@@ -18,9 +7,6 @@ import { fileURLToPath } from 'node:url';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const read = (rel) => readFileSync(join(ROOT, rel), 'utf8');
 
-// Agents that emit production or test SOURCE code (vs doc/spec/glossary authors,
-// which also have Write but never produce code). Each must inherit the doctrine
-// from subagent-base.md. Keep this list in sync when adding a code-writing agent.
 const CODE_AUTHORING_AGENTS = [
   'jlu-build-validator',
   'jlu-conflict-resolver',
