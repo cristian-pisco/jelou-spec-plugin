@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.362] — 2026-08-31
+
+### Changed
+- Restore the close-task workflow across all four runtime surfaces (#96)
+
 ## [0.3.361] — 2026-08-31
 
 ### Changed
