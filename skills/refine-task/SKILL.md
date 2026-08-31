@@ -1,6 +1,6 @@
 ---
 name: refine-task
-description: Use when a spec needs changes after approval — applies targeted refinements via structured interview. Triggers: "change the spec", "update requirements", "the spec needs X", "refine task"
+description: "Use when a spec needs changes after approval — applies targeted refinements via structured interview. Triggers: \"change the spec\", \"update requirements\", \"the spec needs X\", \"refine task\""
 argument-hint: "[change description] [clickup-url|id] [--no-autochain]"
 allowed-tools:
   - Read

@@ -1,6 +1,6 @@
 ---
 name: list-tasks
-description: Use to see every local task created by /jlu-new-task — scans the workspace and prints a table of slug, title, lifecycle state, date, sprint, and affected services. Triggers: "list tasks", "show my tasks", "what tasks do I have", "list local tasks", "tareas locales", "qué tareas tengo"
+description: "Use to see every local task created by /jlu-new-task — scans the workspace and prints a table of slug, title, lifecycle state, date, sprint, and affected services. Triggers: \"list tasks\", \"show my tasks\", \"what tasks do I have\", \"list local tasks\", \"tareas locales\", \"qué tareas tengo\""
 argument-hint: "[--status <state>] [--sprint <n>]"
 allowed-tools:
   - Read

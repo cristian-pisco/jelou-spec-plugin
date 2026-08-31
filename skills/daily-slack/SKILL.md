@@ -1,6 +1,6 @@
 ---
 name: daily-slack
-description: Use to share sprint progress on Slack — generates and posts a sprint-scoped daily summary to a channel. Triggers: "post to Slack", "daily update", "share sprint progress", "Slack daily"
+description: "Use to share sprint progress on Slack — generates and posts a sprint-scoped daily summary to a channel. Triggers: \"post to Slack\", \"daily update\", \"share sprint progress\", \"Slack daily\""
 argument-hint: "<sprint> #channel"
 allowed-tools:
   - Read

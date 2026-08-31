@@ -1,6 +1,6 @@
 ---
 name: execute-task
-description: Use when a spec is approved and ready to implement — runs the full TDD pipeline with proposal generation, phase execution, and QA. Triggers: "execute task", "start implementation", "build it", "run the task"
+description: "Use when a spec is approved and ready to implement — runs the full TDD pipeline with proposal generation, phase execution, and QA. Triggers: \"execute task\", \"start implementation\", \"build it\", \"run the task\""
 argument-hint: "[task-slug] [clickup-url|id] [--no-autochain] [--refactor]"
 allowed-tools:
   - Read

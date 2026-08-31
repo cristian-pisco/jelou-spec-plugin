@@ -1,6 +1,6 @@
 ---
 name: close-task
-description: Use after a PR is merged — updates ClickUp, cleans up artifacts, and marks the task as closed. Triggers: "close task", "PR was merged", "task is done", "wrap up"
+description: "Use after a PR is merged — updates ClickUp, cleans up artifacts, and marks the task as closed. Triggers: \"close task\", \"PR was merged\", \"task is done\", \"wrap up\""
 argument-hint: "[task-slug]"
 allowed-tools:
   - Read
