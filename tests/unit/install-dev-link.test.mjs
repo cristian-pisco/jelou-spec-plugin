@@ -27,7 +27,7 @@ describe('startup file detection across operating systems', () => {
     ['Linux', '/bin/bash', '.bashrc'],
     ['Linux', '/usr/bin/zsh', '.zshrc'],
     ['Darwin', '/bin/zsh', '.zshrc'],
-    ['Darwin', '/bin/bash', '.bashrc'],
+    ['Darwin', '/bin/bash', '.bash_profile'],
   ];
 
   for (const [os, shell, expected] of cases) {
@@ -40,11 +40,25 @@ describe('startup file detection across operating systems', () => {
     });
   }
 
-  test('macOS bash prefers .bash_profile when it exists, because Terminal opens login shells', () => {
+  test('macOS bash targets .bash_profile even when only .bashrc exists', () => {
     const home = sandbox();
-    writeFileSync(join(home, '.bash_profile'), 'export PATH=/usr/bin\n');
+    writeFileSync(join(home, '.bashrc'), 'export PATH=/usr/bin\n');
     const result = run(['--detect'], { home, os: 'Darwin', shell: '/bin/bash' });
-    assert.equal(result.stdout.trim(), join(home, '.bash_profile'));
+    assert.equal(
+      result.stdout.trim(),
+      join(home, '.bash_profile'),
+      'macOS Terminal opens bash as a login shell, which reads .bash_profile and never .bashrc — ' +
+        'falling back to .bashrc writes a file nothing sources',
+    );
+    rmSync(home, { recursive: true, force: true });
+  });
+
+  test('macOS bash creates .bash_profile when it is missing', () => {
+    const home = sandbox();
+    const result = run([], { home, os: 'Darwin', shell: '/bin/bash' });
+    assert.equal(result.status, 0, result.stderr);
+    assert.ok(existsSync(join(home, '.bash_profile')));
+    assert.equal(existsSync(join(home, '.bashrc')), false);
     rmSync(home, { recursive: true, force: true });
   });
 

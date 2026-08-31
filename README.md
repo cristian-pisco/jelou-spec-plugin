@@ -209,10 +209,11 @@ The script picks the startup file for your platform:
 | Linux | bash | `~/.bashrc` |
 | Linux | zsh | `~/.zshrc` |
 | macOS | zsh (default since Catalina) | `~/.zshrc` |
-| macOS | bash | `~/.bash_profile`, falling back to `~/.bashrc` |
+| macOS | bash | `~/.bash_profile` (created if missing) |
 
 macOS Terminal opens bash as a *login* shell, which reads `~/.bash_profile` and never
-`~/.bashrc` — that is why the two platforms differ. Override the choice with
+`~/.bashrc` — that is why the two platforms differ, and why macOS never falls back to
+`~/.bashrc`: doing so would write a file nothing sources. Override the choice with
 `--rc <path>`, preview it with `--detect`, print the block without writing with
 `--print`, and undo with `--uninstall`. Re-running is safe: the block is delimited by
 markers, so a second run replaces it rather than stacking a copy, and moving the clone
@@ -239,6 +240,28 @@ claude plugin install jlu@jelou-spec-plugin     # back to the published release
 Only Claude Code has a live `--plugin-dir`. Codex and OpenCode read generated mirrors,
 so testing a working tree there is a real copy install: `npm run sync && ./setup --host
 codex --host opencode`.
+
+#### Diagnosing a stale environment
+
+```bash
+node bin/dev-link.mjs status    # working tree vs installed release, per-surface drift
+node bin/dev-link.mjs doctor    # load errors, mirror drift, leftover copies
+```
+
+`doctor` reports `skill-shadow-*` and `agent-shadow-*` findings: copies the legacy
+installer left in `~/.claude/skills/` and `~/.claude/agents/`. They resolve under their
+**bare** name alongside the namespaced `jlu:` surfaces, so a session can route into a
+frozen workflow, or dispatch an agent the plugin already retired.
+
+```bash
+node bin/dev-link.mjs clean-shadows                 # dry run — lists every path
+node bin/dev-link.mjs clean-shadows --apply         # remove them
+node bin/dev-link.mjs clean-shadows --apply --include-legacy-root
+```
+
+Removal is destructive and touches directories outside this repository, so it is a dry
+run unless `--apply` is passed, and it refuses any path outside `~/.claude/skills`,
+`~/.claude/agents` and `~/.claude/jelou`.
 
 #### Legacy copy installer
 

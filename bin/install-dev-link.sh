@@ -63,13 +63,7 @@ resolve_rc() {
       ;;
     Darwin)
       case "$shell_name" in
-        bash)
-          if [ -f "$HOME/.bash_profile" ]; then
-            printf '%s\n' "$HOME/.bash_profile"
-          else
-            printf '%s\n' "$HOME/.bashrc"
-          fi
-          ;;
+        bash) printf '%s\n' "$HOME/.bash_profile" ;;
         *) printf '%s\n' "$HOME/.zshrc" ;;
       esac
       ;;
