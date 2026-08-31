@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.363] — 2026-08-31
+
+### Changed
+- Quote skill descriptions containing unescaped colons (#97)
+
 ## [0.3.362] — 2026-08-31
 
 ### Changed
