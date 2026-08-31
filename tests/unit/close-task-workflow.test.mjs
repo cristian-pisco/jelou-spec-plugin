@@ -1,15 +1,3 @@
-// tests/unit/close-task-workflow.test.mjs
-//
-// Structural assertions for jelou/workflows/close-task.md and the
-// closure-comment template. These guard against silent regressions where
-// someone reverts the natural-language closure rule, re-introduces PR URLs
-// in the closure comment, or removes the template reference.
-//
-// The closure comment itself is LLM-composed at runtime — these tests verify
-// the prompt contract that constrains the LLM, not the runtime output.
-//
-// Run: `node --test tests/unit/close-task-workflow.test.mjs`
-
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
@@ -89,7 +77,7 @@ describe('closure-comment template', () => {
   });
 
   test('lists the hard prohibitions verbatim', () => {
-    for (const phrase of [
+    const phrases = [
       '**PR URLs or PR numbers.**',
       '**Signature line**',
       '**Test counts**',
@@ -99,7 +87,8 @@ describe('closure-comment template', () => {
       '**Service IDs in code form**',
       '**ISO-8601 timestamps**',
       '**Markdown formatting tokens** beyond paragraph breaks',
-    ]) {
+    ];
+    for (const phrase of phrases) {
       assert.ok(
         tmpl.includes(phrase),
         `template missing prohibition: ${phrase}`
@@ -113,8 +102,6 @@ describe('closure-comment template', () => {
   });
 
   test('the bad example contains exactly the noise we want to ban', () => {
-    // The bad example is the user-reported real comment; if someone changes
-    // it to no longer be representative, the test should remind them.
     assert.match(tmpl, /Task closed at /);
     assert.match(tmpl, /PRs merged:/);
     assert.match(tmpl, /697 tests passing/);
