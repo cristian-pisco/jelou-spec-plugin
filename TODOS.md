@@ -1,5 +1,15 @@
 # TODOS
 
+## Enforce a context budget on agent source exploration
+
+- **Priority:** P0
+- **What:** Restore a measurable ceiling on how much context a phase dispatch pulls in, now that the generated codebase docs are gone. Two parts: (1) instrument per-phase token spend so the cap is set from data, not a guess; (2) emit a numeric `explore_budget` from `bin/task-setup.mjs` and render it as an explicit limit in the dispatch prompt (`bin/build-dispatch-prompt.mjs`), replacing the qualitative "read 2-3 example tests" guidance in `jelou/references/subagent-base.md` -> Context Discipline.
+- **Why:** The doc-cache removal (v0.3.364) deleted the pipeline's ONLY enforced context bound. `bin/task-setup.mjs` used to cap the injected payload at 32000 chars (~8k tokens) and degrade to paths past the cap, so the per-phase increment was provably bounded. The replacement is prose only: nothing measures, caps, or warns. Three independent review specialists (confidence 8/7/7) flagged that net context per dispatch may have gone UP, and with no telemetry the only signal would be the bill.
+- **Pros:** Restores a real ceiling; makes the cost of the doc removal observable instead of assumed; the sharpest case (`jlu-proposal-agent` grepping cross-service callers with no result limit) gets a bound.
+- **Cons:** New machinery on a subsystem whose last change was a deletion; the number is meaningless until the instrumentation exists, so part (1) genuinely blocks part (2).
+- **Context:** Old bound lived in `buildDocsPayload` / `--docs-budget` in `bin/task-setup.mjs` (see the v0.3.364 diff for the exact shape). Worst offenders to measure first: `agents/jlu-proposal-agent.md` Pass 1 (cross-service dependency mapping, unbounded grep over every affected service), then `agents/jlu-tdd-cycle.md` (re-derives framework/naming/structure on every phase with no cross-phase dedup — the old path derived it once per task).
+- **Depends on / blocked by:** per-phase token instrumentation must land first; the cap is set from its numbers.
+
 ## Migrate the prose shared-reuse boots (goal/start-dev) onto the codified executor
 
 - **Priority:** P2
