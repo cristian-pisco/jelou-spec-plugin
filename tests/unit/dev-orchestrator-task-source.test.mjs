@@ -1,5 +1,8 @@
 import { describe, test } from 'node:test';
 import { strict as assert } from 'node:assert';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { inspectGitSource, resolveTaskSources } from '../../bin/lib/dev-orchestrator/task-source.mjs';
 
 function service(id, path) {
@@ -271,5 +274,100 @@ branch refs/heads/production/source-task
         { path: sourcePath, branch: 'production/source-task', prunable: false },
       ],
     });
+  });
+});
+
+describe('resolveTaskSources — symlinked source paths compare canonically', () => {
+  const slug = 'source-task';
+  const branch = `production/${slug}`;
+
+  // Git always answers with symlink-resolved paths. On macOS the system temp
+  // dir lives behind a `/var` -> `/private/var` symlink, so the registry path
+  // and Git's answer name the same directory through different strings. The
+  // resolver must accept that instead of reporting a path mismatch.
+  function symlinkedRepo() {
+    const real = mkdtempSync(join(realpathSync(tmpdir()), 'task-source-real-'));
+    const linkDir = mkdtempSync(join(realpathSync(tmpdir()), 'task-source-link-'));
+    const link = join(linkDir, 'repo');
+    symlinkSync(real, link);
+    return { real, link, cleanup: () => { rmSync(real, { recursive: true, force: true }); rmSync(linkDir, { recursive: true, force: true }); } };
+  }
+
+  test('accepts a top-level Git reports through the resolved path', () => {
+    const { real, link, cleanup } = symlinkedRepo();
+    try {
+      const worktreeLink = join(link, '.worktrees', slug);
+      const worktreeReal = join(real, '.worktrees', slug);
+      mkdirSync(worktreeReal, { recursive: true });
+
+      const sources = resolveTaskSources({
+        sourceMode: 'task-aware',
+        registry: { services: [service('api-service', link)] },
+        taskContext: { slug, mode: 'worktree', affectedServices: [{ id: 'api-service', branch }] },
+        pathExists: () => true,
+        inspectGit: () => ({
+          topLevel: worktreeReal,
+          commit: 'abcabcabcabcabcabcabcabcabcabcabcabcabca',
+          branch,
+          worktrees: [{ path: worktreeReal, branch, prunable: false }],
+        }),
+      });
+
+      assert.equal(sources.length, 1);
+      assert.equal(sources[0].sourcePath, worktreeLink);
+      assert.equal(sources[0].ownership, 'task');
+    } finally {
+      cleanup();
+    }
+  });
+
+  test('matches the worktree registration through the resolved path', () => {
+    const { real, link, cleanup } = symlinkedRepo();
+    try {
+      const worktreeLink = join(link, '.worktrees', slug);
+      const worktreeReal = join(real, '.worktrees', slug);
+      mkdirSync(worktreeReal, { recursive: true });
+
+      assert.doesNotThrow(() => resolveTaskSources({
+        sourceMode: 'task-aware',
+        registry: { services: [service('api-service', link)] },
+        taskContext: { slug, mode: 'worktree', affectedServices: [{ id: 'api-service', branch }] },
+        pathExists: () => true,
+        inspectGit: () => ({
+          topLevel: worktreeLink,
+          commit: 'abcabcabcabcabcabcabcabcabcabcabcabcabca',
+          branch,
+          // Git lists the resolved path; the caller asked with the symlinked one.
+          worktrees: [{ path: worktreeReal, branch, prunable: false }],
+        }),
+      }));
+    } finally {
+      cleanup();
+    }
+  });
+
+  test('still rejects two genuinely different existing directories', () => {
+    const a = mkdtempSync(join(realpathSync(tmpdir()), 'task-source-a-'));
+    const b = mkdtempSync(join(realpathSync(tmpdir()), 'task-source-b-'));
+    try {
+      assert.throws(
+        () => resolveTaskSources({
+          sourceMode: 'task-aware',
+          registry: { services: [service('api-service', a)] },
+          taskContext: { slug, mode: 'worktree', affectedServices: [{ id: 'api-service', branch }] },
+          pathExists: () => true,
+          inspectGit: () => ({
+            topLevel: b,
+            commit: 'abcabcabcabcabcabcabcabcabcabcabcabcabca',
+            branch,
+            worktrees: [{ path: b, branch, prunable: false }],
+          }),
+        }),
+        /task source path mismatch/,
+      );
+    } finally {
+      rmSync(a, { recursive: true, force: true });
+      rmSync(b, { recursive: true, force: true });
+    }
   });
 });
