@@ -8,12 +8,21 @@ import { existsSync, realpathSync } from 'node:fs';
 // same directory through different strings.
 //
 // Resolve the PARENT and re-attach the basename rather than resolving the whole
-// path: that normalizes symlinked ancestors while still refusing a symlink at
-// the final component. Resolving the whole path would make a symlink planted at
+// path. Resolving the whole path would make a symlink planted at
 // `<service>/.worktrees/<slug>` compare equal to whatever repo it points at,
 // turning this integrity check into a redirect the daemon would happily boot.
+//
+// What this does and does not buy, stated exactly: a symlink at the FINAL
+// component is refused; a symlink at an ANCESTOR (`<service>/.worktrees` itself)
+// is still followed, because following ancestors is the whole point of the
+// /var -> /private/var normalization. Anyone who can create that ancestor
+// symlink already has write access inside the service directory, so this is a
+// deliberate trade, not a closed hole.
+//
 // Falls back to the raw string when the parent does not exist on disk (unit
-// tests inject fake paths that realpath cannot resolve).
+// tests inject fake paths that realpath cannot resolve). That fallback is
+// fail-closed: it degrades to exact string comparison, which can only produce a
+// spurious mismatch abort, never a false accept.
 function canonical(path) {
   try {
     return join(realpathSync(dirname(path)), basename(path));

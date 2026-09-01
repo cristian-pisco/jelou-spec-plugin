@@ -439,3 +439,90 @@ describe('format-changed-files.sh — changed filenames are never shell-interpre
     }
   });
 });
+
+describe('format-changed-files.sh — untrusted changed-file entries', () => {
+  // FORMAT_CHANGED_FILES is the agent-declared "Files Modified" list. These
+  // cases all run WITHOUT FORMAT_DRY_RUN so the real argv path is exercised --
+  // the dry run exits before the command is ever built, so a dry-run-only
+  // assertion cannot tell a correct invocation from a broken one.
+
+  test('a leading-dash filename never crashes the script into silence', () => {
+    // Pre-fix: md5sum parsed `--config=evil.js` as an option, set -e killed the
+    // script mid-flight, and NOTHING was written to stdout -- so phase-close.mjs,
+    // which parses stdout, saw no status at all and closed the phase anyway.
+    const dir = mktmp();
+    try {
+      writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'x', scripts: { format: 'true' } }));
+      writeFileSync(join(dir, '--config=evil.js'), 'x\n');
+      const r = runScript({ FORMAT_SOURCE_PATH: dir, FORMAT_CHANGED_FILES: '--config=evil.js' });
+      assert.ok(r.parsed.status, `no status= line emitted; stdout was ${JSON.stringify(r.stdout)}`);
+      assert.doesNotMatch(r.stderr, /unrecognized option|illegal option/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('a dash-named file is passed as an operand, never as an option', () => {
+    const dir = mktmp();
+    try {
+      writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'x', scripts: { format: 'true' } }));
+      writeFileSync(join(dir, '--config=evil.js'), 'x\n');
+      const r = runScript({ FORMAT_SOURCE_PATH: dir, FORMAT_CHANGED_FILES: '--config=evil.js', FORMAT_DRY_RUN: '1' });
+      assert.equal(r.parsed.status, 'ok');
+      assert.match(r.parsed.command, /\.\/--config=evil\.js/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('an absolute path outside the source root is refused, not formatted', () => {
+    const dir = mktmp();
+    const outside = mktmp('format-outside-');
+    try {
+      writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'x', scripts: { format: 'true' } }));
+      const victim = join(outside, 'victim.ts');
+      writeFileSync(victim, 'ORIGINAL\n');
+      const r = runScript({ FORMAT_SOURCE_PATH: dir, FORMAT_CHANGED_FILES: victim, FORMAT_DRY_RUN: '1' });
+      assert.equal(r.parsed.status, 'skip');
+      assert.equal(r.parsed.reason, 'no_files');
+      assert.match(r.stderr, /refusing to format a path outside/);
+      assert.equal(readFileSync(victim, 'utf8'), 'ORIGINAL\n');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  test('a ../ traversal out of the source root is refused', () => {
+    const dir = mktmp();
+    try {
+      mkdirSync(join(dir, 'svc'), { recursive: true });
+      writeFileSync(join(dir, 'svc', 'package.json'), JSON.stringify({ name: 'x', scripts: { format: 'true' } }));
+      writeFileSync(join(dir, 'sibling.ts'), 'ORIGINAL\n');
+      const r = runScript({
+        FORMAT_SOURCE_PATH: join(dir, 'svc'),
+        FORMAT_CHANGED_FILES: '../sibling.ts',
+        FORMAT_DRY_RUN: '1',
+      });
+      assert.equal(r.parsed.status, 'skip');
+      assert.match(r.stderr, /refusing to format a path outside/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('an in-tree relative path is still accepted', () => {
+    const dir = mktmp();
+    try {
+      writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'x', scripts: { format: 'true' } }));
+      mkdirSync(join(dir, 'src'), { recursive: true });
+      writeFileSync(join(dir, 'src', 'a.ts'), 'x\n');
+      const r = runScript({ FORMAT_SOURCE_PATH: dir, FORMAT_CHANGED_FILES: 'src/a.ts', FORMAT_DRY_RUN: '1' });
+      assert.equal(r.parsed.status, 'ok');
+      assert.equal(r.parsed.files_count, '1');
+      assert.doesNotMatch(r.stderr, /refusing to format/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

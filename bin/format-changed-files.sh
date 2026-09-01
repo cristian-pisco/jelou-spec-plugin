@@ -45,10 +45,29 @@ cd "$FORMAT_SOURCE_PATH"
 
 # ----- Filter files --------------------------------------------------------
 
+# FORMAT_CHANGED_FILES is the agent-declared "Files Modified" list -- the
+# untrusted side of a prompt-injection boundary. Two things must hold for every
+# entry before it becomes a formatter argument:
+#   1. it stays inside FORMAT_SOURCE_PATH (no absolute paths, no ../ escape), so
+#      a declared path can never make the formatter rewrite a file outside the
+#      service worktree;
+#   2. it is passed after a `--` end-of-options marker and prefixed with ./ when
+#      it starts with a dash, so a file named `--config=evil.js` is an operand
+#      and not an option (eslint and prettier both load JS config from --config,
+#      which would be arbitrary code execution).
+SOURCE_ROOT=$(pwd -P)
 FILTERED=()
+SKIPPED_OUTSIDE=0
 while IFS= read -r file; do
   [[ -z "$file" ]] && continue
   [[ -e "$file" ]] || continue
+  resolved=$(cd "$(dirname -- "$file")" 2>/dev/null && printf '%s/%s' "$(pwd -P)" "$(basename -- "$file")") || { SKIPPED_OUTSIDE=$((SKIPPED_OUTSIDE + 1)); continue; }
+  if [[ "$resolved" != "$SOURCE_ROOT/"* ]]; then
+    SKIPPED_OUTSIDE=$((SKIPPED_OUTSIDE + 1))
+    echo "WARN: refusing to format a path outside $SOURCE_ROOT: $file" >&2
+    continue
+  fi
+  [[ "$file" == -* ]] && file="./$file"
   FILTERED+=("$file")
 done <<< "$FORMAT_CHANGED_FILES"
 
@@ -117,10 +136,10 @@ fi
 
 declare -A PRE_SUM
 for f in "${FILTERED[@]}"; do
-  PRE_SUM["$f"]="$(md5sum "$f" | cut -d' ' -f1)"
+  PRE_SUM["$f"]="$(md5sum -- "$f" | cut -d' ' -f1)"
 done
 
-if ! "${CMD_ARGV[@]}" "${FILTERED[@]}" >&2; then
+if ! "${CMD_ARGV[@]}" -- "${FILTERED[@]}" >&2; then
   echo "status=failed"
   echo "command=$FULL_CMD"
   echo "reason=format_failed"
@@ -132,7 +151,7 @@ fi
 PRETTIER_RAN=""
 if [[ "$DETECTION_SOURCE" == "default_eslint" ]] && command -v npx >/dev/null 2>&1; then
   PRETTIER_CMD="npx prettier --write ${FILTERED[*]}"
-  if npx prettier --write "${FILTERED[@]}" >&2; then
+  if npx prettier --write -- "${FILTERED[@]}" >&2; then
     PRETTIER_RAN=" && $PRETTIER_CMD"
   fi
 fi
@@ -140,7 +159,7 @@ fi
 CHANGED_BY_FORMAT=0
 for f in "${FILTERED[@]}"; do
   [[ -e "$f" ]] || continue
-  POST_SUM="$(md5sum "$f" | cut -d' ' -f1)"
+  POST_SUM="$(md5sum -- "$f" | cut -d' ' -f1)"
   if [[ "$POST_SUM" != "${PRE_SUM[$f]}" ]]; then
     CHANGED_BY_FORMAT=$((CHANGED_BY_FORMAT + 1))
   fi
