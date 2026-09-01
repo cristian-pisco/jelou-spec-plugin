@@ -62,6 +62,11 @@ fi
 
 DETECTED_CMD=""
 DETECTION_SOURCE=""
+# CMD_ARGV is the executable form; DETECTED_CMD is only ever displayed. Keeping
+# them separate is what lets us run the formatter without `eval`, so a changed
+# file whose name contains shell metacharacters (`a;id;b.js`) is passed as one
+# argv element instead of being interpreted as shell.
+CMD_ARGV=()
 
 # 1. package.json scripts — prefer `format`, fall back to `lint:fix`.
 if [[ -f "package.json" ]]; then
@@ -73,6 +78,7 @@ if [[ -f "package.json" ]]; then
   " 2>/dev/null || true)"
   if [[ -n "$SCRIPT_NAME" ]]; then
     DETECTED_CMD="npm run $SCRIPT_NAME --"
+    CMD_ARGV=(npm run "$SCRIPT_NAME" --)
     DETECTION_SOURCE="package_script"
   fi
 fi
@@ -81,6 +87,7 @@ fi
 if [[ -z "$DETECTED_CMD" ]] && [[ -f "package.json" ]]; then
   if command -v npx >/dev/null 2>&1; then
     DETECTED_CMD="npx eslint --fix"
+    CMD_ARGV=(npx eslint --fix)
     DETECTION_SOURCE="default_eslint"
   fi
 fi
@@ -94,7 +101,8 @@ fi
 
 # ----- Run the command(s) -------------------------------------------------
 
-# shellcheck disable=SC2086 # we want word-splitting of DETECTED_CMD
+# Display-only rendering of what we are about to run. The real invocation below
+# uses the CMD_ARGV array, never this string.
 FULL_CMD="$DETECTED_CMD ${FILTERED[*]}"
 FILES_COUNT=${#FILTERED[@]}
 
@@ -112,7 +120,7 @@ for f in "${FILTERED[@]}"; do
   PRE_SUM["$f"]="$(md5sum "$f" | cut -d' ' -f1)"
 done
 
-if ! eval "$FULL_CMD" >&2; then
+if ! "${CMD_ARGV[@]}" "${FILTERED[@]}" >&2; then
   echo "status=failed"
   echo "command=$FULL_CMD"
   echo "reason=format_failed"
@@ -124,7 +132,7 @@ fi
 PRETTIER_RAN=""
 if [[ "$DETECTION_SOURCE" == "default_eslint" ]] && command -v npx >/dev/null 2>&1; then
   PRETTIER_CMD="npx prettier --write ${FILTERED[*]}"
-  if eval "$PRETTIER_CMD" >&2; then
+  if npx prettier --write "${FILTERED[@]}" >&2; then
     PRETTIER_RAN=" && $PRETTIER_CMD"
   fi
 fi

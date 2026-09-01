@@ -10,7 +10,7 @@
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -397,5 +397,45 @@ describe('format-changed-files.sh — FORMAT_CONVENTIONS is inert', () => {
     assert.doesNotMatch(src, /FORMAT_CONVENTIONS/);
     assert.doesNotMatch(src, /CONVENTIONS\.md/);
     assert.doesNotMatch(src, /detection_source=conventions|DETECTION_SOURCE="conventions"/);
+  });
+});
+
+describe('format-changed-files.sh — changed filenames are never shell-interpreted', () => {
+  // Regression: the script used to build one string ("$DETECTED_CMD ${FILTERED[*]}")
+  // and hand it to `eval`, so a committed file whose name carries shell
+  // metacharacters was EXECUTED rather than formatted. The `[[ -e "$file" ]]`
+  // filter does not help — the malicious name exists on disk, which is the point.
+  // Verified against origin/main: the payload below created the marker file there.
+  test('a filename containing shell metacharacters does not execute', () => {
+    const dir = mktmp();
+    try {
+      writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'x', scripts: { format: 'true' } }));
+      const marker = join(dir, 'PWNED');
+      const hostile = 'a;touch PWNED;b.js';
+      writeFileSync(join(dir, hostile), 'x\n');
+
+      const r = runScript({
+        FORMAT_SOURCE_PATH: dir,
+        FORMAT_CHANGED_FILES: hostile,
+      });
+
+      assert.ok(!existsSync(marker), 'the filename was interpreted as shell — injection is open again');
+      assert.notEqual(r.code, null);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('the reported command string still shows the file, even though it is never eval-ed', () => {
+    const dir = mktmp();
+    try {
+      writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'x', scripts: { format: 'true' } }));
+      writeFileSync(join(dir, 'a.ts'), 'x\n');
+      const r = runScript({ FORMAT_SOURCE_PATH: dir, FORMAT_CHANGED_FILES: 'a.ts', FORMAT_DRY_RUN: '1' });
+      assert.equal(r.parsed.status, 'ok');
+      assert.match(r.parsed.command, /a\.ts/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
