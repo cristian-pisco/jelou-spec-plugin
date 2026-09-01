@@ -78,8 +78,8 @@ compute_mode() {
   #   - `**Mode: docs**` / `**Mode: vertical**` / `**Mode: horizontal**` / `**Mode: trivial**` line
   #   - YAML frontmatter `mode: docs` between `---` fences (top of file)
   OVERRIDE=""
-  if line="$(grep -m1 -E '^\*\*Mode:\s*(docs|vertical|horizontal|trivial)\*\*' "$CLASSIFY_PHASE_FILE" 2>/dev/null)"; then
-    OVERRIDE="$(echo "$line" | sed -E 's/^\*\*Mode:\s*([a-z]+)\*\*.*/\1/')"
+  if line="$(grep -m1 -E '^\*\*Mode:[[:space:]]*(docs|vertical|horizontal|trivial)\*\*' "$CLASSIFY_PHASE_FILE" 2>/dev/null)"; then
+    OVERRIDE="$(echo "$line" | sed -E 's/^\*\*Mode:[[:space:]]*([a-z]+)\*\*.*/\1/')"
   elif line="$(awk '/^---$/{f++;next} f==1 && /^mode:/{print;exit}' "$CLASSIFY_PHASE_FILE" 2>/dev/null)"; then
     OVERRIDE="$(echo "$line" | sed -E 's/^mode:[[:space:]]*([a-z]+).*/\1/')"
   fi
