@@ -136,7 +136,7 @@ describe('phase-open.mjs — tdd mode', () => {
     assert.match(readFileSync(join(dir, 'TASKS.md'), 'utf8'), /- Status: in_progress/);
   });
 
-  test('inlines the service docs cache handed to it', () => {
+  test('never forwards a service docs cache, even when one is handed to it', () => {
     const { dir, phaseFile, serviceId } = makeTask({ phaseBody: TDD_PHASE });
     const docsFile = join(dir, 'service-docs.md');
     writeFileSync(docsFile, '## Conventions\nNaming rule marker AARDVARK.\n', 'utf8');
@@ -152,8 +152,26 @@ describe('phase-open.mjs — tdd mode', () => {
 
     assert.equal(r.code, 0);
     const prompt = promptBody(r.stdout);
-    assert.match(prompt, /## SERVICE DOCS/);
-    assert.match(prompt, /AARDVARK/);
+    assert.doesNotMatch(prompt, /## SERVICE DOCS/);
+    assert.doesNotMatch(prompt, /AARDVARK/);
+    assert.doesNotMatch(prompt, /^- CODEBASE_DOCS:/m);
+  });
+
+  test('a stale --docs-file pointing at a missing file is inert, not fatal', () => {
+    const { dir, phaseFile, serviceId } = makeTask({ phaseBody: TDD_PHASE });
+
+    const r = runOpen([
+      `--task-dir=${dir}`,
+      `--service=${serviceId}`,
+      '--phase=01',
+      `--phase-file=${phaseFile}`,
+      '--phase-title=Seed',
+      `--plugin-root=${ROOT}`,
+      '--docs-file=/nonexistent/service-docs.md',
+    ]);
+
+    assert.equal(r.code, 0, r.stderr);
+    assert.doesNotMatch(promptBody(r.stdout), /## SERVICE DOCS/);
   });
 
   test('renders a notes file as orchestrator notes', () => {

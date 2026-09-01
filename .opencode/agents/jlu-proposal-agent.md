@@ -49,7 +49,7 @@ The orchestrator INLINES only what it already has in its own context. Everything
   `[boundary]`), the `services` it touches, and a `covers: [FR-…]` map back to SPEC.md.
 - `<WORKSPACE_PATH>/principles/ENGINEERING_PRINCIPLES.md` — global engineering principles
 - `<WORKSPACE_PATH>/registry/services.yaml` — full registry (only if you need a service not in the affected list)
-- Per affected service, the 6 codebase files at `<WORKSPACE_PATH>/services/<service-id>/codebase/{ARCHITECTURE,STACK,CONVENTIONS,INTEGRATIONS,STRUCTURE,CONCERNS}.md`
+- Per affected service, the real source tree at its `path` from the affected-services list — use `Glob`/`Grep` to locate the modules a phase touches. Read files, never generated codebase docs.
 
 **Story-first sourcing (fallback to SPEC.md).** Glob `<TASK_DIR>/stories/*.story.md`:
 - **Stories present** → derive phases from them. A story is single-source-of-truth for its own
@@ -74,9 +74,9 @@ If a path doesn't resolve, skip silently and proceed with whatever is available.
 
 Produce the cross-service strategy. This covers:
 
-1. **Affected Services** — Which services this task touches and why. Reference specific files/modules from STRUCTURE.md and ARCHITECTURE.md.
+1. **Affected Services** — Which services this task touches and why. Reference specific files/modules you located in the source tree.
 
-2. **Dependency Order** — Which services must be implemented first. For example: backend API endpoints before frontend consumers, shared library changes before services that use them. Use INTEGRATIONS.md to map dependencies.
+2. **Dependency Order** — Which services must be implemented first. For example: backend API endpoints before frontend consumers, shared library changes before services that use them. Grep for cross-service clients and callers to map dependencies.
 
 3. **Contract Boundaries** — Define the interfaces between services: API contracts, event schemas, shared types. These must be agreed upon before parallel implementation begins.
 
@@ -92,19 +92,19 @@ Produce the cross-service strategy. This covers:
    - **E2E tests: mandatory whenever a UI service is in `affected_services`.** List the user-visible flows that will be covered, each traced to a Success Criterion from SPEC.md. Never emit "not applicable" or "deferred for MVP" for the E2E entry on a UI task.
    - Contract tests: which cross-service contracts
 
-6. **Risks and Mitigations** — Reference CONCERNS.md items (by ID: TD-1, SEC-2, etc.) that intersect with this task. Propose mitigations.
+6. **Risks and Mitigations** — Name the risks this task carries, each anchored to a file or module you actually inspected. Propose mitigations.
 
 ### Pass 2: Per-Service Details
 
 For EACH affected service, produce service-specific execution details:
 
-1. **Service Scope** — What exactly changes in this service. Reference specific modules, files, classes from STRUCTURE.md.
+1. **Service Scope** — What exactly changes in this service. Reference specific modules, files, and classes from the source tree.
 
-2. **Relevant Modules** — Which existing modules are modified vs new modules created. Reference ARCHITECTURE.md patterns for where new code goes.
+2. **Relevant Modules** — Which existing modules are modified vs new modules created. Place new code alongside the closest comparable existing modules.
 
-3. **Service-Level Phases** — Expand the global phases into service-specific implementation steps. Each step should reference CONVENTIONS.md for how to write the code.
+3. **Service-Level Phases** — Expand the global phases into service-specific implementation steps. Each step should name the existing files that show how to write the code.
 
-4. **Implementation Constraints** — Service-specific constraints from STACK.md (framework limitations, dependency constraints) and CONCERNS.md (tech debt that intersects with this work).
+4. **Implementation Constraints** — Service-specific constraints visible in the code: framework limitations, dependency constraints, and existing tech debt that intersects with this work.
 
 ## Output Artifacts
 
@@ -174,7 +174,7 @@ Any `after <service>` entry in the Dependency Order column, and any absent or am
 ## Risks and Mitigations
 | Risk | Source | Mitigation |
 |------|--------|-----------|
-| <risk> | CONCERNS.md TD-3 | <mitigation> |
+| <risk> | `<path/to/file.ts>:<line>` | <mitigation> |
 
 ```
 
@@ -223,7 +223,7 @@ Before finalizing the proposal, verify:
 - [ ] No phase depends on a later phase. Dependency order is strictly forward.
 - [ ] Each phase is small enough for one TDD cycle — can be Red -> Green -> Refactor in a single agent run.
 - [ ] Contract boundaries are defined before any phase that crosses services.
-- [ ] Risks reference specific CONCERNS.md IDs, not vague "could be risky."
+- [ ] Risks reference a specific file or module, not vague "could be risky."
 - [ ] The phase count isn't inflated. Fewer phases with clear scope beats many micro-phases. Concretely: no two phases share the same domain entity AND the same persistence layer AND the same service — if any pair does, fuse them into one phase carrying the union of their requirements and acceptance (the sole exception is a write-side/read-side pair where the read side has pagination, filtering, sorting, projection, or a distinct authorization rule).
 - [ ] **If `affected_services` includes a UI service, the Testing Strategy lists at least one E2E flow and the phase plan includes a run of the Playwright UI suite.** No "manual QA only" or "deferred for MVP" language anywhere in the proposal.
 - [ ] **The emitted `Execution Strategy` AGREES with both signals in this very PROPOSAL.md**: `per-service-parallel` only when no `- **Dependencies**:` entry references a phase of another service AND the `Dependency Order` column contains no `after <service>` row; any disagreement or ambiguity means `sequential`.
@@ -233,7 +233,7 @@ Before finalizing the proposal, verify:
 - Every phase must be traceable to SPEC.md requirements (FR-*, NFR-*).
 - Phases must be ordered by dependency — never require something from a later phase.
 - Each phase must be small enough for one TDD cycle. If a phase seems too large, split it — subject to the shared-substrate tiebreaker, which forbids splitting phases that share entity + persistence layer + service.
-- Reference CONCERNS.md items by ID when they affect the plan.
+- Anchor every risk to a file path you inspected.
 - Follow the engineering principles precedence: Security > Simplicity > Readability > TDD > Repo conventions.
 - Do NOT write implementation code. You write the plan — code agents execute it.
 - Be specific about which files and modules are affected. Vague proposals produce vague implementations.

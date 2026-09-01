@@ -1,6 +1,6 @@
 # services.yaml Schema Reference
 
-> The service registry lives at `.spec-workspace/registry/services.yaml`. It uses a minimal schema (layered discovery) — only `id`, `path`, and `stack`. Detailed inter-service relationships are discovered dynamically by reading each service's `INTEGRATIONS.md`.
+> The service registry lives at `.spec-workspace/registry/services.yaml`. It uses a minimal schema (layered discovery) — only `id`, `path`, and `stack`. Detailed inter-service relationships are discovered dynamically by grepping each service's source for its clients, publishers, and consumers.
 
 ## Schema
 
@@ -121,6 +121,6 @@ services:
 
 - The registry is the single source of truth for which services exist in the workspace.
 - Paths are relative to the `.spec-workspace/` directory.
-- Relationships between services (API calls, events, shared schemas) are not stored here. They are discovered by reading each service's `INTEGRATIONS.md` under `.spec-workspace/services/<service-id>/codebase/`.
+- Relationships between services (API calls, events, shared schemas) are not stored here. They are discovered by grepping each service's source at its `path` for cross-service clients, publishers, and consumers.
 - If a spec or codebase doc references a service not in the registry, the plugin warns and offers to register it.
 - The `dev` block has three consumers: the UI QA workflow (boots from it), `/jlu-goal` (derives/persists/re-verifies it), and `/jlu-map-codebase` (certifies it at mapping time); workflows outside those three ignore it. Services without a `dev` block remain valid; E2E orchestration skips a non-UI service that lacks one. `/jlu-map-codebase` now derives, boot-verifies, and persists missing `dev` blocks at mapping time (certification: a block whose real boot went green gains a `verified: {date, commit, block_hash}` mark — see `jelou/references/dev-block-schema.md`), and `/jlu-goal` auto-repairs without asking: it derives and persists a missing block for any boot-order service (step 8b), and its own boot re-verifies unmarked or hand-edited blocks.

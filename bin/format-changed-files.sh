@@ -3,16 +3,13 @@
 #
 # Detects the project's format command via a fixed priority chain and runs it
 # only against the union of agent-declared changed files. Skips silently when
-# nothing is detectable (e.g., Python/Go service with no convention noted).
+# nothing is detectable (e.g., a Python/Go service with no package.json).
 #
 # Inputs (env vars):
 #   FORMAT_SOURCE_PATH    Absolute path to the service worktree/repo.
 #   FORMAT_CHANGED_FILES  Newline-separated list of files to format
 #                         (union of test-writer's Tests Written and implementer's
 #                         Files Modified, or the tdd-cycle agent's combined list).
-#   FORMAT_CONVENTIONS    (optional) Absolute path to CONVENTIONS.md. When set
-#                         and the file exists, the script checks for an explicit
-#                         "Format" or "Lint" command line and prefers it.
 #   FORMAT_DRY_RUN        (optional) When "1", detects the command but does NOT
 #                         execute it. Output includes detection_source and the
 #                         command that would have been run. Used for tests.
@@ -66,39 +63,8 @@ fi
 DETECTED_CMD=""
 DETECTION_SOURCE=""
 
-# 1. CONVENTIONS.md — look for an explicit format/lint command in fenced code.
-if [[ -n "${FORMAT_CONVENTIONS:-}" ]] && [[ -f "$FORMAT_CONVENTIONS" ]]; then
-  # Look for lines like: `npm run format -- ` or `npx prettier --write`
-  # inside a section whose heading mentions Format or Lint.
-  CONV_CMD="$(awk '
-  # Activate inside Formatting/Lint sections (case-sensitive headings as before).
-  /^#+ *(Format|Lint|Formatting|Linting)/ { in_section=1; next }
-  in_section && /^#+ / { in_section=0 }
-  # Scan every backtick token on the line — not just the first — so a config
-  # filename mentioned before the real command does not shadow it.
-  in_section {
-    s = $0
-    while (match(s, /`[^`]+`/)) {
-      cmd = substr(s, RSTART+1, RLENGTH-2)
-      s = substr(s, RSTART + RLENGTH)
-      # Accept only actual commands. A command starts with a known runner /
-      # formatter followed by whitespace and at least one argument. Bare config
-      # filenames (`.prettierrc`, `biome.json`, `.eslintrc.json`) fail this test.
-      if (cmd ~ /^(npm|npx|yarn|pnpm|bun|biome|prettier|eslint|rome|black|ruff|gofmt|rustfmt)[[:space:]]+[^[:space:]]/) {
-        print cmd
-        exit
-      }
-    }
-  }
-  ' "$FORMAT_CONVENTIONS" 2>/dev/null || true)"
-  if [[ -n "$CONV_CMD" ]]; then
-    DETECTED_CMD="$CONV_CMD"
-    DETECTION_SOURCE="conventions"
-  fi
-fi
-
-# 2. package.json scripts — prefer `format`, fall back to `lint:fix`.
-if [[ -z "$DETECTED_CMD" ]] && [[ -f "package.json" ]]; then
+# 1. package.json scripts — prefer `format`, fall back to `lint:fix`.
+if [[ -f "package.json" ]]; then
   SCRIPT_NAME="$(node -e "
     const pkg = require('./package.json');
     const scripts = pkg.scripts || {};
@@ -111,7 +77,7 @@ if [[ -z "$DETECTED_CMD" ]] && [[ -f "package.json" ]]; then
   fi
 fi
 
-# 3. JS/TS default — eslint --fix + prettier --write (only if package.json exists).
+# 2. JS/TS default — eslint --fix + prettier --write (only if package.json exists).
 if [[ -z "$DETECTED_CMD" ]] && [[ -f "package.json" ]]; then
   if command -v npx >/dev/null 2>&1; then
     DETECTED_CMD="npx eslint --fix"

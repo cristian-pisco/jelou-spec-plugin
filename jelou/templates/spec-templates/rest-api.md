@@ -24,7 +24,7 @@ New REST API endpoint with request/response schema, validation, and auth.
 - NFR-4: API versioning approach (URL path, header, or query param)
 
 ### Constraints
-- Must follow existing API conventions from CONVENTIONS.md
+- Must follow the API conventions already used by the service's existing controllers
 - Must be backwards-compatible with existing clients
 - Must use existing error response format
 

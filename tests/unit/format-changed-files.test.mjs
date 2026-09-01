@@ -2,7 +2,7 @@
 //
 // Tests for bin/format-changed-files.sh — the host-side lint/format script
 // invoked by execute-task.md Step 7e / 7de. Verifies pre-flight, filtering,
-// detection chain (CONVENTIONS.md → package.json scripts → JS/TS default),
+// detection chain (package.json scripts → JS/TS default),
 // and dry-run behavior.
 //
 // Run: `node --test tests/unit/format-changed-files.test.mjs`
@@ -10,7 +10,7 @@
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -188,110 +188,6 @@ describe('format-changed-files.sh — detection chain (dry-run)', () => {
     }
   });
 
-  test('CONVENTIONS.md format command takes priority over package.json', () => {
-    const dir = mktmp();
-    try {
-      writeFileSync(join(dir, 'package.json'), JSON.stringify({
-        name: 'x',
-        scripts: { format: 'true' },
-      }));
-      const convPath = join(dir, 'CONVENTIONS.md');
-      writeFileSync(convPath, [
-        '# Conventions',
-        '',
-        '## Format',
-        '',
-        'Run `prettier --write` against staged files.',
-        '',
-        '## Other',
-        '',
-        'Stuff.',
-      ].join('\n'));
-      writeFileSync(join(dir, 'a.ts'), 'x\n');
-      const r = runScript({
-        FORMAT_SOURCE_PATH: dir,
-        FORMAT_CHANGED_FILES: 'a.ts',
-        FORMAT_CONVENTIONS: convPath,
-        FORMAT_DRY_RUN: '1',
-      });
-      assert.equal(r.code, 0, `expected ok, got: ${r.stdout}\n${r.stderr}`);
-      assert.equal(r.parsed.status, 'ok');
-      assert.equal(r.parsed.detection_source, 'conventions');
-      assert.match(r.parsed.command, /prettier --write/);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test('CONVENTIONS.md: skips bare config filenames like `.prettierrc` and picks the real command', () => {
-    const dir = mktmp();
-    try {
-      writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'x', scripts: {} }));
-      const convPath = join(dir, 'CONVENTIONS.md');
-      writeFileSync(convPath, [
-        '# Conventions',
-        '',
-        '## Formatting',
-        '',
-        'The project uses `.prettierrc` for configuration.',
-        'To format the code, run `npx prettier --write`.',
-        '',
-        '## Other',
-        '',
-        'Stuff.',
-      ].join('\n'));
-      writeFileSync(join(dir, 'a.ts'), 'x\n');
-      const r = runScript({
-        FORMAT_SOURCE_PATH: dir,
-        FORMAT_CHANGED_FILES: 'a.ts',
-        FORMAT_CONVENTIONS: convPath,
-        FORMAT_DRY_RUN: '1',
-      });
-      assert.equal(r.code, 0, `expected ok, got: ${r.stdout}\n${r.stderr}`);
-      assert.equal(r.parsed.detection_source, 'conventions');
-      assert.match(r.parsed.command, /npx prettier --write/);
-      assert.doesNotMatch(r.parsed.command, /\.prettierrc/);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test('CONVENTIONS.md: skips `biome.json` in tables and picks `biome check` (jelou-apps shape)', () => {
-    const dir = mktmp();
-    try {
-      writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'x', scripts: {} }));
-      const convPath = join(dir, 'CONVENTIONS.md');
-      writeFileSync(convPath, [
-        '# Conventions',
-        '',
-        '## Formatting',
-        '',
-        '| Rule | Value | Source |',
-        '|------|-------|--------|',
-        '| Indentation | 4 spaces | `biome.json`, `.editorconfig` |',
-        '',
-        '**Pre-commit enforcement**: `lint-staged` runs `biome check --error-on-warnings --no-errors-on-unmatched` on staged files.',
-        '',
-        '## Other',
-        '',
-        'Stuff.',
-      ].join('\n'));
-      writeFileSync(join(dir, 'a.ts'), 'x\n');
-      const r = runScript({
-        FORMAT_SOURCE_PATH: dir,
-        FORMAT_CHANGED_FILES: 'a.ts',
-        FORMAT_CONVENTIONS: convPath,
-        FORMAT_DRY_RUN: '1',
-      });
-      assert.equal(r.code, 0, `expected ok, got: ${r.stdout}\n${r.stderr}`);
-      assert.equal(r.parsed.detection_source, 'conventions');
-      assert.match(r.parsed.command, /biome check/);
-      assert.doesNotMatch(r.parsed.command, /biome\.json/);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
   test('files_count reflects filtered list', () => {
     const dir = mktmp();
     try {
@@ -437,5 +333,69 @@ describe('format-changed-files.sh — execution', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('format-changed-files.sh — FORMAT_CONVENTIONS is inert', () => {
+  // CONVENTIONS.md left the detection chain with the codebase-docs removal.
+  // The env var is no longer read; a stale caller that still exports it must
+  // neither change detection nor crash the script (it runs under `set -u`).
+  const CONVENTIONS = [
+    '# Conventions',
+    '',
+    '## Format',
+    '',
+    'Run `npx prettier --write` against staged files.',
+    '',
+  ].join('\n');
+
+  test('package.json still wins when a CONVENTIONS.md format command is exported', () => {
+    const dir = mktmp();
+    try {
+      writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'x', scripts: { format: 'true' } }));
+      const convPath = join(dir, 'CONVENTIONS.md');
+      writeFileSync(convPath, CONVENTIONS);
+      writeFileSync(join(dir, 'a.ts'), 'x\n');
+      const r = runScript({
+        FORMAT_SOURCE_PATH: dir,
+        FORMAT_CHANGED_FILES: 'a.ts',
+        FORMAT_CONVENTIONS: convPath,
+        FORMAT_DRY_RUN: '1',
+      });
+      assert.equal(r.code, 0, `${r.stdout}\n${r.stderr}`);
+      assert.equal(r.parsed.detection_source, 'package_script');
+      assert.match(r.parsed.command, /npm run format --/);
+      assert.doesNotMatch(r.parsed.command, /prettier/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('a non-JS project with a CONVENTIONS.md format command now skips', () => {
+    const dir = mktmp();
+    try {
+      const convPath = join(dir, 'CONVENTIONS.md');
+      writeFileSync(convPath, CONVENTIONS);
+      writeFileSync(join(dir, 'a.py'), 'x = 1\n');
+      const r = runScript({
+        FORMAT_SOURCE_PATH: dir,
+        FORMAT_CHANGED_FILES: 'a.py',
+        FORMAT_CONVENTIONS: convPath,
+        FORMAT_DRY_RUN: '1',
+      });
+      assert.equal(r.code, 0, `${r.stdout}\n${r.stderr}`);
+      assert.equal(r.parsed.status, 'skip');
+      assert.equal(r.parsed.reason, 'no_command_detected');
+      assert.equal(r.parsed.detection_source, undefined);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('the script source no longer mentions CONVENTIONS at all', () => {
+    const src = readFileSync(SCRIPT_PATH, 'utf8');
+    assert.doesNotMatch(src, /FORMAT_CONVENTIONS/);
+    assert.doesNotMatch(src, /CONVENTIONS\.md/);
+    assert.doesNotMatch(src, /detection_source=conventions|DETECTION_SOURCE="conventions"/);
   });
 });

@@ -369,8 +369,8 @@ No arguments. By design — the workers-fixed-at-1 contract can't be loosened, a
 1. Walks up from cwd looking for `.spec-workspace/` (max 5 levels). Resolves the service via longest-prefix match against `services.yaml`.
 2. Honors active task worktrees: if you're on `production/<slug>` or `staging/<slug>` and `TASKS.md` declares `Mode: worktree`, runs against `<repo>/.worktrees/<slug>/`. Otherwise the main repo.
 3. Lightweight pre-flight: aborts only on truly degraded machines (< 1.5 GB available RAM). Workers=1 means the normal threshold is generous.
-4. Detects the runner from CONVENTIONS.md's "Test Filtering Commands" table (populated by `/jlu-map-codebase`), with manifest-introspection fallback. Supports **Jest, Vitest, Mocha, pytest** (+ `pytest-xdist` / `pytest-json-report` when present), and **Go**.
-5. Runs unit tests first, then integration tests (only if CONVENTIONS.md declares them as a separate command). Worker cap is injected per runner: `--runInBand` (Jest), `--pool=threads --poolOptions.threads.maxThreads=1` (Vitest), `-n 1` (pytest-xdist), `-p 1` (Go).
+4. Detects the runner by introspecting the service manifest (`package.json` scripts and devDependencies, `pyproject.toml`, `go.mod`). Supports **Jest, Vitest, Mocha, pytest** (+ `pytest-xdist` / `pytest-json-report` when present), and **Go**.
+5. Runs unit tests first, then integration tests (only when the manifest declares them as a separate script). Worker cap is injected per runner: `--runInBand` (Jest), `--pool=threads --poolOptions.threads.maxThreads=1` (Vitest), `-n 1` (pytest-xdist), `-p 1` (Go).
 6. **If everything is green** — prints a one-line pass summary and exits 0.
 7. **If anything failed** — parses the runner's JSON output (or falls back to stdout), reads each failing test file, identifies the symbol under test from imports and the `describe(...)` subject, and classifies it by suffix:
 
@@ -386,7 +386,7 @@ No arguments. By design — the workers-fixed-at-1 contract can't be loosened, a
    | `*.util.{ts,js,py}`, `*.helper.{ts,js,py}` | Util |
    | Anything else | Module |
 
-   CONVENTIONS.md can override these defaults via its `## Naming Conventions` section.
+   When the service's own file names follow a different convention, the classifier follows what it observes in the tree.
 
 **Sample success output**
 
@@ -441,7 +441,7 @@ The "Did you run /jlu-start-dev?" hint is automatic — any error matching `ECON
 | 0 | All tests green |
 | 1 | One or more tests failed (report rendered) |
 | 2 | Pre-flight RAM gate aborted |
-| 3 | Test runner could not be detected — add a "Test Filtering Commands" table to CONVENTIONS.md or a `test` script to your manifest |
+| 3 | Test runner could not be detected — add a `test` script to your manifest |
 
 **Limitations (V1)**
 
@@ -449,7 +449,7 @@ The "Did you run /jlu-start-dev?" hint is automatic — any error matching `ECON
 - **Workers fixed at 1.** No env var override, by design. If you need parallelism, run the underlying runner directly.
 - **No coverage.** Coverage runs roughly double RAM per worker and belong in CI. Step 8c reads existing coverage reports if present but never generates them.
 - **No auto-fix.** This skill validates and reports. Fixes are the developer's call. (Step 8b dispatches `jlu-implementer` on failure; `/jlu-test-suite` deliberately does not.)
-- **Classification is best-effort.** Suffix-based heuristics + CONVENTIONS.md overrides. Projects with non-standard naming may see "Module" fallbacks on tests the classifier can't pin down.
+- **Classification is best-effort.** Suffix-based heuristics against the observed tree. Projects with non-standard naming may see "Module" fallbacks on tests the classifier can't pin down.
 
 **Best results in Sonnet+**
 
@@ -928,7 +928,7 @@ Channel templates can be customized in `.spec-workspace/registry/slack/<channel>
 ### Engineering Principles
 
 Global principles in `.spec-workspace/principles/ENGINEERING_PRINCIPLES.md` (philosophical).
-Per-service concrete rules in each service's `CONVENTIONS.md`.
+Per-service concrete rules are read from the service's own code and linter config — agents never load the generated `codebase/` documents.
 
 ### Test Resource Guard
 

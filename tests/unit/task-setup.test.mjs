@@ -1,7 +1,7 @@
 import { test, describe, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -30,27 +30,7 @@ function git(cwd, ...args) {
   return execFileSync('git', args, { cwd, encoding: 'utf8' });
 }
 
-const CONVENTIONS = `# Conventions
-
-## Naming
-Repositories end in Repository. Marker AARDVARK.
-`;
-
-const STRUCTURE = `# Structure
-
-## Directory Tree
-- src/
-- test/
-Marker BADGER-TREE-MUST-NOT-TRAVEL.
-
-## Module Organization
-One module per bounded context.
-
-## File Naming Conventions
-kebab-case for files.
-`;
-
-function makeWorkspace({ withWorktree = true, withStructure = true, conventions = CONVENTIONS } = {}) {
+function makeWorkspace({ withWorktree = true } = {}) {
   const workspace = mkdtempSync(join(tmpdir(), 'task-setup-ws-'));
   created.push(workspace);
 
@@ -79,8 +59,8 @@ function makeWorkspace({ withWorktree = true, withStructure = true, conventions 
 
   const codebase = join(workspace, 'services', 'svc', 'codebase');
   mkdirSync(codebase, { recursive: true });
-  if (conventions !== null) writeFileSync(join(codebase, 'CONVENTIONS.md'), conventions, 'utf8');
-  if (withStructure) writeFileSync(join(codebase, 'STRUCTURE.md'), STRUCTURE, 'utf8');
+  writeFileSync(join(codebase, 'CONVENTIONS.md'), '# Conventions\nMarker AARDVARK.\n', 'utf8');
+  writeFileSync(join(codebase, 'STRUCTURE.md'), '# Structure\nMarker BADGER.\n', 'utf8');
 
   const taskDir = join(workspace, 'specs', '2026-08-09', TASK_SLUG);
   mkdirSync(join(taskDir, 'services', 'svc'), { recursive: true });
@@ -94,9 +74,8 @@ function runSetup(extraArgs) {
   return { code: result.status, stdout: result.stdout, stderr: result.stderr, parsed: parseOutput(result.stdout) };
 }
 
-function baseArgs({ workspace, taskDir }) {
+function baseArgs({ workspace }) {
   return [
-    `--task-dir=${taskDir}`,
     `--workspace=${workspace}`,
     `--task-slug=${TASK_SLUG}`,
     '--services=svc',
@@ -106,7 +85,7 @@ function baseArgs({ workspace, taskDir }) {
 describe('task-setup.mjs — argument validation', () => {
   test('aborts when --services is missing', () => {
     const fx = makeWorkspace();
-    const r = runSetup([`--task-dir=${fx.taskDir}`, `--workspace=${fx.workspace}`, `--task-slug=${TASK_SLUG}`]);
+    const r = runSetup([`--workspace=${fx.workspace}`, `--task-slug=${TASK_SLUG}`]);
     assert.equal(r.code, 1);
     assert.equal(r.parsed.reason, 'missing_argument');
   });
@@ -114,7 +93,6 @@ describe('task-setup.mjs — argument validation', () => {
   test('aborts when the workspace does not exist', () => {
     const fx = makeWorkspace();
     const r = runSetup([
-      `--task-dir=${fx.taskDir}`,
       '--workspace=/nonexistent-task-setup-xyz',
       `--task-slug=${TASK_SLUG}`,
       '--services=svc',
@@ -154,47 +132,35 @@ describe('task-setup.mjs — source path resolution is mode-driven', () => {
   });
 });
 
-describe('task-setup.mjs — service doc cache', () => {
-  test('materializes CONVENTIONS.md plus the two STRUCTURE.md sections and nothing else', () => {
+describe('task-setup.mjs — generated codebase docs are never touched', () => {
+  test('emits no docs keys and writes no doc cache, even when the docs exist', () => {
     const fx = makeWorkspace();
     const r = runSetup([...baseArgs(fx)]);
     assert.equal(r.code, 0, r.stderr);
-    assert.equal(r.parsed['service.svc.docs_mode'], 'contents');
 
-    const cached = readFileSync(r.parsed['service.svc.docs_file'], 'utf8');
-    assert.match(cached, /AARDVARK/);
-    assert.match(cached, /## Module Organization/);
-    assert.match(cached, /## File Naming Conventions/);
-    assert.ok(!cached.includes('BADGER-TREE-MUST-NOT-TRAVEL'), 'the STRUCTURE.md directory tree must never be cached');
+    for (const key of Object.keys(r.parsed)) {
+      assert.ok(!key.startsWith('service.svc.docs'), `unexpected docs key emitted: ${key}`);
+    }
+    assert.doesNotMatch(r.stderr, /SERVICE_DOC_CACHE/);
+    assert.ok(!existsSync(join(fx.taskDir, 'services', 'svc', 'service-docs.md')));
+    assert.doesNotMatch(r.stdout, /AARDVARK|BADGER/);
   });
 
-  test('degrades to CONVENTIONS.md alone when the STRUCTURE.md sections are absent', () => {
-    const fx = makeWorkspace({ withStructure: false });
-    const r = runSetup([...baseArgs(fx)]);
+  test('a missing source path still emits an empty baseline and no docs keys', () => {
+    const fx = makeWorkspace({ withWorktree: false });
+    writeFileSync(
+      join(fx.workspace, 'registry', 'services.yaml'),
+      'services:\n  - id: svc\n    path: repos/ghost\n    stack: nestjs\n',
+      'utf8',
+    );
+    const r = runSetup([...baseArgs(fx), '--setup-mode=worktree']);
     assert.equal(r.code, 0, r.stderr);
-    assert.equal(r.parsed['service.svc.docs_mode'], 'contents');
-    assert.match(r.stderr, /WARN: SERVICE_DOC_CACHE\[svc\] — STRUCTURE\.md sections unavailable/);
-    assert.match(readFileSync(r.parsed['service.svc.docs_file'], 'utf8'), /AARDVARK/);
-  });
-
-  test('caches paths instead of contents past the size budget', () => {
-    const fx = makeWorkspace({ conventions: `${CONVENTIONS}\n${'x'.repeat(40000)}\n` });
-    const r = runSetup([...baseArgs(fx)]);
-    assert.equal(r.code, 0, r.stderr);
-    assert.equal(r.parsed['service.svc.docs_mode'], 'paths');
-    assert.match(r.stderr, /WARN: SERVICE_DOC_CACHE\[svc\] is ~\d+ tokens \(> 8k\) — caching paths instead of contents/);
-
-    const cached = readFileSync(r.parsed['service.svc.docs_file'], 'utf8');
-    assert.match(cached, /CONVENTIONS\.md/);
-    assert.ok(!cached.includes('AARDVARK'), 'past the budget the cache holds paths, not contents');
-  });
-
-  test('reports an absent cache when the service has no codebase docs', () => {
-    const fx = makeWorkspace({ conventions: null, withStructure: false });
-    const r = runSetup([...baseArgs(fx)]);
-    assert.equal(r.code, 0, r.stderr);
-    assert.equal(r.parsed['service.svc.docs_mode'], 'absent');
-    assert.equal(r.parsed['service.svc.docs_note'], 'conventions_missing');
+    assert.equal(r.parsed['service.svc.baseline_sha'], '');
+    for (const key of Object.keys(r.parsed)) {
+      assert.ok(!key.startsWith('service.svc.docs'), `unexpected docs key emitted: ${key}`);
+    }
+    assert.match(r.stderr, /WARN: Source path missing for svc/);
+    assert.doesNotMatch(r.stderr, /SERVICE_DOC_CACHE/);
   });
 });
 

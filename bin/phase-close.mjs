@@ -22,7 +22,6 @@ bin/finalize-phase.sh (scope check + stage + commit), bin/phase-state.mjs --even
   --commit-type=<feat|fix|docs|refactor|test>   REQUIRED unless --docs
   --changed-files=<a,b,c>        REQUIRED unless --docs (Files Modified + Tests Written)
   --services-in-phase=<K>        defaults to 1
-  --conventions=<abs path>       optional CONVENTIONS.md for format detection
   --green-recheck-command=<cmd>  re-run when the formatter rewrote a file
   --status=<done|blocked|failed> defaults to done
   --tests-passed=<N> --tests-total=<N>
@@ -166,7 +165,6 @@ if (!docsMode) {
       ...process.env,
       FORMAT_SOURCE_PATH: sourcePath,
       FORMAT_CHANGED_FILES: expectedFiles.join('\n'),
-      ...(args.conventions && args.conventions !== true ? { FORMAT_CONVENTIONS: args.conventions } : {}),
     },
   });
   const formatOut = parseKeyValues(format.stdout);

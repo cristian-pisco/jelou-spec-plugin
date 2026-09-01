@@ -303,13 +303,11 @@ Note: The `## Branching` section is NOT written here. It is appended to TASKS.md
 ## Step 7 — Detect Affected Services
 
 1. Read `<WORKSPACE_PATH>/registry/services.yaml` for all registered services.
-2. Read `<WORKSPACE_PATH>/services/<SERVICE_ID>/codebase/INTEGRATIONS.md` (if it exists) to understand the primary service's integration points.
-3. Analyze the task description (`TASK_DESCRIPTION`) for references to other services:
+2. Analyze the task description (`TASK_DESCRIPTION`) for references to other services:
    - Look for service names or IDs mentioned in the text.
-   - Cross-reference with known integrations from INTEGRATIONS.md.
    - Cross-reference with services registered in `services.yaml`.
-4. Build a proposed list of affected services (always including the primary `SERVICE_ID`).
-5. Check for references to services NOT in the registry:
+3. Build a proposed list of affected services (always including the primary `SERVICE_ID`).
+4. Check for references to services NOT in the registry:
    - If found, warn: "The task references `<name>` which is not registered in `services.yaml`. Would you like to register it?"
 
 **Store**: `PROPOSED_SERVICES` = list of affected service IDs
@@ -371,27 +369,6 @@ After storing `DUAL_PR`, **insert** the `## Branching` section into the existing
 
 ---
 
-## Step 10 — Load Codebase Context (selective)
-
-For each service in `CONFIRMED_SERVICES`, read in parallel (single tool-call message):
-
-- `<WORKSPACE_PATH>/services/<service-id>/codebase/ARCHITECTURE.md`
-- `<WORKSPACE_PATH>/services/<service-id>/codebase/CONVENTIONS.md`
-- `<WORKSPACE_PATH>/services/<service-id>/codebase/INTEGRATIONS.md`
-
-**Skipped by default**: `STACK.md`, `STRUCTURE.md`, `CONCERNS.md`. These are large reference docs that rarely shape a spec interview.
-
-**Lazy-load triggers**: if `TASK_DESCRIPTION` mentions any of the following keywords, also load the matching file in the same parallel batch:
-- "stack", "framework", "version", "library", "dependency", "package" → `STACK.md`
-- "directory", "module structure", "file layout", "where does", "folder" → `STRUCTURE.md`
-- "known issue", "tech debt", "concern", "legacy", "workaround" → `CONCERNS.md`
-
-Track which files were loaded and which were missing (only counts default-3 misses for the warning in Step 12).
-
-**Store**: `CODEBASE_CONTEXT` = map of service-id -> map of filename -> content
-
----
-
 ## Step 11 — Read Engineering Principles (conditional)
 
 Load `<WORKSPACE_PATH>/principles/ENGINEERING_PRINCIPLES.md` ONLY if `TASK_DESCRIPTION` contains an architectural keyword: `architecture`, `security`, `performance`, `scalability`, `auth`, `schema`, `contract`, `event`, `migration`, `infrastructure`, `production`.
@@ -404,26 +381,9 @@ If loaded but the file doesn't exist, note it and do not block. If not loaded (n
 
 ---
 
-## Step 12 — Warn on Missing Context
-
-1. If ANY of the **default-3** files (`ARCHITECTURE.md`, `CONVENTIONS.md`, `INTEGRATIONS.md`) are missing for any affected service:
-   - Present a warning per service:
-     ```
-     Missing default codebase files for <service-id>:
-       - ARCHITECTURE.md
-       - CONVENTIONS.md
-       - (etc.)
-     ```
-   - Offer: "Run `/jlu-map-codebase <service-id>` to generate them? Or continue without codebase context?"
-   - If user chooses to map: pause, instruct user to run `/jlu-map-codebase`, then re-run `/jlu-new-task`.
-   - If user chooses to continue: proceed with whatever context is available.
-2. Do NOT warn about lazy-load files (`STACK.md`, `STRUCTURE.md`, `CONCERNS.md`) being absent — they are only loaded on demand and the interview can proceed without them.
-
----
-
 ## Step 13 — Review Loaded Context
 
-Before starting the interview, confirm you hold `TASK_DESCRIPTION` (Step 3), `CONFIRMED_SERVICES` (Step 8), `CODEBASE_CONTEXT` (Step 10), `PRINCIPLES_CONTENT` (Step 11), and `DETECTED_TEMPLATES` / `MERGED_PREFILL` / `MERGED_HINTS` (Step 2c). All are already in memory — do not re-read anything. Proceed directly to the interview.
+Before starting the interview, confirm you hold `TASK_DESCRIPTION` (Step 3), `CONFIRMED_SERVICES` (Step 8), `PRINCIPLES_CONTENT` (Step 11), and `DETECTED_TEMPLATES` / `MERGED_PREFILL` / `MERGED_HINTS` (Step 2c). All are already in memory — do not re-read anything. Proceed directly to the interview.
 
 ---
 
@@ -446,14 +406,14 @@ If the file does not exist, skip this sub-step silently. Do NOT prompt the user 
 
 ### 14a — Gap Analysis (silent)
 
-Before asking any questions, silently analyze the task description (`TASK_DESCRIPTION`) against the codebase knowledge (`CODEBASE_CONTEXT`). Identify:
+Before asking any questions, silently analyze the task description (`TASK_DESCRIPTION`). Never load a generated codebase document (`ARCHITECTURE.md`, `STACK.md`, `STRUCTURE.md`, `CONVENTIONS.md`, `INTEGRATIONS.md`, `CONCERNS.md` under `<WORKSPACE_PATH>/services/*/codebase/`) — when you need a fact about the code, grep the source within the bounded budget below. Identify:
 - Ambiguities or missing details in the task description
 - Conflicts between the task and existing architecture, conventions, or integration patterns
 - Implicit assumptions that need explicit confirmation
 - Edge cases, error scenarios, and security implications not addressed
-- Integration points with other services or systems referenced in INTEGRATIONS.md
+- Integration points with other services or systems the task touches
 - Non-functional requirements (performance, scalability, observability) not mentioned
-- Known concerns from CONCERNS.md that intersect with this task
+- Known constraints in the existing code that intersect with this task
 - For bugfix/single-path tasks, keep extra code drilldown bounded to:
   - up to 3 focused `grep` searches
   - up to 3 targeted source-file reads (<= 220 lines each)
@@ -510,7 +470,7 @@ Rules (interactive mode):
   9. UX/UI implications (if applicable — user-facing behavior)
   10. Constraints & out-of-scope (what should we explicitly NOT do?)
 - **Cite the source of each question** — reference the task description, prior answer, file, pattern, convention, integration, or concern that exposed the gap.
-  - Good: "INTEGRATIONS.md shows this service communicates with service-payments via async events. Should the new feature use the same event bus, or does it need a synchronous call?"
+  - Good: "`src/events/payments.publisher.ts` shows this service communicates with service-payments via async events. Should the new feature use the same event bus, or does it need a synchronous call?"
   - Bad: "What technology should we use?"
 - **Convert qualitative answers to a verification target** — for "it should be fast", ask for a percentile, latency, load, and measurement boundary.
 - **Ask about tradeoffs** — if the user chose approach A, ask why not B. Surface implicit decisions.
@@ -560,7 +520,6 @@ bypasses the agent's story-fusion rule. Pass, in the dispatch prompt:
 | `TASK_DESCRIPTION` | the original seed, verbatim |
 | `INTERVIEW_ANSWERS` | from 14b (interactive) or 14b-auto (autonomous) — never omit it |
 | `SPEC_ASSUMPTIONS` | every assumption accumulated across the gate table and 14b-auto (empty when `<AUTONOMOUS> = no`) |
-| `CODEBASE_CONTEXT` | from Step 10 |
 | `PRINCIPLES_CONTENT` | from Step 11 |
 | `CONFIRMED_SERVICES` | from Step 8 |
 | `MERGED_PREFILL` | from Step 2c, or empty |
@@ -884,8 +843,6 @@ If `DUAL_PR = yes`: append to the report:
 | Service not registered | Offer to register, warn if declined |
 | Task slug already exists | Auto-append numeric suffix |
 | Git worktree creation fails | Background agent reports error, skip that worktree, continue |
-| INTEGRATIONS.md missing | Proceed without integration-based detection, rely on user input |
-| Codebase files missing | Warn, offer `/jlu-map-codebase`, allow continue without |
 | Interview interrupted (session timeout, user abort) | Save any spec content written so far, report partial state |
 | User cancels at any confirmation step | Save any artifacts created so far, report partial state |
 

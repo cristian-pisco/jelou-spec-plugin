@@ -40,4 +40,4 @@
 | {{other-service}} | {{API call / event / shared schema}} | {{description}} |
 
 <!-- This section captures task-specific inter-service dependencies.
-     For stable integration patterns, see the service's INTEGRATIONS.md. -->
+     For stable integration patterns, grep the service's client and publisher modules. -->

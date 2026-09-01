@@ -8,7 +8,7 @@
 //
 // Usage:
 //   node bin/council.mjs "<idea text | path-to-idea-file>" \
-//     [--context <path>]... [--services id1,id2]
+//     [--context <path>]...
 //
 // Stdout: single JSON document { run_dir, inventory, envelopes }.
 // Stderr: human messages + 30s heartbeat while CLI judges run.
@@ -75,15 +75,6 @@ export const VERDICT_SCHEMA = {
   },
 };
 
-const MAP_CODEBASE_DOCS = [
-  'ARCHITECTURE.md',
-  'CONVENTIONS.md',
-  'CONCERNS.md',
-  'STACK.md',
-  'STRUCTURE.md',
-  'INTEGRATIONS.md',
-];
-
 const AGENTIC_PREAMBLE =
   'IMPORTANT: do not invoke or delegate to any skills, tools, agents, or councils. ' +
   'Provide your own analysis only. You may read files in this repository to gather ' +
@@ -138,7 +129,7 @@ export function findWorkspaceRoot(startDir, maxUp = 5) {
   return null;
 }
 
-export function buildCaseFile({ ideaText, contextPaths = [], services = [], workspaceRoot }) {
+export function buildCaseFile({ ideaText, contextPaths = [] }) {
   const included = [];
   const absent = [];
   const sections = [];
@@ -153,16 +144,8 @@ export function buildCaseFile({ ideaText, contextPaths = [], services = [], work
     }
   };
 
-  if (!workspaceRoot) {
-    absent.push({ name: 'jlu-artifacts', reason: 'no-workspace' });
-  } else if (services.length === 0) {
-    absent.push({ name: 'jlu-artifacts', reason: 'no-services-selected' });
-  } else {
-    for (const service of services) {
-      for (const doc of MAP_CODEBASE_DOCS) {
-        addFile(`${service}/${doc}`, join(workspaceRoot, 'services', service, 'codebase', doc));
-      }
-    }
+  if (contextPaths.length === 0) {
+    absent.push({ name: 'case-file', reason: 'no-context-paths' });
   }
 
   for (const ctx of contextPaths) {
@@ -178,7 +161,7 @@ export function preflight(caseFileText, maxBytes) {
   if (bytes > maxBytes) {
     throw new Error(
       `case file is ${bytes} bytes, over the ${maxBytes} limit (case_file_max_bytes). ` +
-        'Deselect services, trim --context files, or raise the limit in council.config.json. ' +
+        'Trim --context files, or raise the limit in council.config.json. ' +
         'No judge was called.',
     );
   }
@@ -418,12 +401,11 @@ export function parseArgs(argv) {
   const args = argv.slice(2);
   let idea = '';
   const contextPaths = [];
-  let services = [];
   let sessionDir = null;
   let round = 1;
 
   // A flag's value must exist and must not be another flag. Without this a
-  // trailing `--context` (or `--context --services`) silently swallows a flag
+  // trailing `--context` (or `--context --session-dir`) silently swallows a flag
   // or pushes `undefined`, which only blows up later in buildCaseFile — and a
   // valueless `--session-dir` would silently downgrade the run to single-shot.
   const takeValue = (i, flag) => {
@@ -438,9 +420,6 @@ export function parseArgs(argv) {
     const arg = args[i];
     if (arg === '--context') {
       contextPaths.push(takeValue(i, '--context'));
-      i++;
-    } else if (arg === '--services') {
-      services = takeValue(i, '--services').split(',').map((s) => s.trim()).filter(Boolean);
       i++;
     } else if (arg === '--session-dir') {
       sessionDir = takeValue(i, '--session-dir');
@@ -469,23 +448,18 @@ export function parseArgs(argv) {
   if (existsSync(idea) && statSync(idea).isFile()) {
     idea = readFileSync(idea, 'utf8');
   }
-  return { idea, contextPaths, services, sessionDir, round };
+  return { idea, contextPaths, sessionDir, round };
 }
 
 async function main() {
   const cwd = process.cwd();
   let exitCode = 0;
   try {
-    const { idea, contextPaths, services, sessionDir, round } = parseArgs(process.argv);
+    const { idea, contextPaths, sessionDir, round } = parseArgs(process.argv);
     const workspaceRoot = findWorkspaceRoot(cwd);
     const config = loadConfig({ cwd, workspaceRoot });
 
-    const { text: expediente, inventory } = buildCaseFile({
-      ideaText: idea,
-      contextPaths,
-      services,
-      workspaceRoot,
-    });
+    const { text: expediente, inventory } = buildCaseFile({ ideaText: idea, contextPaths });
     preflight(expediente, config.case_file_max_bytes);
 
     const judges = detectJudges({});

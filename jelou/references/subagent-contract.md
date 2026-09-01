@@ -94,7 +94,7 @@
   "task": "add-user-auth",
   "service": "service-auth",
   "status": "blocked",
-  "outcome": "9 of 12 tests passing. 3 tests appear to have incorrect assertions: they expect synchronous token validation but the existing auth middleware uses async verification. The tests contradict the established pattern in CONVENTIONS.md.",
+  "outcome": "9 of 12 tests passing. 3 tests appear to have incorrect assertions: they expect synchronous token validation but the existing auth middleware uses async verification. The tests contradict the established pattern in `src/auth/auth.middleware.ts`.",
   "risks": [
     {
       "description": "Test assertions may not match the actual service architecture",

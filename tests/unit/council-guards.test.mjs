@@ -89,7 +89,7 @@ describe('council workflow — jelou/workflows/council.md', () => {
     const wf = mustRead('jelou/workflows/council.md');
     assert.match(wf, /NO CROSS-MODEL SIGNAL/);
     assert.match(wf, /EMPTY CASE FILE/);
-    assert.match(wf, /jlu:map-codebase/);
+    assert.match(wf, /pass --context with the relevant SPEC or source files/);
   });
 
   test('asks service selection (multiSelect) when resolution yields zero or many', () => {

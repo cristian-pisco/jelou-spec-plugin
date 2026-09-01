@@ -316,7 +316,7 @@ Curates the workspace's domain glossary. An extractor scans code for terminology
 ### `/jlu-council`
 
 ```
-/jlu-council <idea text | path-to-idea-file> [--context <path>] [--services a,b]
+/jlu-council <idea text | path-to-idea-file> [--context <path>]
 ```
 
 Convenes a multi-model jury on an architecture idea. Heterogeneous judges refute it round after round until you and the jury reach consensus, ending in a categorical verdict — `GO` / `GO_WITH_CONDITIONS` / `NO_GO` — with dissent preserved.

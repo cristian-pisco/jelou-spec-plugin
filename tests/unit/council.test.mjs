@@ -121,33 +121,20 @@ describe('findWorkspaceRoot', () => {
 });
 
 describe('buildCaseFile', () => {
-  test('no workspace → empty inventory with no-workspace reason', () => {
-    const { inventory } = buildCaseFile({
-      ideaText: 'idea',
-      contextPaths: [],
-      services: [],
-      workspaceRoot: null,
-    });
+  test('no context paths → empty inventory with no-context-paths reason', () => {
+    const { inventory } = buildCaseFile({ ideaText: 'idea', contextPaths: [] });
     assert.equal(inventory.included.length, 0);
-    assert.ok(inventory.absent.some((a) => a.reason === 'no-workspace'));
+    assert.ok(inventory.absent.some((a) => a.reason === 'no-context-paths'));
   });
 
-  test('includes existing service artifacts with bytes, missing files listed with reason', () => {
+  test('never reads generated codebase docs, even when they exist beside the run', () => {
     const ws = tmp();
     const codebase = join(ws, 'services', 'svc-a', 'codebase');
     mkdirSync(codebase, { recursive: true });
     writeFileSync(join(codebase, 'ARCHITECTURE.md'), '# arch\ncontent');
-    const { text, inventory } = buildCaseFile({
-      ideaText: 'idea',
-      contextPaths: [],
-      services: ['svc-a'],
-      workspaceRoot: ws,
-    });
-    const arch = inventory.included.find((i) => i.name.includes('ARCHITECTURE'));
-    assert.ok(arch, 'ARCHITECTURE.md included');
-    assert.ok(arch.bytes > 0);
-    assert.match(text, /# arch/);
-    assert.ok(inventory.absent.some((a) => a.reason === 'missing-file'));
+    const { text, inventory } = buildCaseFile({ ideaText: 'idea', contextPaths: [] });
+    assert.equal(inventory.included.length, 0);
+    assert.doesNotMatch(text, /# arch/);
   });
 
   test('context paths are included; nonexistent context is absent with reason', () => {
@@ -157,8 +144,6 @@ describe('buildCaseFile', () => {
     const { inventory } = buildCaseFile({
       ideaText: 'idea',
       contextPaths: [spec, join(dir, 'nope.md')],
-      services: [],
-      workspaceRoot: null,
     });
     assert.ok(inventory.included.some((i) => i.path === spec));
     assert.ok(inventory.absent.some((a) => a.reason === 'missing-file' && a.name.includes('nope')));
@@ -259,7 +244,7 @@ describe('parseArgs flag validation', () => {
   test('rejects a flag with no value instead of swallowing the next token', () => {
     assert.throws(() => run('--context'), /--context requires a value/);
     assert.throws(() => run('--session-dir'), /--session-dir requires a value/);
-    assert.throws(() => run('--context', '--services'), /--context requires a value/);
+    assert.throws(() => run('--context', '--session-dir'), /--context requires a value/);
   });
 
   test('--round must be a positive integer with a value', () => {
@@ -269,10 +254,9 @@ describe('parseArgs flag validation', () => {
   });
 
   test('parses a multi-round session invocation', () => {
-    const parsed = run('--session-dir', '/tmp/s', '--round', '3', '--services', 'a,b');
+    const parsed = run('--session-dir', '/tmp/s', '--round', '3');
     assert.equal(parsed.sessionDir, '/tmp/s');
     assert.equal(parsed.round, 3);
-    assert.deepEqual(parsed.services, ['a', 'b']);
     assert.equal(parsed.idea, 'an idea');
   });
 
@@ -280,6 +264,31 @@ describe('parseArgs flag validation', () => {
     const parsed = run();
     assert.equal(parsed.sessionDir, null);
     assert.equal(parsed.round, 1);
+  });
+
+  // The case file is now built from --context paths only. A stale caller that
+  // still passes --services must fail loudly rather than have "a,b" silently
+  // absorbed into the idea text.
+  test('--services is rejected as an unknown option, never absorbed into the idea', () => {
+    assert.throws(() => run('--services', 'a,b'), /unknown option: --services/);
+    const parsed = (() => { try { return run('--services', 'a,b'); } catch { return null; } })();
+    assert.equal(parsed, null);
+  });
+
+  test('buildCaseFile no longer accepts a services/workspaceRoot scope', () => {
+    const ws = tmp();
+    const codebase = join(ws, 'services', 'svc-a', 'codebase');
+    mkdirSync(codebase, { recursive: true });
+    writeFileSync(join(codebase, 'CONVENTIONS.md'), 'MARKER-QUETZAL');
+    const { text, inventory } = buildCaseFile({
+      ideaText: 'idea',
+      contextPaths: [],
+      services: ['svc-a'],
+      workspaceRoot: ws,
+    });
+    assert.equal(inventory.included.length, 0);
+    assert.doesNotMatch(text, /MARKER-QUETZAL/);
+    assert.ok(inventory.absent.some((a) => a.reason === 'no-context-paths'));
   });
 });
 
