@@ -64,8 +64,8 @@ human. Inventing the missing contract is the failure.
 Fixed gates read their default from the table. An **open gap** — one the workflow
 discovered rather than one it always asks — resolves in this order:
 
-1. **From the inputs.** The description, seed, spec, or codebase docs already
-   answer it. Use that; no disclosure needed (it was never a gap).
+1. **From the inputs.** The description, seed, spec, or the affected services'
+   source already answer it. Use that; no disclosure needed (it was never a gap).
 2. **From `<ANSWERS_FILE>`,** when the caller supplied one: a markdown or YAML
    file of pre-recorded answers. This is how a benchmark keeps runs deterministic.
 3. **Conservative default + disclosure.** The narrowest defensible reading of the

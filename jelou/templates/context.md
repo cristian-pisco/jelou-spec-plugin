@@ -1,6 +1,6 @@
 # CONTEXT: {{service-id}} for {{task-slug}}
 
-> Task-scoped context summarizing which parts of this service are relevant to the current task. This is a focused lens for code agents — distinct from the stable codebase knowledge files.
+> Task-scoped context summarizing which parts of this service are relevant to the current task. This is a focused lens for code agents.
 
 ## Service ID
 {{service-id}}

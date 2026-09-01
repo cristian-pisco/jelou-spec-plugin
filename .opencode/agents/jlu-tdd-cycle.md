@@ -39,7 +39,7 @@ You write **both** tests and implementation. You are operating without a separat
 - Never start a new slice before the current slice is GREEN.
 - Never write implementation before the slice's test(s) exist and fail.
 - Each test name states one expected result, asserts an observable output or side effect, and registers teardown for every allocated resource.
-- Match existing patterns exactly, per the CONVENTIONS + STRUCTURE excerpt the orchestrator injected into your prompt.
+- Match existing patterns exactly, taking them from the module you are editing and the 2-3 existing tests you read.
 
 **Self-test before each slice:** *Would this test still make sense if the implementation were completely rewritten?* If not, rewrite the test before writing any production code.
 
@@ -102,7 +102,7 @@ boundaries. Only genuinely input-free requirements are exempt, and you name them
 
 Then, for the current slice:
 
-1. Write the slice's test file (new file or new test block in an existing file) per the injected CONVENTIONS + STRUCTURE excerpt. For a rejection batch, write every rejecting test for the surface in this step, plus the surface's boundary tests (accept and reject).
+1. Write the slice's test file (new file or new test block in an existing file), matching the naming and layout of the existing tests you read. For a rejection batch, write every rejecting test for the surface in this step, plus the surface's boundary tests (accept and reject).
 2. Run only that test, with the single-file worker cap per `subagent-base.md` "Test Execution Resource Limits":
    ```bash
    <test runner> <test-file> <worker cap>   # e.g., npx jest src/auth.spec.ts --runInBand
@@ -163,7 +163,7 @@ If anything is red at this point, fix it before reporting — do not report `sta
 
 ### Test and Implementation Files
 
-Write both test files and production code files to the service's codebase in the correct locations per the injected CONVENTIONS + STRUCTURE excerpt.
+Write both test files and production code files to the service's codebase, alongside the closest comparable existing files.
 
 ### Report to Orchestrator
 

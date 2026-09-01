@@ -42,7 +42,7 @@ You receive from the orchestrator:
 
 ## Phase 1 — Frame
 
-Re-read the candidate. Read knowledge files focused on the candidate's `files`. Build an internal model: dependency graph, current test surface, callers.
+Re-read the candidate. Read the candidate's `files` themselves plus their direct callers. Build an internal model: dependency graph, current test surface, callers.
 
 ## Phase 2 — Grill (max 6 questions)
 

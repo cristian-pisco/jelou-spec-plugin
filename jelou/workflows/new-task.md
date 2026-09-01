@@ -441,8 +441,8 @@ deciding **what to build** rather than **how** trips the abort floor — stop, d
 create the task, return `STATUS: ABORTED`.
 
 Conservative, for this workflow, means: no new endpoints, entities, screens or
-integrations beyond what the description states; existing conventions from the
-codebase docs over novel ones; the stricter validation over the looser.
+integrations beyond what the description states; existing conventions observed in
+the affected services' source over novel ones; the stricter validation over the looser.
 
 **Store**: `INTERVIEW_ANSWERS` — one entry per gap from 14a, in the form
 `<gap> → <resolution> (level <1|2|3>)`. **Record every gap, including the ones resolved at
