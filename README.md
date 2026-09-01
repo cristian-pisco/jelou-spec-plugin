@@ -313,7 +313,7 @@ OpenCode command definitions live in `.opencode/commands/`. All commands use the
 
 | Command | Purpose |
 |---------|---------|
-| `/jlu-map-codebase` | Analyze a service with 2 parallel agents, generate 6 codebase knowledge files, auto-register the service in `services.yaml` |
+| `/jlu-map-codebase` | Analyze a service with 2 parallel agents, generate 6 codebase knowledge files (human reference — no skill or subagent reads them), auto-register the service in `services.yaml` |
 | `/jlu-ubiquitous-language [service-id]` | Curate the workspace's domain glossary; extract terms from code + spec/interview artifacts; review-then-save loop |
 | `/jlu-new-task [desc] [clickup-url\|id] [--no-autochain]` | Create a new task with spec, worktrees, and affected service detection. Creates/binds the ClickUp task at SPEC approval (non-blocking); with `autochain` on, chains inline into `/jlu-execute-task` |
 | `/jlu-refine-task [change-desc] [clickup-url\|id] [--no-autochain]` | Apply a targeted change to an approved spec via structured interview. Re-syncs ClickUp (non-blocking); with `autochain` on, re-enters `/jlu-execute-task` when phases changed |
@@ -536,7 +536,7 @@ The orchestrator is **thin**: it owns only the goal-matrix brokering (parse, dis
 
 ## Council — Multi-Model Jury for Architecture Ideas
 
-`/jlu-council` convenes heterogeneous AI judges to refute a software architecture idea against your real codebase context, then synthesizes a categorical verdict: `GO | GO_WITH_CONDITIONS | NO_GO`. Judges read a curated case file (the 6 map-codebase knowledge files for the services you select, plus any `--context` files); briefs are adversarial — refute first, evidence required, dissent preserved as the headline of the report (never averaged away).
+`/jlu-council` convenes heterogeneous AI judges to refute a software architecture idea against your real codebase context, then synthesizes a categorical verdict: `GO | GO_WITH_CONDITIONS | NO_GO`. Judges read a curated case file built exclusively from the `--context` files you name (a SPEC, an ADR, the source files that matter); briefs are adversarial — refute first, evidence required, dissent preserved as the headline of the report (never averaged away).
 
 ```bash
 /jlu-council "migrate the router to gRPC"            # idea as text
@@ -548,7 +548,7 @@ The orchestrator is **thin**: it owns only the goal-matrix brokering (parse, dis
 | 4 OpenRouter models (distinct frontier reasoning lineages: GPT, Gemini, DeepSeek, Claude) | API, single-shot | Case file only (`expediente-only`) |
 | `codex` / `gemini` CLIs (optional extras) | Subprocess, sandboxed read-only | Agentic — explore the repo (`agéntico`) |
 
-**Onboarding:** export `OPENROUTER_API_KEY` (one secret covers the whole API roster). CLI extras join automatically when installed and authenticated; a failed judge never sinks the jury (`Promise.allSettled` envelopes). With a single surviving judge the report carries a `SIN SEÑAL CROSS-MODEL` banner; with zero case-file artifacts it carries `EXPEDIENTE VACÍO` plus a nudge to run `/jlu-map-codebase`.
+**Onboarding:** export `OPENROUTER_API_KEY` (one secret covers the whole API roster). CLI extras join automatically when installed and authenticated; a failed judge never sinks the jury (`Promise.allSettled` envelopes). With a single surviving judge the report carries a `SIN SEÑAL CROSS-MODEL` banner; with zero case-file artifacts it carries `EXPEDIENTE VACÍO` plus a nudge to pass `--context` with the relevant SPEC or source files.
 
 **Configuration** — `council.config.json` (resolved `cwd` → workspace root → built-in defaults, partial merge):
 
@@ -869,7 +869,7 @@ The plugin uses `.spec-workspace/` in the parent directory of your services as t
     ADR-NNNN-<slug>.md     # Workspace-level ADRs (created lazily when a candidate is rejected)
   services/
     <service-id>/
-      codebase/            # 6 knowledge files per service
+      codebase/            # 6 knowledge files per service (human reference only)
         ARCHITECTURE_REVIEW.md            # Latest single-service review (transient, overwritten)
         ARCHITECTURE_REVIEW.cross-service.md  # Latest cross-service review (when --cross-service used)
   specs/
