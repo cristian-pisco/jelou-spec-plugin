@@ -297,9 +297,9 @@ Runs the current service's unit + integration suites with **workers = 1** and re
 /jlu-map-codebase [service-id | --root [root-path] | --all]
 ```
 
-Analyzes a service with two parallel agents and generates six codebase knowledge files (architecture, stack, structure, conventions, integrations, concerns), then auto-registers the service in `services.yaml`. Certifies the service's `dev` block by actually booting it, recording a `verified: {date, commit, block_hash}` mark.
+Analyzes a service with two parallel agents and generates six codebase knowledge files (architecture, stack, structure, conventions, integrations, concerns), then auto-registers the service in `services.yaml`. Those files are human reference: no skill or subagent loads them, agents read the source tree instead. Certifies the service's `dev` block by actually booting it, recording a `verified: {date, commit, block_hash}` mark.
 
-**When:** before starting work on a service or workspace you have not mapped yet. Everything downstream — spec interviews, proposals, boots — reads these files.
+**When:** before starting work on a service or workspace you have not mapped yet — it registers the service (and certifies its `dev` block), which is what the downstream workflows actually consume. The six knowledge files are for you to read, not the agents.
 
 **Modes:** a single `service-id`; `--root` for the workspace root; `--all` to sweep every registered service.
 
@@ -316,7 +316,7 @@ Curates the workspace's domain glossary. An extractor scans code for terminology
 ### `/jlu-council`
 
 ```
-/jlu-council <idea text | path-to-idea-file> [--context <path>] [--services a,b]
+/jlu-council <idea text | path-to-idea-file> [--context <path>]
 ```
 
 Convenes a multi-model jury on an architecture idea. Heterogeneous judges refute it round after round until you and the jury reach consensus, ending in a categorical verdict — `GO` / `GO_WITH_CONDITIONS` / `NO_GO` — with dissent preserved.

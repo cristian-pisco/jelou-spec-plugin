@@ -3,16 +3,13 @@
 #
 # Detects the project's format command via a fixed priority chain and runs it
 # only against the union of agent-declared changed files. Skips silently when
-# nothing is detectable (e.g., Python/Go service with no convention noted).
+# nothing is detectable (e.g., a Python/Go service with no package.json).
 #
 # Inputs (env vars):
 #   FORMAT_SOURCE_PATH    Absolute path to the service worktree/repo.
 #   FORMAT_CHANGED_FILES  Newline-separated list of files to format
 #                         (union of test-writer's Tests Written and implementer's
 #                         Files Modified, or the tdd-cycle agent's combined list).
-#   FORMAT_CONVENTIONS    (optional) Absolute path to CONVENTIONS.md. When set
-#                         and the file exists, the script checks for an explicit
-#                         "Format" or "Lint" command line and prefers it.
 #   FORMAT_DRY_RUN        (optional) When "1", detects the command but does NOT
 #                         execute it. Output includes detection_source and the
 #                         command that would have been run. Used for tests.
@@ -48,10 +45,29 @@ cd "$FORMAT_SOURCE_PATH"
 
 # ----- Filter files --------------------------------------------------------
 
+# FORMAT_CHANGED_FILES is the agent-declared "Files Modified" list -- the
+# untrusted side of a prompt-injection boundary. Two things must hold for every
+# entry before it becomes a formatter argument:
+#   1. it stays inside FORMAT_SOURCE_PATH (no absolute paths, no ../ escape), so
+#      a declared path can never make the formatter rewrite a file outside the
+#      service worktree;
+#   2. it is passed after a `--` end-of-options marker and prefixed with ./ when
+#      it starts with a dash, so a file named `--config=evil.js` is an operand
+#      and not an option (eslint and prettier both load JS config from --config,
+#      which would be arbitrary code execution).
+SOURCE_ROOT=$(pwd -P)
 FILTERED=()
+SKIPPED_OUTSIDE=0
 while IFS= read -r file; do
   [[ -z "$file" ]] && continue
   [[ -e "$file" ]] || continue
+  resolved=$(cd "$(dirname -- "$file")" 2>/dev/null && printf '%s/%s' "$(pwd -P)" "$(basename -- "$file")") || { SKIPPED_OUTSIDE=$((SKIPPED_OUTSIDE + 1)); continue; }
+  if [[ "$resolved" != "$SOURCE_ROOT/"* ]]; then
+    SKIPPED_OUTSIDE=$((SKIPPED_OUTSIDE + 1))
+    echo "WARN: refusing to format a path outside $SOURCE_ROOT: $file" >&2
+    continue
+  fi
+  [[ "$file" == -* ]] && file="./$file"
   FILTERED+=("$file")
 done <<< "$FORMAT_CHANGED_FILES"
 
@@ -65,40 +81,14 @@ fi
 
 DETECTED_CMD=""
 DETECTION_SOURCE=""
+# CMD_ARGV is the executable form; DETECTED_CMD is only ever displayed. Keeping
+# them separate is what lets us run the formatter without `eval`, so a changed
+# file whose name contains shell metacharacters (`a;id;b.js`) is passed as one
+# argv element instead of being interpreted as shell.
+CMD_ARGV=()
 
-# 1. CONVENTIONS.md — look for an explicit format/lint command in fenced code.
-if [[ -n "${FORMAT_CONVENTIONS:-}" ]] && [[ -f "$FORMAT_CONVENTIONS" ]]; then
-  # Look for lines like: `npm run format -- ` or `npx prettier --write`
-  # inside a section whose heading mentions Format or Lint.
-  CONV_CMD="$(awk '
-  # Activate inside Formatting/Lint sections (case-sensitive headings as before).
-  /^#+ *(Format|Lint|Formatting|Linting)/ { in_section=1; next }
-  in_section && /^#+ / { in_section=0 }
-  # Scan every backtick token on the line — not just the first — so a config
-  # filename mentioned before the real command does not shadow it.
-  in_section {
-    s = $0
-    while (match(s, /`[^`]+`/)) {
-      cmd = substr(s, RSTART+1, RLENGTH-2)
-      s = substr(s, RSTART + RLENGTH)
-      # Accept only actual commands. A command starts with a known runner /
-      # formatter followed by whitespace and at least one argument. Bare config
-      # filenames (`.prettierrc`, `biome.json`, `.eslintrc.json`) fail this test.
-      if (cmd ~ /^(npm|npx|yarn|pnpm|bun|biome|prettier|eslint|rome|black|ruff|gofmt|rustfmt)[[:space:]]+[^[:space:]]/) {
-        print cmd
-        exit
-      }
-    }
-  }
-  ' "$FORMAT_CONVENTIONS" 2>/dev/null || true)"
-  if [[ -n "$CONV_CMD" ]]; then
-    DETECTED_CMD="$CONV_CMD"
-    DETECTION_SOURCE="conventions"
-  fi
-fi
-
-# 2. package.json scripts — prefer `format`, fall back to `lint:fix`.
-if [[ -z "$DETECTED_CMD" ]] && [[ -f "package.json" ]]; then
+# 1. package.json scripts — prefer `format`, fall back to `lint:fix`.
+if [[ -f "package.json" ]]; then
   SCRIPT_NAME="$(node -e "
     const pkg = require('./package.json');
     const scripts = pkg.scripts || {};
@@ -107,14 +97,16 @@ if [[ -z "$DETECTED_CMD" ]] && [[ -f "package.json" ]]; then
   " 2>/dev/null || true)"
   if [[ -n "$SCRIPT_NAME" ]]; then
     DETECTED_CMD="npm run $SCRIPT_NAME --"
+    CMD_ARGV=(npm run "$SCRIPT_NAME" --)
     DETECTION_SOURCE="package_script"
   fi
 fi
 
-# 3. JS/TS default — eslint --fix + prettier --write (only if package.json exists).
+# 2. JS/TS default — eslint --fix + prettier --write (only if package.json exists).
 if [[ -z "$DETECTED_CMD" ]] && [[ -f "package.json" ]]; then
   if command -v npx >/dev/null 2>&1; then
     DETECTED_CMD="npx eslint --fix"
+    CMD_ARGV=(npx eslint --fix)
     DETECTION_SOURCE="default_eslint"
   fi
 fi
@@ -128,7 +120,8 @@ fi
 
 # ----- Run the command(s) -------------------------------------------------
 
-# shellcheck disable=SC2086 # we want word-splitting of DETECTED_CMD
+# Display-only rendering of what we are about to run. The real invocation below
+# uses the CMD_ARGV array, never this string.
 FULL_CMD="$DETECTED_CMD ${FILTERED[*]}"
 FILES_COUNT=${#FILTERED[@]}
 
@@ -143,10 +136,10 @@ fi
 
 declare -A PRE_SUM
 for f in "${FILTERED[@]}"; do
-  PRE_SUM["$f"]="$(md5sum "$f" | cut -d' ' -f1)"
+  PRE_SUM["$f"]="$(md5sum -- "$f" | cut -d' ' -f1)"
 done
 
-if ! eval "$FULL_CMD" >&2; then
+if ! "${CMD_ARGV[@]}" -- "${FILTERED[@]}" >&2; then
   echo "status=failed"
   echo "command=$FULL_CMD"
   echo "reason=format_failed"
@@ -158,7 +151,7 @@ fi
 PRETTIER_RAN=""
 if [[ "$DETECTION_SOURCE" == "default_eslint" ]] && command -v npx >/dev/null 2>&1; then
   PRETTIER_CMD="npx prettier --write ${FILTERED[*]}"
-  if eval "$PRETTIER_CMD" >&2; then
+  if npx prettier --write -- "${FILTERED[@]}" >&2; then
     PRETTIER_RAN=" && $PRETTIER_CMD"
   fi
 fi
@@ -166,7 +159,7 @@ fi
 CHANGED_BY_FORMAT=0
 for f in "${FILTERED[@]}"; do
   [[ -e "$f" ]] || continue
-  POST_SUM="$(md5sum "$f" | cut -d' ' -f1)"
+  POST_SUM="$(md5sum -- "$f" | cut -d' ' -f1)"
   if [[ "$POST_SUM" != "${PRE_SUM[$f]}" ]]; then
     CHANGED_BY_FORMAT=$((CHANGED_BY_FORMAT + 1))
   fi

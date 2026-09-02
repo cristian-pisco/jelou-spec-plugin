@@ -39,7 +39,7 @@ Given failing tests, write the minimum production code needed to make ALL of the
 - No error handling for impossible scenarios. Trust the framework.
 - Do not add a branch unless a test exercises it.
 - No function may exceed 100 lines.
-- Apply the repository conventions named in CONVENTIONS.md.
+- Match the conventions of the surrounding code you are editing.
 - If multiple safe approaches pass the tests, choose the one that modifies fewer files; if tied, choose fewer changed lines.
 
 ## Implementer Context Tips
@@ -56,7 +56,7 @@ You have access to real-time library documentation via context7 MCP tools. Use t
 1. **`resolve-library-id`** — Find the context7-compatible library ID for a package (e.g., "nestjs", "mongoose", "jest")
 2. **`query-docs`** — Query the library's documentation for specific topics (e.g., "how to create a guard", "schema validation")
 
-**When to use:** When you're unsure about the correct API, method signature, or configuration for a library. This is especially useful for libraries that evolve frequently or when CONVENTIONS.md doesn't cover the specific API you need.
+**When to use:** When you're unsure about the correct API, method signature, or configuration for a library. This is especially useful for libraries that evolve frequently, or when the existing codebase has no example of the specific API you need.
 
 **When NOT to use:** When the existing codebase already has clear examples of the pattern you need. Prefer following existing code patterns first.
 
@@ -66,10 +66,7 @@ Before writing any implementation code, read these files in order:
 
 1. **Failing test files** — Understand exactly what behavior is expected. These are your specification.
 2. **Phase file** — The requirements section for additional context. Location: `.spec-workspace/specs/<date>/<task>/services/<service-id>/phases/<phase>.md`
-3. **CONVENTIONS.md** — How to write code in this service (naming, patterns, error handling). Location: `.spec-workspace/services/<service-id>/codebase/CONVENTIONS.md`
-4. **ARCHITECTURE.md** — Where new code fits in the architecture. Location: `.spec-workspace/services/<service-id>/codebase/ARCHITECTURE.md`
-5. **STRUCTURE.md** — Where to place new files. Location: `.spec-workspace/services/<service-id>/codebase/STRUCTURE.md`
-6. **Existing source code** — Read the modules you're modifying to understand current patterns.
+3. **Existing source code** — Read the modules you're modifying to understand current patterns, and use `Glob`/`Grep` against the real tree to find where comparable code already lives.
 
 ## Implementation Process
 
@@ -82,8 +79,8 @@ Before writing any implementation code, read these files in order:
 ### Step 2: Plan the Implementation
 - Identify which existing files to modify vs new files to create
 - Determine the order of implementation (dependencies first)
-- Verify your plan aligns with ARCHITECTURE.md patterns and CONVENTIONS.md rules
-- Place new files according to STRUCTURE.md guidelines
+- Verify your plan aligns with the patterns visible in the modules you are touching
+- Place new files alongside the closest comparable existing files
 
 ### Step 3: Implement
 - Write the minimum code to make tests pass
@@ -176,8 +173,7 @@ Brief description of what was implemented and the approach taken.
 - Write the MINIMUM code to make tests green. No gold-plating.
 - All phase tests must pass when you're done. Full regression checking happens at final validation (Step 8).
 - Match the existing codebase conventions exactly. Your code should look like existing code.
-- Follow the architecture patterns in ARCHITECTURE.md. New code goes where the architecture says it should.
-- New files go where STRUCTURE.md says they should.
+- Follow the architecture patterns visible in the modules you are editing. New code goes where comparable code already lives.
 - If you must deviate from the expected approach, document WHY in your report.
 - Apply the decision precedence in `subagent-base.md`.
 

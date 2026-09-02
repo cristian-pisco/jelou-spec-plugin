@@ -10,7 +10,7 @@ Skills are invoked with the plugin namespace prefix `jlu:`.
 |------------------------|----------------------------------|
 | `new-task`             | `/jlu:new-task [desc] [clickup-url\|id] [--no-autochain]` |
 | `execute-task`         | `/jlu:execute-task [slug] [clickup-url\|id] [--no-autochain]` |
-| `map-codebase`         | `/jlu:map-codebase [service-id]` |
+| `map-codebase`         | `/jlu:map-codebase [service-id \| --root [root-path] \| --all]` |
 | `refine-task`          | `/jlu:refine-task [change-desc] [clickup-url\|id] [--no-autochain]` |
 | `ship`                 | `/jlu:ship`                      |
 | `resolve-pr`           | `/jlu:resolve-pr [pr-url\|pr-number] [--autonomous]` |
@@ -33,7 +33,7 @@ OpenCode normalization rules:
 |------------------------|----------------------------------|
 | `new-task`             | `/jlu-new-task [desc] [clickup-url\|id] [--no-autochain]` |
 | `execute-task`         | `/jlu-execute-task [slug] [clickup-url\|id] [--no-autochain]` |
-| `map-codebase`         | `/jlu-map-codebase [service-id]` |
+| `map-codebase`         | `/jlu-map-codebase [service-id \| --root [root-path] \| --all]` |
 | `refine-task`          | `/jlu-refine-task [change-desc] [clickup-url\|id] [--no-autochain]` |
 | `ship`                 | `/jlu-ship`                      |
 | `resolve-pr`           | `/jlu-resolve-pr [pr-url\|pr-number] [--autonomous]` |
@@ -54,12 +54,12 @@ Exposed as native Codex **skills** (`.codex/skills/jlu-<skill>/SKILL.md`). Invok
 |------------------------|----------------------------------|
 | `new-task`             | `$jlu-new-task [desc] [clickup-url\|id] [--no-autochain]` |
 | `execute-task`         | `$jlu-execute-task [slug] [clickup-url\|id] [--no-autochain]` |
-| `map-codebase`         | `$jlu-map-codebase [service-id]` |
+| `map-codebase`         | `$jlu-map-codebase [service-id \| --root [root-path] \| --all]` |
 | `ship`                 | `$jlu-ship`                      |
 | `resolve-pr`           | `$jlu-resolve-pr [pr-url\|pr-number] [--autonomous]` |
 | … (all skills)         | `$jlu-<skill>`                   |
 
-Codex skills live in `.codex/skills/jlu-<skill>/SKILL.md` and resolve workflow files global-first from `$CODEX_HOME/jelou/workflows/` (default `~/.codex/jelou/`) before project-local fallbacks. Codex subagents are TOML files in `.codex/agents/<agent>.toml`. Both are **generated** from canonical sources by `bin/sync-codex.mjs` — do not hand-edit. Install globally with `bin/install-codex.sh` (skills → `~/.agents/skills/`), or install the whole plugin via `codex plugin marketplace add cristian-pisco/jelou-spec-plugin` then `codex plugin add jlu@jelou-spec-plugin`. **Pick one route** — both register the same 35 skills, so running both surfaces every `jlu-*` skill twice. They are not equivalent: the marketplace route installs the skills only, with no subagents (`task` steps degrade to inline execution), no PreToolUse guards, and no Context7 MCP. `bin/install-codex.sh` is the complete install and the recommended one; treat the marketplace route as skills-only until those gaps close. The Codex runtime contract (no structured `question`, `agents.max_depth = 1`) lives in `jelou/references/codex-runtime.md`.
+Codex skills live in `.codex/skills/jlu-<skill>/SKILL.md` and resolve workflow files global-first from `$CODEX_HOME/jelou/workflows/` (default `~/.codex/jelou/`) before project-local fallbacks. Codex subagents are TOML files in `.codex/agents/<agent>.toml`. Both are **generated** from canonical sources by `bin/sync-codex.mjs` — do not hand-edit. Install globally with `bin/install-codex.sh` (skills → `~/.agents/skills/`), or install the whole plugin via `codex plugin marketplace add cristian-pisco/jelou-spec-plugin` then `codex plugin add jlu@jelou-spec-plugin`. **Pick one route** — both register the same 23 skills, so running both surfaces every `jlu-*` skill twice. They are not equivalent: the marketplace route installs the skills only, with no subagents (`task` steps degrade to inline execution), no PreToolUse guards, and no Context7 MCP. `bin/install-codex.sh` is the complete install and the recommended one; treat the marketplace route as skills-only until those gaps close. The Codex runtime contract (no structured `question`, `agents.max_depth = 1`) lives in `jelou/references/codex-runtime.md`.
 
 ## Agent dispatch
 

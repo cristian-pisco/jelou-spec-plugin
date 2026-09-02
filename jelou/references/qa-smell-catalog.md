@@ -6,7 +6,7 @@
 > — human or agent — reviewing a diff by hand, and as the definition the catalog would
 > be re-attached to if a QA gate is ever reinstated.
 >
-> For each finding: provide exact file path and line range, classify severity, include a one-line fix suggestion. Do not flag patterns that match the codebase's established architecture (check CONVENTIONS.md and ARCHITECTURE.md).
+> For each finding: provide exact file path and line range, classify severity, include a one-line fix suggestion. Do not flag patterns that match the codebase's established architecture (check the surrounding modules).
 
 ## Code Smell Detection
 
@@ -86,7 +86,7 @@ Use these structures in the Final Validation report:
 | QA-1 | medium | Variable `userData` should be named `userDto` for consistency | `src/user.service.ts:42` |
 ```
 
-CONVENTIONS.md says nothing about DTO naming in service internals. Personal preference, not a convention violation. Drop it.
+Nothing in the surrounding code establishes a DTO naming rule for service internals. Personal preference, not a convention violation. Drop it.
 
 ### Good: flagging a real issue
 

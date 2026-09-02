@@ -557,8 +557,25 @@ describe('build-dispatch-prompt — determinism', () => {
   });
 });
 
-describe('build-dispatch-prompt --docs-file', () => {
-  test('inlines the cached docs and suppresses the CODEBASE_DOCS path row', () => {
+describe('build-dispatch-prompt — generated codebase docs never reach the prompt', () => {
+  test('no CODEBASE_DOCS row and no SERVICE DOCS section, even when codebase/ exists', () => {
+    const workspace = mkdtempSync(join(tmpdir(), 'dispatch-workspace-'));
+    const root = join(workspace, 'specs', '2026-08-08', 'search-endpoint');
+    mkdirSync(join(root, 'services', 'payments-api', 'phases'), { recursive: true });
+    writeFileSync(join(root, 'services', 'payments-api', 'phases', '02-pagination.md'), PHASE_02);
+    const codebase = join(workspace, 'services', 'payments-api', 'codebase');
+    mkdirSync(codebase, { recursive: true });
+    writeFileSync(join(codebase, 'CONVENTIONS.md'), 'Use repositories, never raw SQL.\n');
+    const phaseFile = join(root, 'services', 'payments-api', 'phases', '02-pagination.md');
+
+    const r = runScript(['--agent=tdd-cycle', `--task-dir=${root}`, '--service=payments-api', `--phase-file=${phaseFile}`]);
+    assert.equal(r.code, 0);
+    assert.doesNotMatch(r.stdout, /^- CODEBASE_DOCS:/m);
+    assert.ok(!headings(r.stdout).includes('SERVICE DOCS'));
+    assert.doesNotMatch(r.stdout, /never raw SQL/);
+  });
+
+  test('--docs-file is gone: the flag is ignored, not honoured', () => {
     const root = fullTaskDir();
     const docs = join(root, 'doc-cache.md');
     writeFileSync(docs, '## Conventions\nUse repositories, never raw SQL.\n');
@@ -567,51 +584,27 @@ describe('build-dispatch-prompt --docs-file', () => {
       `--phase-file=${phasePath(root, '02-pagination')}`, `--docs-file=${docs}`,
     ]);
     assert.equal(r.code, 0);
-    assert.ok(headings(r.stdout).includes('SERVICE DOCS'));
-    assert.match(r.stdout, /Use repositories, never raw SQL\./);
-    assert.doesNotMatch(r.stdout, /^- CODEBASE_DOCS:/m);
-  });
-
-  test('without the flag the CODEBASE_DOCS path row survives', () => {
-    const workspace = mkdtempSync(join(tmpdir(), 'dispatch-workspace-'));
-    const root = join(workspace, 'specs', '2026-08-08', 'search-endpoint');
-    mkdirSync(join(root, 'services', 'payments-api', 'phases'), { recursive: true });
-    writeFileSync(join(root, 'services', 'payments-api', 'phases', '02-pagination.md'), PHASE_02);
-    mkdirSync(join(workspace, 'services', 'payments-api', 'codebase'), { recursive: true });
-    const phaseFile = join(root, 'services', 'payments-api', 'phases', '02-pagination.md');
-    const base = ['--agent=tdd-cycle', `--task-dir=${root}`, '--service=payments-api', `--phase-file=${phaseFile}`];
-
-    const plain = runScript(base);
-    assert.equal(plain.code, 0);
-    assert.match(plain.stdout, /^- CODEBASE_DOCS:/m);
-    assert.ok(!headings(plain.stdout).includes('SERVICE DOCS'));
-
-    const docs = join(workspace, 'doc-cache.md');
-    writeFileSync(docs, '## Conventions\nUse repositories, never raw SQL.\n');
-    const cached = runScript([...base, `--docs-file=${docs}`]);
-    assert.equal(cached.code, 0);
-    assert.doesNotMatch(cached.stdout, /^- CODEBASE_DOCS:/m);
-    assert.ok(headings(cached.stdout).includes('SERVICE DOCS'));
-  });
-
-  test('an empty docs file emits no section', () => {
-    const root = fullTaskDir();
-    const docs = join(root, 'empty.md');
-    writeFileSync(docs, '   \n');
-    const r = runScript([
-      '--agent=tdd-cycle', `--task-dir=${root}`, '--service=payments-api',
-      `--phase-file=${phasePath(root, '02-pagination')}`, `--docs-file=${docs}`,
-    ]);
-    assert.equal(r.code, 0);
     assert.ok(!headings(r.stdout).includes('SERVICE DOCS'));
+    assert.doesNotMatch(r.stdout, /never raw SQL/);
   });
 
-  test('a missing docs file exits 2', () => {
+  test('a stale --docs-file pointing at a missing file no longer exits 2', () => {
     const root = fullTaskDir();
     const r = runScript([
       '--agent=tdd-cycle', `--task-dir=${root}`, '--service=payments-api',
       `--phase-file=${phasePath(root, '02-pagination')}`, '--docs-file=/nonexistent/x.md',
     ]);
-    assert.equal(r.code, 2);
+    assert.equal(r.code, 0, r.stderr);
+    assert.ok(!headings(r.stdout).includes('SERVICE DOCS'));
+  });
+
+  test('the tdd-cycle and proposal procedures no longer point agents at CODEBASE_DOCS', () => {
+    const root = fullTaskDir();
+    const phaseArgs = { 'tdd-cycle': [`--phase-file=${phasePath(root, '02-pagination')}`] };
+    for (const agent of ['tdd-cycle', 'proposal-agent', 'build-validator']) {
+      const r = runScript([`--agent=${agent}`, `--task-dir=${root}`, '--service=payments-api', ...(phaseArgs[agent] || [])]);
+      assert.equal(r.code, 0, r.stderr);
+      assert.doesNotMatch(r.stdout, /CODEBASE_DOCS/, `${agent} still references CODEBASE_DOCS`);
+    }
   });
 });

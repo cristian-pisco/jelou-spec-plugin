@@ -13,6 +13,7 @@ Your context window is finite. Manage it deliberately:
 - **Cap verbose output.** Pipe test/build runner output through `2>&1 | tail -200`, or filter for `FAIL|Error|✗`. Long compiler-error chains usually have one root error producing many cascade messages — find the root, ignore the cascade.
 - **Run one test file at a time during TDD slices.** Per slice, run only the test file you just modified — never the full phase suite, never the full repo suite. Full-suite responsibility belongs to Step 8b and `/jlu-test-suite`.
 - **Bound context7 queries.** Narrow topics only (`"jest mocking modules"`, not `"jest"`). Do not fan out multiple `query-docs` calls in one session.
+- **Never read a generated codebase document.** Everything under `.spec-workspace/services/<service-id>/codebase/` is written for humans, not for you. They are large, they go stale the moment the code moves, and every question they answer is answered more cheaply and more accurately by the tree itself: the imports of the file you are editing state the stack, the neighbours of that file state the structure, and its style states the conventions. Do not `Read` them, do not `Grep` them, and do not act on their contents if some caller pastes them into your prompt.
 - **Reset, don't accumulate.** If a third internal fix attempt produces diminishing returns, stop and report `status: blocked` per the three-strike rule below. The orchestrator dispatches a fresh agent with a clean slate — piling on test output hurts everyone.
 
 ## Docker is Forbidden
@@ -51,7 +52,7 @@ Test runners default to one worker per CPU core, and each Jest/Vitest worker is 
 3. **One heavy process at a time.** Never start a second test/build/lint run while one is executing — no `&`, no parallel Bash calls that each spawn a runner or compiler. Wait for the previous one to exit — by the mechanisms in `Waiting on Long Commands` below, never by sleeping a guessed duration.
 4. **Never watch mode.** `--watch`, `--watchAll`, bare `vitest`, `tsc --watch` never exit; their resident workers starve the machine and hang your session waiting on a process that will not terminate.
 5. **Never coverage.** `--coverage`, `--cov`, `test:cov` multiply RAM via instrumentation. Coverage analysis is static — QA reads existing reports, nothing re-executes tests.
-6. **Inherited commands inherit no safety.** A command copied from CONVENTIONS.md, `package.json` scripts, or another agent's report gets the worker cap appended before you run it — verify, don't trust.
+6. **Inherited commands inherit no safety.** A command copied from `package.json` scripts, a Makefile, or another agent's report gets the worker cap appended before you run it — verify, don't trust.
 
 - **Testcontainers E2E (goal only).** When `/jlu-goal` runs a backend
   E2E suite that spins up ephemeral dependency containers, concurrency = WORKERS (default 1):
@@ -83,7 +84,7 @@ When fixing a failing test or build:
 
 ## Code Style Discipline
 
-- Apply the repository's documented naming, import, error-handling, and formatting rules. If no rule is documented, copy the pattern used by the nearest equivalent module.
+- Apply the naming, import, error-handling, and formatting rules the repository enforces in config (linter, formatter, editorconfig). Where config is silent, copy the pattern used by the nearest equivalent module.
 - **No function exceeds 100 lines.**
 - No speculative features, no untested code paths, no abstractions for single-use code.
 - Never suppress errors with `any`, `@ts-ignore`, `# type: ignore`, or equivalent.
@@ -96,7 +97,7 @@ Apply this order when alternatives conflict:
 
 1. Do not weaken authentication, authorization, secret handling, validation, or repository hooks.
 2. Among safe alternatives, choose the one that adds no untested path or single-use abstraction and modifies fewer files; if file counts tie, choose fewer changed lines.
-3. Apply naming, imports, error handling, and formatting documented by the repository.
+3. Apply the naming, imports, error handling, and formatting used by the surrounding code and enforced by repository config.
 4. Maintain the RED → GREEN sequence.
 
 ## Reporting and Escalation

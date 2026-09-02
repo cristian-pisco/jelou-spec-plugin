@@ -96,20 +96,13 @@ If exit 2 fires, return that as the workflow's exit code.
 
 ## Step 4 — Detect runner and tier commands
 
-1. Read `<workspace>/services/<SERVICE_ID>/codebase/CONVENTIONS.md` if it exists.
-
-2. Look for the **"Test Filtering Commands"** table (populated by `/jlu-map-codebase`). Extract:
-   - `UNIT_CMD` — row "Run unit tests only"
-   - `INTEGRATION_CMD` — row "Run integration tests only"
-   - `ALL_CMD` — row "Run all tests"
-
-3. If the table is missing, fall back to manifest introspection at `EFFECTIVE_PATH`:
-   - `package.json` exists → read `scripts.test` and inspect `devDependencies` for the runner. Set `UNIT_CMD = INTEGRATION_CMD = ALL_CMD = npm test`.
+1. Introspect the manifest at `EFFECTIVE_PATH`:
+   - `package.json` exists → read `scripts.test` and inspect `devDependencies` for the runner. Set `UNIT_CMD = INTEGRATION_CMD = ALL_CMD = npm test`. When the scripts block defines narrower entries (`test:unit`, `test:integration`), prefer those for `UNIT_CMD` / `INTEGRATION_CMD`.
    - `pyproject.toml` exists → `UNIT_CMD = INTEGRATION_CMD = pytest`.
    - `go.mod` exists → `UNIT_CMD = INTEGRATION_CMD = go test ./...`.
-   - None of the above → exit 3 with: `"Cannot detect test runner. Add a 'Test Filtering Commands' table to CONVENTIONS.md or a 'test' script to package.json/pyproject.toml."`
+   - None of the above → exit 3 with: `"Cannot detect test runner. Add a 'test' script to package.json/pyproject.toml."`
 
-4. Detect the underlying runner (`RUNNER`):
+2. Detect the underlying runner (`RUNNER`):
    - `package.json devDependencies` contains `jest` → `RUNNER=jest`
    - contains `vitest` → `RUNNER=vitest`
    - contains `mocha` → `RUNNER=mocha`
@@ -117,7 +110,7 @@ If exit 2 fires, return that as the workflow's exit code.
    - `go.mod` present → `RUNNER=go`
    - Unknown → `RUNNER=unknown` (will skip worker injection, log a warning)
 
-5. **Inject worker cap = 1 into each command.** Append the appropriate flag(s):
+3. **Inject worker cap = 1 into each command.** Append the appropriate flag(s):
 
 | RUNNER | Append to command |
 |--------|-------------------|
@@ -258,7 +251,7 @@ For each failure:
 
 2. **Resolve subject path** (the actual file behind the subject) and read its basename.
 
-3. **Map basename suffix to component type**. Use this default mapping, but **override with CONVENTIONS.md** if it defines a custom Naming Conventions section:
+3. **Map basename suffix to component type**. Use this default mapping; when the service's own file names follow a different convention, follow the convention you observe in the tree:
 
 | Basename pattern | Component type |
 |------------------|----------------|
@@ -357,7 +350,7 @@ Temporary log files in `/tmp` are best-effort — failing to delete them is not 
 | cwd not inside any registered service | Stop with service list (Step 1) |
 | `.spec-workspace/` not findable | Stop with `/jlu-map-codebase` hint |
 | Pre-flight RAM aborts | Exit 2, clear remedy |
-| Runner not detectable | Exit 3, suggest CONVENTIONS.md fix |
+| Runner not detectable | Exit 3, suggest adding a `test` script to the manifest |
 | Runner crashes mid-suite (process killed, OOM) | Print last 50 lines of log + exit 1 |
 | Structured output parsing fails | Surface log path + exit 1 |
 
@@ -377,7 +370,6 @@ Temporary log files in `/tmp` are best-effort — failing to delete them is not 
 
 | Artifact | Path |
 |----------|------|
-| CONVENTIONS.md (read) | `.spec-workspace/services/<service-id>/codebase/CONVENTIONS.md` |
 | services.yaml (read) | `.spec-workspace/registry/services.yaml` |
 | TASKS.md (read for worktree resolution) | `.spec-workspace/specs/<date>/<task-slug>/TASKS.md` |
 | Temp JSON output | `/tmp/jlu-test-unit-*.json`, `/tmp/jlu-test-integration-*.json` |

@@ -1,6 +1,41 @@
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
+
+// Git always reports symlink-resolved paths (`git rev-parse --show-toplevel`,
+// `git worktree list`). On macOS the system temp dir lives under a `/var` ->
+// `/private/var` symlink, so a caller-supplied path and Git's answer name the
+// same directory through different strings.
+//
+// Resolve the PARENT and re-attach the basename rather than resolving the whole
+// path. Resolving the whole path would make a symlink planted at
+// `<service>/.worktrees/<slug>` compare equal to whatever repo it points at,
+// turning this integrity check into a redirect the daemon would happily boot.
+//
+// What this does and does not buy, stated exactly: a symlink at the FINAL
+// component is refused; a symlink at an ANCESTOR (`<service>/.worktrees` itself)
+// is still followed, because following ancestors is the whole point of the
+// /var -> /private/var normalization. Anyone who can create that ancestor
+// symlink already has write access inside the service directory, so this is a
+// deliberate trade, not a closed hole.
+//
+// Falls back to the raw string when the parent does not exist on disk (unit
+// tests inject fake paths that realpath cannot resolve). That fallback is
+// fail-closed: it degrades to exact string comparison, which can only produce a
+// spurious mismatch abort, never a false accept.
+function canonical(path) {
+  try {
+    return join(realpathSync(dirname(path)), basename(path));
+  } catch {
+    return path;
+  }
+}
+
+function samePath(a, b) {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return canonical(a) === canonical(b);
+}
 
 function worktreeRecords(porcelain) {
   return porcelain.trim().split(/\n\s*\n/).filter(Boolean).map((block) => {
@@ -35,11 +70,14 @@ function validateTaskSource({ serviceId, sourcePath, taskMode, expectedBranch, g
   if (git.branch !== expectedBranch) {
     throw new Error(`${serviceId} expected task branch ${expectedBranch} but source is on ${git.branch}`);
   }
-  if (git.topLevel !== sourcePath) {
+  if (!samePath(git.topLevel, sourcePath)) {
     throw new Error(`${serviceId} task source path mismatch: expected ${sourcePath}, Git reports ${git.topLevel}`);
   }
   if (taskMode !== 'worktree') return;
-  const record = (git.worktrees || []).find((worktree) => worktree.path === sourcePath);
+  const canonicalSource = canonical(sourcePath);
+  const record = (git.worktrees || []).find(
+    (worktree) => worktree.path === sourcePath || canonical(worktree.path) === canonicalSource,
+  );
   if (!record || record.prunable || record.branch !== expectedBranch) {
     throw new Error(`${serviceId} has stale worktree registration for ${sourcePath}`);
   }

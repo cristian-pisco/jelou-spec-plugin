@@ -321,3 +321,38 @@ describe('phase-close.mjs — tracing', () => {
     assert.equal(r.parsed.span_closed, undefined);
   });
 });
+
+describe('phase-close.mjs — CONVENTIONS.md no longer drives formatting', () => {
+  test('--conventions is inert: a repo with no package.json detects no format command', () => {
+    const fx = makeFixture();
+    writeFileSync(join(fx.repo, 'a.ts'), 'export const a = 1;\n');
+    // Kept outside the repo so it never lands in the phase diff.
+    const conventions = join(fx.taskDir, 'CONVENTIONS.md');
+    writeFileSync(conventions, [
+      '# Conventions',
+      '',
+      '## Format',
+      '',
+      'Run `npx prettier --write` against staged files.',
+      '',
+    ].join('\n'));
+
+    const r = runClose([
+      ...baseArgs(fx),
+      '--commit-type=feat',
+      '--changed-files=a.ts',
+      `--conventions=${conventions}`,
+    ]);
+
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(r.parsed.format_status, 'skip');
+    assert.equal(r.parsed.format_reason, 'no_command_detected');
+    assert.equal(r.parsed.changed_by_format, '0');
+  });
+
+  test('does not forward FORMAT_CONVENTIONS to the format script', () => {
+    const src = readFileSync(SCRIPT, 'utf8');
+    assert.doesNotMatch(src, /FORMAT_CONVENTIONS/);
+    assert.doesNotMatch(src, /--conventions=/);
+  });
+});

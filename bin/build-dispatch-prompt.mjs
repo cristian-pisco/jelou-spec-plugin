@@ -72,7 +72,7 @@ const AGENT_CONSTRAINTS = {
 
 const PROCEDURES = {
   'tdd-cycle': [
-    'Read `PHASE_FILE`, then only the parts of `CODEBASE_DOCS` and the service source you need. Grep before you read.',
+    'Read `PHASE_FILE`, then only the parts of the service source you need. Grep before you read.',
     'Derive every requirement\'s case matrix from the DTO / type surface and from `## CASE MATRIX` below, then order the slices.',
     'Per slice: write the failing test, run it and observe RED, write the minimum code, run it again and observe GREEN. One test file per run, with the worker cap.',
     'When every requirement is green, run this phase\'s test files once together to confirm nothing regressed.',
@@ -89,12 +89,12 @@ const PROCEDURES = {
     'Apply the minimum fix, re-run the same test files, and report the exact command you ran.',
   ],
   'build-validator': [
-    'Run the service\'s build / type-check exactly as `CODEBASE_DOCS` documents it, capturing output through `tail`.',
+    'Detect the service\'s build / type-check command from its manifest (`package.json` scripts, `tsconfig.json`, `Makefile`) and run it, capturing output through `tail`.',
     'Long error chains have one root error and many cascades — fix the root, then re-run before touching anything else.',
     'Re-run the build after the last fix and report the final exit status.',
   ],
   'proposal-agent': [
-    'Read `SPEC` and the service `TASK_CONTEXT` plus `CODEBASE_DOCS`; do not read the whole service.',
+    'Read `SPEC` and the service `TASK_CONTEXT`, then grep the service source for the modules each phase touches; do not read the whole service.',
     'Write the global strategy pass first (affected services, execution strategy, dependency order), then the per-service phase breakdown.',
     'Emit one phase file per phase under `TASK_DIR/services/<service>/phases/`, each carrying `**Needs:**`, `## Requirements (immutable)`, and `## Acceptance (immutable)`.',
   ],
@@ -217,7 +217,6 @@ function renderContext(ctx) {
     ['SPEC', ctx.specPath],
     ['PROPOSAL', ctx.proposalPath],
     ['TASK_CONTEXT', ctx.taskContextPath],
-    ['CODEBASE_DOCS', ctx.docsBody ? null : ctx.codebaseDocs],
     ['PHASE_FILE', ctx.phaseFilePath],
     ['PHASE_ID', ctx.phaseId],
     ['PHASE_TITLE', ctx.phaseTitleText],
@@ -316,17 +315,6 @@ if (phaseFileArg && phaseFileArg !== true && PHASE_AWARE_AGENTS.has(agent)) {
   }
 }
 
-const docsFileArg = args['docs-file'];
-let docsBody = null;
-if (docsFileArg && docsFileArg !== true) {
-  const docsPath = resolve(docsFileArg);
-  if (!existsSync(docsPath) || !statSync(docsPath).isFile()) {
-    die(`docs file not found: ${docsPath}`);
-  }
-  const rawDocs = readFileSync(docsPath, 'utf8').trim();
-  docsBody = rawDocs === '' ? null : rawDocs;
-}
-
 const notesFileArg = args['notes-file'];
 let notesBody = null;
 if (notesFileArg && notesFileArg !== true) {
@@ -343,8 +331,6 @@ const tasksContent = existsSync(tasksPath) ? readFileSync(tasksPath, 'utf8') : n
 const slugMatch = tasksContent ? tasksContent.match(/^#\s+Task:\s*(.+?)\s*$/m) : null;
 const taskSlug = slugMatch ? slugMatch[1].trim() : basename(taskDir);
 
-const workspaceRoot = resolve(taskDir, '..', '..', '..');
-const codebaseDocs = join(workspaceRoot, 'services', serviceId, 'codebase');
 const phasesDir = join(serviceDir, 'phases');
 
 const phase = phaseFilePath ? readPhaseFile(phaseFilePath) : null;
@@ -353,7 +339,6 @@ const preceding = phase
   : [];
 
 const ctx = {
-  docsBody,
   pluginRoot,
   subagentBaseline: join(pluginRoot, 'jelou', 'references', 'subagent-base.md'),
   taskDir,
@@ -364,7 +349,6 @@ const ctx = {
   specPath: existsSync(join(taskDir, 'SPEC.md')) ? join(taskDir, 'SPEC.md') : null,
   proposalPath: existsSync(join(taskDir, 'PROPOSAL.md')) ? join(taskDir, 'PROPOSAL.md') : null,
   taskContextPath: existsSync(join(serviceDir, 'context.md')) ? join(serviceDir, 'context.md') : null,
-  codebaseDocs: existsSync(codebaseDocs) ? codebaseDocs : null,
   phaseFilePath,
   phaseId: phase ? phase.id : null,
   phaseTitleText: phase ? phase.title : null,
@@ -377,7 +361,6 @@ const headline = phase
   : `# DISPATCH: ${agent} — ${serviceId}`;
 
 const sections = [headline, renderContext(ctx)];
-if (docsBody) sections.push(`## SERVICE DOCS\nResolved once for this task and inlined here. Do NOT re-read anything under the service \`codebase/\` directory.\n\n${docsBody}`);
 
 if (phase) {
   sections.push(`## PHASE ${phase.id} REQUIREMENTS (immutable)\n${phase.requirements || 'The phase file declares no requirements section — read PHASE_FILE before acting.'}`);

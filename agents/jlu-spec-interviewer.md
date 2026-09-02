@@ -20,7 +20,7 @@ where they slow every later turn. Written here they cost the orchestrator a rece
 **Never return the spec body.** Your final message is the receipt in Step 4 — paths and
 counts. Returning the file contents defeats the reason this agent exists.
 
-The codebase knowledge files and engineering principles have been provided above as context by the orchestrator.
+The engineering principles have been provided above as context by the orchestrator.
 
 ## Behavioral Guardrails
 
@@ -52,7 +52,6 @@ The orchestrator hands you these in the dispatch prompt. Nothing here is optiona
 | `TASK_DESCRIPTION` | The original seed. Its intent is preserved verbatim; derive the spec title from it. |
 | `INTERVIEW_ANSWERS` | **Interactive**: every question asked and the answer given. **Autonomous**: one `<gap> → <resolution> (level N)` entry per gap the workflow resolved without asking. Either way this is your only source of intent beyond the seed. |
 | `SPEC_ASSUMPTIONS` | Gaps an autonomous run decided alone. Empty on an interactive run. |
-| `CODEBASE_CONTEXT` | Per-service codebase docs the orchestrator loaded. |
 | `PRINCIPLES_CONTENT` | Engineering principles, or empty. |
 | `CONFIRMED_SERVICES` | Service ids, each present in `registry/services.yaml`. |
 | `MERGED_PREFILL` | Pre-filled sections from detected templates, or empty. |
@@ -169,14 +168,14 @@ Before writing the final SPEC.md, verify:
 - [ ] **Case taxonomy is complete.** Every FR that validates or types input has a `[success]`, a `[rejection]` per validation rule, a `[realistic]` populated-reference, and a `[boundary]` criterion. No input-validating FR ships with only a happy-path SC.
 - [ ] **A thin interview did not waive the taxonomy.** If the user ended the interview early — "that's enough", "move on", or it finished after round 1 — `INTERVIEW_ANSWERS` may not name every validation rule. That does NOT license a happy-path-only spec: derive the missing `[rejection]` and `[realistic]` criteria from the contract already gathered (the field types, the documented status codes, the referenced entities) and write them. Only a rule you cannot derive at all becomes an `Unresolved decision`. This is the spec-side expression of the case-matrix floor that `jlu-test-writer` and `jlu-tdd-cycle` enforce at the test layer.
 - [ ] **If a UI service is in scope, at least one Success Criterion describes a browser-level end-to-end flow.** The spec must NOT contain phrasing that defers E2E ("not required for MVP", "manual QA only"). If it does, rewrite that criterion as a concrete user-flow.
-- [ ] The spec doesn't contradict existing architecture or conventions from the codebase knowledge.
+- [ ] The spec doesn't contradict the architecture or conventions visible in the affected services' source.
 
 ## Step 3b — Author user-story files (decentralized specs)
 
 SPEC.md stays the record. In addition, decompose it into small, self-contained **user-story**
 files under `<TASK_DIR>/stories/` — one per deliverable behavior (a single story for a small
 task). These are the units the TDD agents consume: each carries its own acceptance so an agent
-needs nothing outside the story plus the codebase docs.
+needs nothing outside the story plus the service source.
 
 For each story, write `<TASK_DIR>/stories/<NN>-<slug>.story.md` from `templates/user-story.md`:
 - **Frontmatter**: `id` (`us-<N>`), `title`, `actor`, `services` (≥1, each present in

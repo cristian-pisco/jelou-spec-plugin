@@ -49,7 +49,7 @@ For a phase with services S1, S2, S3 and the same agent role (e.g., test-writer)
 Each agent gets:
 
 - **Specific scope**: ONE service ID, ONE service source path (`SERVICE_SOURCE_PATH` from worktree resolution).
-- **Specific input**: the phase requirements relevant to that service, the service's `CONVENTIONS.md`, and the service-specific Docker context.
+- **Specific input**: the phase requirements relevant to that service, the service's source path, and the service-specific Docker context.
 - **Constraints**: do not write files outside the service worktree.
 - **Expected report shape**: the standard subagent contract output — see `jelou/references/subagent-contract.md`.
 

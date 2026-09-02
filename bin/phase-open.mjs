@@ -17,7 +17,6 @@ bin/build-dispatch-prompt.mjs (tdd only), bin/phase-state.mjs --event=start.
   --phase-title=<text>         heading used when the phase entry has to be created
   --plugin-root=<abs path>     REQUIRED for the dispatch prompt
   --services-in-phase=<K>      defaults to 1
-  --docs-file=<abs path>       service docs cache, inlined as ## SERVICE DOCS
   --notes-file=<abs path>      rendered as ## ORCHESTRATOR NOTES
 
 Trace flags (omit them entirely when tracing is off — the trace layer is then never loaded):
@@ -109,7 +108,6 @@ if (mode.mode !== 'docs') {
     `--plugin-root=${args['plugin-root']}`,
     `--phase-file=${phaseFile}`,
   ];
-  if (args['docs-file'] && args['docs-file'] !== true) promptArgs.push(`--docs-file=${args['docs-file']}`);
   if (args['notes-file'] && args['notes-file'] !== true) promptArgs.push(`--notes-file=${args['notes-file']}`);
 
   const built = run(process.execPath, promptArgs);

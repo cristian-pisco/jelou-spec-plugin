@@ -71,7 +71,7 @@
 <!-- Fast tests that run during Red-Green-Refactor. No external infrastructure.
      What business logic, validation, transformations will be unit-tested?
      What will be mocked (databases, HTTP clients, message queues)?
-     What mocking patterns does the project use (from CONVENTIONS.md)? -->
+     What mocking patterns does the project use (read 2-3 existing test files)? -->
 
 ### Tier 2: Final Validation (integration + real infrastructure)
 <!-- Tests that run once at the end. Real databases, Testcontainers, real services.

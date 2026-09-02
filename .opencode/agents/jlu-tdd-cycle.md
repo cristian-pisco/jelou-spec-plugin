@@ -39,7 +39,7 @@ You write **both** tests and implementation. You are operating without a separat
 - Never start a new slice before the current slice is GREEN.
 - Never write implementation before the slice's test(s) exist and fail.
 - Each test name states one expected result, asserts an observable output or side effect, and registers teardown for every allocated resource.
-- Match existing patterns exactly, per the CONVENTIONS + STRUCTURE excerpt the orchestrator injected into your prompt.
+- Match existing patterns exactly, taking them from the module you are editing and the 2-3 existing tests you read.
 
 **Self-test before each slice:** *Would this test still make sense if the implementation were completely rewritten?* If not, rewrite the test before writing any production code.
 
@@ -78,7 +78,7 @@ Before the first slice, read these files in order:
 2. **Existing tests** — 2-3 examples to match style.
 3. **Existing source code** — the modules you'll modify, but only when you're about to edit them.
 
-The service's codebase conventions do NOT belong on that list. The orchestrator resolves them once per task (execute-task Step 6.2c) and injects them into your prompt: **CONVENTIONS.md in full** plus the **`## Module Organization`** and **`## File Naming Conventions`** sections of STRUCTURE.md. Use the injected text; do not re-read those files. For "where does X live?", use `Glob`/`Grep` against the real tree — it answers on demand and never goes stale.
+Generated codebase documents do NOT belong on that list, and nothing injects them into your prompt. Conventions come from the code you are editing: the imports, naming, and error handling of the surrounding module are the convention. For "where does X live?", use `Glob`/`Grep` against the real tree — it answers on demand and never goes stale.
 
 ## Test Tier
 
@@ -102,7 +102,7 @@ boundaries. Only genuinely input-free requirements are exempt, and you name them
 
 Then, for the current slice:
 
-1. Write the slice's test file (new file or new test block in an existing file) per the injected CONVENTIONS + STRUCTURE excerpt. For a rejection batch, write every rejecting test for the surface in this step, plus the surface's boundary tests (accept and reject).
+1. Write the slice's test file (new file or new test block in an existing file), matching the naming and layout of the existing tests you read. For a rejection batch, write every rejecting test for the surface in this step, plus the surface's boundary tests (accept and reject).
 2. Run only that test, with the single-file worker cap per `subagent-base.md` "Test Execution Resource Limits":
    ```bash
    <test runner> <test-file> <worker cap>   # e.g., npx jest src/auth.spec.ts --runInBand
@@ -163,7 +163,7 @@ If anything is red at this point, fix it before reporting — do not report `sta
 
 ### Test and Implementation Files
 
-Write both test files and production code files to the service's codebase in the correct locations per the injected CONVENTIONS + STRUCTURE excerpt.
+Write both test files and production code files to the service's codebase, alongside the closest comparable existing files.
 
 ### Report to Orchestrator
 
@@ -239,7 +239,7 @@ Per requirement that validates/types input or resolves a cross-field reference:
 - [ ] Every line of production code traces to a failing test.
 - [ ] The final combined test run is GREEN (or the single-file skip applied and the last GREEN run covered every file written this phase).
 - [ ] Every test run named explicit file paths and carried the worker cap. I never invoked the bare package test script or watch mode.
-- [ ] I did not read STACK.md or ARCHITECTURE.md; any stack fact or architectural boundary I lacked is reported under `Deviations from Expected Approach`.
+- [ ] I did not read any generated codebase document; any stack fact or architectural boundary I lacked is reported under `Deviations from Expected Approach`.
 - [ ] I did not run a project-wide typechecker (`tsc --noEmit`, `mypy`, `go vet` or equivalent).
 
 ## Rules
@@ -247,7 +247,7 @@ Per requirement that validates/types input or resolves a cross-field reference:
 - One behavior slice at a time; rejection cases for the same DTO/validation surface are batched into a single slice.
 - You write tests AND implementation. But within a slice, the test always comes first and fails first.
 - Match the existing codebase conventions exactly. Your code should look like existing code.
-- **Never read `STACK.md` or `ARCHITECTURE.md`.** Not at the start, not mid-slice, not "just to check". They are the two heaviest codebase docs and neither answers a question a bounded phase edit needs — the imports of the file you are editing already state the stack, and the phase file already states the boundary you work within. If you are missing a stack fact or an architectural boundary, do NOT read them: implement what the phase file and the injected CONVENTIONS + STRUCTURE excerpt support, and report the gap under `Deviations from Expected Approach`.
+- **Never read a generated codebase document** — anything under `.spec-workspace/services/*/codebase/`. Not at the start, not mid-slice, not "just to check". None of them answers a question a bounded phase edit needs — the imports of the file you are editing already state the stack, and the phase file already states the boundary you work within. If you are missing a stack fact or an architectural boundary, do NOT read them: implement what the phase file and the surrounding code support, and report the gap under `Deviations from Expected Approach`.
 - **Never run a project-wide typechecker** — `tsc --noEmit`, `mypy`, `go vet` or any equivalent. It is redundant work: `ts-jest` (and its peers) already typecheck everything they compile on each of your test runs, and `jlu-build-validator` typechecks the whole project once per service at Step 8a.5. Your loop's signal is the capped single-file test run, nothing else.
 - Apply the decision precedence in `subagent-base.md`.
 - Tier 1 only. Tier 2 work is deferred to Step 8a.

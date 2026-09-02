@@ -1,30 +1,25 @@
 #!/usr/bin/env node
 
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { extractSections } from './extract-doc-sections.mjs';
 
 const USAGE = `task-setup.mjs — one call per task for execute-task Step 6.
 
 Per affected service it resolves the source path (mode-driven, per
-jelou/references/worktree-resolution.md), records the pre-execution baseline SHA,
-and materializes the service doc cache on disk. It also resolves the fan-out cap
-through bin/plan-phase-waves.mjs --emit-cap-only, which owns the formula.
+jelou/references/worktree-resolution.md) and records the pre-execution baseline
+SHA. It also resolves the fan-out cap through
+bin/plan-phase-waves.mjs --emit-cap-only, which owns the formula.
 
-  --task-dir=<abs path>     REQUIRED
   --workspace=<abs path>    REQUIRED (spec workspace root)
   --task-slug=<slug>        REQUIRED
   --setup-mode=<worktree|branch>   defaults to worktree
   --services=<a,b,c>        REQUIRED (affected service ids)
-  --docs-budget=<chars>     defaults to 32000 (~8k tokens)
 
 Output: key=value lines on stdout, one block per service prefixed
 \`service.<id>.\`, plus \`fanout_cap=\`. WARN lines go to stderr and are advisory.
 Exit 0 on success, 1 with status=abort + reason=<machine-readable> otherwise.`;
-
-const STRUCTURE_SECTIONS = ['Module Organization', 'File Naming Conventions'];
 
 function parseArgs(argv) {
   const out = {};
@@ -108,40 +103,15 @@ function baselineSha(sourcePath) {
   return result.status === 0 ? result.stdout.trim() : '';
 }
 
-function buildDocsPayload(workspace, serviceId) {
-  const codebaseDir = join(workspace, 'services', serviceId, 'codebase');
-  const conventionsPath = join(codebaseDir, 'CONVENTIONS.md');
-  const structurePath = join(codebaseDir, 'STRUCTURE.md');
-
-  if (!existsSync(conventionsPath)) {
-    return { payload: null, sources: [], note: 'conventions_missing' };
-  }
-  const conventions = readFileSync(conventionsPath, 'utf8').trim();
-  const sources = [conventionsPath];
-
-  if (!existsSync(structurePath)) {
-    return { payload: conventions, sources, note: 'structure_missing' };
-  }
-  const { found, missing } = extractSections(readFileSync(structurePath, 'utf8'), STRUCTURE_SECTIONS);
-  if (missing.length > 0) {
-    return { payload: conventions, sources, note: `structure_sections_missing:${missing.join('|')}` };
-  }
-  sources.push(structurePath);
-  return { payload: `${conventions}\n\n${found.join('\n\n')}`, sources, note: 'ok' };
-}
-
 const args = parseArgs(process.argv.slice(2));
 if (args.help) {
   process.stdout.write(`${USAGE}\n`);
   process.exit(0);
 }
 
-for (const required of ['task-dir', 'workspace', 'task-slug', 'services']) {
+for (const required of ['workspace', 'task-slug', 'services']) {
   if (!args[required] || args[required] === true) abort('missing_argument', `--${required} required`);
 }
-
-const taskDir = resolve(args['task-dir']);
-if (!isDirectory(taskDir)) abort('task_dir_missing', `task dir not found: ${taskDir}`);
 
 const workspace = resolve(args.workspace);
 if (!isDirectory(workspace)) abort('workspace_missing', `workspace not found: ${workspace}`);
@@ -151,7 +121,6 @@ if (services.length === 0) abort('no_services', '--services resolved to an empty
 
 const setupMode = args['setup-mode'] === 'branch' ? 'branch' : 'worktree';
 const taskSlug = String(args['task-slug']);
-const docsBudget = Number(args['docs-budget'] && args['docs-budget'] !== true ? args['docs-budget'] : 32000);
 const registry = readServicesYaml(workspace);
 const binDir = dirname(fileURLToPath(import.meta.url));
 
@@ -181,40 +150,11 @@ for (const serviceId of services) {
 
   if (!isDirectory(sourcePath)) {
     emitted.push(`service.${serviceId}.baseline_sha=`);
-    emitted.push(`service.${serviceId}.docs_mode=absent`);
     warn(`WARN: Source path missing for ${serviceId}: ${sourcePath}`);
     continue;
   }
 
   emitted.push(`service.${serviceId}.baseline_sha=${baselineSha(sourcePath)}`);
-
-  const { payload, sources, note } = buildDocsPayload(workspace, serviceId);
-  if (payload === null) {
-    emitted.push(`service.${serviceId}.docs_mode=absent`, `service.${serviceId}.docs_note=${note}`);
-    warn(`WARN: SERVICE_DOC_CACHE[${serviceId}] — no CONVENTIONS.md under ${join(workspace, 'services', serviceId, 'codebase')}.`);
-    continue;
-  }
-  if (note !== 'ok') {
-    warn(`WARN: SERVICE_DOC_CACHE[${serviceId}] — STRUCTURE.md sections unavailable (${note}). Caching CONVENTIONS.md only.`);
-  }
-
-  const cacheDir = join(taskDir, 'services', serviceId);
-  mkdirSync(cacheDir, { recursive: true });
-  const cachePath = join(cacheDir, 'service-docs.md');
-
-  if (payload.length > docsBudget) {
-    writeFileSync(cachePath, `${sources.join('\n')}\n`, 'utf8');
-    emitted.push(`service.${serviceId}.docs_file=${cachePath}`);
-    emitted.push(`service.${serviceId}.docs_mode=paths`);
-    emitted.push(`service.${serviceId}.docs_chars=${payload.length}`);
-    warn(`WARN: SERVICE_DOC_CACHE[${serviceId}] is ~${Math.round(payload.length / 4)} tokens (> 8k) — caching paths instead of contents.`);
-    continue;
-  }
-
-  writeFileSync(cachePath, `${payload}\n`, 'utf8');
-  emitted.push(`service.${serviceId}.docs_file=${cachePath}`);
-  emitted.push(`service.${serviceId}.docs_mode=contents`);
-  emitted.push(`service.${serviceId}.docs_chars=${payload.length}`);
 }
 
 const cap = spawnSync(

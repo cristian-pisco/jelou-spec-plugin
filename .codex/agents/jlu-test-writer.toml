@@ -53,10 +53,7 @@ You have access to real-time library documentation via context7 MCP tools. Use t
 Before writing any tests, read these files in order:
 
 1. **Phase file** — The phase's requirements section tells you WHAT to test. Location: `.spec-workspace/specs/<date>/<task>/services/<service-id>/phases/<phase>.md`
-2. **CONVENTIONS.md** — Tells you HOW to write tests (framework, patterns, file naming, assertion style). Location: `.spec-workspace/services/<service-id>/codebase/CONVENTIONS.md`
-3. **STACK.md** — Confirms the testing framework and tools available. Location: `.spec-workspace/services/<service-id>/codebase/STACK.md`
-4. **STRUCTURE.md** — Tells you WHERE to put test files. Location: `.spec-workspace/services/<service-id>/codebase/STRUCTURE.md`
-5. **Existing tests** — Read 2-3 existing test files to match the exact style and patterns in use.
+2. **Existing tests** — Glob the service's test files and read 2-3 of them. They are your source of truth for the framework in use, the assertion and mocking style, the file-naming convention, and where test files belong. Confirm the framework against the service's dependency manifest (`package.json`, `pyproject.toml`, `go.mod`, …) when the tests leave it ambiguous.
 
 ## Test Tiers
 
@@ -67,7 +64,7 @@ Write fast, isolated tests that do NOT depend on external infrastructure:
 - **DO**: Use mocks, stubs, fakes, in-memory implementations
 - **DO**: Test business logic, validation, transformations, error handling
 - **DO**: Mock database calls, HTTP clients, message queue producers/consumers
-- **DO**: Use the project's existing mocking patterns from CONVENTIONS.md
+- **DO**: Use the mocking patterns already present in the service's existing tests
 - **DO NOT**: Require a running database, cache, or message queue
 - **DO NOT**: Make real HTTP calls to external services
 - **DO NOT**: Import test utilities that boot infrastructure (e.g., `setupTestDatabase()`, `startTestContainer()`)
@@ -80,7 +77,7 @@ Write integration tests that verify real wiring against host-resident infrastruc
 - **DO**: Assume any required real infrastructure (Postgres, Redis, etc.) is already running on the host because the developer brought it up via `/jlu-start-dev` or equivalent. If it is not running, mark the requirement as untestable in this environment and report it — do not start anything.
 - **DO**: Test the actual repository/DAO layer against the host-resident database when one is present.
 - **DO**: Test real HTTP calls between services only when the peer service is already running on the host.
-- **DO**: Follow the project's existing integration test patterns from CONVENTIONS.md.
+- **DO**: Follow the integration-test patterns already present in the service's existing tests.
 
 These tests run exactly once, at the end of the task, during final validation.
 
@@ -113,7 +110,7 @@ When `TEST_TIER: 1` (or no tier specified):
 When `TEST_TIER: 2`:
 - Write integration tests for requirements that were deferred from Tier 1
 - Write integration tests for critical paths identified in SPEC.md (auth, data persistence, cross-service contracts)
-- Place these in the project's integration test directory/naming convention per CONVENTIONS.md
+- Place these in the integration-test directory and naming convention the existing tests already use
 - Run tests and any required helper processes on the host. If the integration requires a real dependency the host doesn't have, write the test, mark it skipped with a clear reason, and surface it in the report rather than spinning up infrastructure yourself.
 
 ### File Separation
@@ -216,7 +213,7 @@ Before reporting to the orchestrator, verify:
 ## Output
 
 ### Test Files
-Write test files to the service's codebase in the correct location per STRUCTURE.md and CONVENTIONS.md.
+Write test files to the service's codebase, in the location and naming convention the existing tests already use.
 
 ### Report to Orchestrator
 After writing tests and confirming they fail, provide a structured summary:

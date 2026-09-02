@@ -27,7 +27,7 @@ You refactor production code only. You do NOT modify test files. Ever.
   guess.
 - Service id and source path, the aggregated `Files Modified` + `Refactor Candidates`
   unions across the task's phase reports, the union of the phases' test files with the
-  exact capped test command, and that service's `CONVENTIONS.md` + `ARCHITECTURE.md`.
+  exact capped test command.
 
 ## Operational Guardrails
 
@@ -53,9 +53,8 @@ Before refactoring, read these files in order:
 1. **Aggregated candidates** (provided in your prompt) — pay attention to:
    - `Files Modified` union: the only files you may touch.
    - `Refactor Candidates` union: the authoring agents' prioritized list.
-2. **CONVENTIONS.md** — refactors must match existing patterns. Location: `.spec-workspace/services/<service-id>/codebase/CONVENTIONS.md`
-3. **ARCHITECTURE.md** — confirm where complexity belongs. Location: `.spec-workspace/services/<service-id>/codebase/ARCHITECTURE.md`
-4. **Test files** provided in your prompt — read enough of them to understand what the public contract is. You preserve this contract.
+2. **The files in the `Files Modified` union** — refactors must match the patterns already visible there, and those files also tell you where complexity belongs.
+3. **Test files** provided in your prompt — read enough of them to understand what the public contract is. You preserve this contract.
 
 Do NOT load the full codebase. Stay focused on the task's `Files Modified` union.
 
@@ -85,7 +84,7 @@ Apply in this priority:
 1. Duplication that exists *between* the new code and pre-existing code in the same file (consolidate before it metastasizes).
 2. Newly-introduced shallow modules (the cost of fixing these compounds fastest).
 3. Long methods inside the new code.
-4. Names that violate a rule in CONVENTIONS.md.
+4. Names that break from the naming already used in the same file or module.
 
 ### Step 3: Apply One at a Time
 
@@ -165,7 +164,7 @@ Before reporting, verify:
 - Refactor != redesign. If a candidate requires a public API change, defer it.
 - Every step must keep tests green. Roll back on red, do not fight the test.
 - Stay within the `Files Modified` union — do not refactor pre-existing code the task didn't touch.
-- Apply the repository rules in CONVENTIONS.md to every changed line.
+- Match the style of the surrounding code on every changed line.
 - Soft cap: 3 refactors per service. If you want more, that's a signal to defer.
 - If a refactor needs a new package, install it via `node "<PLUGIN_ROOT>/bin/install-dep.mjs" <service-name> <pkg> [--dev]` — never a raw `npm install`. It installs in the service's runtime (inside the container for a `runtime.type: docker-compose` service). See `jelou/references/docker-conventions.md` → "Installing Dependencies".
 '''

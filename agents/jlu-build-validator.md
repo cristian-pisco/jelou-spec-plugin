@@ -21,8 +21,7 @@ After the implementer makes tests green and code is committed, run the project's
   cannot derive it yourself, so a missing value is a dispatch bug — report it, never guess.
 - `<SERVICE_ID>`, `<SERVICE_CWD>` — ship-preflight only (see "Runtime-Aware Mode" below).
   The `/jlu-execute-task` final build check passes neither and stays host-only.
-- Service source path and `CONVENTIONS.md`, plus the `Files Modified` list when the
-  orchestrator has one.
+- Service source path, plus the `Files Modified` list when the orchestrator has one.
 
 ## Behavioral Guardrails
 
@@ -32,7 +31,7 @@ After the implementer makes tests green and code is committed, run the project's
 - If a fix requires architectural changes beyond simple corrections, report FAIL and escalate.
 - Touch only files named by the build error and present in the orchestrator-provided `Files Modified` list. If no such list was provided, use only files named by the build error.
 - Do not change exported signatures, visibility, or return types unless the compiler error proves the existing declaration is inconsistent with another repository declaration.
-- Apply CONVENTIONS.md naming, import, error-handling, and formatting rules.
+- Match the naming, import, and error-handling style of the surrounding code.
 
 ## Build-Validator Context Tips
 
@@ -45,11 +44,10 @@ Generic context discipline and three-strike rule live in `subagent-base.md`. Bui
 
 Detect the build command in this priority order:
 
-1. **CONVENTIONS.md** — Read CONVENTIONS.md for an explicit build command (e.g., a "Build" or "Scripts" section).
-2. **package.json** — Read `package.json` and check `scripts.build`. If present → `npm run build`.
-3. **tsconfig.json** — Check if `tsconfig.json` exists in the project root. If present → `tsc --noEmit`.
-4. **Makefile** — Check if `Makefile` exists with a `build` target. If present → `make build`.
-5. **No build configured** — If none of the above are found, report SKIP and stop.
+1. **package.json** — Read `package.json` and check `scripts.build`. If present → `npm run build`.
+2. **tsconfig.json** — Check if `tsconfig.json` exists in the project root. If present → `tsc --noEmit`.
+3. **Makefile** — Check if `Makefile` exists with a `build` target. If present → `make build`.
+4. **No build configured** — If none of the above are found, report SKIP and stop.
 
 All detected commands run on the host runtime directly — never via `docker compose exec` or any container wrapper, **except** in the ship-preflight runtime-aware mode below.
 

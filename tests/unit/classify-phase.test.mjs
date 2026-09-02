@@ -211,6 +211,36 @@ describe('classify-phase.sh mode', () => {
     }
   });
 
+  test('the Mode override tolerates any whitespace after the colon, on BSD and GNU alike', () => {
+    // Regression: the extraction used `\\s`, which BSD sed -E does not support, so on
+    // macOS the substitution silently no-opped and OVERRIDE kept the whole matched
+    // line ("**Mode: docs**") instead of the captured word. A fixture with exactly
+    // one space cannot tell the fixed extraction from the broken one on a GNU host.
+    for (const spacing of ['', ' ', '   ', '\t']) {
+      const dir = mkdtempSync(join(tmpdir(), 'classify-mode-ws-'));
+      try {
+        const path = writePhase(dir, [
+          '# Phase 10',
+          '',
+          `**Mode:${spacing}docs**`,
+          '',
+          '## Requirements (immutable)',
+          '- FR-1: Update the README',
+        ].join('\n'));
+        const r = runScript('mode', {
+          CLASSIFY_PHASE_FILE: path,
+          CLASSIFY_SERVICES_IN_PHASE: '1',
+        });
+        const label = JSON.stringify(spacing);
+        assert.equal(r.code, 0, `spacing ${label} exited ${r.code}`);
+        assert.equal(r.parsed.frontmatter_override, 'docs', `spacing ${label} garbled the override`);
+        assert.equal(r.parsed.mode, 'docs', `spacing ${label} did not resolve to docs`);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    }
+  });
+
   test('legacy Mode: horizontal frontmatter maps to tdd', () => {
     const dir = mkdtempSync(join(tmpdir(), 'legacy-mode-'));
     const path = join(dir, 'phase.md');

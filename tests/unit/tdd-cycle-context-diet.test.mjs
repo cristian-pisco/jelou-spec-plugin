@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -23,10 +23,12 @@ const contextSection = () => section(agent, '## Context You Must Read', '## Test
 const rulesSection = () => section(agent, '## Rules', '## Verification Invariants');
 const checklistSection = () => section(agent, '## Before You Submit', '## Rules');
 
-describe('jlu-tdd-cycle — the four codebase docs left the mandatory reading list', () => {
-  test('Context You Must Read names none of them', () => {
+const DOCS = ['ARCHITECTURE.md', 'STACK.md', 'STRUCTURE.md', 'CONVENTIONS.md', 'INTEGRATIONS.md', 'CONCERNS.md'];
+
+describe('jlu-tdd-cycle — no generated codebase doc is on the reading list', () => {
+  test('Context You Must Read names none of them as a numbered mandatory read', () => {
     const body = contextSection();
-    for (const doc of ['CONVENTIONS.md', 'STACK.md', 'STRUCTURE.md', 'ARCHITECTURE.md']) {
+    for (const doc of DOCS) {
       assert.doesNotMatch(
         body,
         new RegExp(`^\\s*\\d+\\.\\s+\\*\\*${doc.replace('.', '\\.')}\\*\\*`, 'm'),
@@ -35,25 +37,57 @@ describe('jlu-tdd-cycle — the four codebase docs left the mandatory reading li
     }
   });
 
-  test('the excerpt is described as arriving through the prompt', () => {
+  test('nothing claims the orchestrator resolves or injects the docs', () => {
     const body = contextSection();
-    assert.match(body, /injects them into your prompt/);
-    assert.match(body, /## Module Organization/);
-    assert.match(body, /## File Naming Conventions/);
+    assert.doesNotMatch(body, /orchestrator resolves them/);
+    assert.doesNotMatch(body, /Use the injected text/);
+    assert.match(body, /nothing injects them into your prompt/);
   });
 });
 
-describe('jlu-tdd-cycle — STACK.md and ARCHITECTURE.md are hard-prohibited', () => {
+describe('jlu-tdd-cycle — every generated codebase doc is hard-prohibited', () => {
   test('Rules forbids reading them outright, with no on-demand escape hatch', () => {
     const rules = rulesSection();
-    assert.match(rules, /Never read `STACK\.md` or `ARCHITECTURE\.md`/);
+    assert.match(rules, /Never read a generated codebase document/);
+    // The prohibition names the DIRECTORY, never the documents. Naming them would put
+    // the very filenames we want the agent to never think about back into its context.
+    assert.match(rules, /`\.spec-workspace\/services\/\*\/codebase\/`/);
+    for (const doc of DOCS) {
+      assert.ok(!rules.includes(doc), `${doc} is named in the prohibition`);
+    }
     assert.match(rules, /Deviations from Expected Approach/);
-    assert.doesNotMatch(rules, /STACK\.md[^\n]*(on demand|only if you need|if needed)/i);
   });
 
   test('Before You Submit carries the checkbox', () => {
-    assert.match(checklistSection(), /- \[ \] I did not read STACK\.md or ARCHITECTURE\.md/);
+    assert.match(checklistSection(), /- \[ \] I did not read any generated codebase document/);
   });
+});
+
+describe('no agent or workflow prompt names a generated codebase doc', () => {
+  // Only the producers may name them: the analyzers, the mapper, and the workflow that
+  // dispatches them. Every other prompt refers to the `codebase/` directory instead.
+  const PRODUCERS = new Set([
+    'agents/jlu-codebase-analyzer-operational.md',
+    'agents/jlu-codebase-analyzer-structural.md',
+    'agents/jlu-codebase-mapper.md',
+    'jelou/workflows/map-codebase.md',
+  ]);
+
+  const prompts = [
+    ...readdirSync(join(ROOT, 'agents')).map((f) => `agents/${f}`),
+    ...readdirSync(join(ROOT, 'jelou', 'workflows')).map((f) => `jelou/workflows/${f}`),
+    ...readdirSync(join(ROOT, 'jelou', 'workflows-opencode')).map((f) => `jelou/workflows-opencode/${f}`),
+    ...readdirSync(join(ROOT, 'jelou', 'references')).map((f) => `jelou/references/${f}`),
+  ].filter((rel) => rel.endsWith('.md') && !PRODUCERS.has(rel));
+
+  for (const rel of prompts) {
+    test(`${rel} names none of them`, () => {
+      const body = read(rel);
+      for (const doc of DOCS) {
+        assert.ok(!body.includes(doc), `${doc} still appears in ${rel}`);
+      }
+    });
+  }
 });
 
 describe('jlu-tdd-cycle — project-wide typecheckers are prohibited', () => {
@@ -77,46 +111,35 @@ describe('jlu-tdd-cycle — project-wide typecheckers are prohibited', () => {
   });
 });
 
-describe('execute-task — the codebase docs are hoisted to a per-task cache', () => {
-  test('Step 6.2 populates SERVICE_DOC_CACHE through the projection bin', () => {
+describe('execute-task — no codebase doc reaches a phase dispatch', () => {
+  test('Step 6.2 emits no doc cache at all', () => {
     const setup = section(workflow, '2. **Per-service setup', '3. Update TASKS.md with the per-service baselines');
-    assert.match(setup, /SERVICE_DOC_CACHE\[service-id\]/);
-    assert.match(setup, /bin\/extract-doc-sections\.mjs/);
-    assert.match(setup, /--section="Module Organization"/);
-    assert.match(setup, /--section="File Naming Conventions"/);
+    assert.doesNotMatch(setup, /SERVICE_DOC_CACHE/);
+    assert.doesNotMatch(setup, /extract-doc-sections/);
+    assert.doesNotMatch(setup, /docs_file|docs_mode|docs_chars/);
   });
 
-  test('Step 6.2 bounds the cached payload and degrades to paths past the bound', () => {
-    const setup = section(workflow, '2. **Per-service setup', '3. Update TASKS.md with the per-service baselines');
-    assert.match(setup, /8k tokens/);
-    assert.match(setup, /cache the \*\*paths\*\* instead of the contents/);
-    assert.match(setup, /WARN: SERVICE_DOC_CACHE/);
+  test('Step 6.2 stores only the source path', () => {
+    assert.match(workflow, /\*\*Store\*\* \(per-service map\): `SERVICE_SOURCE_PATH`\./);
+    assert.doesNotMatch(workflow, /SERVICE_DOC_CACHE/);
   });
 
-  test('Step 6.2 stores the cache alongside the source path', () => {
-    assert.match(workflow, /\*\*Store\*\* \(per-service maps\): `SERVICE_SOURCE_PATH`, `SERVICE_DOC_CACHE`\./);
-  });
-
-  test('Step 7c only looks the cache up', () => {
+  test('Step 7c passes no docs and states the prohibition', () => {
     const s7c = section(workflow, '### 7c. Open the phase', '### 7d. TDD Cycle');
-    assert.match(s7c, /SERVICE_DOC_CACHE\[service-id\]/);
-    assert.match(s7c, /never recomputes or re-reads/);
-    assert.doesNotMatch(s7c, /extract-doc-sections/);
+    assert.doesNotMatch(s7c, /--docs-file/);
+    assert.doesNotMatch(s7c, /CODEBASE_DOCS/);
+    assert.match(s7c, /Nothing from `<WORKSPACE_PATH>\/services\/<service-id>\/codebase\/` is ever passed/);
   });
 
-  test('Step 7c injects contents and never names STACK.md or ARCHITECTURE.md', () => {
-    const s7c = section(workflow, '### 7c. Open the phase', '### 7d. TDD Cycle');
-    assert.match(s7c, /--docs-file/);
-    assert.match(s7c, /SERVICE_DOC_CACHE\[service-id\]/);
-    assert.match(s7c, /inlined as contents, never as paths/);
-    assert.match(s7c, /no phase ever re-reads/);
-    assert.doesNotMatch(s7c, /STACK/);
-    assert.doesNotMatch(s7c, /\{CONVENTIONS,STACK,STRUCTURE,ARCHITECTURE\}/);
+  test('the dispatch builder has no docs plumbing left', () => {
+    const builder = read('bin/build-dispatch-prompt.mjs');
+    assert.doesNotMatch(builder, /docs-file|docsBody|CODEBASE_DOCS|codebaseDocs/);
   });
 
-  test('the dispatch builder suppresses the CODEBASE_DOCS path when docs are inlined', () => {
-    const s7c = section(workflow, '### 7c. Open the phase', '### 7d. TDD Cycle');
-    assert.match(s7c, /suppresses the `CODEBASE_DOCS` path row/);
+  test('the whole workflow names no generated codebase doc', () => {
+    for (const doc of DOCS) {
+      assert.ok(!workflow.includes(doc), `${doc} still appears in execute-task.md`);
+    }
   });
 
   test('Step 7d restates none of the context Step 7c already emitted', () => {
@@ -142,5 +165,40 @@ describe('execute-task — the wave/level contradiction is resolved', () => {
 
   test('no site still claims a wave may hold several phases of the same service', () => {
     assert.doesNotMatch(workflow, /a wave can now contain more than one phase from the \*same\* service/);
+  });
+});
+
+describe('the doc-cache surfaces are gone from every remaining reference', () => {
+  test('the execute-task artifact table no longer lists a service doc cache', () => {
+    const table = section(workflow, '## Artifact Paths', '## Step N — Close workflow span');
+    assert.doesNotMatch(table, /service-docs\.md/);
+    assert.doesNotMatch(table, /Service doc cache/);
+  });
+
+  test('bin/extract-doc-sections.mjs is deleted and no installer still copies it', () => {
+    assert.ok(!existsSync(join(ROOT, 'bin', 'extract-doc-sections.mjs')), 'the projection bin is still on disk');
+    for (const installer of ['bin/install-codex.sh', 'bin/install-opencode.sh']) {
+      assert.doesNotMatch(read(installer), /extract-doc-sections/, `${installer} still copies the deleted bin`);
+    }
+  });
+
+  test('no shipped script imports the deleted projection module or its flags', () => {
+    for (const rel of ['bin/task-setup.mjs', 'bin/build-dispatch-prompt.mjs', 'bin/phase-open.mjs', 'bin/phase-close.mjs']) {
+      assert.doesNotMatch(read(rel), /extract-doc-sections|extractSections/, `${rel} still imports the deleted module`);
+    }
+    assert.doesNotMatch(read('bin/task-setup.mjs'), /docs-budget|buildDocsPayload|service-docs\.md/);
+  });
+
+  test('phase-open and phase-close no longer plumb docs or conventions through', () => {
+    const open = read('bin/phase-open.mjs');
+    assert.doesNotMatch(open, /docs-file/);
+    const close = read('bin/phase-close.mjs');
+    assert.doesNotMatch(close, /conventions|FORMAT_CONVENTIONS/i);
+  });
+
+  test('manual-skills.md no longer advertises the removed council --services flag', () => {
+    const manual = read('manual-skills.md');
+    const usage = section(manual, '### `/jlu-council`', '## Plugin observability');
+    assert.doesNotMatch(usage, /--services/);
   });
 });

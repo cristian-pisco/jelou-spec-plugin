@@ -166,7 +166,6 @@ node <plugin-root>/bin/build-dispatch-prompt.mjs \
   --service="<service-id>" \
   --plugin-root="<PLUGIN_ROOT>" \
   [--phase-file="<abs path to the phase file>"] \
-  [--docs-file="<abs path to the service doc cache>"] \
   [--notes-file="<abs path to a notes file>"]
 ```
 
@@ -196,7 +195,7 @@ Write it to `<TASK_DIR>/services/<service-id>/phases/<NN>-reports/notes-<agent>-
 trailing `## ORCHESTRATOR NOTES`. Legitimate contents, and nothing else: a prior
 attempt's failure context (per 7a); a list the orchestrator aggregated across phases
 and the script cannot see; which pass of a two-pass proposal this is; a repo convention
-that contradicts the codebase docs; the `SERVICE_SOURCE_PATH` override below. Never
+that the phase file does not state; the `SERVICE_SOURCE_PATH` override below. Never
 requirements, acceptance, constraints, procedure or return format.
 
 **Known gap — `SERVICE_SOURCE_PATH` is not always derivable.** The script reads it from
@@ -357,7 +356,7 @@ Read in a single orchestrator message:
 
 - `<TASK_DIR>/SPEC.md` (required — feeds the Step 4.0 triviality classifier and downstream gates)
 
-Do NOT preload codebase files or `ENGINEERING_PRINCIPLES.md` into the orchestrator. The proposal-agent has `Read` access and pulls them itself. Preloading would balloon every subsequent agent dispatch in the task with 30–80k tokens of context the orchestrator does not need.
+Do NOT preload `ENGINEERING_PRINCIPLES.md` into the orchestrator. The proposal-agent has `Read` access and pulls it itself. Preloading would balloon every subsequent agent dispatch in the task with 30–80k tokens of context the orchestrator does not need. Nothing under `codebase/` is read by anyone.
 
 ### 4b. Global Strategy Pass
 
@@ -371,7 +370,7 @@ Notes file — only what the script cannot see:
 ```
 PASS: global
 AFFECTED SERVICES: <one line per service: its `services.yaml` entry {id, path, stack, docker?}>
-ALSO READ: <WORKSPACE_PATH>/principles/ENGINEERING_PRINCIPLES.md, <WORKSPACE_PATH>/registry/services.yaml, and each affected service's <WORKSPACE_PATH>/services/<service-id>/codebase/{ARCHITECTURE,STACK,CONVENTIONS,INTEGRATIONS,STRUCTURE,CONCERNS}.md (missing files are tolerable — skip silently)
+ALSO READ: <WORKSPACE_PATH>/principles/ENGINEERING_PRINCIPLES.md and <WORKSPACE_PATH>/registry/services.yaml. For each affected service, grep its source tree at its `path` for the modules the task touches. Never read anything under <WORKSPACE_PATH>/services/<service-id>/codebase/.
 TASK: Produce the global proposal — cross-service strategy, dependency order, phase structure, contract boundaries, risks, testing strategy.
 ```
 
@@ -387,7 +386,7 @@ TASK_FANOUT_CAP=$(node <plugin-root>/bin/plan-phase-waves.mjs --emit-cap-only --
 
 The cap formula lives ONLY in the planner (`bin/plan-phase-waves.mjs` — auto cap from host cores, with `JLU_PHASE_PARALLELISM` applied as a reduce-only manual ceiling); never restate it in this workflow. Honor `TASK_FANOUT_CAP`: when `> 1`, fan out in a single orchestrator message; when `= 1`, dispatch sequentially.
 
-Each prompt is built per §2c with `--agent=proposal-agent --service=<service-id>` and a per-service notes file carrying `PASS: local — <service-id>`, the global strategy draft (its path, or the text when it is not yet on disk), the target service's `services.yaml` entry, its six `codebase/` docs to read, and the task: *expand service-specific execution details — local scope, relevant modules, implementation constraints, service-level phases*.
+Each prompt is built per §2c with `--agent=proposal-agent --service=<service-id>` and a per-service notes file carrying `PASS: local — <service-id>`, the global strategy draft (its path, or the text when it is not yet on disk), the target service's `services.yaml` entry (its `path` is what the agent greps — never anything under `codebase/`), and the task: *expand service-specific execution details — local scope, relevant modules, implementation constraints, service-level phases*.
 
 Wait for all local agents to complete before continuing to 4d.
 
@@ -455,14 +454,14 @@ Skip proposal generation. Read the existing PROPOSAL.md and phase files to resum
 
    ```bash
    node <plugin-root>/bin/task-setup.mjs \
-     --task-dir="<TASK_DIR>" --workspace="<WORKSPACE_PATH>" \
+     --workspace="<WORKSPACE_PATH>" \
      --task-slug="<TASK_SLUG>" --setup-mode="<SETUP_MODE>" \
      --services="<AFFECTED_SERVICES as a comma-separated list>"
    ```
 
    It emits `status=ok`, `setup_mode=`, `fanout_cap=` and, per service, a
-   `service.<id>.` block: `source_path`, `resolution`, `baseline_sha`, `docs_file`,
-   `docs_mode`, `docs_chars`. Parse it once and store:
+   `service.<id>.` block: `source_path`, `resolution`, `baseline_sha`. Parse it once
+   and store:
 
    - `SERVICE_SOURCE_PATH[service-id]` = `service.<id>.source_path`. The script applies
      the **mode-driven** algorithm of `references/worktree-resolution.md`, NOT a
@@ -474,32 +473,11 @@ Skip proposal generation. Read the existing PROPOSAL.md and phase files to resum
      (`resolution=branch_mode_leftover_worktree_ignored`) — remove that leftover worktree
      with `git worktree remove` when you want it gone. A legacy task with no
      `## Branching` section defers to `references/worktree-resolution.md` §3c.
-   - `SERVICE_DOC_CACHE[service-id]` = `service.<id>.docs_file` — the path to the
-     materialized cache, which Step 7c hands to `--docs-file`. Its **contents** are
-     CONVENTIONS.md in full plus **only** the two STRUCTURE.md sections the script
-     projects with `bin/extract-doc-sections.mjs`:
-
-     ```
-     --section="Module Organization"
-     --section="File Naming Conventions"
-     ```
-
-     — never STRUCTURE.md's directory tree, and never
-     STACK.md or ARCHITECTURE.md (`agents/jlu-tdd-cycle.md` → Rules forbids the TDD
-     agent from reading those two at all). Missing sections degrade to CONVENTIONS.md
-     alone with `WARN: SERVICE_DOC_CACHE[<id>] — STRUCTURE.md sections unavailable`;
-     never fall back to injecting the whole file. Past 8k tokens (32 000 characters)
-     the script writes the **paths** instead and warns
-     `WARN: SERVICE_DOC_CACHE[<id>] is ~<N> tokens (> 8k) — caching paths instead of
-     contents.`; that is the bound, and past it the orchestrator must
-     cache the **paths** instead of the contents so the per-phase context increment
-     never becomes unbounded. The cache never enters orchestrator context; only its
-     path does.
    - `TASK_FANOUT_CAP` = `fanout_cap` when Step 4c did not already compute it. The
      script gets the number from `plan-phase-waves.mjs --emit-cap-only --limit=<N>`,
      which is the single source of the formula.
 
-   `status=abort` + `reason=<missing_argument|task_dir_missing|workspace_missing|no_services>`
+   `status=abort` + `reason=<missing_argument|workspace_missing|no_services>`
    is an orchestrator bug — fix the arguments, never hand-resolve the paths instead.
 
    **Do NOT** run `docker compose up -d`, `docker compose ps`, or compute any container
@@ -514,7 +492,7 @@ Skip proposal generation. Read the existing PROPOSAL.md and phase files to resum
    - <service-id-2> pre-execution commit: <sha>
    ```
 
-**Store** (per-service maps): `SERVICE_SOURCE_PATH`, `SERVICE_DOC_CACHE`.
+**Store** (per-service map): `SERVICE_SOURCE_PATH`.
 
 4. **Set local CPU safety throttles (once per task).**
 
@@ -698,7 +676,6 @@ node <plugin-root>/bin/phase-open.mjs \
   --task-dir="<TASK_DIR>" --service="<service-id>" --phase="<NN>" \
   --phase-file="<PHASE_FILE>" --phase-title="<Phase Name>" \
   --plugin-root="<PLUGIN_ROOT>" --services-in-phase="<K>" \
-  --docs-file="<SERVICE_DOC_CACHE[service-id]>" \
   [--notes-file="<abs path>"] \
   [--span-parent="$WORKFLOW_SPAN_ID" --span-trace="$WORKFLOW_TRACE_ID" --task-slug="$TASK_SLUG"]
 ```
@@ -712,11 +689,10 @@ would let 7e classify it trivial.
 **The three `--span-*` / `--task-slug` flags are passed ONLY when `TRACING_ON`
 (Step 0.5) is true.** Without them the trace layer is never loaded.
 
-`--docs-file` is the path Step 6 resolved once for the whole task; **it looks the cache
-up and never recomputes or re-reads it**, and the bin inlines it as `## SERVICE DOCS`
-and suppresses the `CODEBASE_DOCS` path row — so the docs travel to the agent
-**inlined as contents, never as paths**, and no phase ever re-reads anything under
-`codebase/`. Pass nothing else from there; the agent's own Rules forbid the rest.
+**Nothing from `<WORKSPACE_PATH>/services/<service-id>/codebase/` is ever passed to a
+phase dispatch** — not as contents, not as a path. Those documents are written for
+humans; agents derive conventions, structure and stack from the source tree itself
+(`jelou/references/subagent-base.md` → Context Discipline forbids reading them).
 Add `--notes-file` only for a retry's failure context or a `SERVICE_SOURCE_PATH`
 override (§2c).
 
@@ -811,7 +787,6 @@ node <plugin-root>/bin/phase-close.mjs \
   --commit-type="<feat|fix|docs|refactor|test>" \
   --changed-files="<Files Modified + Tests Written, comma-separated>" \
   --green-recheck-command="<the agent's Command: line>" \
-  --conventions="<WORKSPACE_PATH>/services/<service-id>/codebase/CONVENTIONS.md" \
   --services-in-phase="<K>" \
   --tests-passed="<N>" --tests-total="<N>" \
   --artifacts="<comma-separated paths from the report>" \
@@ -930,7 +905,6 @@ For each affected service (honor `TASK_FANOUT_CAP` for cross-service fan-out; se
    - Service id and service source path (worktree or repo)
    - The aggregated `Files Modified` union (its scope boundary) and `Refactor Candidates` union
    - The union of the phases' test files and the exact capped test command from the last phase report (the agent re-runs these after every refactor)
-   - `<WORKSPACE_PATH>/services/<service-id>/codebase/CONVENTIONS.md` + `ARCHITECTURE.md`
 4. Handle the report:
    - `APPLIED` → commit via `finalize-phase.sh`, mirroring Step 8a.5's fix-commit call:
      ```bash
@@ -963,7 +937,7 @@ For each affected service (honor `TASK_FANOUT_CAP` for cross-service fan-out; se
    CLASSIFY_FILES="$CHANGED_FILES" <plugin-root>/bin/classify-phase.sh compilable
    ```
    If `compilable=false`, log `Build skipped for <service-id> — no compilable source changed (<extensions>).` and continue to the next service.
-2. Otherwise build the prompt per §2c with `--agent=build-validator --service=<service-id> --plugin-root=<PLUGIN_ROOT>` (which also carries the service source path and the codebase docs) and dispatch `jlu-build-validator` (model: **MODEL_CONFIG.code**, default sonnet). Wrap the dispatch in the 7b span wrapper (`--agent build-validator`).
+2. Otherwise build the prompt per §2c with `--agent=build-validator --service=<service-id> --plugin-root=<PLUGIN_ROOT>` (which also carries the service source path) and dispatch `jlu-build-validator` (model: **MODEL_CONFIG.code**, default sonnet). Wrap the dispatch in the 7b span wrapper (`--agent build-validator`).
 3. Handle the agent's verdict:
    - **PASS, no fixes** → continue.
    - **SKIP** (no build command detected) → continue.
@@ -1083,7 +1057,7 @@ comment that slipped through.
 
 Unenforced from here on, with no replacement anywhere in the pipeline: code-smell and
 over-engineering review, security review of new endpoints, N+1 and unbounded query
-review, CONVENTIONS.md compliance, cross-service contract matching, the spec-quote audit
+review, repository-convention compliance, cross-service contract matching, the spec-quote audit
 of test rewrites, the tdd-cycle's own objection/deviation flags, the 100-line function
 cap, and artifact completeness.
 
@@ -1507,7 +1481,6 @@ Awaiting your input to proceed.
 | PROPOSAL.md | `.spec-workspace/specs/<date>/<task-slug>/PROPOSAL.md` |
 | TASKS.md | `.spec-workspace/specs/<date>/<task-slug>/TASKS.md` |
 | Phase files | `.spec-workspace/specs/<date>/<task-slug>/services/<service-id>/phases/<NN>-<phase>.md` |
-| Service doc cache | `.spec-workspace/specs/<date>/<task-slug>/services/<service-id>/service-docs.md` |
 | Implementation (Mode: worktree) | `<service-repo>/.worktrees/<task-slug>/` |
 | Implementation (Mode: branch) | `<service-repo>` (main repo root, on branch `production/<task-slug>`) |
 

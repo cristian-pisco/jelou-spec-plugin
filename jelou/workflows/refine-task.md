@@ -140,17 +140,14 @@ Autonomous → skip this block entirely: display nothing and apply no suggestion
 
 ## Step 4 — Load Minimal Context
 
-For each service in `AFFECTED_SERVICES`, read in parallel (single tool-call message)
-`<WORKSPACE_PATH>/services/<service-id>/codebase/` → `ARCHITECTURE.md`,
-`CONVENTIONS.md`, `INTEGRATIONS.md`.
-
-**Skipped by default**: `STACK.md`, `STRUCTURE.md`, `CONCERNS.md` — large reference docs that rarely affect a targeted refinement. **Lazy-load triggers**: add one to the same parallel batch when `CHANGE_REQUEST` mentions "stack" / "framework" / "version" (→ `STACK.md`), "directory" / "module structure" / "where does X live" (→ `STRUCTURE.md`), or "known issue" / "tech debt" / "concern" (→ `CONCERNS.md`).
+**Never load a generated codebase document.** Everything under
+`<WORKSPACE_PATH>/services/<service-id>/codebase/` is written for humans and is never
+read by this workflow. When the refinement needs a fact about the
+code, grep the service source at its registry `path`.
 
 **Engineering principles** (`<WORKSPACE_PATH>/principles/ENGINEERING_PRINCIPLES.md`): load ONLY if `CHANGE_REQUEST` contains an architectural keyword: "architecture", "security", "performance", "scalability", "auth", "schema", "contract", "event", "migration". Architectural decisions were already settled at `/jlu-new-task` time; loading principles unconditionally adds noise.
 
-**Missing files**: log a single line per missing file (`note: missing <file> for <service-id>`) and continue. Do NOT prompt the user. A refinement proceeds with whatever context is available; if the user wants full coverage they can run `/jlu-map-codebase` separately.
-
-**Store**: `CODEBASE_CONTEXT` = map of service-id -> map of filename -> content. `PRINCIPLES_CONTENT` = string (empty if not loaded).
+**Store**: `PRINCIPLES_CONTENT` = string (empty if not loaded).
 
 ---
 
@@ -160,10 +157,10 @@ For each service in `AFFECTED_SERVICES`, read in parallel (single tool-call mess
 
 Before asking any questions, silently analyze:
 - Which sections of SPEC.md are affected by `CHANGE_REQUEST`
-- Conflicts between the change and existing architecture/conventions in `CODEBASE_CONTEXT`
+- Conflicts between the change and the patterns already present in the affected services' source
 - Implicit assumptions the change introduces that need confirmation
 - Edge cases, error scenarios, security implications specific to the change
-- Integration points affected (cross-reference INTEGRATIONS.md)
+- Integration points affected (grep the affected services for the relevant clients or publishers)
 
 Prioritize by impact: architectural implications > behavioral changes > edge cases > cosmetic details.
 
@@ -183,7 +180,7 @@ Rules:
 - **Each question takes max 4 options** (hard API limit on `question`/`AskUserQuestion`). If a decision has more candidates than 4, split across rounds, group into bucket options, or fall back to a free-text question. Stuffing 5+ options into one question fails with `InputValidationError: too_big`.
 - **Scoped to the change** — do NOT re-interview the full spec
 - **Themes**, in priority order: 1. technical implementation details · 2. tradeoffs & alternatives · 3. architecture & design impact · 4. behavioral changes · 5. edge cases & error handling · 6. security & authorization · 7. performance & scalability · 8. integration points · 9. UX/UI implications · 10. constraints & out-of-scope
-- **Cite the source of each question** — the change request, prior answer, file, pattern, convention, integration, or concern that exposed the gap. Good: "INTEGRATIONS.md shows this service uses async events for payments. Does this change affect the event schema?" Bad: "Are there any other systems affected?"
+- **Cite the source of each question** — the change request, prior answer, file, pattern, convention, integration, or concern that exposed the gap. Good: "`src/events/payments.publisher.ts` shows this service uses async events for payments. Does this change affect the event schema?" Bad: "Are there any other systems affected?"
 - **Convert qualitative answers to a verification target** ("fast" → percentile, latency, load, and measurement boundary)
 - **Ask about tradeoffs** — surface implicit decisions
 - **At the round cap**, stop asking and record every unanswered decision before updating the affected sections
@@ -406,7 +403,6 @@ follow the shared recipe in
 | TASKS.md (lifecycle + status updated) | `.spec-workspace/specs/<date>/<task-slug>/TASKS.md` |
 | PROPOSAL.md (refinement log + phase table updated) | `.spec-workspace/specs/<date>/<task-slug>/PROPOSAL.md` |
 | Phase files (modification/extension blocks added) | `.spec-workspace/specs/<date>/<task-slug>/services/<service-id>/phases/<NN>-*.md` |
-| Codebase files (read-only) | `.spec-workspace/services/<service-id>/codebase/{ARCHITECTURE,CONVENTIONS,INTEGRATIONS}.md` |
 | Engineering principles (read-only, conditional) | `.spec-workspace/principles/ENGINEERING_PRINCIPLES.md` |
 
 ---

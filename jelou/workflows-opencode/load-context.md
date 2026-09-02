@@ -102,13 +102,8 @@ Core artifacts in `TASK_DIR`:
 Per-service artifacts under `TASK_DIR/services/<service-id>/`:
 - `phases/*.md`
 
-Codebase knowledge under `<WORKSPACE_PATH>/services/<service-id>/codebase/`:
-- `ARCHITECTURE.md`
-- `CONVENTIONS.md`
-- `STACK.md`
-- `STRUCTURE.md`
-- `INTEGRATIONS.md`
-- `CONCERNS.md`
+Do **not** list or read anything under `<WORKSPACE_PATH>/services/<service-id>/codebase/`.
+Those documents are written for humans; grep the service source instead.
 
 ## Step 7 — Derive Status Summary
 
