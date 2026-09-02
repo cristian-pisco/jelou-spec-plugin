@@ -140,10 +140,9 @@ Autonomous → skip this block entirely: display nothing and apply no suggestion
 
 ## Step 4 — Load Minimal Context
 
-**Never load a generated codebase document.** The files under
-`<WORKSPACE_PATH>/services/<service-id>/codebase/` — `ARCHITECTURE.md`, `STACK.md`,
-`STRUCTURE.md`, `CONVENTIONS.md`, `INTEGRATIONS.md`, `CONCERNS.md` — are written for
-humans and are never read by this workflow. When the refinement needs a fact about the
+**Never load a generated codebase document.** Everything under
+`<WORKSPACE_PATH>/services/<service-id>/codebase/` is written for humans and is never
+read by this workflow. When the refinement needs a fact about the
 code, grep the service source at its registry `path`.
 
 **Engineering principles** (`<WORKSPACE_PATH>/principles/ENGINEERING_PRINCIPLES.md`): load ONLY if `CHANGE_REQUEST` contains an architectural keyword: "architecture", "security", "performance", "scalability", "auth", "schema", "contract", "event", "migration". Architectural decisions were already settled at `/jlu-new-task` time; loading principles unconditionally adds noise.

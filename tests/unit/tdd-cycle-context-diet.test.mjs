@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -49,16 +49,45 @@ describe('jlu-tdd-cycle — every generated codebase doc is hard-prohibited', ()
   test('Rules forbids reading them outright, with no on-demand escape hatch', () => {
     const rules = rulesSection();
     assert.match(rules, /Never read a generated codebase document/);
+    // The prohibition names the DIRECTORY, never the documents. Naming them would put
+    // the very filenames we want the agent to never think about back into its context.
+    assert.match(rules, /`\.spec-workspace\/services\/\*\/codebase\/`/);
     for (const doc of DOCS) {
-      assert.ok(rules.includes(doc), `${doc} is not named in the prohibition`);
+      assert.ok(!rules.includes(doc), `${doc} is named in the prohibition`);
     }
     assert.match(rules, /Deviations from Expected Approach/);
-    assert.doesNotMatch(rules, /STACK\.md[^\n]*(on demand|only if you need|if needed)/i);
   });
 
   test('Before You Submit carries the checkbox', () => {
     assert.match(checklistSection(), /- \[ \] I did not read any generated codebase document/);
   });
+});
+
+describe('no agent or workflow prompt names a generated codebase doc', () => {
+  // Only the producers may name them: the analyzers, the mapper, and the workflow that
+  // dispatches them. Every other prompt refers to the `codebase/` directory instead.
+  const PRODUCERS = new Set([
+    'agents/jlu-codebase-analyzer-operational.md',
+    'agents/jlu-codebase-analyzer-structural.md',
+    'agents/jlu-codebase-mapper.md',
+    'jelou/workflows/map-codebase.md',
+  ]);
+
+  const prompts = [
+    ...readdirSync(join(ROOT, 'agents')).map((f) => `agents/${f}`),
+    ...readdirSync(join(ROOT, 'jelou', 'workflows')).map((f) => `jelou/workflows/${f}`),
+    ...readdirSync(join(ROOT, 'jelou', 'workflows-opencode')).map((f) => `jelou/workflows-opencode/${f}`),
+    ...readdirSync(join(ROOT, 'jelou', 'references')).map((f) => `jelou/references/${f}`),
+  ].filter((rel) => rel.endsWith('.md') && !PRODUCERS.has(rel));
+
+  for (const rel of prompts) {
+    test(`${rel} names none of them`, () => {
+      const body = read(rel);
+      for (const doc of DOCS) {
+        assert.ok(!body.includes(doc), `${doc} still appears in ${rel}`);
+      }
+    });
+  }
 });
 
 describe('jlu-tdd-cycle — project-wide typecheckers are prohibited', () => {

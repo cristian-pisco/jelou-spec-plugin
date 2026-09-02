@@ -406,7 +406,7 @@ If the file does not exist, skip this sub-step silently. Do NOT prompt the user 
 
 ### 14a — Gap Analysis (silent)
 
-Before asking any questions, silently analyze the task description (`TASK_DESCRIPTION`). Never load a generated codebase document (`ARCHITECTURE.md`, `STACK.md`, `STRUCTURE.md`, `CONVENTIONS.md`, `INTEGRATIONS.md`, `CONCERNS.md` under `<WORKSPACE_PATH>/services/*/codebase/`) — when you need a fact about the code, grep the source within the bounded budget below. Identify:
+Before asking any questions, silently analyze the task description (`TASK_DESCRIPTION`). Never load a generated codebase document — anything under `<WORKSPACE_PATH>/services/*/codebase/` — when you need a fact about the code, grep the source within the bounded budget below. Identify:
 - Ambiguities or missing details in the task description
 - Conflicts between the task and existing architecture, conventions, or integration patterns
 - Implicit assumptions that need explicit confirmation

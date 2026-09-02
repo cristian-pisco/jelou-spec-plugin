@@ -81,10 +81,9 @@ Glob for all task artifacts and organize them by category. Use the task director
 **Per-service artifacts** (under `services/<service-id>/`):
 - `phases/*.md` — phase execution files (Red/Green/Refactor details)
 
-Do **not** list or read anything under `<workspace>/services/<service-id>/codebase/`
-(`ARCHITECTURE.md`, `STACK.md`, `STRUCTURE.md`, `CONVENTIONS.md`, `INTEGRATIONS.md`,
-`CONCERNS.md`). Those documents are written for humans; when you need a fact about the
-code, grep the service source instead.
+Do **not** list or read anything under `<workspace>/services/<service-id>/codebase/`.
+Those documents are written for humans; when you need a fact about the code, grep the
+service source instead.
 
 List each file with its full path so the assistant (you) can read any of them on demand later.
 

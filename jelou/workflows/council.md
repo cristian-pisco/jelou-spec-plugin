@@ -59,9 +59,8 @@ launch any judges.
    the registry services: "Which service(s) are relevant to this idea?" Record the answer
    as `SERVICES_IN_SCOPE` — it names the scope in the report and in the Step 6 seed. It
    does **not** load any files: the case file is built exclusively from `--context` paths
-   the user named. **Never pass a generated codebase document** (`ARCHITECTURE.md`,
-   `STACK.md`, `STRUCTURE.md`, `CONVENTIONS.md`, `INTEGRATIONS.md`, `CONCERNS.md`) as a
-   `--context` path.
+   the user named. **Never pass a generated codebase document** — anything under a
+   service's `codebase/` directory — as a `--context` path.
 
 ## Step 3 — Open the deliberation session
 
