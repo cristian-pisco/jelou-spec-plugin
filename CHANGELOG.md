@@ -5,12 +5,15 @@
 ### Changed
 - Nothing under `.spec-workspace/services/<id>/codebase/` (ARCHITECTURE, STACK, STRUCTURE, CONVENTIONS, INTEGRATIONS, CONCERNS) is read by a skill or subagent anymore. `/jlu-map-codebase` and the analyzer agents still produce them; they are now human-only reference.
 - `jelou/references/subagent-base.md` -> Context Discipline carries the blanket prohibition every subagent inherits; agents derive stack, structure and conventions from the source tree itself.
-- Rewritten consumers: jlu-architecture-explorer, jlu-proposal-agent, jlu-implementer, jlu-test-writer, jlu-refactor-agent, jlu-build-validator, jlu-tdd-cycle, jlu-spec-interviewer.
+- Rewritten consumers: jlu-architecture-explorer, jlu-proposal-agent, jlu-implementer, jlu-test-writer, jlu-refactor-agent, jlu-build-validator, jlu-tdd-cycle, jlu-spec-interviewer, jlu-architecture-grill.
+- Every prohibition names the `codebase/` directory instead of the six filenames. Spelling them out was self-defeating: it put the exact strings agents must never think about into their context on every dispatch. Only the four producers still name them. A test sweeps every agent, workflow and reference prompt and fails if a non-producer reintroduces one.
 - The SERVICE_DOC_CACHE / --docs-file / CODEBASE_DOCS injection pipeline is removed end to end (task-setup, build-dispatch-prompt, phase-open, phase-close, format-changed-files, execute-task Steps 6.2/7c/8a.3). `bin/extract-doc-sections.mjs` is deleted, and `task-setup.mjs` no longer takes the now-unused `--task-dir`.
 - new-task drops Step 10 (Load Codebase Context) and Step 12 (Warn on Missing Context); refine-task Step 4, load-context (both runtimes), test-suite Step 4 (runner now detected from the manifest) and council no longer read them. `council.mjs` builds its case file from --context paths only; its inert --services flag is gone.
 - Fixed: classify-phase.sh extracted the Mode override with `\s`, which BSD sed does not support, so on macOS OVERRIDE kept the whole matched line. Green on Linux CI, red on every Mac.
 - Fixed: task-source.mjs compared a caller path against Git's symlink-resolved answer by string equality, rejecting valid worktrees under a symlinked parent. Canonicalizes the parent only, so a symlink at the worktree path itself is still refused.
 - Security: format-changed-files.sh passed the command and changed filenames to `eval`, so a committed file named with shell metacharacters was executed. Now invoked as an argv array.
+- Security: the argv fix alone still let a changed file named `--config=evil.js` reach eslint/prettier as an option (both load JS config from it), while md5sum's rejection killed the script under `set -euo pipefail` with zero stdout, so phase-close closed the phase with the formatter never having run. Every operand list now sits behind `--`.
+- Security: absolute paths and `../` traversal in an agent-declared changed-file list made the formatter rewrite files outside the service worktree. Entries are now resolved against the source root and refused with a warning.
 
 ## [0.3.363] — 2026-08-31
 
